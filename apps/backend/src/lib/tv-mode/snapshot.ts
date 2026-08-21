@@ -775,7 +775,7 @@ async function loadRevenueScreen(
           SELECT "paidAt" AS occurred_at, "amountReceived"::BIGINT AS amount
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" >= ${bounds.comparisonStartsAt}
             AND "paidAt" < ${bounds.currentEndsAt}
             AND "amountReceived" IS NOT NULL
@@ -785,7 +785,7 @@ async function loadRevenueScreen(
             ROUND((("product"->'prices'->"priceId"->>'USD')::NUMERIC) * "quantity" * 100)::BIGINT AS amount
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" IS NULL
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}
@@ -867,7 +867,7 @@ async function loadRevenueScreen(
           SELECT 1
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" >= ${bounds.comparisonStartsAt}
             AND "paidAt" < ${bounds.currentEndsAt}
             AND "currency" IS NOT NULL
@@ -876,7 +876,7 @@ async function loadRevenueScreen(
           SELECT 1
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" IS NULL
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}
@@ -893,7 +893,7 @@ async function loadRevenueScreen(
           SELECT 1
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" >= ${bounds.comparisonStartsAt}
             AND "paidAt" < ${bounds.currentEndsAt}
             AND ("amountReceived" IS NULL OR "currency" IS NULL)
@@ -910,7 +910,7 @@ async function loadRevenueScreen(
           SELECT 1
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+            AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" IS NULL
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}
@@ -927,13 +927,13 @@ async function loadRevenueScreen(
           (SELECT COUNT(*)::int FROM invoice_health) AS applicable_attempts,
           (SELECT COUNT(*) FILTER (WHERE success)::int FROM invoice_health) AS successful_attempts,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
-            WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'active'::"SubscriptionStatus") AS active_subscriptions,
+            WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'active'::${sqlQuoteIdent(schema)}."SubscriptionStatus") AS active_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID
               AND "createdAt" >= ${bounds.currentStartsAt}
               AND "createdAt" < ${bounds.currentEndsAt}) AS new_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
-            WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'past_due'::"SubscriptionStatus") AS past_due_subscriptions
+            WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'past_due'::${sqlQuoteIdent(schema)}."SubscriptionStatus") AS past_due_subscriptions
           ,(SELECT COUNT(*)::int FROM unsupported_currency_events) AS unsupported_currencies,
           (SELECT COUNT(*)::int FROM invalid_normalized_events) AS invalid_normalized_facts,
           (SELECT COUNT(*)::int FROM invalid_legacy_events) AS invalid_legacy_facts
@@ -955,13 +955,13 @@ async function loadRevenueScreen(
           UNION ALL
           SELECT "paidAt", "amountReceived"::BIGINT
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
-          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" >= ${bounds.currentStartsAt} AND "paidAt" < ${bounds.currentEndsAt}
             AND "amountReceived" IS NOT NULL AND "currency" = 'USD'
           UNION ALL
           SELECT "createdAt", ROUND((("product"->'prices'->"priceId"->>'USD')::NUMERIC) * "quantity" * 100)::BIGINT
           FROM ${sqlQuoteIdent(schema)}."OneTimePurchase"
-          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource"
+          WHERE "tenancyId" = ${tenancy.id}::UUID AND "creationSource" = 'PURCHASE_PAGE'::${sqlQuoteIdent(schema)}."PurchaseCreationSource"
             AND "paidAt" IS NULL
             AND "createdAt" >= ${bounds.currentStartsAt} AND "createdAt" < ${bounds.currentEndsAt}
             AND COALESCE("currency", 'USD') = 'USD'
@@ -1095,13 +1095,13 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
           )::int AS errors,
           COUNT(*) FILTER (
             WHERE "createdAt" < ${bounds.currentEndsAt}
-              AND "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
+              AND "simpleStatus" = 'IN_PROGRESS'::${sqlQuoteIdent(schema)}."EmailOutboxSimpleStatus"
           )::int AS in_progress
         FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND (
             "createdAt" >= ${bounds.comparisonStartsAt}
-            OR "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
+            OR "simpleStatus" = 'IN_PROGRESS'::${sqlQuoteIdent(schema)}."EmailOutboxSimpleStatus"
           )
       `,
       metricsPrisma.$queryRaw<{ day: string, delivered: number, error: number, in_progress: number }[]>`
@@ -1116,7 +1116,7 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
             WHERE "bouncedAt" IS NOT NULL
               OR ("bouncedAt" IS NULL AND "sendServerErrorExternalMessage" IS NOT NULL)
           )::int AS error,
-          COUNT(*) FILTER (WHERE "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus")::int AS in_progress
+          COUNT(*) FILTER (WHERE "simpleStatus" = 'IN_PROGRESS'::${sqlQuoteIdent(schema)}."EmailOutboxSimpleStatus")::int AS in_progress
         FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "createdAt" >= ${bounds.currentStartsAt}

@@ -36,6 +36,7 @@ import {
 import {
   getPrismaClientForTenancy,
   getPrismaSchemaForTenancy,
+  type PrismaClientWithReplica,
   retryTransaction,
   sqlQuoteIdent,
 } from "@/prisma-client";
@@ -127,15 +128,22 @@ function readLastObservedTotal(typedState: unknown): number {
 export async function tvEventTablesAreReady(tenancy: Tenancy): Promise<boolean> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
+  return await tvEventTablesAreReadyForSchema(prisma, schema);
+}
+
+export async function tvEventTablesAreReadyForSchema(
+  prisma: PrismaClientWithReplica,
+  schema: string,
+): Promise<boolean> {
   const rows = await prisma.$queryRaw<Array<{
     occurrences: string | null,
     evaluators: string | null,
     presentations: string | null,
   }>>`
     SELECT
-      to_regclass(${`${schema}."TvEventOccurrence"`})::text AS occurrences,
-      to_regclass(${`${schema}."TvEventEvaluatorState"`})::text AS evaluators,
-      to_regclass(${`${schema}."TvProfileEventPresentation"`})::text AS presentations
+      to_regclass(format('%I.%I', ${schema}::text, 'TvEventOccurrence'))::text AS occurrences,
+      to_regclass(format('%I.%I', ${schema}::text, 'TvEventEvaluatorState'))::text AS evaluators,
+      to_regclass(format('%I.%I', ${schema}::text, 'TvProfileEventPresentation'))::text AS presentations
   `;
   const row = rows.at(0);
   return row?.occurrences != null

@@ -1,6 +1,13 @@
+import { globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { TV_EMAIL_RULE_VERSION } from "./event-evaluators";
-import { buildTvEmailBaseline, getTvEmailEvaluatorBounds, readTvEmailState } from "./events";
+import {
+  buildTvEmailBaseline,
+  getTvEmailEvaluatorBounds,
+  readTvEmailState,
+  tvEventTablesAreReadyForSchema,
+} from "./events";
 
 describe("TV email evaluator integration helpers", () => {
   it("uses mature 15-minute and six-hour windows with the same end boundary", () => {
@@ -71,5 +78,19 @@ describe("TV email evaluator integration helpers", () => {
       candidate: { rulePath: "invented", presentationClass: "incident", accumulatedMs: 999_999 },
       recovery: { window: "invented", accumulatedMs: 999_999 },
     }, null)).toMatchObject({ candidate: null, recovery: null });
+  });
+
+  it("detects TV event tables in a mixed-case tenancy schema", async () => {
+    const schema = `TvTest_${randomUUID().replaceAll("-", "")}`;
+    await globalPrismaClient.$executeRaw`CREATE SCHEMA ${sqlQuoteIdent(schema)}`;
+    try {
+      await globalPrismaClient.$executeRaw`CREATE TABLE ${sqlQuoteIdent(schema)}."TvEventOccurrence" ("id" UUID)`;
+      await globalPrismaClient.$executeRaw`CREATE TABLE ${sqlQuoteIdent(schema)}."TvEventEvaluatorState" ("id" UUID)`;
+      await globalPrismaClient.$executeRaw`CREATE TABLE ${sqlQuoteIdent(schema)}."TvProfileEventPresentation" ("id" UUID)`;
+
+      await expect(tvEventTablesAreReadyForSchema(globalPrismaClient, schema)).resolves.toBe(true);
+    } finally {
+      await globalPrismaClient.$executeRaw`DROP SCHEMA ${sqlQuoteIdent(schema)} CASCADE`;
+    }
   });
 });
