@@ -99,8 +99,14 @@ export function StreamPicker(props: {
   const hasKeylessSelection = selected.some(t => t.primary_key_columns.length === 0);
   const remediation = cdcAvailability.available ? null : getCdcRemediation(props.catalog.capabilities);
 
+  // Falls back to the same defaults the row renders with, so ticking a table that
+  // the catalog grew after mount submits its recommended mode rather than null.
+  const defaultSelectionFor = (key: string): Selection => {
+    const table = props.catalog.tables.find(t => `${t.schema_name}.${t.table_name}` === key);
+    return { on: false, mode: table?.recommended_mode ?? null, cursorColumn: table?.default_cursor_column ?? null };
+  };
   const update = (key: string, patch: Partial<Selection>) => {
-    setSelection(prev => ({ ...prev, [key]: { on: false, mode: null, cursorColumn: null, ...prev[key], ...patch } }));
+    setSelection(prev => ({ ...prev, [key]: { ...defaultSelectionFor(key), ...prev[key], ...patch } }));
   };
 
   const submit = async () => {
@@ -175,7 +181,7 @@ export function StreamPicker(props: {
               const key = `${table.schema_name}.${table.table_name}`;
               // A table the catalog grew since this component mounted has no
               // entry yet; it renders unselected rather than crashing the page.
-              const current = selection[key] ?? { on: false, mode: table.recommended_mode, cursorColumn: table.default_cursor_column };
+              const current = selection[key] ?? defaultSelectionFor(key);
               const syncable = table.recommended_mode != null;
               return (
                 <tr key={key} className={`border-t border-border-in-card ${current.on ? "" : "opacity-50"}`}>
@@ -240,7 +246,8 @@ export function StreamPicker(props: {
   );
 }
 
-export function formatRowCount(rows: number): string {
+export function formatRowCount(rows: number | null): string {
+  if (rows == null) return "unknown";
   if (rows >= 1e9) return `${(rows / 1e9).toFixed(1)}B`;
   if (rows >= 1e6) return `${(rows / 1e6).toFixed(rows >= 1e7 ? 0 : 1)}M`;
   if (rows >= 1e3) return `${Math.round(rows / 1e3)}k`;

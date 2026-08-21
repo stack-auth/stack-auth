@@ -20,7 +20,11 @@ function table(overrides: Partial<DataSourceTableInfo> = {}): DataSourceTableInf
     tableName: "users",
     approxRows: 5_000_000,
     primaryKeyColumns: ["id"],
-    cursorCandidates: [{ column: "updated_at", dataType: "timestamptz", indexed: true }],
+    // As format_type() renders it — the shape the probe actually produces.
+    cursorCandidates: [{ column: "updated_at", dataType: "timestamp with time zone", indexed: true }],
+    replicaIdentity: "d",
+    isLogged: true,
+    isPartitioned: false,
     ...overrides,
   };
 }
@@ -35,6 +39,18 @@ describe("CDC availability", () => {
     expect(getCdcAvailability({ ...capable, hasReplication: false }).reason).toBe("needs REPLICATION grant");
     expect(getCdcAvailability({ ...capable, inRecovery: true }).reason).toBe("not on a read replica");
     expect(getCdcAvailability({ ...capable, slotsUsed: 10 }).reason).toBe("no replication slots free");
+  });
+
+  it("blocks a table whose replica identity would break the customer's writes", () => {
+    // Adding a REPLICA IDENTITY NOTHING table to a publication makes their own
+    // UPDATEs start failing, so this must never be offered.
+    expect(getCdcAvailability(capable, table({ replicaIdentity: "n" })).reason).toBe("needs a replica identity");
+  });
+
+  it("blocks unlogged and partitioned tables", () => {
+    expect(getCdcAvailability(capable, table({ isLogged: false })).reason).toBe("table is unlogged");
+    // Changes publish under the leaf partition, not the parent we subscribe to.
+    expect(getCdcAvailability(capable, table({ isPartitioned: true })).reason).toBe("table is partitioned");
   });
 
   it("blocks a keyless table even on a fully capable server", () => {
@@ -75,6 +91,15 @@ describe("recommendation", () => {
   it("returns null when nothing applies, rather than a mode that would fail", () => {
     const impossible = table({ approxRows: 12_600_000, cursorCandidates: [], primaryKeyColumns: [] });
     expect(getRecommendedMode(impossible, { ...capable, walLevel: "replica" })).toBeNull();
+  });
+
+  it("does not treat a never-analyzed table as small", () => {
+    // reltuples is -1 until ANALYZE runs; reading that as 0 would recommend
+    // reloading an arbitrarily large table in full on every sync.
+    expect(getRecommendedMode(table({ approxRows: null }), capable)).toBe("cdc");
+    expect(getRecommendedMode(table({ approxRows: null }), { ...capable, walLevel: "replica" })).toBe("cursor");
+    const noCursor = table({ approxRows: null, cursorCandidates: [] });
+    expect(getRecommendedMode(noCursor, { ...capable, walLevel: "replica" })).toBeNull();
   });
 });
 

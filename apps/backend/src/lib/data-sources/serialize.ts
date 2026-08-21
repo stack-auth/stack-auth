@@ -96,6 +96,8 @@ export function serializeCatalog(probe: DataSourceProbeResult) {
         schema_name: table.schemaName,
         table_name: table.tableName,
         approx_rows: table.approxRows,
+        replica_identity: table.replicaIdentity,
+        is_partitioned: table.isPartitioned,
         primary_key_columns: table.primaryKeyColumns,
         cursor_candidates: table.cursorCandidates.map(candidate => ({
           column: candidate.column,

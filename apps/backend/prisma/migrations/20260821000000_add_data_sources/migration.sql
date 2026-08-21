@@ -60,7 +60,7 @@ CREATE TABLE "DataSourceStream" (
 CREATE INDEX "DataSource_tenancyId_idx" ON "DataSource"("tenancyId");
 
 -- CreateIndex
-CREATE INDEX "DataSourceStream_dataSourceId_idx" ON "DataSourceStream"("dataSourceId");
+CREATE INDEX "DataSource_status_lastSyncFinishedAt_idx" ON "DataSource"("status", "lastSyncFinishedAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DataSourceStream_dataSourceId_schemaName_tableName_key" ON "DataSourceStream"("dataSourceId", "schemaName", "tableName");

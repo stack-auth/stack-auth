@@ -144,11 +144,11 @@ it("runs full refresh and cursor modes end to end on the Postgres side", async (
   const results = await runStreamSyncs(context, [
     {
       streamId: "s-plans", schemaName: "public", tableName: "plans", mode: "full_refresh" as const,
-      cursorColumn: null, primaryKeyColumns: ["id"], destinationTable: "public_plans", syncCursor: null,
+      cursorColumn: null, primaryKeyColumns: ["id"], destinationTable: "public_plans", isPending: false, syncCursor: null,
     },
     {
       streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
-      cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_users", syncCursor: null,
+      cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_users", isPending: false, syncCursor: null,
     },
   ]);
 
@@ -163,7 +163,10 @@ it("runs full refresh and cursor modes end to end on the Postgres side", async (
   expect(plans.rowsSynced).toBe(2);
   expect(users.error).toBeNull();
   expect(users.rowsSynced).toBe(500);
-  expect(users.syncCursor).toEqual({ mode: "cursor", value: "500" });
+  expect(users.syncCursor).toMatchObject({ mode: "cursor", value: "500" });
+  // The primary key of the last row read rides along, so a group of rows sharing
+  // one cursor value can be resumed through instead of re-read forever.
+  expect(JSON.parse(users.syncCursor!.key!)).toEqual(["500"]); // bigserial arrives as a string from pg
   // The swap is what makes a full refresh atomic for readers.
   expect(recorder.commands.some(c => c.startsWith("EXCHANGE TABLES"))).toBe(true);
 }, 60000);
@@ -182,10 +185,12 @@ it("resumes a cursor stream from its watermark", async () => {
   }, [{
     streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
     cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_users",
+    isPending: false,
     syncCursor: { mode: "cursor", value: "495" },
   }]);
   console.log("RESUMED", JSON.stringify(results));
-  // >= the watermark, so the boundary row is re-read rather than skipped.
+  // Without a stored key the watermark is inclusive, so the boundary row is
+  // re-read rather than skipped.
   expect(results[0].rowsSynced).toBe(6);
 }, 60000);
 
@@ -210,7 +215,7 @@ it("holds a timestamp cursor back from now(), so a late commit is not skipped", 
     slotName: "x", publicationName: "x", startedAt: new Date(),
   }, [{
     streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
-    cursorColumn: "updated_at", primaryKeyColumns: ["id"], destinationTable: "public_users", syncCursor: null,
+    cursorColumn: "updated_at", primaryKeyColumns: ["id"], destinationTable: "public_users", isPending: false, syncCursor: null,
   }]);
 
   const emails = recorder.inserts.flatMap(i => i.rows).map(r => r.email);

@@ -7,13 +7,21 @@ export const EXTRACTED_AT_COLUMN = "_hexclave_extracted_at";
 export const VERSION_COLUMN = "_hexclave_version";
 export const DELETED_COLUMN = "_hexclave_deleted";
 
+/**
+ * Identifiers cannot be parameterized, so every name is interpolated into DDL and
+ * this quoting is what makes that safe. Backslashes and backticks are escaped the
+ * way ClickHouse expects; control characters are refused outright, since nothing
+ * legitimate contains them and they have no escape we can rely on.
+ *
+ * Deliberately permissive about the rest: warehouse databases are named by project
+ * UUID (so hyphens must survive), and column names come from the customer's own
+ * schema, where a quoted "odd name" is perfectly legal.
+ */
 export function quoteClickhouseIdentifier(identifier: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
-    // Identifiers reaching here are derived from the source catalog, so a name we
-    // cannot represent is a bug in sanitization rather than something to escape.
+  if (identifier.length === 0 || /[\u0000-\u001f\u007f]/.test(identifier)) {
     throw new HexclaveAssertionError(`Unsafe ClickHouse identifier: ${JSON.stringify(identifier)}`);
   }
-  return `\`${identifier}\``;
+  return `\`${identifier.replace(/\\/g, "\\\\").replace(/`/g, "\\`")}\``;
 }
 
 /**
@@ -59,9 +67,12 @@ export function mapPostgresTypeToClickhouse(dataType: string): string {
 
 function columnDefinition(column: DataSourceColumn, isPrimaryKey: boolean): string {
   const baseType = mapPostgresTypeToClickhouse(column.dataType);
-  // ORDER BY columns must not be Nullable, and a primary key column is NOT NULL
-  // at the source by definition.
-  const type = column.nullable && !isPrimaryKey ? `Nullable(${baseType})` : baseType;
+  // Every non-key column is Nullable regardless of the source's NOT NULL, because
+  // a delete tombstone carries only the replica identity: Postgres sends the other
+  // columns as SQL NULL. A non-Nullable column would coerce those to '' or 0 and,
+  // depending on server settings, could reject the whole WAL batch.
+  // ORDER BY columns must not be Nullable, and a key column is NOT NULL anyway.
+  const type = isPrimaryKey ? baseType : `Nullable(${baseType})`;
   return `${quoteClickhouseIdentifier(column.name)} ${type}`;
 }
 

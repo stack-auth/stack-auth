@@ -4,6 +4,10 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DATA_SOURCE_SYNC_MODES } from "@hexclave/shared/dist/data-sources/modes";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
+// Connects out to the customer's database under a 120s statement timeout per
+// stream, so it needs more than the platform default.
+export const maxDuration = 300;
+
 export const PUT = createSmartRouteHandler({
   metadata: {
     summary: "Configure which tables a data source syncs",

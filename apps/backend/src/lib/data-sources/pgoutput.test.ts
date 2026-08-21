@@ -175,3 +175,23 @@ describe("LSN formatting", () => {
     expect(() => parseLsn("not-an-lsn")).toThrow("Malformed LSN");
   });
 });
+
+describe("cursor candidate types", () => {
+  it("accepts the type names format_type() actually emits, typmods and all", async () => {
+    const { isCursorCandidateType } = await import("./probe");
+    // Prisma renders DateTime as timestamp(3); Hibernate as timestamp(6) with tz.
+    // Matching only the bare spellings left those sources with no cursor at all.
+    for (const type of [
+      "timestamp(3) without time zone",
+      "timestamp(6) with time zone",
+      "timestamp with time zone",
+      "timestamp without time zone",
+      "date", "bigint", "integer", "smallint",
+    ]) {
+      expect(isCursorCandidateType(type), type).toBe(true);
+    }
+    for (const type of ["text", "uuid", "jsonb", "numeric(10,2)", "boolean", "bytea"]) {
+      expect(isCursorCandidateType(type), type).toBe(false);
+    }
+  });
+});

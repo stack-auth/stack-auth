@@ -44,9 +44,15 @@ export type DataSourceCursorCandidate = {
 export type DataSourceTableInfo = {
   schemaName: string,
   tableName: string,
-  approxRows: number,
+  /** Null when the source has never been analyzed, which is not the same as empty. */
+  approxRows: number | null,
   primaryKeyColumns: string[],
   cursorCandidates: DataSourceCursorCandidate[],
+  /** `pg_class.relreplident`: 'd' default, 'n' nothing, 'f' full, 'i' using index. */
+  replicaIdentity: string,
+  /** Unlogged tables cannot be added to a publication at all. */
+  isLogged: boolean,
+  isPartitioned: boolean,
 };
 
 export type ModeAvailability = {
@@ -57,7 +63,7 @@ export type ModeAvailability = {
 
 export function getCdcAvailability(
   capabilities: DataSourceCapabilities,
-  table?: Pick<DataSourceTableInfo, "primaryKeyColumns">,
+  table?: Pick<DataSourceTableInfo, "primaryKeyColumns" | "replicaIdentity" | "isLogged" | "isPartitioned">,
 ): ModeAvailability {
   if (capabilities.walLevel !== "logical") {
     return { available: false, reason: "needs wal_level=logical" };
@@ -71,10 +77,27 @@ export function getCdcAvailability(
   if (capabilities.slotsUsed >= capabilities.slotsMax) {
     return { available: false, reason: "no replication slots free" };
   }
-  // Without a key, an UPDATE or DELETE in the WAL carries nothing we can match a
-  // destination row on, so CDC would be no better than an append-only log.
-  if (table != null && table.primaryKeyColumns.length === 0) {
-    return { available: false, reason: "needs a primary key" };
+  if (table != null) {
+    // Without a key, an UPDATE or DELETE in the WAL carries nothing we can match
+    // a destination row on, so CDC would be no better than an append-only log.
+    if (table.primaryKeyColumns.length === 0) {
+      return { available: false, reason: "needs a primary key" };
+    }
+    // Adding a REPLICA IDENTITY NOTHING table to a publication makes the
+    // customer's own UPDATEs and DELETEs start failing. Never worth it.
+    if (table.replicaIdentity === "n") {
+      return { available: false, reason: "needs a replica identity" };
+    }
+    // Postgres refuses to add these to a publication, and one of them would fail
+    // the whole publication statement, taking every other CDC stream with it.
+    if (!table.isLogged) {
+      return { available: false, reason: "table is unlogged" };
+    }
+    // Changes are published under the leaf partition, not the parent we would be
+    // subscribed to, so every change would be silently dropped.
+    if (table.isPartitioned) {
+      return { available: false, reason: "table is partitioned" };
+    }
   }
   return { available: true, reason: null };
 }
@@ -88,7 +111,10 @@ export function getModeAvailability(
     cursor: table.cursorCandidates.length > 0
       ? { available: true, reason: null }
       : { available: false, reason: "no usable column" },
-    full_refresh: table.approxRows > FULL_REFRESH_MAX_ROWS
+    // An unknown row count cannot prove the table is small, but refusing on that
+    // basis would block every freshly restored source. It is allowed, just never
+    // recommended — see getRecommendedMode.
+    full_refresh: table.approxRows != null && table.approxRows > FULL_REFRESH_MAX_ROWS
       ? { available: false, reason: "table too large" }
       : { available: true, reason: null },
   };
@@ -104,10 +130,15 @@ export function getRecommendedMode(
 ): DataSourceSyncMode | null {
   const availability = getModeAvailability(table, capabilities);
   // Small tables reload wholesale: cheaper than change tracking, and self-healing.
-  if (table.approxRows <= SMALL_TABLE_ROWS && availability.full_refresh.available) return "full_refresh";
+  // Requires a known count: "unknown" must not be treated as "small".
+  if (table.approxRows != null && table.approxRows <= SMALL_TABLE_ROWS && availability.full_refresh.available) {
+    return "full_refresh";
+  }
   if (availability.cdc.available) return "cdc";
   if (availability.cursor.available) return "cursor";
-  if (availability.full_refresh.available) return "full_refresh";
+  // Only fall back to a full reload when we know the table is small enough to
+  // stand it; an unknown count reaching here means we genuinely cannot say.
+  if (availability.full_refresh.available && table.approxRows != null) return "full_refresh";
   return null;
 }
 

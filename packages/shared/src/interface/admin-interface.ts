@@ -111,7 +111,11 @@ export type DataSourceJson = {
 export type DataSourceCatalogTableJson = {
   schema_name: string,
   table_name: string,
-  approx_rows: number,
+  /** Null when the source has never been analyzed — not the same as empty. */
+  approx_rows: number | null,
+  /** `pg_class.relreplident`: 'd' default, 'n' nothing, 'f' full, 'i' using index. */
+  replica_identity: string,
+  is_partitioned: boolean,
   primary_key_columns: string[],
   cursor_candidates: { column: string, data_type: string, indexed: boolean }[],
   /** Resolved server-side, so the picker never offers a mode the backend would reject. */

@@ -2811,6 +2811,8 @@ model DataSource {
   streams DataSourceStream[]
 
   @@index([tenancyId])
+  // The scheduler scans on exactly this predicate every minute.
+  @@index([status, lastSyncFinishedAt])
 }
 
 enum DataSourceStreamMode {
@@ -2865,7 +2867,6 @@ model DataSourceStream {
   lastSyncedAt DateTime?
 
   @@unique([dataSourceId, schemaName, tableName])
-  @@index([dataSourceId])
 }
 
 // ─── Workflows ──────────────────────────────────────────────────────────────

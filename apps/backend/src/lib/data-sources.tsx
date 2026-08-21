@@ -1,9 +1,9 @@
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { ensureDataWarehouseEntitlement, getDataWarehouse, getDataWarehouseNames } from "@/lib/data-warehouse";
+import { createClickhouseWarehouseClient } from "@/lib/clickhouse";
+import { ensureDataWarehouseEntitlement, getDataWarehouse, getDataWarehouseNames, getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { getDestinationTableName } from "@/lib/data-sources/clickhouse-destination";
-import { DATA_SOURCE_SSL_MODES, type DataSourceCredentials } from "@/lib/data-sources/postgres";
+import { DATA_SOURCE_SSL_MODES, quotePgIdentifier, withDataSourceClient, type DataSourceCredentials } from "@/lib/data-sources/postgres";
 import { probeDataSource, type DataSourceProbeResult, type ProbedTable } from "@/lib/data-sources/probe";
-import { runStreamSyncs, type StreamSyncPlan } from "@/lib/data-sources/sync";
+import { runStreamSyncs, type StreamSyncPlan, type SyncCursorState } from "@/lib/data-sources/sync";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { Prisma, type DataSource, type DataSourceStream } from "@/generated/prisma/client";
@@ -20,6 +20,9 @@ const encryptedPasswordSchema = yupObject({
   edkBase64: yupString().defined(),
   ciphertextBase64: yupString().defined(),
 }).defined();
+
+/** How long a claimed sync may run before the scheduler assumes it died. */
+const SYNC_CLAIM_LEASE_SECONDS = 900;
 
 const MODE_TO_PRISMA = {
   full_refresh: "FULL_REFRESH",
@@ -137,23 +140,27 @@ export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): 
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  // Drop the replication slot before forgetting it exists. A slot nobody reads
+  // Drop the replication slot before forgetting it exists: a slot nobody reads
   // retains write-ahead log on the customer's server until their disk fills.
-  if (source.replicationSlotName != null) {
-    try {
-      const { withDataSourceClient } = await import("@/lib/data-sources/postgres");
-      const credentials = await getCredentials(source);
-      await withDataSourceClient(credentials, async client => {
-        await client.query(`SELECT pg_drop_replication_slot($1) WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1)`, [source.replicationSlotName]);
-        if (source.publicationName != null) {
-          await client.query(`DROP PUBLICATION IF EXISTS ${JSON.stringify(source.publicationName).replace(/"/g, '"')}`).catch(() => {});
-        }
-      }, { allowWrites: true });
-    } catch (error) {
-      // The source may be unreachable, which must not make it undeletable. The
-      // slot is then the customer's to drop, and the error says so.
-      captureError("data-source-slot-cleanup", error);
-    }
+  //
+  // Attempted unconditionally rather than only when replicationSlotName is set,
+  // because that column is written after a sync completes — a sync that created
+  // the slot and then timed out leaves one behind with no record of it. The name
+  // is derived from the source id, so it is always recoverable.
+  const slotName = getReplicationSlotName(source.id);
+  try {
+    const credentials = await getCredentials(source);
+    await withDataSourceClient(credentials, async client => {
+      await client.query(
+        `SELECT pg_drop_replication_slot($1) WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1)`,
+        [slotName],
+      );
+      await client.query(`DROP PUBLICATION IF EXISTS ${quotePgIdentifier(slotName)}`);
+    }, { allowWrites: true });
+  } catch (error) {
+    // The source may be unreachable, which must not make it undeletable. The slot
+    // is then the customer's to drop, and this records why we could not.
+    captureError("data-source-slot-cleanup", error);
   }
 
   // Destination tables are deliberately left in place: they are the customer's
@@ -162,8 +169,17 @@ export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): 
   await prisma.dataSource.delete({ where: { id: source.id } });
 }
 
+/** Deterministic so cleanup never depends on having recorded the name. */
+export function getReplicationSlotName(dataSourceId: string): string {
+  return `hexclave_${dataSourceId.replace(/-/g, "")}`;
+}
+
 /** Re-reads capabilities and catalog, and persists the capability snapshot. */
 export async function refreshDataSourceProbe(tenancy: Tenancy, dataSourceId: string): Promise<DataSourceProbeResult> {
+  // Gated like the other outbound paths: this opens a connection to the
+  // customer's database, so a project that has lost the entitlement must not
+  // keep being able to trigger it.
+  await ensureDataWarehouseEntitlement(tenancy);
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   const credentials = await getCredentials(source);
   const probe = await probeDataSource(credentials);
@@ -201,6 +217,23 @@ export async function setDataSourceStreams(
 
   const tablesByName = new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
   const existingByName = new Map(source.streams.map(s => [`${s.schemaName}.${s.tableName}`, s]));
+
+  // Two sources in one project can easily both have `public.users`, and both would
+  // otherwise map to the same destination table — where a full refresh's
+  // EXCHANGE TABLES would atomically replace the other source's data. Names stay
+  // clean for the first source to claim one and are suffixed after that.
+  const claimedByOtherSources = new Set(
+    (await prisma.dataSourceStream.findMany({
+      where: { dataSource: { tenancyId: tenancy.id }, NOT: { dataSourceId: source.id } },
+      select: { destinationTable: true },
+    })).map(row => row.destinationTable),
+  );
+  const resolveDestinationTable = (schemaName: string, tableName: string, existing: string | undefined) => {
+    if (existing != null) return existing;
+    const preferred = getDestinationTableName(schemaName, tableName);
+    if (!claimedByOtherSources.has(preferred)) return preferred;
+    return `${preferred}_${source.id.replace(/-/g, "").slice(0, 8)}`;
+  };
 
   for (const config of configs) {
     const key = `${config.schemaName}.${config.tableName}`;
@@ -243,7 +276,7 @@ export async function setDataSourceStreams(
         mode: MODE_TO_PRISMA[config.mode],
         cursorColumn,
         primaryKeyColumns: table.primaryKeyColumns,
-        destinationTable: getDestinationTableName(config.schemaName, config.tableName),
+        destinationTable: resolveDestinationTable(config.schemaName, config.tableName, existing?.destinationTable),
         ...(modeChanged || existing == null
           // Prisma distinguishes "set the column to JSON null" from "SQL NULL";
           // clearing a resume point means the latter.
@@ -268,6 +301,9 @@ export async function setDataSourceStreams(
 }
 
 export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Promise<DataSourceWithStreams> {
+  // Also covers the scheduler: a project that drops off the plan stops syncing
+  // rather than keeping an outbound connection on a one-minute cron forever.
+  await ensureDataWarehouseEntitlement(tenancy);
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   if (source.streams.length === 0) return source;
 
@@ -276,17 +312,34 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
   const credentials = await getCredentials(source);
   const startedAt = new Date();
 
-  await prisma.dataSource.update({ where: { id: source.id }, data: { lastSyncStartedAt: startedAt, error: null } });
+  // The same lease the scheduler takes, so a manual "Sync now" during a cron
+  // sweep is refused rather than running a second sync against the same source —
+  // which would have two runs sharing one staging table and one replication slot.
+  const claimed = await prisma.$executeRaw`
+    UPDATE "DataSource"
+    SET "lastSyncStartedAt" = ${startedAt}, "error" = NULL
+    WHERE "id" = ${source.id}::uuid
+      AND (
+        "lastSyncStartedAt" IS NULL
+        OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
+        OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
+      )
+  `;
+  if (claimed === 0) {
+    throw new StatusError(StatusError.Conflict, "A sync is already running for this source.");
+  }
 
   let probe: DataSourceProbeResult;
   try {
     probe = await probeDataSource(credentials);
   } catch (error) {
     // A failure to connect is about the source, not any one stream.
+    // Recorded, but the source stays ACTIVE: the scheduler only picks up ACTIVE
+    // rows, so parking it on FAILED would make one DNS blip stop syncing forever.
     const message = error instanceof Error ? error.message : String(error);
     await prisma.dataSource.update({
       where: { id: source.id },
-      data: { status: "FAILED", error: message, lastSyncFinishedAt: new Date() },
+      data: { error: message, lastSyncFinishedAt: new Date() },
     });
     return await getDataSourceOrThrow(tenancy, dataSourceId);
   }
@@ -300,11 +353,19 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
     cursorColumn: stream.cursorColumn,
     primaryKeyColumns: stream.primaryKeyColumns,
     destinationTable: stream.destinationTable,
-    syncCursor: stream.syncCursor as { mode: string, value: string } | null,
+    syncCursor: stream.syncCursor as SyncCursorState | null,
+    isPending: stream.status === "PENDING",
   }));
 
-  const slotName = `hexclave_${source.id.replace(/-/g, "")}`;
-  const clickhouse = getClickhouseAdminClient();
+  const slotName = getReplicationSlotName(source.id);
+  // Connects as the project's own warehouse user rather than the ClickHouse
+  // admin, so the tenancy boundary is enforced by ClickHouse privileges and the
+  // per-project quota — not by the correctness of an interpolated database name.
+  const warehouseAuth = await getDataWarehouseQueryAuth(tenancy);
+  if (warehouseAuth == null) {
+    throw new StatusError(StatusError.BadRequest, "This project's data warehouse is not ready.");
+  }
+  const clickhouse = createClickhouseWarehouseClient(warehouseAuth, databaseName);
   let results;
   try {
     results = await runStreamSyncs({
@@ -323,22 +384,29 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
   const usesCdc = plans.some(plan => plan.mode === "cdc");
   await retryTransaction(prisma, async tx => {
     for (const result of results) {
+      // A truncated source table cannot be represented incrementally, so the
+      // stream goes back to PENDING and the next sync rebuilds it from scratch.
+      const resnapshot = result.needsResnapshot === true;
       await tx.dataSourceStream.update({
         where: { id: result.streamId },
         data: {
-          status: result.error == null ? "ACTIVE" : "FAILED",
+          status: result.error != null ? "FAILED" : resnapshot ? "PENDING" : "ACTIVE",
           error: result.error,
-          syncCursor: result.syncCursor ?? undefined,
+          syncCursor: resnapshot ? Prisma.DbNull : result.syncCursor ?? undefined,
           rowsSynced: { increment: BigInt(result.rowsSynced) },
           lastSyncedAt: result.error == null ? new Date() : undefined,
         },
       });
     }
+    const failed = results.filter(result => result.error != null);
     await tx.dataSource.update({
       where: { id: source.id },
       data: {
         lastSyncFinishedAt: new Date(),
         status: "ACTIVE",
+        // Surfaced at the source level only when nothing succeeded; a single bad
+        // table is already reported on its own stream.
+        error: failed.length === results.length ? failed[0]?.error ?? null : null,
         ...(usesCdc ? { replicationSlotName: slotName, publicationName: slotName } : {}),
       },
     });
@@ -356,37 +424,59 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
  * starve the others by being picked repeatedly.
  */
 export async function runDueDataSourceSyncs(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+  // Claims in the same statement that selects. The cron fires every minute while
+  // a sweep may run for minutes, so without a claim every overlapping invocation
+  // would pick the same rows and sync one source several times at once —
+  // concurrent slot reads, duplicate inserts, and a full refresh whose staging
+  // table is dropped underneath it.
   const due = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string }[]>`
-    SELECT "id", "tenancyId"
-    FROM "DataSource"
-    WHERE "status" = 'ACTIVE'
-      AND EXISTS (SELECT 1 FROM "DataSourceStream" s WHERE s."dataSourceId" = "DataSource"."id")
-      AND (
-        "lastSyncFinishedAt" IS NULL
-        OR "lastSyncFinishedAt" < NOW() - make_interval(secs => "syncIntervalSeconds")
-      )
-    ORDER BY "lastSyncFinishedAt" ASC NULLS FIRST
-    LIMIT 20
+    UPDATE "DataSource"
+    SET "lastSyncStartedAt" = NOW()
+    WHERE "id" IN (
+      SELECT "id" FROM "DataSource"
+      WHERE "status" = 'ACTIVE'
+        AND EXISTS (SELECT 1 FROM "DataSourceStream" s WHERE s."dataSourceId" = "DataSource"."id")
+        AND (
+          "lastSyncFinishedAt" IS NULL
+          OR "lastSyncFinishedAt" < NOW() - make_interval(secs => "syncIntervalSeconds")
+        )
+        -- The lease: a claim older than this belonged to an invocation that died,
+        -- so the row becomes eligible again rather than being stuck forever.
+        AND (
+          "lastSyncStartedAt" IS NULL
+          OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
+          OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
+        )
+      ORDER BY "lastSyncFinishedAt" ASC NULLS FIRST
+      LIMIT 20
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING "id", "tenancyId"
   `;
   if (due.length === 0) return { didWork: false };
 
+  let didWork = false;
   for (const row of due) {
     if (Date.now() >= options.deadlineMs) break;
     try {
       const tenancy = await getTenancy(row.tenancyId);
       if (tenancy == null) continue;
       await syncDataSource(tenancy, row.id);
+      didWork = true;
     } catch (error) {
       // A source that cannot sync must not stop the sweep, and the failure is
       // already recorded on the row for the dashboard to show.
       captureError("data-source-scheduled-sync", error);
+      // lastSyncFinishedAt is set so the interval applies to the retry too; the
+      // status stays ACTIVE so a transient failure does not park the source.
       await globalPrismaClient.dataSource.update({
         where: { id: row.id },
-        data: { lastSyncFinishedAt: new Date(), status: "FAILED", error: error instanceof Error ? error.message : String(error) },
+        data: { lastSyncFinishedAt: new Date(), error: error instanceof Error ? error.message : String(error) },
       }).catch(() => {
         // The row may have been deleted mid-sweep.
       });
+      didWork = true;
     }
   }
-  return { didWork: true };
+  return { didWork };
 }

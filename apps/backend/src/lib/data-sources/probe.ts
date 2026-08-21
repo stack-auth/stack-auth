@@ -24,11 +24,16 @@ const EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema", "pg_toast"];
  * Types a cursor column may have. A cursor must be monotonic under the
  * customer's own writes, which in practice means a timestamp or an ascending
  * integer key.
+ *
+ * Matched against `format_type()` output, which spells types out and carries the
+ * type modifier: a Prisma `DateTime` column reads as
+ * `timestamp(3) without time zone`, not `timestamptz`. Stripping the modifier
+ * first is what makes those tables usable at all.
  */
-const CURSOR_TYPE_PATTERN = /^(timestamp|timestamptz|timestamp with time zone|timestamp without time zone|date|smallint|integer|bigint|int2|int4|int8)$/i;
+const CURSOR_TYPE_PATTERN = /^(timestamp( with(out)? time zone)?|date|smallint|integer|bigint)$/i;
 
 export function isCursorCandidateType(dataType: string): boolean {
-  return CURSOR_TYPE_PATTERN.test(dataType.trim());
+  return CURSOR_TYPE_PATTERN.test(dataType.trim().replace(/\(\d+(,\s*\d+)?\)/, ""));
 }
 
 async function readCapabilities(client: Client): Promise<DataSourceCapabilities> {
@@ -41,7 +46,19 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
     SELECT current_setting('server_version') AS version,
            current_setting('wal_level') AS wal_level,
            pg_is_in_recovery() AS in_recovery,
-           COALESCE((SELECT rolreplication OR rolsuper FROM pg_roles WHERE rolname = current_user), false) AS has_replication
+           COALESCE(
+             (SELECT rolreplication OR rolsuper FROM pg_roles WHERE rolname = current_user)
+             -- RDS and Cloud SQL grant slot creation through role membership while
+             -- leaving rolreplication false, so the direct attribute is not enough.
+             -- Looked up through pg_roles because pg_has_role() errors outright on
+             -- a role name that does not exist, which is every self-hosted server.
+             OR EXISTS (
+               SELECT 1 FROM pg_roles r
+               WHERE r.rolname IN ('rds_replication', 'cloudsqlsuperuser')
+                 AND pg_has_role(current_user, r.oid, 'MEMBER')
+             ),
+             false
+           ) AS has_replication
   `);
   const row = rows[0];
 
@@ -49,7 +66,9 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
   // the budget must not fail the whole probe, so fall back to "none used" and let
   // slot creation surface the real error if it ever comes to that.
   let slotsUsed = 0;
-  let slotsMax = 0;
+  // Unknown must not read as "full": `slotsUsed >= slotsMax` would report
+  // "no replication slots free" and hide CDC on a server that supports it.
+  let slotsMax = Number.POSITIVE_INFINITY;
   try {
     const slots = await client.query<{ used: string, max: string }>(`
       SELECT (SELECT count(*) FROM pg_replication_slots) AS used,
@@ -58,7 +77,7 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
     slotsUsed = Number.parseInt(slots.rows[0].used, 10);
     slotsMax = Number.parseInt(slots.rows[0].max, 10);
   } catch {
-    slotsMax = 0;
+    slotsMax = Number.POSITIVE_INFINITY;
   }
 
   return {
@@ -67,7 +86,7 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
     inRecovery: row.in_recovery,
     hasReplication: row.has_replication,
     slotsUsed: Number.isFinite(slotsUsed) ? slotsUsed : 0,
-    slotsMax: Number.isFinite(slotsMax) ? slotsMax : 0,
+    slotsMax,
     probedAtMillis: Date.now(),
   };
 }
@@ -79,15 +98,27 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
     schema_name: string,
     table_name: string,
     approx_rows: string,
+    replica_identity: string,
+    is_logged: boolean,
+    is_partitioned: boolean,
   }>(`
     SELECT n.nspname AS schema_name,
            c.relname AS table_name,
-           GREATEST(c.reltuples, 0)::bigint::text AS approx_rows
+           -- -1 means "never analyzed", which is not the same as empty. Kept
+           -- distinct so the size-based mode gates can refuse to guess.
+           c.reltuples::bigint::text AS approx_rows,
+           c.relreplident AS replica_identity,
+           (c.relpersistence = 'p') AS is_logged,
+           (c.relkind = 'p') AS is_partitioned
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind IN ('r', 'p')
+      -- Individual partitions are reachable through their parent, and listing
+      -- both would sync the same rows into two destination tables.
+      AND NOT c.relispartition
       AND n.nspname <> ALL($1::text[])
       AND n.nspname NOT LIKE 'pg\\_temp%'
+      AND has_schema_privilege(n.oid, 'USAGE')
       AND has_table_privilege(c.oid, 'SELECT')
     ORDER BY n.nspname, c.relname
   `, [EXCLUDED_SCHEMAS]);
@@ -105,9 +136,15 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
            a.attname AS column_name,
            format_type(a.atttypid, a.atttypmod) AS data_type,
            a.attnotnull AS not_null,
+           -- Only a LEADING index column makes a range scan cheap; a trailing
+           -- one still reads the whole table, so calling it "indexed" would
+           -- steer getDefaultCursorColumn straight at a sequential scan.
            EXISTS (
              SELECT 1 FROM pg_index ix
-             WHERE ix.indrelid = c.oid AND a.attnum = ANY(ix.indkey)
+             WHERE ix.indrelid = c.oid
+               AND ix.indisvalid
+               AND ix.indpred IS NULL
+               AND ix.indkey[0] = a.attnum
            ) AS indexed
     FROM pg_attribute a
     JOIN pg_class c ON c.oid = a.attrelid
@@ -116,6 +153,7 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
       AND NOT a.attisdropped
       AND c.relkind IN ('r', 'p')
       AND n.nspname <> ALL($1::text[])
+      AND has_schema_privilege(n.oid, 'USAGE')
       AND has_table_privilege(c.oid, 'SELECT')
     ORDER BY n.nspname, c.relname, a.attnum
   `, [EXCLUDED_SCHEMAS]);
@@ -134,7 +172,11 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
     JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
     WHERE i.indisprimary
+      -- indkey spans INCLUDE columns too; those are not part of the key and
+      -- must not end up in ClickHouse's dedup ORDER BY.
+      AND k.ord <= i.indnkeyatts
       AND n.nspname <> ALL($1::text[])
+      AND has_schema_privilege(n.oid, 'USAGE')
       AND has_table_privilege(c.oid, 'SELECT')
     ORDER BY n.nspname, c.relname, k.ord
   `, [EXCLUDED_SCHEMAS]);
@@ -161,13 +203,19 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
 
   return tables.rows.map(row => {
     const k = key(row.schema_name, row.table_name);
+    const rawRows = Number.parseInt(row.approx_rows, 10);
     return {
       schemaName: row.schema_name,
       tableName: row.table_name,
-      approxRows: Number.parseInt(row.approx_rows, 10) || 0,
+      // -1 is Postgres for "never analyzed". Reporting it as 0 would sneak an
+      // arbitrarily large table past every size-based gate.
+      approxRows: Number.isFinite(rawRows) && rawRows >= 0 ? rawRows : null,
       primaryKeyColumns: pkByTable.get(k) ?? [],
       cursorCandidates: cursorsByTable.get(k) ?? [],
       columns: columnsByTable.get(k) ?? [],
+      replicaIdentity: row.replica_identity,
+      isLogged: row.is_logged,
+      isPartitioned: row.is_partitioned,
     };
   });
 }

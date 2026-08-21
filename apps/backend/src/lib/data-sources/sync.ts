@@ -13,8 +13,13 @@ import { buildDestinationRow, coerceTextValue, versionFromCursorValue } from "./
 
 /** Rows per round trip. Large enough to amortise latency, small enough to bound memory. */
 const READ_BATCH_SIZE = 10_000;
-/** Stops one enormous table from monopolising a sync run; the next run resumes where this left off. */
-const MAX_BATCHES_PER_STREAM = 50;
+/**
+ * Stops one enormous table from monopolising a sync run. Only safe for cursor
+ * mode, which resumes from its watermark next run — a full refresh or a CDC
+ * snapshot that stopped early would publish a partial table, so those read to
+ * exhaustion instead.
+ */
+const MAX_BATCHES_PER_CURSOR_SYNC = 50;
 /** WAL changes decoded per peek. Postgres always completes the transaction it is in, so this is a floor. */
 const MAX_WAL_CHANGES_PER_SYNC = 20_000;
 
@@ -34,14 +39,31 @@ export type StreamSyncPlan = {
   cursorColumn: string | null,
   primaryKeyColumns: string[],
   destinationTable: string,
-  syncCursor: { mode: string, value: string } | null,
+  syncCursor: SyncCursorState | null,
+  /**
+   * True until the stream has synced once in its current configuration. A mode or
+   * cursor change resets it, because the destination's existing rows were versioned
+   * on a scale the new mode cannot beat — full-refresh versions are epoch
+   * microseconds, CDC versions are LSNs, and no real LSN ever reaches 1.7e15 — so
+   * carrying them over would freeze the table forever.
+   */
+  isPending: boolean,
+};
+
+export type SyncCursorState = {
+  mode: string,
+  value: string,
+  /** JSON-encoded primary key of the last row read, for total-order resumption. */
+  key?: string,
 };
 
 export type StreamSyncResult = {
   streamId: string,
   rowsSynced: number,
-  syncCursor: { mode: string, value: string } | null,
+  syncCursor: SyncCursorState | null,
   error: string | null,
+  /** The source truncated this table; only a fresh snapshot can represent that. */
+  needsResnapshot?: boolean,
 };
 
 export type SyncContext = {
@@ -60,6 +82,12 @@ function tableKey(schemaName: string, tableName: string): string {
 }
 
 async function prepareDestination(context: SyncContext, plan: StreamSyncPlan, table: ProbedTable): Promise<void> {
+  if (plan.isPending) {
+    // Rebuilt from scratch rather than merged into: see StreamSyncPlan.isPending.
+    await context.clickhouse.command({
+      query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
+    });
+  }
   await ensureDestinationTable(context.clickhouse, {
     databaseName: context.databaseName,
     tableName: plan.destinationTable,
@@ -74,13 +102,14 @@ async function forEachBatch(
   query: string,
   params: unknown[],
   onBatch: (rows: Record<string, unknown>[]) => Promise<void>,
+  options: { maxBatches: number },
 ): Promise<number> {
   const cursorName = `hexclave_sync_${Math.random().toString(36).slice(2, 10)}`;
   let total = 0;
   await client.query("BEGIN");
   try {
     await client.query(`DECLARE ${quotePgIdentifier(cursorName)} NO SCROLL CURSOR FOR ${query}`, params);
-    for (let batch = 0; batch < MAX_BATCHES_PER_STREAM; batch++) {
+    for (let batch = 0; batch < options.maxBatches; batch++) {
       const result = await client.query(`FETCH ${READ_BATCH_SIZE} FROM ${quotePgIdentifier(cursorName)}`);
       if (result.rows.length === 0) break;
       await onBatch(result.rows as Record<string, unknown>[]);
@@ -132,6 +161,9 @@ async function syncFullRefresh(
         })),
       });
     },
+    // Unbounded: the mode is already restricted to tables under
+    // FULL_REFRESH_MAX_ROWS, and a partial load would be swapped in as if complete.
+    { maxBatches: Number.POSITIVE_INFINITY },
   );
 
   await context.clickhouse.command({
@@ -168,11 +200,32 @@ async function syncCursor(
   const conditions: string[] = [];
   const params: unknown[] = [];
   const previous = plan.syncCursor?.mode === "cursor" ? plan.syncCursor.value : null;
+  const previousKey = plan.syncCursor?.mode === "cursor" ? plan.syncCursor.key ?? null : null;
+
+  // With a primary key, (cursor, key) is a total order, so the read can resume
+  // strictly after the last row seen. That both removes the duplicate re-read of
+  // the boundary and — the reason it matters — stops a group of rows sharing one
+  // cursor value from livelocking: a bulk backfill that stamps 600k rows with the
+  // same updated_at would otherwise re-read the same first batch forever.
+  const useKeyset = plan.primaryKeyColumns.length > 0;
+  const orderColumns = useKeyset
+    ? [quotedCursor, ...plan.primaryKeyColumns.map(quotePgIdentifier)]
+    : [quotedCursor];
+
   if (previous != null) {
-    // `>=` rather than `>` so rows sharing the watermark's exact value are not
-    // skipped; the destination deduplicates the overlap by primary key.
-    conditions.push(`${quotedCursor} >= $${params.length + 1}`);
-    params.push(previous);
+    if (useKeyset && previousKey != null) {
+      const keyValues = JSON.parse(previousKey) as unknown[];
+      const placeholders = [previous, ...keyValues].map(value => {
+        params.push(value);
+        return `$${params.length}`;
+      });
+      conditions.push(`(${orderColumns.join(", ")}) > (${placeholders.join(", ")})`);
+    } else {
+      // No key to break ties with, so the watermark is re-read inclusively and the
+      // overlap is tolerated rather than risking a skip.
+      conditions.push(`${quotedCursor} >= $${params.length + 1}`);
+      params.push(previous);
+    }
   }
   if (isTemporal) {
     conditions.push(`${quotedCursor} <= now() - interval '${CURSOR_SAFETY_LAG_SECONDS} seconds'`);
@@ -180,9 +233,10 @@ async function syncCursor(
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   let maxCursor: unknown = previous;
+  let maxKey: string | null = previousKey;
   const rowsSynced = await forEachBatch(
     client,
-    `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)} ${where} ORDER BY ${quotedCursor} ASC`,
+    `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)} ${where} ORDER BY ${orderColumns.map(c => `${c} ASC`).join(", ")}`,
     params,
     async rows => {
       const destinationRows = rows.map(values => buildDestinationRow({
@@ -196,20 +250,23 @@ async function syncCursor(
       // row of the last batch is the maximum. Comparing values ourselves would
       // mean re-implementing Postgres' ordering per type — and comparing them as
       // strings, which is the obvious shortcut, puts "99" above "500".
-      maxCursor = rows[rows.length - 1][cursorColumn];
+      const last = rows[rows.length - 1];
+      maxCursor = last[cursorColumn];
+      maxKey = useKeyset ? JSON.stringify(plan.primaryKeyColumns.map(column => last[column])) : null;
       await insertRows(context.clickhouse, {
         databaseName: context.databaseName,
         tableName: plan.destinationTable,
         rows: destinationRows,
       });
     },
+    { maxBatches: MAX_BATCHES_PER_CURSOR_SYNC },
   );
 
   const nextValue = maxCursor instanceof Date ? maxCursor.toISOString() : maxCursor == null ? null : String(maxCursor);
   return {
     streamId: plan.streamId,
     rowsSynced,
-    syncCursor: nextValue == null ? plan.syncCursor : { mode: "cursor", value: nextValue },
+    syncCursor: nextValue == null ? plan.syncCursor : { mode: "cursor", value: nextValue, key: maxKey ?? undefined },
     error: null,
   };
 }
@@ -223,7 +280,7 @@ async function ensureCdcInfrastructure(
   client: Client,
   context: SyncContext,
   plans: StreamSyncPlan[],
-): Promise<void> {
+): Promise<{ slotWasCreated: boolean }> {
   const tableList = plans
     .map(plan => quotePgQualifiedName(plan.schemaName, plan.tableName))
     .join(", ");
@@ -254,9 +311,11 @@ async function ensureCdcInfrastructure(
     `SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1) AS exists`,
     [context.slotName],
   );
-  if (!existingSlot.rows[0].exists) {
-    await client.query(`SELECT pg_create_logical_replication_slot($1, 'pgoutput')`, [context.slotName]);
+  if (existingSlot.rows[0].exists) {
+    return { slotWasCreated: false };
   }
+  await client.query(`SELECT pg_create_logical_replication_slot($1, 'pgoutput')`, [context.slotName]);
+  return { slotWasCreated: true };
 }
 
 /**
@@ -272,7 +331,6 @@ async function snapshotForCdc(
   table: ProbedTable,
   client: Client,
 ): Promise<number> {
-  await prepareDestination(context, plan, table);
   return await forEachBatch(
     client,
     `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)}`,
@@ -286,7 +344,50 @@ async function snapshotForCdc(
         })),
       });
     },
+    // Unbounded: the LSN cursor is written once the snapshot returns, so stopping
+    // early would mark rows as loaded that never were.
+    { maxBatches: Number.POSITIVE_INFINITY },
   );
+}
+
+/**
+ * Re-reads rows whose WAL entry withheld an unchanged TOAST value.
+ *
+ * Postgres omits large unchanged column values from the WAL, so an UPDATE that
+ * touched only `title` sends nothing for a multi-kilobyte `body`. There is no way
+ * to express "leave this column alone" in a MergeTree insert — an omitted field
+ * takes the column default and a NULL erases it — and the new row carries a higher
+ * version, so it wins the merge either way. The only correct fix is to fetch the
+ * current row and write it whole.
+ */
+async function refetchRowsByKey(
+  client: Client,
+  plan: StreamSyncPlan,
+  keys: Record<string, unknown>[],
+): Promise<Map<string, Record<string, unknown>>> {
+  const byKey = new Map<string, Record<string, unknown>>();
+  if (keys.length === 0 || plan.primaryKeyColumns.length === 0) return byKey;
+
+  const keyColumns = plan.primaryKeyColumns;
+  const quotedKeys = keyColumns.map(quotePgIdentifier).join(", ");
+  const params: unknown[] = [];
+  const tuples = keys.map(key => {
+    const placeholders = keyColumns.map(column => {
+      params.push(key[column]);
+      return `$${params.length}`;
+    });
+    return `(${placeholders.join(", ")})`;
+  });
+
+  const result = await client.query(
+    `SELECT * FROM ${quotePgQualifiedName(plan.schemaName, plan.tableName)}
+     WHERE (${quotedKeys}) IN (${tuples.join(", ")})`,
+    params,
+  );
+  for (const row of result.rows as Record<string, unknown>[]) {
+    byKey.set(keyColumns.map(column => String(row[column])).join("\u0000"), row);
+  }
+  return byKey;
 }
 
 function tupleToValues(tuple: PgoutputTuple, relation: PgoutputRelation, table: ProbedTable): Record<string, unknown> {
@@ -311,7 +412,7 @@ async function consumeWal(
   context: SyncContext,
   plans: StreamSyncPlan[],
   client: Client,
-): Promise<{ rowsByStream: Map<string, number>, lastCommitLsn: bigint | null }> {
+): Promise<{ rowsByStream: Map<string, number>, lastCommitLsn: bigint | null, truncatedStreams: Set<string> }> {
   const planByTable = new Map(plans.map(plan => [tableKey(plan.schemaName, plan.tableName), plan]));
   const changes = await client.query<{ lsn: string, data: Buffer }>(
     `SELECT lsn::text AS lsn, data
@@ -322,8 +423,11 @@ async function consumeWal(
   const relations = new Map<number, PgoutputRelation>();
   const rowsByDestination = new Map<string, Record<string, unknown>[]>();
   const rowsByStream = new Map<string, number>();
+  // Rows whose WAL entry withheld an unchanged TOAST value, to be re-read whole.
+  const toastedByStream = new Map<string, { plan: StreamSyncPlan, rows: Record<string, unknown>[] }>();
   let lastCommitLsn: bigint | null = null;
   let currentCommitLsn = 0n;
+  const truncatedStreams = new Set<string>();
 
   for (const change of changes.rows) {
     const message = decodePgoutputMessage(change.data, relations);
@@ -337,6 +441,18 @@ async function consumeWal(
       lastCommitLsn = message.endLsn;
       continue;
     }
+    if (message.type === "truncate") {
+      // There is no tombstone that expresses "every row is gone", and leaving them
+      // in place would silently diverge from the source. The stream is flagged for
+      // a rebuild instead.
+      for (const relationId of message.relationIds) {
+        const truncated = relations.get(relationId);
+        if (truncated == null) continue;
+        const truncatedPlan = planByTable.get(tableKey(truncated.schemaName, truncated.tableName));
+        if (truncatedPlan != null) truncatedStreams.add(truncatedPlan.streamId);
+      }
+      continue;
+    }
     if (message.type !== "insert" && message.type !== "update" && message.type !== "delete") continue;
 
     const relation = relations.get(message.relationId);
@@ -348,23 +464,68 @@ async function consumeWal(
 
     const deleted = message.type === "delete";
     const tuple = deleted ? message.keyRow : message.row;
+    if (!rowsByDestination.has(plan.destinationTable)) rowsByDestination.set(plan.destinationTable, []);
+    const destinationRows = rowsByDestination.get(plan.destinationTable)!;
+
+    // An UPDATE that moves the primary key sends the old key alongside the new
+    // row. Without a tombstone for it the pre-update row stays in the warehouse
+    // forever, under a key the source no longer has.
+    if (message.type === "update" && message.keyRow != null) {
+      const oldKey = tupleToValues(message.keyRow, relation, table);
+      const movedKey = plan.primaryKeyColumns.some(
+        column => oldKey[column] !== undefined && String(oldKey[column]) !== String(message.row[column]),
+      );
+      if (movedKey) {
+        destinationRows.push(buildDestinationRow({
+          values: oldKey, columns: table.columns, version: currentCommitLsn, deleted: true, extractedAt: context.startedAt,
+        }));
+      }
+    }
+
+    const values = tupleToValues(tuple, relation, table);
     const row = buildDestinationRow({
-      values: tupleToValues(tuple, relation, table),
+      values,
       columns: table.columns,
       version: currentCommitLsn,
       deleted,
       extractedAt: context.startedAt,
     });
-    if (!rowsByDestination.has(plan.destinationTable)) rowsByDestination.set(plan.destinationTable, []);
-    rowsByDestination.get(plan.destinationTable)!.push(row);
+    destinationRows.push(row);
     rowsByStream.set(plan.streamId, (rowsByStream.get(plan.streamId) ?? 0) + 1);
+
+    // 'u' in the tuple means an unchanged TOAST value the server did not send.
+    if (!deleted && relation.columns.some(column => tuple[column.name] === undefined)) {
+      if (!toastedByStream.has(plan.streamId)) toastedByStream.set(plan.streamId, { plan, rows: [] });
+      toastedByStream.get(plan.streamId)!.rows.push(values);
+    }
+  }
+
+  // Written after the WAL rows, at the same commit version, so the complete row
+  // is what a merge keeps: ReplacingMergeTree takes the last inserted row when
+  // versions tie.
+  for (const { plan, rows } of toastedByStream.values()) {
+    const table = context.tablesByName.get(tableKey(plan.schemaName, plan.tableName));
+    if (table == null) continue;
+    const complete = await refetchRowsByKey(client, plan, rows);
+    const destinationRows = rowsByDestination.get(plan.destinationTable) ?? [];
+    for (const partial of rows) {
+      const key = plan.primaryKeyColumns.map(column => String(partial[column])).join("\u0000");
+      const full = complete.get(key);
+      // Absent means the row was deleted again later in the same batch; the
+      // tombstone we already queued is the correct final state.
+      if (full == null) continue;
+      destinationRows.push(buildDestinationRow({
+        values: full, columns: table.columns, version: currentCommitLsn, deleted: false, extractedAt: context.startedAt,
+      }));
+    }
+    rowsByDestination.set(plan.destinationTable, destinationRows);
   }
 
   for (const [destinationTable, rows] of rowsByDestination) {
     await insertRows(context.clickhouse, { databaseName: context.databaseName, tableName: destinationTable, rows });
   }
 
-  return { rowsByStream, lastCommitLsn };
+  return { rowsByStream, lastCommitLsn, truncatedStreams };
 }
 
 async function syncCdcStreams(
@@ -372,7 +533,16 @@ async function syncCdcStreams(
   plans: StreamSyncPlan[],
   client: Client,
 ): Promise<StreamSyncResult[]> {
-  await ensureCdcInfrastructure(client, context, plans);
+  const { slotWasCreated } = await ensureCdcInfrastructure(client, context, plans);
+
+  // Every sync, not just the snapshot: the WAL carries no DDL, so a column the
+  // customer added since the stream started only reaches the destination table
+  // through this. Without it ClickHouse silently drops the unknown field and the
+  // new column stays empty forever.
+  for (const plan of plans) {
+    const table = context.tablesByName.get(tableKey(plan.schemaName, plan.tableName));
+    if (table != null) await prepareDestination(context, plan, table);
+  }
 
   const results = new Map<string, StreamSyncResult>();
   for (const plan of plans) {
@@ -382,7 +552,12 @@ async function syncCdcStreams(
   // Snapshot anything that has never been loaded. Done after the slot exists, so
   // changes made during the snapshot are captured by the WAL as well.
   for (const plan of plans) {
-    if (plan.syncCursor?.mode === "lsn") continue;
+    // A slot we had to create while a stream already held an LSN means the old
+    // slot is gone — dropped, failed over, or restored from a backup. A new slot
+    // starts at the current WAL position, so everything in between is missing and
+    // only a fresh snapshot can recover it.
+    const lostSlot = slotWasCreated && plan.syncCursor?.mode === "lsn";
+    if (plan.syncCursor?.mode === "lsn" && !lostSlot) continue;
     const table = context.tablesByName.get(tableKey(plan.schemaName, plan.tableName));
     if (!table) continue;
     const rowsSynced = await snapshotForCdc(context, plan, table, client);
@@ -394,7 +569,7 @@ async function syncCdcStreams(
     });
   }
 
-  const { rowsByStream, lastCommitLsn } = await consumeWal(context, plans, client);
+  const { rowsByStream, lastCommitLsn, truncatedStreams } = await consumeWal(context, plans, client);
   if (lastCommitLsn != null) {
     const lsnText = formatLsn(lastCommitLsn);
     await client.query(`SELECT pg_replication_slot_advance($1, $2::pg_lsn)`, [context.slotName, lsnText]);
@@ -404,6 +579,7 @@ async function syncCdcStreams(
         ...existing,
         rowsSynced: existing.rowsSynced + (rowsByStream.get(plan.streamId) ?? 0),
         syncCursor: { mode: "lsn", value: lsnText },
+        needsResnapshot: truncatedStreams.has(plan.streamId),
       });
     }
   }

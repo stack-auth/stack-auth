@@ -3,6 +3,10 @@ import { serializeDataSource } from "@/lib/data-sources/serialize";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
+// Connects out to the customer's database under a 120s statement timeout per
+// stream, so it needs more than the platform default.
+export const maxDuration = 300;
+
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Sync a data source now",
