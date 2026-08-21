@@ -28,16 +28,9 @@ import type {
 import { getNextTvScreenIndex, selectTvPresentationView } from "./presentation-controller";
 import { getTvScreenDefinition, renderTvScreen } from "./screen-registry";
 
-function getScreenOrThrow(snapshot: TvSnapshot, screenIndex: number): TvScreenSnapshot {
+function getScreen(snapshot: TvSnapshot, screenIndex: number): TvScreenSnapshot | null {
   const screenId = snapshot.profile.playlist.at(screenIndex);
-  if (screenId == null) {
-    throw new Error(`TV playlist has no screen at index ${screenIndex}`);
-  }
-  const screen = snapshot.screens.find((candidate) => candidate.id === screenId);
-  if (screen == null) {
-    throw new Error(`TV snapshot is missing configured screen "${screenId}"`);
-  }
-  return screen;
+  return screenId == null ? null : snapshot.screens.find((candidate) => candidate.id === screenId) ?? null;
 }
 
 function formatFixtureTime(isoDate: string): string {
@@ -677,8 +670,10 @@ export function TvPresentation({
   } else if (view.type === "takeover") {
     content = <EventTakeover takeover={view.presentedTakeover} />;
   } else {
-    activeScreen = getScreenOrThrow(snapshot, view.screenIndex);
-    content = renderTvScreen(activeScreen, headerAccessory);
+    activeScreen = getScreen(snapshot, view.screenIndex);
+    content = activeScreen == null
+      ? <PresentationMessage type="empty" title="Waiting for Activity" message="This profile is ready. The presentation will update automatically when activity arrives." />
+      : renderTvScreen(activeScreen, headerAccessory);
   }
 
   return (

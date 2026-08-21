@@ -19,6 +19,30 @@ afterEach(() => {
 });
 
 describe("TvPresentation rotation", () => {
+  it("renders the terminal empty state when a configured screen is missing", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={{
+      ...snapshot,
+      screens: snapshot.screens.filter((screen) => screen.id !== snapshot.profile.playlist[0]),
+    }} />);
+    expect(screen.getByRole("heading", { name: "Waiting for Activity" })).toBeDefined();
+  });
+
+  it("renders the terminal empty state when a playlist entry cannot be resolved", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={{
+      ...snapshot,
+      profile: {
+        ...snapshot.profile,
+        playlist: ["live-pulse", "audience-momentum", "revenue-payments", "email-health"],
+      },
+      screens: snapshot.screens.filter((screen) => screen.id !== "live-pulse"),
+    }} />);
+    expect(screen.getByRole("heading", { name: "Waiting for Activity" })).toBeDefined();
+  });
+
   it("can render without dashboard exit navigation for an independent display", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");
