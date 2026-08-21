@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
-import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { captureError, HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
 import { wait } from '@hexclave/shared/dist/utils/promises';
 import postgres from 'postgres';
 import { MIGRATION_FILES } from './../generated/migration-files';
@@ -8,6 +8,7 @@ import { MIGRATION_FILES } from './../generated/migration-files';
 // The bigint key for the pg advisory lock
 const MIGRATION_LOCK_ID = 59129034;
 const MIGRATION_LOCK_RETRY_DELAY_MS = 500;
+const MIGRATION_LOCK_TIMEOUT_MS = 30_000;
 
 type MigrationStatement = {
   sql: string,
@@ -38,6 +39,7 @@ async function acquireMigrationSessionLock(connectionString: string): Promise<{
   connection: postgres.ReservedSql,
   close: () => Promise<void>,
 }> {
+  const deadline = performance.now() + MIGRATION_LOCK_TIMEOUT_MS;
   while (true) {
     const sql = postgres(connectionString, { max: 1 });
     const connection = await sql.reserve();
@@ -68,7 +70,12 @@ async function acquireMigrationSessionLock(connectionString: string): Promise<{
     }
     // A blocked pool of migration transactions can starve the connection needed
     // for non-transactional DDL. Retry without retaining a database connection.
-    await wait(MIGRATION_LOCK_RETRY_DELAY_MS);
+    if (performance.now() >= deadline) {
+      throw new HexclaveAssertionError("Timed out waiting to acquire the migration lock.", {
+        timeoutMs: MIGRATION_LOCK_TIMEOUT_MS,
+      });
+    }
+    await wait(Math.min(MIGRATION_LOCK_RETRY_DELAY_MS, deadline - performance.now()));
   }
 }
 class MigrationNeededError extends Error {
@@ -183,7 +190,11 @@ async function runInReservedTransaction<T>(connection: postgres.ReservedSql, cal
     await connection.unsafe("COMMIT");
     return result;
   } catch (error) {
-    await connection.unsafe("ROLLBACK");
+    try {
+      await connection.unsafe("ROLLBACK");
+    } catch (rollbackError) {
+      captureError("auto-migrations-rollback", rollbackError);
+    }
     throw error;
   }
 }
@@ -195,6 +206,8 @@ async function applyMigrationWithOutsideTransactionStatements(options: {
   migration: { migrationName: string, sql: string },
   schema: string,
 }): Promise<"applied" | "already-applied" | "repeat"> {
+  // Every statement group can commit before SchemaMigration is recorded, so
+  // migrations on this path must be safe to re-run after an interrupted attempt.
   const statements = parseMigrationStatements(options.migration.sql, options.schema);
   const lock = await acquireMigrationSessionLock(options.connectionString);
   try {
@@ -292,7 +305,7 @@ export async function applyMigrations(options: {
       log(`Applying migration ${migration.migrationName}${repeat > 0 ? ` (repeat ${repeat})` : ''}`);
 
       if (migration.sql.includes("RUN_OUTSIDE_TRANSACTION_SENTINEL")) {
-        if (options.outsideTransactionConnectionString == null) {
+        if (options.outsideTransactionConnectionString == null || options.outsideTransactionConnectionString.trim() === "") {
           throw new HexclaveAssertionError(
             "Migrations using RUN_OUTSIDE_TRANSACTION_SENTINEL require outsideTransactionConnectionString",
             { migrationName: migration.migrationName },

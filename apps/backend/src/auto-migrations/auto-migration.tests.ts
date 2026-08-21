@@ -283,6 +283,52 @@ import.meta.vitest?.test("applies migrations concurrently without blocking its o
   timeout: 120_000,
 });
 
+import.meta.vitest?.test("does not record a migration when its outside-transaction statement fails", runTest(async ({ connectionString, expect, prismaClient }) => {
+  const migrationName = "001-failing-outside-transaction";
+  const failingMigration = {
+    migrationName,
+    sql: `
+      CREATE TABLE IF NOT EXISTS outside_transaction_failure_test (id SERIAL PRIMARY KEY);
+      -- SPLIT_STATEMENT_SENTINEL
+      -- SINGLE_STATEMENT_SENTINEL
+      -- RUN_OUTSIDE_TRANSACTION_SENTINEL
+      SELECT 1 / 0;
+    `,
+  };
+
+  await expect(applyMigrations({
+    prismaClient,
+    migrationFiles: [failingMigration],
+    outsideTransactionConnectionString: connectionString,
+    schema: "public",
+  })).rejects.toThrow();
+  expect(await prismaClient.$queryRaw`
+    SELECT "migrationName"
+    FROM "SchemaMigration"
+    WHERE "migrationName" = ${migrationName}
+  `).toEqual([]);
+
+  const fixedMigration = {
+    ...failingMigration,
+    sql: `
+      CREATE TABLE IF NOT EXISTS outside_transaction_failure_test (id SERIAL PRIMARY KEY);
+      -- SPLIT_STATEMENT_SENTINEL
+      -- SINGLE_STATEMENT_SENTINEL
+      -- RUN_OUTSIDE_TRANSACTION_SENTINEL
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS outside_transaction_failure_test_id_idx
+        ON outside_transaction_failure_test(id);
+    `,
+  };
+  await expect(applyMigrations({
+    prismaClient,
+    migrationFiles: [fixedMigration],
+    outsideTransactionConnectionString: connectionString,
+    schema: "public",
+  })).resolves.toEqual({ newlyAppliedMigrationNames: [migrationName] });
+}), {
+  timeout: 120_000,
+});
+
 
 import.meta.vitest?.test("applies migration with a DB previously migrated with prisma", runTest(async ({ expect, prismaClient, dbURL }) => {
   await applySql({ sql: examplePrismaBasedInitQueries, dbUrl: dbURL.full });
