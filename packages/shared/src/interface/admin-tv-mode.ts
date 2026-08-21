@@ -549,7 +549,7 @@ export const TV_DISPLAY_PAIRING_CODE_PATTERN = /^[0123456789ABCDEFGHJKMNPQRSTVWX
 export const TvDisplayPairingChallengeSchema = yupObject({
   challengeId: yupString().uuid().defined(),
   pairingCode: yupString().matches(TV_DISPLAY_PAIRING_CODE_PATTERN).defined(),
-  deviceSecret: yupString().min(32).defined(),
+  deviceSecret: yupString().min(32).max(256).defined(),
   expiresAt: yupString().defined(),
   pollingIntervalSeconds: yupNumber().integer().min(1).defined(),
 }).noUnknown().defined();

@@ -417,6 +417,13 @@ describe("independent TV display contracts", () => {
       expiresAt: "2026-08-14T12:10:00.000Z",
       pollingIntervalSeconds: 5,
     }, { strict: true })).rejects.toThrow();
+    await expect(TvDisplayPairingChallengeSchema.validate({
+      challengeId: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+      pairingCode: "A2BC3DEF",
+      deviceSecret: "x".repeat(257),
+      expiresAt: "2026-08-14T12:10:00.000Z",
+      pollingIntervalSeconds: 5,
+    }, { strict: true })).rejects.toThrow();
   });
 
   it("requires explicit financial-acknowledgement state on display resources", async () => {

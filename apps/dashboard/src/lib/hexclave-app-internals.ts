@@ -20,6 +20,7 @@ import {
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { yupArray, yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { InferType } from "yup";
 
 export const hexclaveAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
@@ -240,12 +241,7 @@ const TvSavedProfileResponseSchema = yupObject({
   profile: TvSavedProfileResourceSchema,
 }).noUnknown().defined();
 
-export type TvProfileListResponse = {
-  persistenceReady: boolean,
-  effectiveDefaultProfileId: string,
-  savedProfiles: TvSavedProfileResource[],
-  templates: TvProfileResource[],
-};
+export type TvProfileListResponse = InferType<typeof TvProfileListResponseSchema>;
 
 export class TvProfileRequestError extends Error {
   override name = "TvProfileRequestError";
