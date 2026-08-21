@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
 import type { TvAudienceMomentumScreen } from "@/lib/tv-mode/types";
+import * as errorReporting from "@hexclave/shared/dist/utils/errors";
 import { getTvInsightPresentation, renderTvScreen } from "./screen-registry";
 import { TvPresentation } from "./tv-presentation";
 
@@ -19,6 +20,25 @@ afterEach(() => {
 });
 
 describe("TvPresentation rotation", () => {
+  it("reports a missing configured screen once while showing the terminal empty state", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    const captureError = vi.spyOn(errorReporting, "captureError");
+    const incompleteSnapshot = {
+      ...snapshot,
+      screens: [],
+    };
+    const { rerender } = render(<TvPresentation snapshot={incompleteSnapshot} />);
+    rerender(<TvPresentation snapshot={{ ...incompleteSnapshot, generatedAt: "2026-07-23T14:32:15.000Z" }} />);
+    expect(screen.getByRole("heading", { name: "Waiting for Activity" })).toBeDefined();
+    expect(captureError).toHaveBeenCalledOnce();
+    expect(captureError).toHaveBeenCalledWith(
+      "tv-presentation-missing-screen",
+      expect.any(Error),
+    );
+    captureError.mockRestore();
+  });
+
   it("renders the terminal empty state when a configured screen is missing", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
     if (snapshot == null) throw new Error("Missing company-pulse fixture");

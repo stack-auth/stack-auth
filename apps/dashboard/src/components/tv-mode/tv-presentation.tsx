@@ -16,6 +16,7 @@ import {
   WifiHighIcon,
 } from "@phosphor-icons/react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -525,6 +526,7 @@ export function TvPresentation({
   const [controlsVisible, setControlsVisible] = useState(false);
   const [rotationPaused, setRotationPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const missingScreenReportKeyRef = useRef<string | null>(null);
   const profileId = snapshot?.profile.id;
   const playlistKey = snapshot?.profile.playlist.join("\u0000");
 
@@ -573,6 +575,12 @@ export function TvPresentation({
     && (view?.type !== "takeover" || takeoverIsCelebration);
   const playlistLength = snapshot?.profile.playlist.length;
   const activeScreenId = snapshot?.profile.playlist.at(screenIndex);
+  const missingScreenId = snapshot == null || view?.type !== "screen"
+    ? null
+    : snapshot.profile.playlist.at(view.screenIndex) ?? "<missing-playlist-entry>";
+  const missingScreenReportKey = missingScreenId == null || snapshot == null || view?.type !== "screen" || getScreen(snapshot, view.screenIndex) != null
+    ? null
+    : `${snapshot.profile.id}\u0000${view.screenIndex}\u0000${missingScreenId}`;
   const rotationDurationSeconds = activeScreenId == null
     ? snapshot?.profile.defaultDurationSeconds
     : snapshot?.profile.screenDurations?.find((entry) => entry.screenId === activeScreenId)?.durationSeconds
@@ -611,6 +619,25 @@ export function TvPresentation({
     const timeout = window.setTimeout(() => setControlsVisible(false), 2800);
     return () => window.clearTimeout(timeout);
   }, [controlsVisible]);
+
+  useEffect(() => {
+    if (missingScreenReportKey == null) {
+      missingScreenReportKeyRef.current = null;
+      return;
+    }
+    if (missingScreenReportKeyRef.current === missingScreenReportKey) return;
+    missingScreenReportKeyRef.current = missingScreenReportKey;
+    if (snapshot == null || view?.type !== "screen") return;
+    const screenId = snapshot.profile.playlist.at(view.screenIndex);
+    captureError("tv-presentation-missing-screen", new HexclaveAssertionError(
+      "TV presentation snapshot references a configured screen that is not available.",
+      {
+        profileId: snapshot.profile.id,
+        screenId: screenId ?? null,
+        screenIndex: view.screenIndex,
+      },
+    ));
+  }, [missingScreenReportKey, snapshot, view]);
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement != null);
