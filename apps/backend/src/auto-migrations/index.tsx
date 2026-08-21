@@ -190,10 +190,11 @@ async function runInReservedTransaction<T>(connection: postgres.ReservedSql, cal
     await connection.unsafe("COMMIT");
     return result;
   } catch (error) {
-    try {
-      await connection.unsafe("ROLLBACK");
-    } catch (rollbackError) {
-      captureError("auto-migrations-rollback", rollbackError);
+    const [rollbackResult] = await Promise.allSettled([
+      Promise.resolve().then(() => connection.unsafe("ROLLBACK")),
+    ]);
+    if (rollbackResult.status === "rejected") {
+      captureError("auto-migrations-rollback", rollbackResult.reason);
     }
     throw error;
   }
