@@ -37,7 +37,22 @@ if (
   throw new Error("HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT must be an integer from 1 to 32");
 }
 const MAX_JOBS_PER_RUNTIME = 50;
-const MAX_NON_DEFAULT_RUNTIMES = 3;
+const DEFAULT_MAX_NON_DEFAULT_RUNTIMES = 3;
+const configuredMaxNonDefaultRuntimes =
+  process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES;
+const MAX_NON_DEFAULT_RUNTIMES =
+  configuredMaxNonDefaultRuntimes == null
+    ? DEFAULT_MAX_NON_DEFAULT_RUNTIMES
+    : Number(configuredMaxNonDefaultRuntimes);
+if (
+  !Number.isInteger(MAX_NON_DEFAULT_RUNTIMES) ||
+  MAX_NON_DEFAULT_RUNTIMES < 1 ||
+  MAX_NON_DEFAULT_RUNTIMES > 32
+) {
+  throw new Error(
+    "HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES must be an integer from 1 to 32",
+  );
+}
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
 const PREPARATION_TIMEOUT_MS = NPM_INSTALL_TIMEOUT_MS + 60_000;
 const MAX_NODE_MODULES = 20;
@@ -51,6 +66,15 @@ const MAX_BRIDGE_RESPONSE_BYTES = 8 * 1024 * 1024;
 // below it, while runtime retirement bounds callbacks that outlive their job.
 const HOST_FETCH_TIMEOUT_MS = 5 * 60_000;
 const MAX_BRIDGE_REDIRECTS = 5;
+const requestMetrics = {
+  requests: 0,
+  completed: 0,
+  active: 0,
+  maxQueueDepth: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0,
+  durationBuckets: [0, 0, 0, 0, 0, 0],
+};
 const MODULE_CACHE_DIR =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MODULE_CACHE_DIR || "/app/module-cache";
 const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
@@ -138,6 +162,42 @@ class QueueFullError extends ClientError {
   }
 }
 
+function recordRequestDuration(durationMs) {
+  requestMetrics.completed++;
+  requestMetrics.active--;
+  requestMetrics.totalDurationMs += durationMs;
+  requestMetrics.maxDurationMs = Math.max(requestMetrics.maxDurationMs, durationMs);
+  const bucket = durationMs < 100
+    ? 0
+    : durationMs < 500
+      ? 1
+      : durationMs < 1_000
+        ? 2
+        : durationMs < 5_000
+          ? 3
+          : durationMs < 30_000
+            ? 4
+            : 5;
+  requestMetrics.durationBuckets[bucket]++;
+}
+
+function readRequestMetrics() {
+  return {
+    ...requestMetrics,
+    durationBuckets: [...requestMetrics.durationBuckets],
+    queueDepth: jobQueue.queue.length,
+  };
+}
+
+function resetRequestMetrics() {
+  requestMetrics.requests = 0;
+  requestMetrics.completed = 0;
+  requestMetrics.maxQueueDepth = 0;
+  requestMetrics.totalDurationMs = 0;
+  requestMetrics.maxDurationMs = 0;
+  requestMetrics.durationBuckets.fill(0);
+}
+
 function formatError(error) {
   return error?.message || String(error);
 }
@@ -145,6 +205,44 @@ function formatError(error) {
 function logInternalError(context, error) {
   console.error(`[${context}]`, error);
 }
+
+function isSidecarFrameTimeout(error) {
+  return formatError(error).includes("timed out waiting for sidecar protocol frame");
+}
+
+const DEAD_RUNTIME_ERROR_NAMES = new Set([
+  "SidecarEventBufferOverflow",
+  "SidecarProcessError",
+  "SidecarProcessExited",
+]);
+
+function isDeadRuntimeError(error) {
+  // The secure-exec facade does not re-export these core error classes, but
+  // their names are stable and distinguish dead runtimes from script failures.
+  if (error?.name && DEAD_RUNTIME_ERROR_NAMES.has(error.name)) {
+    return true;
+  }
+  const message = formatError(error).toLowerCase();
+  return (
+    message.includes("resident runner exited before completing request") ||
+    message.includes("resident runner is not running") ||
+    message.includes("sidecar protocol stream ended") ||
+    message.includes("sidecar exited with code") ||
+    message.includes("unknown sidecar vm") ||
+    message.includes("no such process")
+  );
+}
+
+// @secure-exec/core has a fire-and-forget proc.kill() path without a catch for
+// this sidecar timeout; letting it terminate the mock takes down every later
+// E2E test that depends on the rendering service.
+process.on("unhandledRejection", (reason) => {
+  if (isSidecarFrameTimeout(reason)) {
+    logInternalError("secure-exec sidecar kill", reason);
+    return;
+  }
+  throw reason;
+});
 
 function isAllowedBridgeUrl(input) {
   let url;
@@ -518,29 +616,21 @@ class RuntimeCache {
   constructor() {
     this.entries = new Map();
     this.creationPromises = new Map();
-    this.recyclingPromises = new Map();
+    this.drainingEntries = new Map();
   }
 
   async acquire(dependency, signal) {
     for (;;) {
-      const recycling = this.recyclingPromises.get(dependency.hash);
-      if (recycling) {
-        await awaitAbort(recycling, signal);
-        continue;
-      }
       const entry = this.entries.get(dependency.hash);
       if (entry && !entry.retiring) {
         entry.activeJobs++;
         entry.lastUsed = performance.now();
         return entry;
       }
-      if (entry?.retiring) {
-        await awaitAbort(this.recycleEntry(entry, dependency), signal);
-        continue;
-      }
       if (
         !dependency.isDefault &&
         this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES &&
+        !this.hasSingleDrainingGeneration(dependency.hash) &&
         !(await this.evictInactiveRuntime())
       ) {
         await awaitAbort(this.waitForRuntime(), signal);
@@ -599,9 +689,53 @@ class RuntimeCache {
       jobsHandled: 0,
       lastUsed: performance.now(),
       retiring: false,
+      disposePromise: null,
     };
     this.entries.set(dependency.hash, entry);
     return entry;
+  }
+
+  evict(entry) {
+    this.detach(entry);
+  }
+
+  disposeEntry(entry) {
+    if (entry.disposePromise) return;
+    entry.disposePromise = (async () => {
+      try {
+        await entry.runtime.dispose();
+      } catch (error) {
+        logInternalError("dispose detached runtime", error);
+      } finally {
+        const draining = this.drainingEntries.get(entry.hash);
+        if (draining) {
+          draining.delete(entry);
+          if (draining.size === 0) this.drainingEntries.delete(entry.hash);
+        }
+      }
+    })();
+  }
+
+  detach(entry) {
+    // Retirement must never gate new jobs: waiting for a retiring runtime to
+    // drain lets a single long-running job stall every later job on the same
+    // node modules set. A detached entry keeps serving the jobs it already has
+    // and is disposed by their last release, while new jobs immediately build
+    // a replacement.
+    entry.retiring = true;
+    if (this.entries.get(entry.hash) === entry) {
+      this.entries.delete(entry.hash);
+    }
+    // Track before disposing: a runtime is still alive while dispose() runs, so
+    // it has to stay visible to the capacity accounting until disposeEntry()
+    // untracks it.
+    let draining = this.drainingEntries.get(entry.hash);
+    if (!draining) {
+      draining = new Set();
+      this.drainingEntries.set(entry.hash, draining);
+    }
+    draining.add(entry);
+    if (entry.activeJobs === 0) this.disposeEntry(entry);
   }
 
   async evictInactiveRuntime() {
@@ -621,93 +755,55 @@ class RuntimeCache {
     return true;
   }
 
-  async recycleEntry(entry, dependency) {
-    const existing = this.recyclingPromises.get(dependency.hash);
-    if (existing) return existing;
-    const recycling = (async () => {
-      while (entry.activeJobs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      if (this.entries.get(dependency.hash) === entry) {
-        this.entries.delete(dependency.hash);
-      }
-      try {
-        await entry.runtime.dispose();
-        const replacement = await this.createEntry(dependency);
-        this.entries.set(dependency.hash, replacement);
-      } catch (error) {
-        if (this.entries.get(dependency.hash) === entry) {
-          this.entries.delete(dependency.hash);
-        }
-        throw error;
-      }
-    })();
-    this.recyclingPromises.set(dependency.hash, recycling);
-    try {
-      await recycling;
-    } finally {
-      if (this.recyclingPromises.get(dependency.hash) === recycling) {
-        this.recyclingPromises.delete(dependency.hash);
-      }
-    }
-  }
-
   release(entry) {
     entry.activeJobs--;
+    if (entry.retiring) {
+      if (entry.activeJobs === 0) this.disposeEntry(entry);
+      return;
+    }
     entry.jobsHandled++;
     entry.lastUsed = performance.now();
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
-      entry.retiring = true;
-    }
-    if (entry.retiring && entry.activeJobs === 0) {
-      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
-        logInternalError("recycle secure-exec runtime", error),
-      );
+      this.detach(entry);
     }
   }
 
   retire(entry) {
-    entry.retiring = true;
-    if (entry.activeJobs === 0) {
-      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
-        logInternalError("recycle secure-exec runtime", error),
-      );
-    }
+    this.detach(entry);
+  }
+
+  hasSingleDrainingGeneration(hash) {
+    const draining = this.drainingEntries.get(hash);
+    return draining?.size === 1;
   }
 
   nonDefaultCount() {
-    const hashes = new Set();
+    let count = 0;
     for (const entry of this.entries.values()) {
-      if (!entry.isDefault) hashes.add(entry.hash);
+      if (!entry.isDefault) count++;
+    }
+    for (const draining of this.drainingEntries.values()) {
+      for (const entry of draining) {
+        if (!entry.isDefault) count++;
+      }
     }
     for (const hash of this.creationPromises.keys()) {
-      if (hash !== "default") hashes.add(hash);
+      if (hash !== "default") count++;
     }
-    for (const hash of this.recyclingPromises.keys()) {
-      if (hash !== "default") hashes.add(hash);
-    }
-    return hashes.size;
+    return count;
   }
 
   protectedHashes() {
     return new Set([
       ...this.entries.keys(),
+      ...this.drainingEntries.keys(),
       ...this.creationPromises.keys(),
-      ...this.recyclingPromises.keys(),
     ]);
   }
 
   async waitForRuntime() {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-}
-
-function dependencyFromEntry(entry) {
-  return {
-    hash: entry.hash,
-    isDefault: entry.isDefault,
-    nodeModulesPath: entry.nodeModulesPath,
-  };
 }
 
 function createOutput() {
@@ -1064,7 +1160,11 @@ async function cleanupGuestFiles(runtime, userModuleDir) {
     await runtime.run(makeCleanupWrapper(userModuleDir), { timeout: 2_000 });
   } catch (error) {
     logInternalError("cleanup guest source", error);
+    // Cleanup cannot change the already-produced response, but a dead runtime
+    // must still be reported so the queue can evict it for the next request.
+    if (isDeadRuntimeError(error)) return error;
   }
+  return null;
 }
 
 async function executeScript(runtime, job) {
@@ -1082,6 +1182,7 @@ async function executeScript(runtime, job) {
     });
   } catch (error) {
     logInternalError("secure-exec execution", error);
+    if (isDeadRuntimeError(error)) throw error;
     return {
       statusCode: 500,
       payload: {
@@ -1090,7 +1191,7 @@ async function executeScript(runtime, job) {
       },
     };
   } finally {
-    await cleanupGuestFiles(runtime, userModuleDir);
+    job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
   }
   if (result.exitCode !== 0 || result.value === undefined) {
     logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
@@ -1135,10 +1236,15 @@ class JobQueue {
         controller: new AbortController(),
         output: createOutput(),
         entry: null,
+        cleanupError: null,
         timer: null,
         settled: false,
         resolve,
       });
+      requestMetrics.maxQueueDepth = Math.max(
+        requestMetrics.maxQueueDepth,
+        this.queue.length,
+      );
       this.dispatch();
     });
   }
@@ -1204,6 +1310,7 @@ class JobQueue {
   async execute(job) {
     let entry;
     let dependency;
+    let executionError = null;
     try {
       dependency = await this.dependencyCache.get(
         job.config.nodeModules,
@@ -1222,7 +1329,16 @@ class JobQueue {
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
       return await executeScript(entry.runtime, job);
+    } catch (error) {
+      executionError = error;
+      throw error;
     } finally {
+      if (
+        entry &&
+        (job.cleanupError || isDeadRuntimeError(executionError))
+      ) {
+        this.runtimeCache.evict(entry);
+      }
       if (entry) this.runtimeCache.release(entry);
       dependency?.release();
     }
@@ -1244,11 +1360,20 @@ const defaultEntry = await runtimeCache.acquire({
 runtimeCache.release(defaultEntry);
 
 const server = createServer(async (request, response) => {
+  const requestStartedAt = performance.now();
+  let trackedRequest = false;
   try {
     const url = new URL(
       request.url || "/",
       `http://${request.headers.host || "localhost"}`,
     );
+    if (request.method === "GET" && url.pathname === "/diagnostics") {
+      const responseBody = JSON.stringify(readRequestMetrics());
+      if (url.searchParams.get("reset") === "true") resetRequestMetrics();
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(responseBody);
+      return;
+    }
     const isExecutePath =
       request.method === "POST" &&
       /^\/execute\/v[123]\/script$/.test(url.pathname);
@@ -1257,6 +1382,9 @@ const server = createServer(async (request, response) => {
       response.end("Not found");
       return;
     }
+    trackedRequest = true;
+    requestMetrics.requests++;
+    requestMetrics.active++;
     const body = await readRequestBody(request);
     if (
       !body ||
@@ -1281,6 +1409,8 @@ const server = createServer(async (request, response) => {
     }
     logInternalError("request", error);
     sendJson(response, 500, { error: "Internal server error", logs: [] });
+  } finally {
+    if (trackedRequest) recordRequestDuration(performance.now() - requestStartedAt);
   }
 });
 

@@ -572,8 +572,9 @@ export async function upsertStripeInvoice(
     UPDATE "SubscriptionInvoice"
     SET "status" = CASE
       WHEN "paidAt" IS NOT NULL AND "paidAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'paid'
-      WHEN "markedUncollectibleAt" IS NOT NULL AND "markedUncollectibleAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'uncollectible'
+      -- Match the evaluator's deterministic tie order: paid, then void, then failure.
       WHEN "voidedAt" IS NOT NULL AND "voidedAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'void'
+      WHEN "markedUncollectibleAt" IS NOT NULL AND "markedUncollectibleAt" = GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") THEN 'uncollectible'
       ELSE "status"
     END
     WHERE "tenancyId" = ${tenancy.id}::UUID

@@ -18,6 +18,7 @@ export const TV_DISPLAY_REFRESH_COOKIE = "hexclave-tv-display-refresh";
 const TV_DISPLAY_AUDIENCE = "hexclave-tv-display";
 const TV_DISPLAY_ISSUER = "hexclave-tv-display";
 const CHALLENGE_LIFETIME_MS = 10 * 60 * 1000;
+const PAIRING_CODE_INSERT_ATTEMPTS = 5;
 const REFRESH_IDLE_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 const LAST_SEEN_WRITE_INTERVAL_MS = 60 * 1000;
 
@@ -156,28 +157,37 @@ export async function decodeDisplayAccessToken(token: string): Promise<{
   }
 }
 
-export async function createTvDisplayPairingChallenge(now = new Date()) {
+export async function createTvDisplayPairingChallenge(
+  now = new Date(),
+  pairingCodeFactory: () => string = generatePairingCode,
+) {
   const deviceSecret = generateSecureRandomString();
   const expiresAt = new Date(now.getTime() + CHALLENGE_LIFETIME_MS);
-  const id = crypto.randomUUID();
-  const pairingCode = generatePairingCode();
-  await globalPrismaClient.$executeRaw`
-    INSERT INTO "TvDisplayPairingChallenge" (
-      "id", "pairingCode", "deviceSecretHash", "expiresAt", "updatedAt"
-    ) VALUES (
-      ${id}::UUID, ${pairingCode}, ${secretHash("device-secret", deviceSecret)}, ${expiresAt}, ${now}
-    )
-  `;
-  await globalPrismaClient.$executeRaw`
-    DELETE FROM "TvDisplayPairingChallenge"
-    WHERE "id" IN (
-      SELECT "id" FROM "TvDisplayPairingChallenge"
-      WHERE "expiresAt" < ${now}
-      ORDER BY "expiresAt"
-      LIMIT 100
-    )
-  `;
-  return { challengeId: id, pairingCode, deviceSecret, expiresAt };
+  for (let attempt = 0; attempt < PAIRING_CODE_INSERT_ATTEMPTS; attempt += 1) {
+    const id = crypto.randomUUID();
+    const pairingCode = pairingCodeFactory();
+    const inserted = await globalPrismaClient.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "TvDisplayPairingChallenge" (
+        "id", "pairingCode", "deviceSecretHash", "expiresAt", "updatedAt"
+      ) VALUES (
+        ${id}::UUID, ${pairingCode}, ${secretHash("device-secret", deviceSecret)}, ${expiresAt}, ${now}
+      )
+      ON CONFLICT ("pairingCode") DO NOTHING
+      RETURNING "id"
+    `;
+    if (inserted.length === 0) continue;
+    await globalPrismaClient.$executeRaw`
+      DELETE FROM "TvDisplayPairingChallenge"
+      WHERE "id" IN (
+        SELECT "id" FROM "TvDisplayPairingChallenge"
+        WHERE "expiresAt" < ${now}
+        ORDER BY "expiresAt"
+        LIMIT 100
+      )
+    `;
+    return { challengeId: id, pairingCode, deviceSecret, expiresAt };
+  }
+  throw new HexclaveAssertionError("TV display pairing code generation exhausted its bounded collision retries.");
 }
 
 export async function consumeTvDisplayPairingRateLimit(options: {
@@ -240,9 +250,9 @@ export async function approveTvDisplayPairing(options: {
   adminUserId: string,
   acknowledgeExactFinancials: boolean,
   now?: Date,
-}): Promise<void> {
+}): Promise<{ approvedAt: Date, expiresAt: Date }> {
   const now = options.now ?? new Date();
-  await retryTransaction(globalPrismaClient, async (transaction) => {
+  const approval = await retryTransaction(globalPrismaClient, async (transaction) => {
     await lockTvProfileDisplayAssignment(transaction, options.tenancy.id, options.profileId);
     const profile = await resolveTvProfile(options.tenancy, options.profileId);
     if (profile == null) throw new TvDisplayOperationError("tv_display_profile_not_found");
@@ -250,7 +260,7 @@ export async function approveTvDisplayPairing(options: {
     if (exact && !options.acknowledgeExactFinancials) {
       throw new TvDisplayOperationError("tv_display_exact_financials_acknowledgement_required");
     }
-    const updated = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    const updated = await transaction.$queryRaw<Array<{ expiresAt: Date }>>(Prisma.sql`
       UPDATE "TvDisplayPairingChallenge"
       SET
         "state" = 'APPROVED'::"TvDisplayPairingState",
@@ -264,15 +274,18 @@ export async function approveTvDisplayPairing(options: {
       WHERE "pairingCode" = ${options.pairingCode.replaceAll("-", "").toUpperCase()}
         AND "state" = 'PENDING'::"TvDisplayPairingState"
         AND "expiresAt" > ${now}
-      RETURNING "id"
+      RETURNING "expiresAt"
     `);
-    if (updated.length === 0) throw new TvDisplayOperationError("tv_display_pairing_code_invalid");
+    const approved = updated.at(0);
+    if (approved == null) throw new TvDisplayOperationError("tv_display_pairing_code_invalid");
+    return { approvedAt: now, expiresAt: approved.expiresAt };
   });
   logTvDisplayAuditInBackground(options.tenancy, {
     action: "pairing-approved",
     displayId: null,
     actorUserId: options.adminUserId,
   });
+  return approval;
 }
 
 async function getChallenge(challengeId: string): Promise<ChallengeRow | null> {

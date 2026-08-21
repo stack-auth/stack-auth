@@ -14,6 +14,7 @@ import { BroadcastIcon, LinkBreakIcon, MonitorPlayIcon } from "@phosphor-icons/r
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const PAIRING_RETRY_INTERVAL_MS = 5_000;
+const PAIRING_STATUS_TIMEOUT_MS = 12_000;
 
 function apiUrl(path: string): string {
   const base = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL")
@@ -154,13 +155,18 @@ export default function IndependentTvPageClient() {
   useEffect(() => {
     if (challenge == null || accessToken != null) return;
     let active = true;
+    let activePollController: AbortController | null = null;
     const poll = async () => {
       if (pairingPollInFlight.current) return;
       pairingPollInFlight.current = true;
+      const controller = new AbortController();
+      activePollController = controller;
+      const timeout = window.setTimeout(() => controller.abort(), PAIRING_STATUS_TIMEOUT_MS);
       try {
         const response = await jsonRequest(`/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`, {
           method: "POST",
           body: JSON.stringify({ deviceSecret: challenge.deviceSecret }),
+          signal: controller.signal,
         });
         if (!response.ok) throw new Error("TV display pairing status could not be loaded.");
         const result = await TvDisplayPairingStatusSchema.validate(await response.json(), { strict: true });
@@ -176,6 +182,8 @@ export default function IndependentTvPageClient() {
       } catch {
         if (active) setPairingError(true);
       } finally {
+        window.clearTimeout(timeout);
+        if (activePollController === controller) activePollController = null;
         pairingPollInFlight.current = false;
       }
     };
@@ -183,6 +191,7 @@ export default function IndependentTvPageClient() {
     runAsynchronously(poll());
     return () => {
       active = false;
+      activePollController?.abort();
       pairingPollInFlight.current = false;
       window.clearInterval(interval);
     };

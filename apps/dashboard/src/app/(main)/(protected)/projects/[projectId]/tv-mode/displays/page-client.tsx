@@ -18,7 +18,7 @@ export default function PageClient() {
   const projectId = useProjectId();
   const [profilesState, setProfilesState] = useState<{ projectId: string, profiles: TvProfileResource[] } | null>(null);
   const [defaultProfileId, setDefaultProfileId] = useState("company-pulse");
-  const [loadError, setLoadError] = useState(false);
+  const [loadErrorProjectId, setLoadErrorProjectId] = useState<string | null>(null);
   const [tvDisplayUrl, setTvDisplayUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,12 +33,12 @@ export default function PageClient() {
         if (!active) return;
         setProfilesState({ projectId, profiles: [...result.savedProfiles, ...result.templates] });
         setDefaultProfileId(result.effectiveDefaultProfileId);
-        setLoadError(false);
+        setLoadErrorProjectId(null);
       } catch (cause) {
         captureError("tv-display-profile-load-failed", cause);
         if (active) {
           setProfilesState(null);
-          setLoadError(true);
+          setLoadErrorProjectId(projectId);
         }
       }
     });
@@ -48,6 +48,7 @@ export default function PageClient() {
   }, [adminApp, projectId]);
 
   const profiles = profilesState?.projectId === projectId ? profilesState.profiles : null;
+  const loadError = loadErrorProjectId === projectId;
 
   const copyTvDisplayUrl = async () => {
     if (tvDisplayUrl == null) return;

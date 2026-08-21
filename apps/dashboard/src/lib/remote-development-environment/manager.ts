@@ -31,10 +31,7 @@ import {
 
 const SESSION_TTL_MS = 25_000;
 const FIRST_HEARTBEAT_TTL_MS = 5 * 60_000;
-// A source-backed development dashboard may still be compiling its health route
-// after the lifecycle manager loads. Production is prebuilt and keeps the short
-// shutdown grace, while development gets enough time for the first CLI session.
-const STARTUP_EMPTY_SESSION_GRACE_MS = process.env.NODE_ENV === "development" ? 10 * 60_000 : 20_000;
+const STARTUP_EMPTY_SESSION_GRACE_MS = 20_000;
 const SYNC_DEBOUNCE_MS = 500;
 const CONFIG_SYNC_FORMAT_VERSION = 2;
 const LOG_PREFIX = "[Stack RDE]";

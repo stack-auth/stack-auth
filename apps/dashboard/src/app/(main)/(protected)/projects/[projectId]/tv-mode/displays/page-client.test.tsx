@@ -8,25 +8,18 @@ import PageClient from "./page-client";
 
 const testState = vi.hoisted(() => ({
   adminApp: {},
+  projectId: "project-a",
+  fetchProfiles: vi.fn(),
   writeText: vi.fn(),
 }));
 
 vi.mock("../../use-admin-app", () => ({
   useAdminApp: () => testState.adminApp,
-  useProjectId: () => "project-a",
+  useProjectId: () => testState.projectId,
 }));
 
 vi.mock("@/lib/hexclave-app-internals", () => ({
-  fetchTvProfilesOrThrow: async () => {
-    const template = getTvBuiltInProfile("company-pulse");
-    if (template == null) throw new Error("Company Pulse profile is missing.");
-    return {
-      savedProfiles: [],
-      templates: [template],
-      persistenceReady: true,
-      effectiveDefaultProfileId: "company-pulse",
-    };
-  },
+  fetchTvProfilesOrThrow: (...args: unknown[]) => testState.fetchProfiles(...args),
 }));
 
 vi.mock("@/lib/tv-mode/display-url", () => ({
@@ -40,11 +33,25 @@ vi.mock("../display-management", () => ({
 
 afterEach(() => {
   cleanup();
+  testState.projectId = "project-a";
+  testState.fetchProfiles.mockReset();
   testState.writeText.mockReset();
 });
 
+function readyProfiles() {
+  const template = getTvBuiltInProfile("company-pulse");
+  if (template == null) throw new Error("Company Pulse profile is missing.");
+  return {
+    savedProfiles: [],
+    templates: [template],
+    persistenceReady: true,
+    effectiveDefaultProfileId: "company-pulse",
+  };
+}
+
 describe("TV displays page", () => {
   it("loads profiles and exposes the independent display link", async () => {
+    testState.fetchProfiles.mockResolvedValue(readyProfiles());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: testState.writeText },
@@ -62,5 +69,24 @@ describe("TV displays page", () => {
     await waitFor(() => expect(testState.writeText).toHaveBeenCalledWith("http://localhost:8101/tv"));
     expect(screen.getByText("TV Link Copied")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy TV display link" })).toBeTruthy();
+  });
+
+  it("does not show a previous project's load failure while the next project loads", async () => {
+    const projectBLoad = Promise.withResolvers<ReturnType<typeof readyProfiles>>();
+    testState.fetchProfiles
+      .mockRejectedValueOnce(new Error("Project A failed"))
+      .mockImplementationOnce(() => projectBLoad.promise);
+
+    const rendered = render(<TooltipProvider><PageClient /></TooltipProvider>);
+    expect(await screen.findByText("Profiles Couldn’t Be Loaded")).toBeTruthy();
+
+    testState.projectId = "project-b";
+    rendered.rerender(<TooltipProvider><PageClient /></TooltipProvider>);
+
+    expect(screen.queryByText("Profiles Couldn’t Be Loaded")).toBeNull();
+    expect(screen.getByText("Loading display profiles…")).toBeTruthy();
+
+    projectBLoad.resolve(readyProfiles());
+    expect(await screen.findByText("Display management for 1 profile")).toBeTruthy();
   });
 });

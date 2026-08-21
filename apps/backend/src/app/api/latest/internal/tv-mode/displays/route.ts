@@ -47,7 +47,11 @@ export const POST = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({ success: yupBoolean().oneOf([true]).defined() }).noUnknown().defined(),
+    body: yupObject({
+      success: yupBoolean().oneOf([true]).defined(),
+      approvedAt: yupString().defined(),
+      expiresAt: yupString().defined(),
+    }).noUnknown().defined(),
   }),
   handler: async ({ auth, body }) => {
     const adminUserId = requireTvDisplayAdminUserId(auth.adminUserId);
@@ -71,7 +75,7 @@ export const POST = createSmartRouteHandler({
     ]);
     if (!adminAllowed || !ipAllowed) throw new StatusError(429, "tv_display_pairing_rate_limited");
     try {
-      await approveTvDisplayPairing({
+      const approval = await approveTvDisplayPairing({
         tenancy: auth.tenancy,
         pairingCode: body.pairingCode,
         profileId: body.profileId,
@@ -91,13 +95,25 @@ export const POST = createSmartRouteHandler({
           ));
         }
       }
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          success: true,
+          approvedAt: approval.approvedAt.toISOString(),
+          expiresAt: approval.expiresAt.toISOString(),
+        },
+      };
     } catch (error) {
       if (error instanceof TvDisplayOperationError) {
-        const status = error.code === "tv_display_profile_not_found" ? 404 : 400;
+        const status = error.code === "tv_display_profile_not_found"
+          ? 404
+          : error.code === "tv_display_exact_financials_acknowledgement_required"
+            ? 428
+            : 400;
         throw new StatusError(status, error.code);
       }
       throw error;
     }
-    return { statusCode: 200, bodyType: "json", body: { success: true } };
   },
 });

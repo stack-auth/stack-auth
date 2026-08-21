@@ -1,0 +1,101 @@
+/* eslint-disable no-restricted-syntax -- this test must manipulate process.env
+   directly to exercise the env-var handling that getEnvVariable() wraps. */
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MarshalApiError, MarshalClient, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull } from "./marshal-client";
+
+// The env-var handling can't be covered by e2e tests (the dev backend always
+// has the mock credentials set), so the unconfigured-instance path is unit
+// tested here instead.
+describe("marshal deployments configuration", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+  const ENV_KEYS = ["HEXCLAVE_MARSHAL_API_KEY", "HEXCLAVE_MARSHAL_URL", "STACK_MARSHAL_API_KEY", "STACK_MARSHAL_URL"];
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+  });
+
+  it("returns null when the instance has no Marshal credentials", () => {
+    expect(getMarshalDeploymentsConfigOrNull()).toBeNull();
+  });
+
+  it("returns null when a real key is set without a base URL", () => {
+    // Unlike the mock key (which derives the local dev port), a real
+    // credential has no sensible default URL — the operator must say where
+    // Marshal runs.
+    process.env.HEXCLAVE_MARSHAL_API_KEY = "some-real-key";
+    expect(getMarshalDeploymentsConfigOrNull()).toBeNull();
+  });
+
+  it("throws a clean 400 (never a 5xx) when unconfigured", () => {
+    let thrown: unknown;
+    try {
+      getMarshalClientOrThrow();
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(StatusError);
+    expect((thrown as StatusError).statusCode).toBe(400);
+    expect((thrown as StatusError).message).toMatchInlineSnapshot(`"Deploy is not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL if Marshal is not on the default local port) first."`);
+  });
+
+  it("uses the configured URL for real keys and the local dev port for the mock key", () => {
+    process.env.HEXCLAVE_MARSHAL_API_KEY = "some-real-key";
+    process.env.HEXCLAVE_MARSHAL_URL = "https://marshal.example.com/";
+    expect(getMarshalDeploymentsConfigOrNull()).toEqual({
+      apiKey: "some-real-key",
+      baseUrl: "https://marshal.example.com",
+    });
+
+    delete process.env.HEXCLAVE_MARSHAL_URL;
+    process.env.HEXCLAVE_MARSHAL_API_KEY = "mock_hexclave_marshal_key";
+    const mockConfig = getMarshalDeploymentsConfigOrNull();
+    expect(mockConfig?.baseUrl).toMatch(/^http:\/\/localhost:\d+$/);
+
+    process.env.HEXCLAVE_MARSHAL_URL = "http://localhost:9999";
+    expect(getMarshalDeploymentsConfigOrNull()?.baseUrl).toBe("http://localhost:9999");
+  });
+});
+
+describe("MarshalClient", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("normalizes a timeout while consuming the response body", async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(new DOMException("The response body timed out", "TimeoutError"));
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { status: 200 }));
+    const client = new MarshalClient({ apiKey: "test-key", baseUrl: "https://marshal.example.com" });
+
+    let thrown: unknown;
+    try {
+      await client.getService("test-namespace", "test-service");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(MarshalApiError);
+    expect(thrown).toMatchObject({
+      status: 504,
+      code: "timeout",
+      endpoint: "GET /v1/namespaces/test-namespace/services/test-service",
+    });
+  });
+});

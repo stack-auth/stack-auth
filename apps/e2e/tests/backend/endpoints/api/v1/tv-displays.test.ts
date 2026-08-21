@@ -66,6 +66,11 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
     },
   });
   expect(approvalResponse.status).toBe(200);
+  expect(approvalResponse.body).toMatchObject({
+    success: true,
+    approvedAt: expect.any(String),
+    expiresAt: challenge.expiresAt,
+  });
 
   const statusResponse = await publicJsonRequest(
     `/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`,
@@ -75,11 +80,18 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
   const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
   if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
   const firstRefreshCookie = updateCookiesFromResponse("", statusResponse);
-  const refreshSetCookie = statusResponse.headers.getSetCookie()
-    .find((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
-  if (refreshSetCookie == null) throw new Error("Expected a TV display refresh cookie.");
-  expect(refreshSetCookie).toContain("HttpOnly");
-  expect(refreshSetCookie).toContain("SameSite=Strict");
+  const refreshSetCookies = statusResponse.headers.getSetCookie()
+    .filter((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
+  expect(refreshSetCookies).toHaveLength(3);
+  expect(refreshSetCookies).toEqual(expect.arrayContaining([
+    expect.stringContaining("Path=/api; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0"),
+    expect.stringContaining("Path=/api/latest/tv-displays"),
+    expect.stringContaining("Path=/api/v1/tv-displays"),
+  ]));
+  for (const refreshSetCookie of refreshSetCookies) {
+    expect(refreshSetCookie).toContain("HttpOnly");
+    expect(refreshSetCookie).toContain("SameSite=Strict");
+  }
 
   const snapshotResponse = await publicJsonRequest(
     "/tv-displays/snapshot?projectId=not-trusted&profileId=engineering-office",

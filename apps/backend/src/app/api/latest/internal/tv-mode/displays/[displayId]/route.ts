@@ -47,7 +47,11 @@ export const PATCH = createSmartRouteHandler({
       return { statusCode: 200, bodyType: "json", body: { success: true } };
     } catch (error) {
       if (error instanceof TvDisplayOperationError) {
-        const status = error.code === "tv_display_profile_not_found" ? 404 : 400;
+        const status = error.code === "tv_display_profile_not_found"
+          ? 404
+          : error.code === "tv_display_exact_financials_acknowledgement_required"
+            ? 428
+            : 400;
         throw new StatusError(status, error.code);
       }
       throw error;

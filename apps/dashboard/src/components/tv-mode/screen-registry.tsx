@@ -323,6 +323,12 @@ export function getTvInsightPresentation(options: {
   if (options.insight != null) {
     return { message: options.insight.message, explanatory: false };
   }
+  if (options.sourceStatus === "stale") {
+    return {
+      message: "Insight analysis will resume when a fresh snapshot is available.",
+      explanatory: true,
+    };
+  }
   const fallback = TV_INSIGHT_FALLBACKS.get(options.screenId);
   if (fallback == null) throw new Error(`Missing TV insight fallback for "${options.screenId}"`);
   return {

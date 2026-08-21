@@ -275,11 +275,18 @@ function normalizeTrend(points: TvTrendPoint[]): TvTrendPoint[] {
   }));
 }
 
-function buildCumulativeRevenueTrend(bounds: TvWindowBounds, revenueByDay: Map<string, number>): TvTrendPoint[] {
-  const firstDay = new Date(bounds.currentEndsAt);
+export function buildCumulativeRevenueTrend(bounds: TvWindowBounds, revenueByDay: Map<string, number>): TvTrendPoint[] {
+  if (bounds.currentEndsAt <= bounds.currentStartsAt) {
+    throw new TvSnapshotInvariantError("TV revenue trend requires a non-empty reporting window.");
+  }
+  const firstDay = new Date(bounds.currentStartsAt);
   firstDay.setUTCHours(0, 0, 0, 0);
-  firstDay.setUTCDate(firstDay.getUTCDate() - 29);
-  const daily = Array.from({ length: 30 }, (_, index) => {
+  // The range is timestamp-based and can touch 31 UTC dates. Use the last
+  // included instant so a midnight-exclusive end does not add an empty day.
+  const lastDay = new Date(bounds.currentEndsAt.getTime() - 1);
+  lastDay.setUTCHours(0, 0, 0, 0);
+  const dayCount = Math.floor((lastDay.getTime() - firstDay.getTime()) / DAY_MS) + 1;
+  const daily = Array.from({ length: dayCount }, (_, index) => {
     const date = new Date(firstDay.getTime() + index * DAY_MS);
     const key = date.toISOString().slice(0, 10);
     return { date, value: revenueByDay.get(key) ?? 0 };
@@ -289,9 +296,12 @@ function buildCumulativeRevenueTrend(bounds: TvWindowBounds, revenueByDay: Map<s
     cumulative += point.value;
     return { ...point, value: cumulative };
   });
-  return [0, 5, 10, 15, 20, 25, 29].map((index) => {
+  const sampleIndexes = Array.from({ length: 7 }, (_, index) => (
+    Math.round(index * (cumulativeDaily.length - 1) / 6)
+  ));
+  return sampleIndexes.map((index) => {
     const point = cumulativeDaily.at(index);
-    if (point == null) throw new TvSnapshotInvariantError("TV revenue trend sample index is outside its 30-day series.");
+    if (point == null) throw new TvSnapshotInvariantError("TV revenue trend sample index is outside its reporting series.");
     return {
       label: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(point.date),
       value: point.value,
@@ -809,7 +819,7 @@ async function loadRevenueScreen(
           SELECT *, GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") AS outcome_at
           FROM normalized_health_candidates
         ), invoice_health AS (
-          SELECT ("paidAt" = outcome_at) AS success
+          SELECT COALESCE("paidAt" = outcome_at, FALSE) AS success
           FROM selected_health
           WHERE outcome_at >= ${bounds.currentStartsAt}
             AND outcome_at < ${bounds.currentEndsAt}
@@ -818,7 +828,8 @@ async function loadRevenueScreen(
               -- outcomes represent attempted value that failed collection.
               ("paidAt" = outcome_at AND COALESCE("amountPaid", 0) > 0)
               OR (
-                "voidedAt" IS DISTINCT FROM outcome_at
+                "paidAt" IS DISTINCT FROM outcome_at
+                AND "voidedAt" IS DISTINCT FROM outcome_at
                 AND "markedUncollectibleAt" = outcome_at
                 AND COALESCE("amountTotal", 0) > 0
               )
@@ -918,7 +929,9 @@ async function loadRevenueScreen(
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'active'::"SubscriptionStatus") AS active_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
-            WHERE "tenancyId" = ${tenancy.id}::UUID AND "createdAt" >= ${bounds.currentStartsAt}) AS new_subscriptions,
+            WHERE "tenancyId" = ${tenancy.id}::UUID
+              AND "createdAt" >= ${bounds.currentStartsAt}
+              AND "createdAt" < ${bounds.currentEndsAt}) AS new_subscriptions,
           (SELECT COUNT(*)::int FROM ${sqlQuoteIdent(schema)}."Subscription"
             WHERE "tenancyId" = ${tenancy.id}::UUID AND "status" = 'past_due'::"SubscriptionStatus") AS past_due_subscriptions
           ,(SELECT COUNT(*)::int FROM unsupported_currency_events) AS unsupported_currencies,
@@ -1054,6 +1067,7 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
         SELECT
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
+              AND "createdAt" < ${bounds.currentEndsAt}
               AND "finishedSendingAt" IS NOT NULL
           )::int AS current_finished,
           COUNT(*) FILTER (
@@ -1063,21 +1077,25 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
           )::int AS previous_finished,
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
+              AND "createdAt" < ${bounds.currentEndsAt}
               AND "deliveredAt" IS NOT NULL
               AND "bouncedAt" IS NULL
               AND "sendServerErrorExternalMessage" IS NULL
           )::int AS delivered,
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
+              AND "createdAt" < ${bounds.currentEndsAt}
               AND "bouncedAt" IS NOT NULL
           )::int AS bounced,
           COUNT(*) FILTER (
             WHERE "createdAt" >= ${bounds.currentStartsAt}
+              AND "createdAt" < ${bounds.currentEndsAt}
               AND "bouncedAt" IS NULL
               AND "sendServerErrorExternalMessage" IS NOT NULL
           )::int AS errors,
           COUNT(*) FILTER (
-            WHERE "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
+            WHERE "createdAt" < ${bounds.currentEndsAt}
+              AND "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
           )::int AS in_progress
         FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
         WHERE "tenancyId" = ${tenancy.id}::UUID

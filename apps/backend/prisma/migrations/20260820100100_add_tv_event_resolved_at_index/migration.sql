@@ -17,6 +17,7 @@ BEGIN
       AND idx.relname = 'TvEventOccurrence_resolved_lookup_idx'
       AND tbl.relname = 'TvEventOccurrence'
       AND i.indisvalid AND i.indisready AND NOT i.indisunique
+      AND i.indnatts = i.indnkeyatts
       AND i.indpred IS NULL AND i.indexprs IS NULL
       AND access_method.amname = 'btree'
       AND (
@@ -57,6 +58,7 @@ BEGIN
       AND idx.relname = 'TvEventOccurrence_resolved_lookup_idx'
       AND tbl.relname = 'TvEventOccurrence'
       AND i.indisvalid AND i.indisready AND NOT i.indisunique
+      AND i.indnatts = i.indnkeyatts
       AND i.indpred IS NULL AND i.indexprs IS NULL
       AND access_method.amname = 'btree'
       AND (

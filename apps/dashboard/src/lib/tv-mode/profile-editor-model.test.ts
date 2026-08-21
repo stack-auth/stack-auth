@@ -1,6 +1,7 @@
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { describe, expect, it } from "vitest";
 import {
+  createTvProfileCopyDisplayName,
   createTvProfileEditorDraft,
   editorDraftToProfileConfiguration,
   profileResourceToEditorDraft,
@@ -37,5 +38,10 @@ describe("TV profile editor model", () => {
       displayName: profile.configuration.displayName,
       description: profile.configuration.description,
     });
+  });
+
+  it("keeps duplicated names within the normalized profile-name limit", () => {
+    expect(createTvProfileCopyDisplayName("A".repeat(80))).toBe(`${"A".repeat(75)} Copy`);
+    expect(createTvProfileCopyDisplayName(`${"A".repeat(74)}ﬃ`)).toBe(`${"A".repeat(74)} Copy`);
   });
 });

@@ -101,4 +101,59 @@ describe("independent TV display requests", () => {
 
     await act(async () => root.unmount());
   });
+
+  it("aborts a stalled pairing-status request and resumes polling", async () => {
+    const challenge = {
+      challengeId: "927dfeac-2e80-4311-8180-4879b687bfc0",
+      pairingCode: "A2BC3DEF",
+      deviceSecret: "display-secret-with-at-least-32-characters",
+      expiresAt: "2099-08-19T01:00:00.000Z",
+      pollingIntervalSeconds: 5,
+    };
+    const jsonResponse = (status: number, body?: unknown) => new Response(
+      body == null ? null : JSON.stringify(body),
+      {
+        status,
+        headers: body == null ? undefined : { "content-type": "application/json" },
+      },
+    );
+    let firstStatusWasAborted = false;
+    let statusRequests = 0;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401))
+      .mockResolvedValueOnce(jsonResponse(200, challenge))
+      .mockImplementation(async (_input, init: RequestInit | undefined) => {
+        statusRequests += 1;
+        if (statusRequests > 1) {
+          return jsonResponse(200, { status: "waiting", retryAfterSeconds: 5 });
+        }
+        const signal = init?.signal;
+        if (signal == null) throw new Error("Pairing-status request did not receive an abort signal.");
+        return await new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            firstStatusWasAborted = signal.aborted;
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+      });
+    const root = createRoot(document.createElement("div"));
+
+    await act(async () => {
+      root.render(createElement(IndependentTvPageClient));
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(firstStatusWasAborted).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    await act(async () => root.unmount());
+  });
 });

@@ -120,6 +120,19 @@ describe.sequential("independent TV display persistence", () => {
     })).resolves.toEqual({ status: "expired" });
   });
 
+  it("retries a pairing-code collision without surfacing a server error", async () => {
+    const first = await createChallenge();
+    const generatedCodes = [first.pairingCode, "ZXCVBNM2"];
+    const second = await createTvDisplayPairingChallenge(
+      new Date("2026-08-14T12:00:00.000Z"),
+      () => generatedCodes.shift() ?? "ZXCVBNM3",
+    );
+    challengeIds.push(second.challengeId);
+
+    expect(second.pairingCode).toBe("ZXCVBNM2");
+    expect(second.challengeId).not.toBe(first.challengeId);
+  });
+
   it("rejects display tokens issued for another audience", async () => {
     const token = await signJWT({
       issuer: "hexclave-tv-display",

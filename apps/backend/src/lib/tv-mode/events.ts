@@ -798,7 +798,7 @@ export async function loadTvSubscriptionCollectionOutcomes(
       SELECT *, GREATEST("paidAt", "markedUncollectibleAt", "voidedAt") AS "outcomeAt"
       FROM candidates
     )
-    SELECT "outcomeAt", ("paidAt" = "outcomeAt") AS success
+    SELECT "outcomeAt", COALESCE("paidAt" = "outcomeAt", FALSE) AS success
     FROM selected
     WHERE "outcomeAt" >= ${startsAt} AND "outcomeAt" < ${endsAt}
       AND (
@@ -806,7 +806,8 @@ export async function loadTvSubscriptionCollectionOutcomes(
         -- its authoritative terminal state, but keep it out of health rates.
         ("paidAt" = "outcomeAt" AND COALESCE("amountPaid", 0) > 0)
         OR (
-          "voidedAt" IS DISTINCT FROM "outcomeAt"
+          "paidAt" IS DISTINCT FROM "outcomeAt"
+          AND "voidedAt" IS DISTINCT FROM "outcomeAt"
           AND "markedUncollectibleAt" = "outcomeAt"
           AND COALESCE("amountTotal", 0) > 0
         )

@@ -27,6 +27,15 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+function approvalResponse(overrides: Partial<{ approvedAt: string, expiresAt: string }> = {}): Response {
+  return jsonResponse({
+    success: true,
+    approvedAt: "2026-08-15T11:59:00.000Z",
+    expiresAt: "2099-08-15T12:10:00.000Z",
+    ...overrides,
+  });
+}
+
 function getCompanyPulseProfile() {
   const profile = getTvBuiltInProfile("company-pulse");
   if (profile == null) throw new Error("Company Pulse profile is missing.");
@@ -62,6 +71,12 @@ describe("TV display pairing feedback", () => {
     });
   });
 
+  it("distinguishes a changed exact-financial profile from an invalid code", () => {
+    expect(getPairingFailureNotice(new TvProfileRequestError(428))).toMatchObject({
+      title: "Profile Privacy Changed",
+    });
+  });
+
   it("submits once, shows progress, and reconciles the connected display without a reload", async () => {
     const approval = Promise.withResolvers<Response>();
     let approved = false;
@@ -93,7 +108,7 @@ describe("TV display pairing feedback", () => {
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
 
     await act(async () => {
-      approval.resolve(jsonResponse({ success: true }));
+      approval.resolve(approvalResponse());
       await approval.promise;
     });
 
@@ -111,7 +126,7 @@ describe("TV display pairing feedback", () => {
         sendRequest: async (_path: string, options: RequestInit) => {
           if (options.method === "POST") {
             if (typeof options.body === "string") submittedBodies.push(options.body);
-            return jsonResponse({ success: true });
+            return approvalResponse();
           }
           return jsonResponse({ displays: [] });
         },
@@ -137,6 +152,29 @@ describe("TV display pairing feedback", () => {
       pairingCode: "ABCDEFGH",
       profileId: "company-pulse",
     });
+  });
+
+  it("expires pending approval correlation before matching a later same-named display", async () => {
+    let listRequests = 0;
+    const adminApp = {
+      [hexclaveAppInternalsSymbol]: {
+        sendRequest: async (_path: string, options: RequestInit) => {
+          if (options.method === "POST") {
+            return approvalResponse({ expiresAt: "2000-01-01T00:00:00.000Z" });
+          }
+          listRequests += 1;
+          return jsonResponse({ displays: listRequests === 1 ? [] : [display] });
+        },
+      },
+    };
+    renderManagement(adminApp);
+
+    await screen.findByText("No Displays Paired Yet");
+    fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "ABCD-EFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair Display" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Display name for Office Display")).toBeTruthy());
+    expect(screen.queryByText("Display Paired")).toBeNull();
   });
 
   it("uses the design dialog to confirm unpairing and removes the active display immediately", async () => {

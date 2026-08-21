@@ -5,9 +5,10 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() AND c.relname = 'temp_OneTimePurchase_legacyPurchasePage_createdAt_idx')
     AND NOT EXISTS (
-      SELECT 1 FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_class tbl ON tbl.oid = i.indrelid JOIN pg_namespace n ON n.oid = tbl.relnamespace
+      SELECT 1 FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_class tbl ON tbl.oid = i.indrelid JOIN pg_namespace n ON n.oid = tbl.relnamespace JOIN pg_am access_method ON access_method.oid = idx.relam
       WHERE n.nspname = current_schema() AND idx.relname = 'temp_OneTimePurchase_legacyPurchasePage_createdAt_idx' AND tbl.relname = 'OneTimePurchase'
         AND i.indisvalid AND i.indisready AND NOT i.indisunique
+        AND access_method.amname = 'btree'
         AND pg_get_indexdef(idx.oid) LIKE '%("tenancyId", "createdAt") WHERE%'
         AND regexp_replace(pg_get_expr(i.indpred, i.indrelid), '[()\s]', '', 'g') = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
     ) THEN RAISE EXCEPTION 'TV legacy purchase index exists with an unexpected or invalid definition'; END IF;
@@ -27,9 +28,10 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "temp_OneTimePurchase_legacyPurchasePage
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_class tbl ON tbl.oid = i.indrelid JOIN pg_namespace n ON n.oid = tbl.relnamespace
+    SELECT 1 FROM pg_index i JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_class tbl ON tbl.oid = i.indrelid JOIN pg_namespace n ON n.oid = tbl.relnamespace JOIN pg_am access_method ON access_method.oid = idx.relam
     WHERE n.nspname = current_schema() AND idx.relname = 'temp_OneTimePurchase_legacyPurchasePage_createdAt_idx' AND tbl.relname = 'OneTimePurchase'
       AND i.indisvalid AND i.indisready AND NOT i.indisunique
+      AND access_method.amname = 'btree'
       AND pg_get_indexdef(idx.oid) LIKE '%("tenancyId", "createdAt") WHERE%'
       AND regexp_replace(pg_get_expr(i.indpred, i.indrelid), '[()\s]', '', 'g') = regexp_replace('"creationSource" = ''PURCHASE_PAGE''::"PurchaseCreationSource" AND "paidAt" IS NULL', '[()\s]', '', 'g')
   ) THEN RAISE EXCEPTION 'TV legacy purchase index did not finish with the expected definition'; END IF;

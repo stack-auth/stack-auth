@@ -8,8 +8,8 @@
 // package dev watchers that the root dev server is already running.
 //
 // Instead, run the CLI from TypeScript source and ask it to launch the dashboard
-// through the dashboard package's isolated RDE dev command. The CLI still owns
-// the development-environment env vars, so this stays close to the packaged path.
+// through the dashboard package's RDE production command. The CLI still owns the
+// development-environment env vars, so this stays close to the packaged path.
 
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
@@ -53,7 +53,7 @@ function runCliDev() {
       detached: process.platform !== "win32",
       env: {
         ...process.env,
-        HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev:rde",
+        HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev:rde-production",
         STACK_API_URL: `http://localhost:${portPrefix}02`,
         STACK_DASHBOARD_URL: `http://localhost:${portPrefix}01`,
         STACK_CLI_PUBLISHABLE_CLIENT_KEY: "this-publishable-client-key-is-for-local-development-only",

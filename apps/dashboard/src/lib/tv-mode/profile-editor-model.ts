@@ -1,9 +1,23 @@
 import {
+  normalizeTvProfileDisplayName,
+  TV_PROFILE_DISPLAY_NAME_MAX_LENGTH,
   TV_SCREEN_IDS,
   type TvProfileConfiguration,
   type TvProfileResource,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import type { TvProfileFixture } from "./types";
+
+const TV_PROFILE_COPY_SUFFIX = " Copy";
+
+export function createTvProfileCopyDisplayName(displayName: string): string {
+  const baseCharacters: string[] = [];
+  for (const character of Array.from(displayName.trim())) {
+    const candidate = `${baseCharacters.join("")}${character}${TV_PROFILE_COPY_SUFFIX}`;
+    if (Array.from(normalizeTvProfileDisplayName(candidate)).length > TV_PROFILE_DISPLAY_NAME_MAX_LENGTH) break;
+    baseCharacters.push(character);
+  }
+  return `${baseCharacters.join("").trimEnd()}${TV_PROFILE_COPY_SUFFIX}`;
+}
 
 export function profileResourceToEditorDraft(profile: TvProfileResource): TvProfileFixture {
   const configuredScreens = new Map(
@@ -39,7 +53,7 @@ export function createTvProfileEditorDraft(
   if (!createFromTemplate) return draft;
   return {
     ...draft,
-    displayName: `${draft.displayName} Copy`,
+    displayName: createTvProfileCopyDisplayName(draft.displayName),
     description: "New Profile",
   };
 }

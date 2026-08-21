@@ -12,6 +12,7 @@ import {
   applyTvDisplayFinancialPolicy,
   applyTvAudienceAnalytics,
   assembleTvSnapshot,
+  buildCumulativeRevenueTrend,
   createReadyTvLivePulseScreen,
   createTvAudienceAnalyticsObservation,
   createTvLivePulseErrorScreen,
@@ -208,6 +209,39 @@ describe("assembleTvSnapshot", () => {
         },
       },
     })).toThrow("must not expose exact financial values");
+  });
+});
+
+describe("TV revenue trend boundaries", () => {
+  it("includes revenue from every UTC date touched by the trailing timestamp window", () => {
+    const trend = buildCumulativeRevenueTrend({
+      currentStartsAt: new Date("2026-07-22T12:00:00.000Z"),
+      currentEndsAt: new Date("2026-08-21T12:00:00.000Z"),
+      comparisonStartsAt: new Date("2026-06-22T12:00:00.000Z"),
+      comparisonEndsAt: new Date("2026-07-22T12:00:00.000Z"),
+    }, new Map([
+      ["2026-07-22", 100],
+      ["2026-08-21", 200],
+    ]));
+
+    expect(trend).toHaveLength(7);
+    expect(trend[0]).toEqual({ label: "Jul 22", value: 100 });
+    expect(trend.at(-1)).toEqual({ label: "Aug 21", value: 300 });
+  });
+
+  it("does not add the exclusive end date when the window ends at UTC midnight", () => {
+    const trend = buildCumulativeRevenueTrend({
+      currentStartsAt: new Date("2026-07-22T00:00:00.000Z"),
+      currentEndsAt: new Date("2026-08-21T00:00:00.000Z"),
+      comparisonStartsAt: new Date("2026-06-22T00:00:00.000Z"),
+      comparisonEndsAt: new Date("2026-07-22T00:00:00.000Z"),
+    }, new Map([
+      ["2026-07-22", 100],
+      ["2026-08-21", 900],
+    ]));
+
+    expect(trend[0]).toEqual({ label: "Jul 22", value: 100 });
+    expect(trend.at(-1)).toEqual({ label: "Aug 20", value: 100 });
   });
 });
 

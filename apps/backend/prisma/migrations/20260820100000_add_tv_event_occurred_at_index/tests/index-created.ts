@@ -7,6 +7,7 @@ export const postMigration = async (sql: Sql) => {
       i.indisvalid,
       i.indisready,
       i.indisunique,
+      i.indnatts = i.indnkeyatts AS no_included_columns,
       pg_index_column_has_property(idx.oid, 2, 'desc') AS second_column_descending,
       (
         SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
@@ -26,6 +27,7 @@ export const postMigration = async (sql: Sql) => {
     indisvalid: true,
     indisready: true,
     indisunique: false,
+    no_included_columns: true,
     second_column_descending: true,
     key_columns: ["tenancyId", "occurredAt", "id"],
   })]);

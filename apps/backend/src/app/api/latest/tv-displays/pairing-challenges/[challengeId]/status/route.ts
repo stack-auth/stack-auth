@@ -1,6 +1,6 @@
 import { cookies } from "@/lib/runtime/headers";
 import { getTvDisplayResource, pollTvDisplayPairing, TV_DISPLAY_REFRESH_COOKIE } from "@/lib/tv-mode/displays";
-import { tvDisplayRefreshCookieOptions } from "@/lib/tv-mode/display-refresh-cookie";
+import { setTvDisplayRefreshCookie } from "@/lib/tv-mode/display-refresh-cookie";
 import { getTenancy } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TvDisplayPairingStatusSchema } from "@hexclave/shared/dist/interface/admin-tv-mode";
@@ -27,7 +27,7 @@ export const POST = createSmartRouteHandler({
       return { statusCode: 200, bodyType: "json", body: rejected };
     }
     const cookieStore = await cookies();
-    cookieStore.set(TV_DISPLAY_REFRESH_COOKIE, result.refreshToken, tvDisplayRefreshCookieOptions());
+    setTvDisplayRefreshCookie(cookieStore, TV_DISPLAY_REFRESH_COOKIE, result.refreshToken);
     return {
       statusCode: 200,
       bodyType: "json",

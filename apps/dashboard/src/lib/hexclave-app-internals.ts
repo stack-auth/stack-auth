@@ -298,6 +298,12 @@ const TvDisplayListResponseSchema = yupObject({
   displays: yupArray(TvDisplayResourceSchema).defined(),
 }).noUnknown().defined();
 
+const TvDisplayApprovalResponseSchema = yupObject({
+  success: yupBoolean().oneOf([true]).defined(),
+  approvedAt: yupString().defined(),
+  expiresAt: yupString().defined(),
+}).noUnknown().defined();
+
 export async function fetchTvDisplaysOrThrow(adminApp: object): Promise<TvDisplayResource[]> {
   const response = await requestTvProfileJsonOrThrow(adminApp, "/internal/tv-mode/displays", { method: "GET" });
   return (await TvDisplayListResponseSchema.validate(response, { strict: true })).displays;
@@ -308,8 +314,12 @@ export async function approveTvDisplayOrThrow(adminApp: object, input: {
   profileId: string,
   displayName: string,
   acknowledgeExactFinancials: boolean,
-}): Promise<void> {
-  await requestTvProfileJsonOrThrow(adminApp, "/internal/tv-mode/displays", jsonRequest("POST", input));
+}): Promise<{ approvedAt: string, expiresAt: string }> {
+  const response = await TvDisplayApprovalResponseSchema.validate(
+    await requestTvProfileJsonOrThrow(adminApp, "/internal/tv-mode/displays", jsonRequest("POST", input)),
+    { strict: true },
+  );
+  return { approvedAt: response.approvedAt, expiresAt: response.expiresAt };
 }
 
 export async function updateTvDisplayOrThrow(adminApp: object, displayId: string, input: {

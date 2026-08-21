@@ -366,6 +366,28 @@ describe.sequential("TV presentation persistence (real DB)", () => {
         {
           tenancyId: firstTenancy.id,
           stripeSubscriptionId,
+          stripeInvoiceId: `in_positive_paid_tie_${randomUUID()}`,
+          isSubscriptionCreationInvoice: false,
+          status: "paid",
+          amountTotal: 1_000,
+          amountPaid: 1_000,
+          paidAt: new Date("2026-08-20T12:35:00.000Z"),
+          markedUncollectibleAt: new Date("2026-08-20T12:35:00.000Z"),
+        },
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
+          stripeInvoiceId: `in_zero_paid_tie_${randomUUID()}`,
+          isSubscriptionCreationInvoice: false,
+          status: "uncollectible",
+          amountTotal: 1_000,
+          amountPaid: 0,
+          paidAt: new Date("2026-08-20T12:36:00.000Z"),
+          markedUncollectibleAt: new Date("2026-08-20T12:36:00.000Z"),
+        },
+        {
+          tenancyId: firstTenancy.id,
+          stripeSubscriptionId,
           stripeInvoiceId: `in_zero_failed_${randomUUID()}`,
           isSubscriptionCreationInvoice: false,
           status: "uncollectible",
@@ -380,6 +402,7 @@ describe.sequential("TV presentation persistence (real DB)", () => {
     expect(outcomes.sort((left, right) => left.outcomeAt.getTime() - right.outcomeAt.getTime())).toEqual([
       { outcomeAt: new Date("2026-08-20T12:20:00.000Z"), success: true },
       { outcomeAt: new Date("2026-08-20T12:30:00.000Z"), success: false },
+      { outcomeAt: new Date("2026-08-20T12:35:00.000Z"), success: true },
     ]);
   });
 

@@ -528,6 +528,17 @@ describe("TV insight area", () => {
     })).toEqual({ message: insight.message, explanatory: false });
   });
 
+  it("describes stale data instead of using ready-state copy when no insight is available", () => {
+    expect(getTvInsightPresentation({
+      screenId: "email-health",
+      sourceStatus: "stale",
+      insight: null,
+    })).toEqual({
+      message: "Insight analysis will resume when a fresh snapshot is available.",
+      explanatory: true,
+    });
+  });
+
   it("renders the threshold explanation in the shared insight card", () => {
     const snapshot = getTvFixtureSnapshot("project-a", "company-pulse", "insufficient-data");
     const revenue = snapshot?.screens.find((candidate) => candidate.id === "revenue-payments");

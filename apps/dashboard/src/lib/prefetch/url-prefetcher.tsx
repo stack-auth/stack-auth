@@ -8,20 +8,6 @@ import { createCachedRegex } from "@hexclave/shared/dist/utils/regex";
 import { memo, useEffect, useMemo, useState } from "react";
 import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 
-function prefetchAnalyticsEventLimitBanner(projectId: string): void | HookPrefetcherCallback[] {
-  const adminApp = useAdminApp(projectId);
-  const project = adminApp.useProject();
-  const planUsage = adminApp.usePlanUsage();
-  const user = useDashboardInternalUser();
-  const ownerTeam = user.useTeams().find((team) => team.id === project.ownerTeamId);
-
-  if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) return;
-  return [() => {
-    ownerTeam.useItem("analytics_events");
-    ownerTeam.useProducts();
-  }];
-}
-
 // note that URL prefetchers are allowed to return early before execution of all hooks (but not call hook conditionally beyond that)
 // this is because we suspend the component
 const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void | HookPrefetcherCallback[])[]> = {
@@ -32,7 +18,6 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
     ([_, projectId]) => {
       useAdminApp(projectId).useUsers({ limit: 1 });
     },
-    ([_, projectId]) => prefetchAnalyticsEventLimitBanner(projectId),
   ],
   "/projects/*/**": [
     ([_, projectId]) => {

@@ -20,7 +20,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
-import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import {
+  TV_PROFILE_DISPLAY_NAME_MAX_LENGTH,
+  type TvProfileResource,
+} from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   DesignAlert,
   DesignButton,
@@ -45,6 +48,7 @@ import {
   updateTvProfileOrThrow,
 } from "@/lib/hexclave-app-internals";
 import {
+  createTvProfileCopyDisplayName,
   createTvProfileEditorDraft,
   editorDraftToProfileConfiguration,
   profileResourceToEditorDraft,
@@ -227,11 +231,14 @@ export default function PageClient() {
   const [saved, setSaved] = useState<TvProfileFixture | null>(null);
   const [resetDraft, setResetDraft] = useState<TvProfileFixture | null>(null);
   const [loading, setLoading] = useState(true);
+  const requestKey = `${profileId}:${createFromTemplate ? "create" : "edit"}`;
+  const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [savedNoticeVisible, setSavedNoticeVisible] = useState(false);
+  const [createSavePending, setCreateSavePending] = useState(false);
   const draftRef = useRef<TvProfileFixture | null>(null);
   draftRef.current = draft;
   const { setNeedConfirm } = useRouterConfirm();
@@ -239,6 +246,13 @@ export default function PageClient() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setLoadError(false);
+    setResource(null);
+    setDraft(null);
+    setSaved(null);
+    setResetDraft(null);
+    setSaveError(null);
     runAsynchronously(async () => {
       try {
         const loaded = await fetchTvProfileOrThrow(adminApp, profileId);
@@ -252,13 +266,16 @@ export default function PageClient() {
       } catch {
         if (active) setLoadError(true);
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoadedRequestKey(requestKey);
+          setLoading(false);
+        }
       }
     });
     return () => {
       active = false;
     };
-  }, [adminApp, createFromTemplate, profileId]);
+  }, [adminApp, createFromTemplate, profileId, requestKey]);
 
   const hasChanges = draft != null && saved != null && JSON.stringify(draft) !== JSON.stringify(saved);
   const previewSnapshot = useMemo(
@@ -271,7 +288,7 @@ export default function PageClient() {
     return () => setNeedConfirm(false);
   }, [hasChanges, setNeedConfirm]);
 
-  if (loading) {
+  if (loading || loadedRequestKey !== requestKey) {
     return (
       <PageLayout title="TV Profile" description="Loading project presentation configuration…">
         <DesignAlert variant="info" title="Loading Profile" description="Resolving the project-scoped profile configuration." />
@@ -307,7 +324,7 @@ export default function PageClient() {
                 ? await duplicateTvProfileOrThrow(
                   adminApp,
                   resource,
-                  `${resource.configuration.displayName} Copy`,
+                  createTvProfileCopyDisplayName(resource.configuration.displayName),
                 )
                 : await createTvProfileOrThrow(adminApp, editorDraftToProfileConfiguration(
                   createTvProfileEditorDraft(resource, true),
@@ -358,7 +375,7 @@ export default function PageClient() {
         ) : null}
         {saveError != null ? <DesignAlert variant="error" title="Profile Was Not Saved" description={saveError} /> : null}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+        <div inert={createSavePending} aria-busy={createSavePending} className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
           <div className="space-y-4">
             <DesignCard title="Profile" subtitle="Identity and profile details" icon={MonitorPlayIcon} gradient="cyan" glassmorphic>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -367,6 +384,7 @@ export default function PageClient() {
                   <DesignInput
                     id="tv-profile-name"
                     value={draft.displayName}
+                    maxLength={TV_PROFILE_DISPLAY_NAME_MAX_LENGTH}
                     onChange={(event) => {
                       setDraft({ ...draft, displayName: event.target.value });
                       setSavedNoticeVisible(false);
@@ -789,7 +807,7 @@ export default function PageClient() {
           </div>
         </div>
 
-        <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-2xl border border-foreground/[0.09] bg-background/90 p-3 shadow-xl backdrop-blur-xl">
+        <div inert={createSavePending} className="sticky bottom-4 z-20 flex items-center justify-between rounded-2xl border border-foreground/[0.09] bg-background/90 p-3 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 text-sm">
             {hasChanges ? <WarningCircleIcon className="h-4 w-4 text-amber-500" weight="fill" /> : <CheckCircleIcon className="h-4 w-4 text-emerald-500" weight="fill" />}
             <span className="text-muted-foreground">{hasChanges ? "Unsaved profile changes" : "Profile is up to date"}</span>
@@ -809,6 +827,11 @@ export default function PageClient() {
             <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
               setSaveError(null);
               const submittedDraft = draft;
+              const creatingProfile = resource.origin !== "saved" || createFromTemplate;
+              // A newly created profile must navigate to its authoritative ID. Freeze
+              // the create form while that request is pending so edits cannot land in
+              // the redirect gap; saved-profile updates still preserve concurrent edits.
+              if (creatingProfile) setCreateSavePending(true);
               try {
                 const configuration = editorDraftToProfileConfiguration({
                   ...draft,
@@ -826,8 +849,11 @@ export default function PageClient() {
                 setSavedNoticeVisible(!draftChangedWhileSaving);
                 if (savedResource.id !== profileId) {
                   window.location.assign(urlString`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
+                } else if (creatingProfile) {
+                  setCreateSavePending(false);
                 }
               } catch (error) {
+                if (creatingProfile) setCreateSavePending(false);
                 setSaveError(error instanceof TvProfileRequestError && error.status === 409
                   ? "This profile changed elsewhere or its name conflicts with another profile. Reload before retrying."
                   : "Profile storage is unavailable. Your unsaved changes remain on this page.");

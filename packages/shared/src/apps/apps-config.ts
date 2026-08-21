@@ -211,7 +211,7 @@ export const ALL_APPS = {
   },
   "gtm": {
     displayName: "GTM",
-    subtitle: "Internal go-to-market workspace",
+    subtitle: "AI-driven growth analysis, actionable items, and daily briefs",
     tags: ["gtm", "operations"],
     stage: "alpha",
     softRequirements: ["analytics"],
@@ -230,17 +230,14 @@ export const ALL_APPS = {
     stage: "alpha",
     softRequirements: ["authentication", "analytics"],
   },
-  // The app id carries the `-alpha` suffix deliberately: it is the key users
-  // write in `apps.installed` and under the top-level config, so the stage is
-  // visible in every hexclave.config.ts. The display name stays "Deployments".
-  "deployments-alpha": {
-    displayName: "Deployments",
+  "deploy": {
+    displayName: "Deploy",
     subtitle: "Configure and connect the services that run your app",
     tags: ["developers", "operations"],
     stage: "alpha",
     softRequirements: [],
   },
-  // Same `-alpha` suffix reasoning as Deployments above. The plain `workflows`
+  // The plain `workflows`
   // id is additionally unusable: a 2025-10-29 config migration strips
   // `apps.installed.workflows` from every override (see migrateConfigOverride),
   // so an app under that id could never stay enabled.

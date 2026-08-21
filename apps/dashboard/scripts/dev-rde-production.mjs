@@ -36,11 +36,7 @@ function copyIfExists(src, dest) {
 }
 
 runOrExit("pnpm", ["run", "bundle-type-definitions"]);
-// Next 16's Turbopack production build can fail while evaluating the PostCSS
-// config when a normal dashboard dev server is running in the same workspace.
-// This path only prepares the demo's local development-environment dashboard,
-// so use the stable webpack builder and keep the normal build path unchanged.
-runOrExit("pnpm", ["exec", "next", "build", "--webpack"], {
+runOrExit("pnpm", ["exec", "next", "build"], {
   env: {
     NEXT_CONFIG_OUTPUT: "standalone",
     NODE_ENV: "production",

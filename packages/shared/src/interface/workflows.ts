@@ -199,6 +199,9 @@ export type WorkflowSummaryJson = {
   display_name: string,
   latest_version: number,
   triggers: WorkflowTriggerJson[],
+  /** Paused workflows create no new runs; their in-flight runs keep going. */
+  is_paused: boolean,
+  paused_at_millis: number | null,
   stats: WorkflowStatsJson,
   created_at_millis: number,
   last_deployed_at_millis: number,

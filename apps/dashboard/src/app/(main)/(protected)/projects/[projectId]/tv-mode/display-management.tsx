@@ -53,6 +53,13 @@ export function getPairingFailureNotice(error: unknown): ActionNotice {
       description: "Too many pairing attempts were received. Wait a few minutes, then use the latest code shown on the display.",
     };
   }
+  if (error instanceof TvProfileRequestError && error.status === 428) {
+    return {
+      variant: "error",
+      title: "Profile Privacy Changed",
+      description: "This profile now shows exact financial values. Reload the Displays page, review the privacy notice, and approve pairing again.",
+    };
+  }
   if (
     errorIncludes(error, "tv_display_pairing_code_invalid")
     || (error instanceof TvProfileRequestError && error.status === 400)
@@ -120,15 +127,28 @@ export function TvDisplayManagement({
   const pairingInFlight = useRef(false);
   const refreshInFlight = useRef(false);
   const hiddenDisplayIds = useRef(new Set<string>());
-  const pendingPairing = useRef<{ displayName: string, existingDisplayIds: Set<string> } | null>(null);
+  const pendingPairing = useRef<{
+    displayName: string,
+    existingDisplayIds: Set<string>,
+    approvedAt: string,
+    expiresAt: string,
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     const next = await fetchTvDisplaysOrThrow(adminApp);
     const visible = next.filter((display) => !hiddenDisplayIds.current.has(display.id));
     const pending = pendingPairing.current;
-    if (pending != null && visible.some((display) => (
-      display.displayName === pending.displayName && !pending.existingDisplayIds.has(display.id)
-    ))) {
+    const pendingExpiresAt = pending == null ? null : Date.parse(pending.expiresAt);
+    if (pending != null && (pendingExpiresAt == null || !Number.isFinite(pendingExpiresAt) || pendingExpiresAt <= new Date().getTime())) {
+      pendingPairing.current = null;
+    } else if (pending != null && visible.some((display) => {
+      const pairedAt = Date.parse(display.pairedAt);
+      return display.displayName === pending.displayName
+        && !pending.existingDisplayIds.has(display.id)
+        && Number.isFinite(pairedAt)
+        && pairedAt >= Date.parse(pending.approvedAt)
+        && pairedAt <= Date.parse(pending.expiresAt);
+    })) {
       pendingPairing.current = null;
       toast({
         variant: "success",
@@ -167,7 +187,7 @@ export function TvDisplayManagement({
     setPairingError(null);
     const nextDisplayName = displayName.trim();
     try {
-      await approveTvDisplayOrThrow(adminApp, {
+      const approval = await approveTvDisplayOrThrow(adminApp, {
         pairingCode: normalizedPairingCode,
         profileId,
         displayName: nextDisplayName,
@@ -176,6 +196,8 @@ export function TvDisplayManagement({
       pendingPairing.current = {
         displayName: nextDisplayName,
         existingDisplayIds: new Set(displays?.map((display) => display.id) ?? []),
+        approvedAt: approval.approvedAt,
+        expiresAt: approval.expiresAt,
       };
       setPairingCode("");
       setAcknowledgeExact(false);
