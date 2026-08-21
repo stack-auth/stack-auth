@@ -171,6 +171,14 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     )
   `;
 
+  expect(await sql`
+    SELECT pg_get_constraintdef(oid) AS definition
+    FROM pg_constraint
+    WHERE conname = 'TvEventEvaluatorState_activeOccurrence_fkey'
+  `).toEqual([{
+    definition: expect.stringContaining('ON DELETE SET NULL ("activeOccurrenceId")'),
+  }]);
+
   await expect(sql`
     INSERT INTO "TvEventEvaluatorState" (
       "tenancyId", "evaluatorKey", "nextEvaluationAt", "typedState",
