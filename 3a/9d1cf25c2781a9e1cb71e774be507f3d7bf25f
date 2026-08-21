@@ -1,0 +1,370 @@
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_58cec84198350e::t_a9dff68452ba16 382
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 35,238-242
+  s_f7f436da7c6ef4::t_92c9a307fd9f3e 23,224-227,256-259
+apps/backend/src/lib/workflows/event-processing.test.ts
+  s_f7f436da7c6ef4::t_8e853f3683719e 3,57-61
+  s_f7f436da7c6ef4::t_d3a93a43fd4fa7 62-63
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/policy-selection.test.ts
+  s_f7f436da7c6ef4::t_ebaca84f584c39 1,32-38,40-41
+  s_58cec84198350e::t_5e60f6e0d6ccf6 39,43
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.test.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 90-98
+  s_f7f436da7c6ef4::t_4d0e7c58c3ec4f 68-73,75-79
+  s_f7f436da7c6ef4::t_f90f0e846e257f 74
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_58cec84198350e::t_63b853ec7544ba 502-503
+  s_f7f436da7c6ef4::t_deaebe3177419f 248,346,348,350-358,361
+  s_f7f436da7c6ef4::t_7447fda485e7b3 59-62,169,242,250-253,345,349,359
+  s_f7f436da7c6ef4::t_a93f1714dc50fe 117-122,205-213,216-220
+apps/backend/src/app/api/latest/internal/sign-up-rules-stats/route.tsx
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 192
+apps/backend/src/lib/plan-usage.test.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 125
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnels/page-client.tsx
+  s_f7f436da7c6ef4::t_d1e759eb75149f 9,19-20
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.test.ts
+  s_b2a3cad0752d90::t_98371ee0ec495a 3
+  s_b2a3cad0752d90::t_9c5562d5c46bcb 145-184
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/page-view-query.test.ts
+  s_f7f436da7c6ef4::t_d1e759eb75149f 1-4,15-16
+  s_0a5bf8eeed32e2::t_d0586b6baa0230 5-14
+apps/backend/src/lib/workflows/issue-alerts/registration.ts
+  s_f7f436da7c6ef4::t_4957fd78e032c2 6,29,92-95,97,124
+apps/backend/src/lib/issues/issue-alerts/signal.test.ts
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 88-92,95
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.test.ts
+  s_58cec84198350e::t_96acf77c8ed3e1 73,79-80,88,90,99,107
+  s_f7f436da7c6ef4::t_ebaca84f584c39 3,76-78,81-84,97-98,100-101,103
+packages/template/src/lib/hexclave-app/apps/implementations/otel-managed.ts
+  s_b2a3cad0752d90::t_32b593043de99b 29-33
+apps/backend/src/lib/issues/issue-merge.ts
+  s_f7f436da7c6ef4::t_df956da36d1483 389-400,409-417,436,444-445
+apps/backend/src/lib/issues/grouping-config.test.ts
+  s_f7f436da7c6ef4::t_6a19082aad1fff 30,71,74
+packages/template/src/lib/hexclave-app/apps/implementations/otel-sdk.ts
+  s_b2a3cad0752d90::t_405a1a3ceb8372 229-232
+  s_b2a3cad0752d90::t_4f60f6c39eeb97 179-182
+  s_b2a3cad0752d90::t_f997bca2084b7e 114-136
+apps/backend/src/lib/issues/issue-alerts/destinations.test.ts
+  s_f7f436da7c6ef4::t_a37631296d1a8d 8-10
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/replay-user-overview.tsx
+  s_0a5bf8eeed32e2::t_dd5c036d9e883f 82-87,93-103
+apps/backend/src/lib/workflows/api.tsx
+  s_f7f436da7c6ef4::t_4d9c9a6cbfd1b3 3
+  s_f7f436da7c6ef4::t_fe56b77ae26b18 26-33,307-313,331
+  s_f7f436da7c6ef4::t_4957fd78e032c2 67-73,119-122
+  s_f7f436da7c6ef4::t_7a5bfa38df6e96 94,101,111,113-118,123-130,192,204-206
+apps/backend/src/lib/plan-metering.ts
+  s_f7f436da7c6ef4::t_bdb97a2452fb32 125,148,175-183,192,196,199-201,203,218,251-252,256,260
+apps/backend/src/lib/issues/grouping-config.ts
+  s_f7f436da7c6ef4::t_6a19082aad1fff 2,21-28,31,68
+apps/backend/src/lib/plan-metering.test.ts
+  s_f7f436da7c6ef4::t_bdb97a2452fb32 9,61,68,79,82
+  s_f7f436da7c6ef4::t_8f7eb83f58e182 124-143
+apps/backend/src/lib/issues/issue-alerts/owner-team-recipients.ts
+  s_f7f436da7c6ef4::t_17db31460c7f5c 64,66-67
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.ts
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 108,129
+apps/backend/src/app/api/latest/analytics/events/batch/route.test.tsx
+  s_f7f436da7c6ef4::t_31414447f49aa6 107-113
+  s_f7f436da7c6ef4::t_174a7df6218c75 100
+apps/backend/scripts/clickhouse-migrations.ts
+  s_f7f436da7c6ef4::t_02f30471645e52 348,369-374
+  s_0a5bf8eeed32e2::t_573184d3cf148f 48,70,89,117,129,151,174,731,800,1457-1507,1772-1797,2294,2365,2594
+  s_0a5bf8eeed32e2::t_b10bce1bc6ef53 260-263
+  s_f7f436da7c6ef4::t_e520639d75f13f 375-376
+examples/demo/src/app/error-tracking-demo/api/observability-lab/prepare/route.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 22
+  s_f7f436da7c6ef4::t_4a66c96c61d58b 2,21
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.tsx
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 86
+apps/backend/src/app/api/latest/analytics/otlp/v1/logs/route.test.ts
+  s_f7f436da7c6ef4::t_ebaca84f584c39 3,89-90,92,95,97
+  s_58cec84198350e::t_cfdaec4be8dd8b 87,91,102,104
+apps/backend/src/lib/error-ingest/error-ingest-transaction-adapter.test.ts
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 112-115
+apps/backend/src/lib/issues/saved-search-views/persistence.ts
+  s_f7f436da7c6ef4::t_3e07cb5a297b5f 188-197,213-220
+apps/backend/src/lib/issues/issue-store.ts
+  s_f7f436da7c6ef4::t_acae186fd7d4c3 402,412,467-469
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 451-456,460,470-474,517,527-535
+  s_f7f436da7c6ef4::t_07c5be7d3cd941 476
+  s_f7f436da7c6ef4::t_5b53b722213753 475
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_0a5bf8eeed32e2::t_ca52e3f7568c80 37-38
+  s_f7f436da7c6ef4::t_6bb10685197df4 39,302-303,433
+apps/backend/src/lib/error-ingest/error-ingest-protocol-projections.ts
+  s_58cec84198350e::t_7c121a7f26b47f 25
+  s_58cec84198350e::t_980594eb113bbf 23-24,26
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/paths/page-client.tsx
+  s_f7f436da7c6ef4::t_d1e759eb75149f 16,47-48,62-63
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/page-view-query.ts
+  s_f7f436da7c6ef4::t_d1e759eb75149f 1,3-9,11-12
+  s_0a5bf8eeed32e2::t_fa14ff9242c2a6 2,10
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-saved-views-data.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 97,163,166
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page-client.tsx
+  s_f7f436da7c6ef4::t_77ce4af440cb4b 57,68,400,406-411
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_b2a3cad0752d90::t_6c413669c7e270 934-937
+  s_b2a3cad0752d90::t_04d3324db265f3 88
+sdks/spec/src/apps/analytics.spec.md
+  s_b2a3cad0752d90::t_a57ca02f8683a5 198-203
+  s_b2a3cad0752d90::t_fc49f547b550a5 170
+apps/backend/src/lib/artifacts/artifact-upload-service.test.ts
+  s_f7f436da7c6ef4::t_b815e7c1d0d036 68-73,255-284
+  s_f7f436da7c6ef4::t_29f4c3a25d98ce 161-172
+  s_f7f436da7c6ef4::t_3e7f705b375d62 173-174
+  s_f7f436da7c6ef4::t_5cf74b382ddcb0 285-286
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.ts
+  s_f7f436da7c6ef4::t_2d35ce00233f71 107
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 201,203
+apps/backend/src/lib/issues/issue-lifecycle.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 335
+  s_58cec84198350e::t_4d3e58aeb10076 498-501
+apps/backend/src/lib/issues/issue-store.test.ts
+  s_f7f436da7c6ef4::t_f260dd80fbb04e 230
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.test.ts
+  s_f7f436da7c6ef4::t_2d35ce00233f71 82-99
+examples/demo/src/app/error-tracking-demo/api/observability-lab/prepare/route.test.ts
+  s_58cec84198350e::t_387cbe3f5d7a1c 58
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_f7f436da7c6ef4::t_4a8d77784c05b1 14-16,18,178
+  s_f7f436da7c6ef4::t_42d2ad6fbea49d 17
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_f7f436da7c6ef4::t_f6bcbb9d4dd203 1311,1315,1319
+  s_f7f436da7c6ef4::t_9cd866b2fdea1b 1455,1542,1566,1600,1717
+  s_0a5bf8eeed32e2::t_2deeab82a9908c 1277,1288-1290,1307
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.test.tsx
+  s_0a5bf8eeed32e2::t_bba61d169d58a5 14,17-20
+apps/backend/src/app/api/latest/analytics/envelope/route.test.ts
+  s_f7f436da7c6ef4::t_91d842dafbd66e 152
+  s_f7f436da7c6ef4::t_174a7df6218c75 82
+  s_f7f436da7c6ef4::t_31414447f49aa6 85,88,162-167,169-170
+  s_f7f436da7c6ef4::t_3b6a48a12684e8 168
+  s_f7f436da7c6ef4::t_3f58e353c14c1e 171
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_f7f436da7c6ef4::t_c2645337ce15e9 452,455-461,465
+  s_f7f436da7c6ef4::t_4a8d77784c05b1 16,545-548
+  s_f7f436da7c6ef4::t_e9fa2588799fa0 277-283,448-451,453-454,462-464
+  s_f7f436da7c6ef4::t_48049d1311e4df 466-468
+apps/backend/src/lib/qstash-outbox.test.ts
+  s_f7f436da7c6ef4::t_4d0e7c58c3ec4f 63-70
+apps/backend/src/lib/issues/issue-alerts/persistence.ts
+  s_58cec84198350e::t_28c682172ea075 11
+  s_f7f436da7c6ef4::t_cbf42258386b0d 738-745,948-952,955-956
+  s_58cec84198350e::t_e8a8505f900ad9 747-770,772-825
+  s_58cec84198350e::t_a0be7b9f3a575d 38
+apps/backend/src/lib/issues/parameterize.ts
+  s_f7f436da7c6ef4::t_2e158a849cb9f4 12-22
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_f7f436da7c6ef4::t_e3d41e9c580507 644-652,729-732
+apps/backend/src/lib/error-ingest/error-ingest-policy.ts
+  s_58cec84198350e::t_f007d39ba1d008 7
+  s_58cec84198350e::t_7d9b79c401a849 131
+  s_58cec84198350e::t_551f4fcb0d4389 26-30,33-36
+  s_f7f436da7c6ef4::t_f48c367cf5a73d 112
+apps/backend/src/instrument.test.ts
+  s_58cec84198350e::t_aef49e878f6ac1 57-60
+  s_58cec84198350e::t_2fce83be5db6a7 50
+  s_58cec84198350e::t_cbc405300d10b9 6,16-19
+  s_58cec84198350e::t_44e0dd28fc54db 74
+apps/backend/scripts/run-cron-jobs.ts
+  s_f7f436da7c6ef4::t_6e0bba641b0dea 1,7,34,38,42
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/owner/route.ts
+  s_f7f436da7c6ef4::t_e3d41e9c580507 1,19-37
+  s_f7f436da7c6ef4::t_00763f1444931e 38-39
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_0a5bf8eeed32e2::t_fb32ff14a76d47 1335,1337-1338
+apps/backend/src/lib/otlp/log-writer.ts
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 75,77
+apps/backend/src/lib/issues/issue-alerts/signal.ts
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 46,123,125-127,129,179
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/alert-rule-form.test.ts
+  s_f7f436da7c6ef4::t_2d35ce00233f71 102-112
+apps/backend/src/lib/issues/issue-alerts/persistence.test.ts
+  s_58cec84198350e::t_2536ba9b0d1343 205,220-221,225-226,229,236
+apps/backend/src/lib/issues/issue-alerts/api.ts
+  s_f7f436da7c6ef4::t_cbf42258386b0d 314
+apps/backend/src/app/api/latest/issues/alerts/route.test.ts
+  s_58cec84198350e::t_4c0bf942182fec 246
+  s_58cec84198350e::t_55e95591cc2e31 125-126,130
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 6,68,120
+apps/backend/src/lib/issues/issue-alerts/destinations.ts
+  s_f7f436da7c6ef4::t_a37631296d1a8d 96,98-102
+  s_f7f436da7c6ef4::t_dd1320bc2d4942 97
+apps/backend/src/lib/issues/issue-product.ts
+  s_f7f436da7c6ef4::t_e3d41e9c580507 492-527
+apps/backend/src/lib/ai/prompts.ts
+  s_0a5bf8eeed32e2::t_0a287d830ac3e3 984,1036,1039,1113
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.tsx
+  s_0a5bf8eeed32e2::t_7c7899da5ee57d 375-376
+apps/backend/src/instrument.ts
+  s_f7f436da7c6ef4::t_2cbf7017ab2e4b 12,53
+  s_f7f436da7c6ef4::t_34582d664275be 24-30,54-57
+apps/backend/src/lib/issues/grouping.ts
+  s_f7f436da7c6ef4::t_6a19082aad1fff 21,117,129,132,161,164,173,186-188
+  s_f7f436da7c6ef4::t_eb3c1e96211cd8 189
+apps/backend/src/lib/issues/ownership/hydration.integration.test.ts
+  s_f7f436da7c6ef4::t_731740f92a5809 1,12,15,36-37,40,79-86,89,91-92,97,114,131-135,146
+apps/backend/src/lib/issues/parameterize.test.ts
+  s_f7f436da7c6ef4::t_5cf8af478b23aa 35
+  s_f7f436da7c6ef4::t_2e158a849cb9f4 16-17
+  s_f7f436da7c6ef4::t_1bb30df607be16 34
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/page-client.tsx
+  s_58cec84198350e::t_0e4cd9fab3861a 763-765
+  s_f7f436da7c6ef4::t_2d35ce00233f71 767-774
+apps/backend/src/lib/issues/issue-alerts/workflow-status.test.ts
+  s_f7f436da7c6ef4::t_7447fda485e7b3 236,239-241,243,256-260
+  s_f7f436da7c6ef4::t_deaebe3177419f 65-67,69-73
+  s_f7f436da7c6ef4::t_041377efc31193 215-235,237-238,242,244-255,261-262
+  s_f7f436da7c6ef4::t_47560c74d740ae 1,8,25-30
+  s_f7f436da7c6ef4::t_edf3b23f41586d 31
+apps/backend/src/lib/issues/issue-alerts/ingestion.ts
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 202,270
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/alerts/issue-alerts-data.ts
+  s_f7f436da7c6ef4::t_2d35ce00233f71 64-72,75-79,91,93,95-96,100,105-107
+  s_f7f436da7c6ef4::t_c92a37bcfa80d6 94,97-99,101-104
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_f7f436da7c6ef4::t_a8e7cf8af636ce 262
+  s_f7f436da7c6ef4::t_9e52ec96656d23 46,63,69,146
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-analytics.tsx
+  s_f7f436da7c6ef4::t_d1e759eb75149f 188-189,214
+  s_0a5bf8eeed32e2::t_60197c5091cc2c 131,133,142-143
+apps/backend/src/lib/error-ingest/error-ingest-scrubber.ts
+  s_f7f436da7c6ef4::t_4d0e7c58c3ec4f 52
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 53
+apps/backend/src/lib/issues/issue-product.test.ts
+  s_f7f436da7c6ef4::t_d1d17e7420d193 8,95-97,100-102
+  s_f7f436da7c6ef4::t_4b063d970f6a9b 98-99
+  s_f7f436da7c6ef4::t_b73f74c05f33f5 103-104
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-event-sections.tsx
+  s_f7f436da7c6ef4::t_e3d41e9c580507 451,591-592
+apps/backend/src/lib/otlp/log-writer.test.ts
+  s_f7f436da7c6ef4::t_4712482b7869ee 233-244
+  s_58cec84198350e::t_50f1b135136e5f 130
+  s_58cec84198350e::t_485758a44a921b 106,111-113
+  s_58cec84198350e::t_79c1692e991a98 2
+  s_f7f436da7c6ef4::t_244864848ab7cc 6
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_0a5bf8eeed32e2::t_612dba763de867 17-19,43-44,223-240,599-627,652-655,658-659
+apps/backend/src/lib/telemetry-metering-time.ts
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 1-21
+apps/backend/src/lib/workflows/issue-alerts/registration.test.ts
+  s_f7f436da7c6ef4::t_4957fd78e032c2 66,105,109,116-117
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_0a5bf8eeed32e2::t_3e6e491b18d531 70,74,76-78
+  s_f7f436da7c6ef4::t_f6bcbb9d4dd203 73
+apps/backend/src/lib/issues/issue-alerts/api.test.ts
+  s_f7f436da7c6ef4::t_a37631296d1a8d 34,40
+apps/backend/src/lib/workflows/event-processing.ts
+  s_f7f436da7c6ef4::t_8e853f3683719e 37-46
+apps/backend/src/lib/issues/issue-merge.test.ts
+  s_f7f436da7c6ef4::t_1150a2d91d59a3 397-451
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/_shared.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 86-89
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_b2a3cad0752d90::t_333217a654adc9 2176-2177
+  s_b2a3cad0752d90::t_94562f64d778fc 49
+  s_b2a3cad0752d90::t_156103bafc4a9d 2182-2183,2191
+apps/backend/src/lib/telemetry-metering-time.test.ts
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 2,4-5,7-9,12-15
+apps/backend/src/lib/growth/metric-catalog.ts
+  s_f7f436da7c6ef4::t_5478016be73cbe 513-514,516-517,534-535,557-558,580-581,604-605,631-632,759-760
+  s_f7f436da7c6ef4::t_3b6a48a12684e8 41
+  s_0a5bf8eeed32e2::t_231b0a951d7d00 42,515
+apps/backend/src/lib/issues/issue-reconciler.test.ts
+  s_f7f436da7c6ef4::t_9e52ec96656d23 24,29
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_f7f436da7c6ef4::t_c1ca13bede4e3a 7,97-98,172
+  s_f7f436da7c6ef4::t_bdb97a2452fb32 176,182-183,211
+apps/backend/src/lib/growth/metric-store.ts
+  s_f7f436da7c6ef4::t_5478016be73cbe 364,366,368-371,374-375
+  s_0a5bf8eeed32e2::t_315373201571c0 365,367,372-373,380
+apps/backend/src/app/api/latest/issues/[issue_id]/actions/route.test.ts
+  s_f7f436da7c6ef4::t_f7486b6abbe044 26
+  s_f7f436da7c6ef4::t_0769545f8e6b91 23-25,27-29,109-115,136,192,221,255
+  s_f7f436da7c6ef4::t_835cd20073a024 3-4,14,204-216
+  s_f7f436da7c6ef4::t_8a4091e9d8de36 217-218
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_f7f436da7c6ef4::t_d1e759eb75149f 134-153,163-166
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.test.ts
+  s_b2a3cad0752d90::t_9955111170994b 20-43
+  s_b2a3cad0752d90::t_90b4e175bb8759 2
+apps/backend/src/lib/qstash-outbox.ts
+  s_f7f436da7c6ef4::t_f80d4f7c79c19e 78-80
+apps/backend/src/lib/growth/metric-catalog.test.ts
+  s_f7f436da7c6ef4::t_28671b2b1d037d 71-80,83-85
+  s_0a5bf8eeed32e2::t_c97d07db2c3036 70,81-82,126
+  s_f7f436da7c6ef4::t_756f48b91a6353 125
+  s_0a5bf8eeed32e2::t_ce0b369130a646 120-121
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.test.tsx
+  s_f7f436da7c6ef4::t_d1e759eb75149f 67-75
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.test.ts
+  s_f7f436da7c6ef4::t_b2b72a6df1ae91 13,19,378-383
+  s_f7f436da7c6ef4::t_9c00f07c20b506 417
+apps/backend/src/lib/error-ingest/error-ingest-policy.test.ts
+  s_f7f436da7c6ef4::t_244864848ab7cc 61-62
+apps/backend/src/lib/workflows/issue-alerts/contract.ts
+  s_f7f436da7c6ef4::t_17db31460c7f5c 501,506-512
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.test.ts
+  s_f7f436da7c6ef4::t_0544f963a71d30 25,37
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.ts
+  s_b2a3cad0752d90::t_5283117f966250 92-93,102
+  s_b2a3cad0752d90::t_9a5330608153dc 45-46,52-58,62,65-86,108-124
+  s_b2a3cad0752d90::t_2f5071db1abba3 87-91,94-101,103-107
+  s_b2a3cad0752d90::t_92bbe16c7033d5 125
+apps/backend/src/lib/workflows/engine.tsx
+  s_f7f436da7c6ef4::t_8e853f3683719e 15,530,533-536,543-548
+  s_f7f436da7c6ef4::t_6181b6b09cbfdb 549
+apps/backend/src/lib/cron-job-registry.ts
+  s_f7f436da7c6ef4::t_6e0bba641b0dea 50-63
+apps/backend/src/lib/issues/grouping.test.ts
+  s_f7f436da7c6ef4::t_f8207648105096 3,89-101
+docs-mintlify/openapi/admin.json
+  s_f7f436da7c6ef4::t_ccb6f860490b6d 7551-7596
+docs-mintlify/openapi/server.json
+  s_f7f436da7c6ef4::t_adb4288f7e464c 7516-7561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "3a9d1cf25c2781a9e1cb71e774be507f3d7bf25f",
+  "prompts": {},
+  "sessions": {
+    "s_0a5bf8eeed32e2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "df0a4876-2a5b-4400-8873-ae8c19f3bcbe",
+        "model": "gpt-5.6-sol-xhigh"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_58cec84198350e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a80f821c-86f6-4a0d-9159-7b865fa66ca6",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b2a3cad0752d90": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c98de706-07f0-451e-b7f8-109e2ab8ad84",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f7f436da7c6ef4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02141-e6ec-7ae0-a774-8f705e4cdf63",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
