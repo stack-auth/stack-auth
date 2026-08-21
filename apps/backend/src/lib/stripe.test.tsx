@@ -110,7 +110,9 @@ describe.sequential("Stripe invoice outcome ordering (real DB)", () => {
   }
 
   afterEach(async () => {
-    await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIds.splice(0) } } });
+    const projectIdsToDelete = [...projectIds];
+    await globalPrismaClient.project.deleteMany({ where: { id: { in: projectIdsToDelete } } });
+    projectIds.splice(0);
   });
 
   it("keeps the newer exact-paid outcome when an older event arrives later", async () => {

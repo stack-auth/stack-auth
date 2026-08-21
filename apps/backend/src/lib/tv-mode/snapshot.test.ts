@@ -18,6 +18,7 @@ import {
   createTvLivePulseErrorScreen,
   getTvOperationalMetricsClient,
   getTvAudienceWindowBounds,
+  getTvAudienceLifecycleSince,
   hasTvPaymentData,
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
@@ -575,6 +576,16 @@ describe("TV Audience lifecycle query", () => {
       comparisonStartsAt: new Date("2026-07-15T12:00:00.000Z"),
       comparisonEndsAt: new Date("2026-07-22T12:00:00.000Z"),
     });
+  });
+
+  it("aligns the final lifecycle bucket with the last rendered UTC calendar day", () => {
+    const bounds = getTvAudienceWindowBounds(new Date("2026-07-29T12:00:00.000Z"));
+    const lifecycleSince = getTvAudienceLifecycleSince(bounds.currentEndsAt);
+    const bucketSix = new Date(lifecycleSince.getTime() + 6 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
+    expect(bucketSix).toBe("2026-07-29");
   });
 
   it("uses the upstream memory-bounded day-mask shape", () => {

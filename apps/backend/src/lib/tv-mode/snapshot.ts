@@ -252,6 +252,15 @@ function dayLabel(dateString: string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(`${dateString}T00:00:00.000Z`));
 }
 
+export function getTvAudienceLifecycleSince(currentEndsAt: Date): Date {
+  // Lifecycle columns are UTC calendar days, while the other audience metrics
+  // intentionally keep their rolling seven-day window bounds.
+  const firstRenderedDay = new Date(currentEndsAt);
+  firstRenderedDay.setUTCHours(0, 0, 0, 0);
+  firstRenderedDay.setUTCDate(firstRenderedDay.getUTCDate() - 6);
+  return firstRenderedDay;
+}
+
 function dateKeys(bounds: TvWindowBounds, count: number): string[] {
   const firstDay = new Date(bounds.currentEndsAt);
   firstDay.setUTCHours(0, 0, 0, 0);
@@ -496,7 +505,7 @@ async function loadActivityScreens(
         query_params: {
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
-          since: formatClickhouseDateTime(sevenDayBounds.currentStartsAt),
+          since: formatClickhouseDateTime(getTvAudienceLifecycleSince(sevenDayBounds.currentEndsAt)),
           until: formatClickhouseDateTime(sevenDayBounds.currentEndsAt),
           windowDays: 7,
         },

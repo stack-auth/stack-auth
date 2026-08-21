@@ -4,10 +4,9 @@ This migration builds three potentially large PostgreSQL indexes concurrently.
 The indexes improve TV snapshot query cost but are not required for schema or
 application correctness.
 
-This migration requires PostgreSQL 15 or newer. Its indexes use partial-index
-predicates, so deployment validation must preserve and review those predicates;
-an index with the right columns but a missing or changed predicate is not an
-equivalent replacement.
+This migration requires PostgreSQL 15 or newer. Deployment validation must
+confirm `indpred IS NULL` (no predicate); an index with the right columns but
+an added predicate is not an equivalent replacement.
 
 ## Deployment approach
 
