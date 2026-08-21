@@ -162,6 +162,31 @@ describe("independent TV display requests", () => {
     await act(async () => root.unmount());
   });
 
+  it("clears the presentation after a post-refresh authorization failure", async () => {
+    const jsonResponse = (status: number, body?: unknown) => new Response(
+      body == null ? null : JSON.stringify(body),
+      {
+        status,
+        headers: body == null ? undefined : { "content-type": "application/json" },
+      },
+    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { accessToken: "initial-display-access-token" }))
+      .mockResolvedValueOnce(jsonResponse(401))
+      .mockResolvedValueOnce(jsonResponse(200, { accessToken: "refreshed-display-access-token" }))
+      .mockResolvedValueOnce(jsonResponse(401));
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(IndependentTvPageClient));
+      for (let turn = 0; turn < 16; turn += 1) await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("TV Mode Authorization Required");
+    await act(async () => root.unmount());
+  });
+
   it("aborts a stalled pairing-status request and resumes polling", async () => {
     const challenge = {
       challengeId: "927dfeac-2e80-4311-8180-4879b687bfc0",

@@ -2,6 +2,7 @@
 
 import { TvPresentation } from "@/components/tv-mode/tv-presentation";
 import { getPublicEnvVar } from "@/lib/env";
+import { TvSnapshotRequestError } from "@/lib/hexclave-app-internals";
 import { useTvSnapshotPolling } from "@/lib/tv-mode/live-snapshot";
 import {
   TvDisplayPairingChallengeSchema,
@@ -239,7 +240,10 @@ export default function IndependentTvPageClient() {
         signal,
       });
     }
-    if (!response.ok) throw new Error(`TV display snapshot failed with ${response.status}.`);
+    if (!response.ok) {
+      if (response.status === 401) throw new TvSnapshotRequestError(401);
+      throw new Error(`TV display snapshot failed with ${response.status}.`);
+    }
     const next = await TvSnapshotSchema.validate(await response.json(), { strict: true });
     return next;
   }, [createChallenge, refreshAccess]);
