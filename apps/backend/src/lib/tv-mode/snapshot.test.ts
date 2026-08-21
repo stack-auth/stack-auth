@@ -17,6 +17,7 @@ import {
   createTvAudienceAnalyticsObservation,
   createTvLivePulseErrorScreen,
   getTvOperationalMetricsClient,
+  getTvAudienceWindowBounds,
   hasTvPaymentData,
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
@@ -567,6 +568,15 @@ describe("TV operational metric routing", () => {
 });
 
 describe("TV Audience lifecycle query", () => {
+  it("uses one rolling seven-day interval for audience metrics", () => {
+    expect(getTvAudienceWindowBounds(new Date("2026-07-29T12:00:00.000Z"))).toEqual({
+      currentStartsAt: new Date("2026-07-22T12:00:00.000Z"),
+      currentEndsAt: new Date("2026-07-29T12:00:00.000Z"),
+      comparisonStartsAt: new Date("2026-07-15T12:00:00.000Z"),
+      comparisonEndsAt: new Date("2026-07-22T12:00:00.000Z"),
+    });
+  });
+
   it("uses the upstream memory-bounded day-mask shape", () => {
     expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("sipHash64(assumeNotNull(user_id))");
     expect(TV_AUDIENCE_LIFECYCLE_QUERY).toContain("groupBitOr");

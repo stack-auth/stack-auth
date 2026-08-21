@@ -212,11 +212,8 @@ function getRollingWindow(now: Date, days: number): TvWindowBounds {
   };
 }
 
-function getUtcCalendarDayStartsAt(now: Date, days: number): Date {
-  const startsAt = new Date(now);
-  startsAt.setUTCHours(0, 0, 0, 0);
-  startsAt.setUTCDate(startsAt.getUTCDate() - (days - 1));
-  return startsAt;
+export function getTvAudienceWindowBounds(now: Date): TvWindowBounds {
+  return getRollingWindow(now, 7);
 }
 
 function reportingWindow(bounds: TvWindowBounds, days: number): TvReportingWindow {
@@ -386,8 +383,7 @@ async function loadActivityScreens(
   now: Date,
 ): Promise<{ livePulse: TvAdapterResult<TvLivePulseScreen>, audience: TvAdapterResult<TvAudienceMomentumScreen> }> {
   const observedAt = now.toISOString();
-  const sevenDayBounds = getRollingWindow(now, 7);
-  const lifecycleStartsAt = getUtcCalendarDayStartsAt(now, 7);
+  const sevenDayBounds = getTvAudienceWindowBounds(now);
   const emptyLive = createTvLivePulseErrorScreen(now);
   const emptyAudience: TvAudienceMomentumScreen = {
     id: "audience-momentum",
@@ -500,7 +496,7 @@ async function loadActivityScreens(
         query_params: {
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
-          since: formatClickhouseDateTime(lifecycleStartsAt),
+          since: formatClickhouseDateTime(sevenDayBounds.currentStartsAt),
           until: formatClickhouseDateTime(sevenDayBounds.currentEndsAt),
           windowDays: 7,
         },
