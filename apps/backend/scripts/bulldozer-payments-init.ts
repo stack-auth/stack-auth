@@ -386,11 +386,13 @@ async function fetchSubscriptionInvoiceBatch(
       "isSubscriptionCreationInvoice",
       "status",
       "amountTotal",
-      "paidAt",
-      "markedUncollectibleAt",
-      "voidedAt",
-      "currency",
-      "amountPaid",
+      // Keep the backfill runnable while forward-compat checks use an older
+      // schema where these payment-outcome columns do not exist yet.
+      (to_jsonb("SubscriptionInvoice")->>'paidAt')::timestamp AS "paidAt",
+      (to_jsonb("SubscriptionInvoice")->>'markedUncollectibleAt')::timestamp AS "markedUncollectibleAt",
+      (to_jsonb("SubscriptionInvoice")->>'voidedAt')::timestamp AS "voidedAt",
+      to_jsonb("SubscriptionInvoice")->>'currency' AS "currency",
+      (to_jsonb("SubscriptionInvoice")->>'amountPaid')::integer AS "amountPaid",
       "hostedInvoiceUrl",
       "createdAt"
     FROM "SubscriptionInvoice"
@@ -422,9 +424,9 @@ async function fetchOneTimePurchaseBatch(
       "revokedAt",
       "refundedAt",
       "creationSource",
-      "amountReceived",
-      "currency",
-      "paidAt",
+      (to_jsonb("OneTimePurchase")->>'amountReceived')::integer AS "amountReceived",
+      to_jsonb("OneTimePurchase")->>'currency' AS "currency",
+      (to_jsonb("OneTimePurchase")->>'paidAt')::timestamp AS "paidAt",
       "createdAt"
     FROM "OneTimePurchase"
     WHERE TRUE
