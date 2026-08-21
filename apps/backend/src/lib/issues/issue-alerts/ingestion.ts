@@ -199,6 +199,7 @@ async function issueStillOwnsHashInTransaction(
 
 export async function dispatchIssueAlertsForMaterialization(options: {
   tenancy: Tenancy,
+  batchId: string,
   outcomes: readonly IssueBatchApplyOutcome[],
   inputs: readonly IssueBatchDelta[],
   receivedAt: Date,
@@ -266,6 +267,7 @@ export async function dispatchIssueAlertsForMaterialization(options: {
       issue,
       errorEnvelope: envelope,
       frequencyCounts,
+      batchId: options.batchId,
     });
 
     for (const record of records) {

@@ -59,17 +59,13 @@ export {
   type ErrorIngestClientReportScope,
 } from "./error-ingest-client-reports";
 export {
-  createErrorIngestPolicyStateStore,
   evaluateErrorIngestPolicy,
   parseErrorIngestPolicyConfig,
   ErrorIngestPolicyConfigError,
-  ErrorIngestPolicyStateError,
   type ErrorIngestPolicyConfig,
   type ErrorIngestPolicyDecision,
   type ErrorIngestPolicyItem,
   type ErrorIngestPolicyItemOutcome,
-  type ErrorIngestPolicyScope,
-  type ErrorIngestPolicyStateStore,
 } from "./error-ingest-policy";
 export {
   ERROR_INGEST_ENVELOPE_LIMITS,

@@ -189,7 +189,7 @@ export const GET = createSmartRouteHandler({
       body: {
         rule_triggers: ruleTriggers,
         analytics_hours: ANALYTICS_HOURS,
-        total_triggers: rows.length,
+        total_triggers: rows.reduce((total, row) => total + Number(row.trigger_count), 0),
         triggers_by_action: actionCounts,
       },
     };

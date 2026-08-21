@@ -19,12 +19,11 @@ export function otlpSpanPolicyItemId(span: Pick<CanonicalOtlpSpan, "traceId" | "
 function policyDetails(outcome: ErrorIngestPolicyItemOutcome): ErrorIngestItemOutcomeDetails {
   switch (outcome.status) {
     case "accepted": { return { status: "accepted" }; }
-    case "rate_limited": { return { status: "rate_limited", reason: outcome.reason, retryAfterMs: outcome.retryAfterMs }; }
     case "rejected": { return { status: "rejected", reason: outcome.reason }; }
-    case "filtered": { return { status: "filtered", reason: outcome.reason }; }
-    case "deduplicated": { return { status: "deduplicated", canonicalItemId: outcome.canonicalItemId }; }
-    case "dropped": { return { status: "dropped", reason: outcome.reason }; }
-    case "queued": { return { status: "queued", reason: outcome.reason, retryAfterMs: outcome.retryAfterMs }; }
+    default: {
+      const exhaustive: never = outcome;
+      throw new HexclaveAssertionError(`Unexpected error-ingest policy status: ${JSON.stringify(exhaustive)}`);
+    }
   }
 }
 

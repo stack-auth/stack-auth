@@ -27,6 +27,7 @@ describe("grouping config registry", () => {
     expect([...GROUPING_CONFIG_IDS]).toMatchInlineSnapshot(`
       [
         "hexclave-js:2026-08-01",
+        "hexclave-js:2026-08-20",
       ]
     `);
   });
@@ -67,10 +68,10 @@ describe("resolveActiveGroupingConfigId", () => {
 });
 
 describe("resolveGroupingConfig", () => {
-  it("returns explicit provenance for defaults and leaves the readable chain empty", () => {
+  it("defaults to the newest config while reading hashes from its predecessor", () => {
     expect(resolveGroupingConfig(undefined)).toEqual({
       activeConfigId: DEFAULT_GROUPING_CONFIG_ID,
-      readableConfigIds: [],
+      readableConfigIds: ["hexclave-js:2026-08-01"],
       provenance: { active: "default", readable: "default" },
     });
   });

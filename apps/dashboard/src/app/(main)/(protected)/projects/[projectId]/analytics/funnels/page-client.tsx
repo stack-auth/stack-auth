@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { pageViewTelemetrySubquery } from "../page-view-query";
 
 type FunnelRow = { step: number, users: number };
 
@@ -15,9 +16,8 @@ WITH
   {steps:Array(String)} AS steps,
   visits AS (
     SELECT user_id, JSONExtractString(data, 'path') AS path, min(started_at) AS first_at
-    FROM default.spans
-    WHERE span_type = '$page-view'
-      AND user_id != ''
+    FROM ${pageViewTelemetrySubquery()}
+    WHERE user_id != ''
       AND JSONExtractString(data, 'path') IN {steps:Array(String)}
     GROUP BY user_id, path
   )

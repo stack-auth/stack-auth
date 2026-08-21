@@ -13,6 +13,7 @@ import {
   type ValidatedArtifactManifest,
 } from "./artifact-manifest";
 import { ArtifactServiceError } from "./artifact-errors";
+import { parseStandardSourceMap } from "../symbolication/javascript-symbolication";
 import {
   createS3ArtifactObjectStorage,
   type ArtifactObjectStorage,
@@ -273,6 +274,13 @@ export class ArtifactUploadService {
     if (record.release !== release || record.dist !== dist) {
       throw new ArtifactServiceError("integrity_mismatch", "Stored artifact release lookup does not match the request.");
     }
+    const finalizeBytes = await this.storage.readObject(getFinalizeObjectKey(scope, record.manifestSha256));
+    if (finalizeBytes === null) return null;
+    const finalizeRecord = readStoredFinalizeRecord(finalizeBytes);
+    if (finalizeRecord.manifestSha256 !== record.manifestSha256
+      || !finalizeRecord.artifactDebugIds.includes(debugId)) {
+      throw new ArtifactServiceError("integrity_mismatch", "Stored artifact finalize marker does not match its debug-ID index.");
+    }
     return {
       manifestSha256: record.manifestSha256,
       release: record.release,
@@ -437,6 +445,27 @@ function readStoredIndexRecord(bytes: Uint8Array, scope: ArtifactScope): StoredA
   };
 }
 
+function readStoredFinalizeRecord(bytes: Uint8Array): StoredFinalizeRecord {
+  const record = parseJsonRecord(bytes, "Stored artifact finalize marker");
+  if (record.schemaVersion !== ARTIFACT_STORAGE_SCHEMA_VERSION
+    || typeof record.manifestSha256 !== "string"
+    || !Array.isArray(record.artifactDebugIds)) {
+    throw new ArtifactServiceError("integrity_mismatch", "Stored artifact finalize marker is invalid.");
+  }
+  const artifactDebugIds: string[] = [];
+  for (const debugId of record.artifactDebugIds) {
+    if (typeof debugId !== "string") {
+      throw new ArtifactServiceError("integrity_mismatch", "Stored artifact finalize marker is invalid.");
+    }
+    artifactDebugIds.push(debugId);
+  }
+  return {
+    schemaVersion: ARTIFACT_STORAGE_SCHEMA_VERSION,
+    manifestSha256: validateStoredSha256(record.manifestSha256, "Stored finalize manifest digest"),
+    artifactDebugIds,
+  };
+}
+
 function parseJsonRecord(bytes: Uint8Array, label: string): Record<string, unknown> {
   try {
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
@@ -513,20 +542,10 @@ function sameScope(left: ArtifactScope, right: ArtifactScope): boolean {
 }
 
 function verifySourceMap(sourceMapText: string, artifact: ArtifactManifestArtifact): void {
-  let record: Record<string, unknown>;
-  try {
-    const value: unknown = JSON.parse(sourceMapText);
-    if (!isRecord(value)) throw new Error("not an object");
-    record = value;
-  } catch {
-    throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} source map is not valid version-3 JSON.`);
-  }
-  if (record.sections !== undefined) {
-    throw new ArtifactServiceError("unsupported_source_map", `Artifact ${artifact.debugId} uses an indexed (sections) source map, which symbolication does not support; upload a flattened version-3 map instead.`);
-  }
-  if (record.version !== 3 || typeof record.mappings !== "string") {
-    throw new ArtifactServiceError("integrity_mismatch", `Artifact ${artifact.debugId} source map is not valid version-3 JSON.`);
-  }
+  const parsed = parseStandardSourceMap(sourceMapText);
+  if (parsed.ok) return;
+  const code = parsed.diagnostic.code === "unsupported_source_map" ? "unsupported_source_map" : "integrity_mismatch";
+  throw new ArtifactServiceError(code, `Artifact ${artifact.debugId} source map is invalid: ${parsed.diagnostic.message}`);
 }
 
 function readInlineSourceMap(bundleBytes: Uint8Array): Uint8Array | null {

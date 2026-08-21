@@ -122,7 +122,7 @@ describe("analytics event usage query", () => {
   it("counts the canonical telemetry destination once", () => {
     const query = getAnalyticsEventsUsageQueryForTest();
     expect(query).toContain("FROM analytics_internal.events");
-    expect(query).toContain("event_type NOT IN ('$log', '$error')");
+    expect(query).not.toContain("event_type NOT IN");
     expect(query).toContain("PREWHERE project_id IN {projectIds:Array(String)}");
     expect(query).toContain("event_at >= {periodStart:DateTime}");
     expect(query).not.toContain("analytics_internal.telemetry");

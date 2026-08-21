@@ -1,4 +1,4 @@
-import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, getTenancy, type Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { IssueOwnerSource, IssueOwnerType } from "@/generated/prisma/client";
 import { randomUUID } from "node:crypto";
@@ -9,8 +9,10 @@ const runPrefix = `ownership-hydration-${randomUUID()}`;
 const issueCreatedAt = new Date("2026-08-06T12:00:00.000Z");
 
 let tenancy: Tenancy;
+let internalTenancy: Tenancy;
 let issueId: string;
 let currentUserId: string;
+let internalTeamMemberId: string;
 let otherBranchUserId: string;
 let teamId: string;
 
@@ -31,8 +33,11 @@ beforeAll(async () => {
   }
   if (picked === null) throw new Error("Ownership hydration tests need a seeded tenancy with fewer than 400 users.");
   tenancy = picked;
+  internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true)
+    ?? (() => { throw new Error("Ownership hydration tests need the internal owner-team tenancy."); })();
   issueId = randomUUID();
   currentUserId = randomUUID();
+  internalTeamMemberId = randomUUID();
   otherBranchUserId = randomUUID();
   teamId = randomUUID();
 
@@ -71,17 +76,25 @@ beforeAll(async () => {
       },
     ],
   });
+  await globalPrismaClient.projectUser.create({
+    data: {
+      tenancyId: internalTenancy.id,
+      projectUserId: internalTeamMemberId,
+      mirroredProjectId: internalTenancy.project.id,
+      mirroredBranchId: internalTenancy.branchId,
+    },
+  });
   await globalPrismaClient.team.create({
     data: {
-      tenancyId: tenancy.id,
+      tenancyId: internalTenancy.id,
       teamId,
-      mirroredProjectId: tenancy.project.id,
-      mirroredBranchId: tenancy.branchId,
+      mirroredProjectId: internalTenancy.project.id,
+      mirroredBranchId: internalTenancy.branchId,
       displayName: `${runPrefix}-team`,
     },
   });
   await globalPrismaClient.teamMember.create({
-    data: { tenancyId: tenancy.id, projectUserId: currentUserId, teamId },
+    data: { tenancyId: internalTenancy.id, projectUserId: internalTeamMemberId, teamId },
   });
   await globalPrismaClient.issueOwner.create({
     data: {
@@ -98,7 +111,7 @@ beforeAll(async () => {
   const replicaDeadline = performance.now() + 30_000;
   while (true) {
     const replicatedMember = await globalPrismaClient.$replica().teamMember.findFirst({
-      where: { tenancyId: tenancy.id, teamId, projectUserId: currentUserId },
+      where: { tenancyId: internalTenancy.id, teamId, projectUserId: internalTeamMemberId },
       select: { projectUserId: true },
     });
     const replicatedOwner = await globalPrismaClient.$replica().issueOwner.findFirst({
@@ -115,8 +128,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await globalPrismaClient.issueOwner.deleteMany({ where: { tenancyId: tenancy.id, issueId } });
-  await globalPrismaClient.teamMember.deleteMany({ where: { tenancyId: tenancy.id, teamId } });
-  await globalPrismaClient.team.deleteMany({ where: { tenancyId: tenancy.id, teamId } });
+  await globalPrismaClient.teamMember.deleteMany({ where: { tenancyId: internalTenancy.id, teamId } });
+  await globalPrismaClient.team.deleteMany({ where: { tenancyId: internalTenancy.id, teamId } });
+  await globalPrismaClient.projectUser.deleteMany({
+    where: { tenancyId: internalTenancy.id, projectUserId: internalTeamMemberId },
+  });
   await globalPrismaClient.projectUser.deleteMany({
     where: { tenancyId: tenancy.id, projectUserId: { in: [currentUserId, otherBranchUserId] } },
   });
@@ -127,7 +143,7 @@ describe("database-backed ownership hydration", () => {
   it("reads a scoped team snapshot through the replica and expands it", async () => {
     const result = await hydrateIssueAlertOwnership(tenancy, issueId, { type: "team", teamId });
 
-    expect(result.recipients).toEqual([{ userId: currentUserId }]);
+    expect(result.recipients).toEqual([{ userId: internalTeamMemberId }]);
     expect(result.metadata).toMatchObject({
       target: { type: "team", team_id: teamId },
       status: "resolved",

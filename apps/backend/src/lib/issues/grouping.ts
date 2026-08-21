@@ -18,6 +18,7 @@ type GroupingImplementation = (input: GroupingInput, configId: GroupingConfigId)
 
 const GROUPING_IMPLEMENTATIONS_BY_ID: Record<GroupingConfigId, GroupingImplementation> = {
   "hexclave-js:2026-08-01": computeGroupingHexclaveJs,
+  "hexclave-js:2026-08-20": computeGroupingHexclaveJs,
 };
 
 const GROUPING_IMPLEMENTATIONS: ReadonlyMap<GroupingConfigId, GroupingImplementation> = new Map(
@@ -113,7 +114,7 @@ function computeDefaultGrouping(input: GroupingInput, configId: GroupingConfigId
     const leaves = [
       "synthetic",
       parameterizeMessage(input.message),
-      topFrame === undefined ? "" : frameFileLeaf(topFrame) ?? "",
+      topFrame === undefined ? "" : frameFileLeaf(topFrame, configId) ?? "",
     ];
     return {
       configId,
@@ -125,10 +126,10 @@ function computeDefaultGrouping(input: GroupingInput, configId: GroupingConfigId
     };
   }
 
-  const systemTuples = collapseConsecutive(frames.map((frame) => frameLeafTuple(frame)));
+  const systemTuples = collapseConsecutive(frames.map((frame) => frameLeafTuple(frame, configId)));
   const systemFrameLeaves = systemTuples.flat();
 
-  const appTuples = collapseConsecutive(frames.map((frame) => frame.inApp ? frameLeafTuple(frame) : []));
+  const appTuples = collapseConsecutive(frames.map((frame) => frame.inApp ? frameLeafTuple(frame, configId) : []));
   const appFrameLeaves = appTuples.flat();
 
   const systemHash = hashLeaves(buildLeaves(input, systemFrameLeaves));
@@ -157,10 +158,10 @@ function buildLeaves(input: GroupingInput, frameLeaves: string[]): string[] {
   return [input.type, ...frameLeaves];
 }
 
-function frameLeafTuple(frame: ParsedFrame): string[] {
+function frameLeafTuple(frame: ParsedFrame, configId: GroupingConfigId): string[] {
   const tuple: string[] = [];
 
-  const fileLeaf = frameFileLeaf(frame);
+  const fileLeaf = frameFileLeaf(frame, configId);
   if (fileLeaf !== null) tuple.push(fileLeaf);
 
   const functionLeaf = frameFunctionLeaf(frame);
@@ -169,7 +170,7 @@ function frameLeafTuple(frame: ParsedFrame): string[] {
   return tuple;
 }
 
-function frameFileLeaf(frame: ParsedFrame): string | null {
+function frameFileLeaf(frame: ParsedFrame, configId: GroupingConfigId): string | null {
   if (frame.module !== null && frame.module !== "") return frame.module;
 
   const filename = frame.filename;
@@ -181,6 +182,10 @@ function frameFileLeaf(frame: ParsedFrame): string | null {
   if (basename === "") return null;
   if (NON_CONTRIBUTING_FILENAMES.has(basename)) return null;
   if (frame.absPath !== null && hasUrlOrigin(frame.absPath)) return null;
+
+  // The initial config used only a basename for server frames. Keep that
+  // behavior immutable so existing IssueHash rows remain readable.
+  if (configId === "hexclave-js:2026-08-01") return normalizeFilenameForGrouping(basename);
 
   if (frame.absPath !== null && !hasUrlOrigin(frame.absPath)) {
     const workspaceRoot = pathSegments.findIndex((segment) => segment === "apps" || segment === "packages" || segment === "node_modules");

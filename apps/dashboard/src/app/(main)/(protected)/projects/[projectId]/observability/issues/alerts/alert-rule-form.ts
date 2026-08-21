@@ -104,6 +104,7 @@ export function getSupportedAlertRuleDraft(rule: IssueAlertRuleResponse): AlertR
   if (trigger == null) return null;
 
   if (rule.action.type === "webhook") return null;
+  if (rule.action.userIds === undefined) return null;
 
   return {
     id: rule.id,
@@ -197,9 +198,9 @@ export function buildIssueAlertRule(
 
   const subject = draft.subject.trim();
   const html = draft.html.trim();
-  const subjectError = boundedText(subject, "Subject", 16 * 1024);
+  const subjectError = boundedText(subject, "Subject", 8 * 1024);
   if (subjectError != null) return { status: "error", message: subjectError };
-  const htmlError = boundedText(html, "HTML body", 16 * 1024, { allowHtmlWhitespace: true });
+  const htmlError = boundedText(html, "HTML body", 8 * 1024, { allowHtmlWhitespace: true });
   if (htmlError != null) return { status: "error", message: htmlError };
   const category = draft.notificationCategoryName.trim();
   if (category !== "") {

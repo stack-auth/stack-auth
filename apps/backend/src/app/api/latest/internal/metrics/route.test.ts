@@ -67,15 +67,16 @@ describe("internal metrics helpers", () => {
     `);
   });
 
-  it("keeps legacy page-view events alongside current page-view spans during the retention window", () => {
+  it("reads page views through the time-ordered public store", () => {
     const sql = getAnalyticsOverviewTelemetrySqlForTest();
 
-    expect(sql).toContain("event_type IN ('$click', '$page-view')");
+    expect(sql).toContain("event_type = '$click'");
+    expect(sql).toContain("CAST('$page-view'");
     expect(sql).toContain("FROM analytics_internal.events");
-    expect(sql).toContain("FROM analytics_internal.spans FINAL");
-    expect(sql).toContain("PREWHERE project_id = {projectId:String}");
+    expect(sql).toContain("FROM default.page_views");
+    expect(sql).not.toContain("FROM analytics_internal.spans");
+    expect(sql).toContain("WHERE project_id = {projectId:String}");
     expect(sql).toContain("AND branch_id = {branchId:String}");
-    expect(sql).toContain("AND span_type = '$page-view'");
     expect(sql).toContain("AND started_at >= {since:DateTime}");
     expect(sql).toContain("AND started_at < {untilExclusive:DateTime}");
   });

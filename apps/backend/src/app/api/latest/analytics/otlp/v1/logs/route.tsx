@@ -104,15 +104,9 @@ export const POST = createSmartRouteHandler({
     };
     const policyDecision = evaluateErrorIngestPolicy({
       config: auth.tenancy.config,
-      scope: {
-        tenancyId: auth.tenancy.id,
-        projectId: auth.tenancy.project.id,
-        branchId: auth.tenancy.branchId,
-      },
       items: logRecords.flatMap((logRecord, itemIndex) => contractAcceptedIndexes.has(itemIndex)
         ? [{ itemId: `log:${itemIndex}`, itemType: "log" as const, data: getOtlpLogPolicyData(logRecord) }]
         : []),
-      nowMs: new Date().getTime(),
     });
     const acceptedItemIds = new Set(policyDecision.acceptedItemIds);
     const acceptedIndexes = new Set<number>();

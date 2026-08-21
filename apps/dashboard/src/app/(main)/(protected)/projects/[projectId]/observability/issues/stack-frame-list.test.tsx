@@ -64,4 +64,13 @@ describe("StackFrameList", () => {
     view.rerender(<StackFrameList frames={[{ ...frame, function: "nextFrame" }]} rawStack={null} order="innermost-first" />);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("keeps frame details open when a parent rebuilds an equivalent frame array", () => {
+    const view = render(<StackFrameList frames={[frame]} rawStack={null} order="innermost-first" />);
+    fireEvent.click(screen.getByRole("button", { name: "View stack frame fetchData" }));
+
+    view.rerender(<StackFrameList frames={[{ ...frame }]} rawStack={null} order="innermost-first" />);
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+  });
 });

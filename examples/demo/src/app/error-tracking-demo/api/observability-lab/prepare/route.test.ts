@@ -55,7 +55,7 @@ describe("observability lab prepare route", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       ok: false,
-      message: "Artifact storage is unavailable.",
+      message: "Failed to prepare the observability lab",
     });
   });
 });

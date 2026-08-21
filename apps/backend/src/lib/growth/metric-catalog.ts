@@ -38,6 +38,8 @@ export type GrowthCatalogMetric = {
  */
 export const GROWTH_AGENT_QUERYABLE_TABLES = [
   "events",
+  "spans",
+  "page_views",
   "users",
   "contact_channels",
   "teams",
@@ -508,6 +510,11 @@ const STORED_METRICS: GrowthCatalogMetric[] = [
 // caller's project/branch, so the templates must not (and do not) mention project_id/branch_id.
 // JSON event payloads are read via toString(data) + JSONExtractString, per the analytics query docs.
 
+const GROWTH_PAGE_VIEWS_SQL = `
+  SELECT started_at AS event_at, data, user_id
+  FROM page_views
+`;
+
 const ON_THE_FLY_METRICS: GrowthCatalogMetric[] = [
   {
     id: "utm_source_breakdown",
@@ -524,9 +531,8 @@ SELECT
   extractURLParameter(JSONExtractString(toString(data), 'url'), 'utm_source') AS utm_source,
   uniqExact(assumeNotNull(user_id)) AS visitors,
   count() AS page_views
-FROM events
-WHERE event_type = '$page-view'
-  AND user_id IS NOT NULL
+FROM (${GROWTH_PAGE_VIEWS_SQL})
+WHERE user_id IS NOT NULL
   AND event_at >= now() - INTERVAL 30 DAY
   AND extractURLParameter(JSONExtractString(toString(data), 'url'), 'utm_source') != ''
 GROUP BY utm_source
@@ -548,9 +554,8 @@ SELECT
   JSONExtractString(toString(data), 'path') AS landing_path,
   count() AS page_views,
   uniqExact(assumeNotNull(user_id)) AS visitors
-FROM events
-WHERE event_type = '$page-view'
-  AND user_id IS NOT NULL
+FROM (${GROWTH_PAGE_VIEWS_SQL})
+WHERE user_id IS NOT NULL
   AND event_at >= now() - INTERVAL 30 DAY
   AND extractURLParameter(JSONExtractString(toString(data), 'url'), 'fbclid') != ''
 GROUP BY landing_path
@@ -572,9 +577,8 @@ SELECT
   JSONExtractString(toString(data), 'path') AS path,
   count() AS page_views,
   uniqExact(assumeNotNull(user_id)) AS visitors
-FROM events
-WHERE event_type = '$page-view'
-  AND user_id IS NOT NULL
+FROM (${GROWTH_PAGE_VIEWS_SQL})
+WHERE user_id IS NOT NULL
   AND event_at >= now() - INTERVAL 30 DAY
 GROUP BY path
 ORDER BY page_views DESC
@@ -597,9 +601,8 @@ FROM (
     assumeNotNull(user_id) AS uid,
     toDate(event_at) AS day,
     argMin(JSONExtractString(toString(data), 'path'), event_at) AS landing_path
-  FROM events
-  WHERE event_type = '$page-view'
-    AND user_id IS NOT NULL
+  FROM (${GROWTH_PAGE_VIEWS_SQL})
+  WHERE user_id IS NOT NULL
     AND event_at >= now() - INTERVAL 30 DAY
   GROUP BY uid, day
 )
@@ -625,9 +628,8 @@ FROM (
   SELECT
     assumeNotNull(user_id) AS uid,
     JSONExtractString(toString(data), 'referrer') AS referrer
-  FROM events
-  WHERE event_type = '$page-view'
-    AND user_id IS NOT NULL
+  FROM (${GROWTH_PAGE_VIEWS_SQL})
+  WHERE user_id IS NOT NULL
     AND event_at >= now() - INTERVAL 30 DAY
 )
 GROUP BY referrer_domain
@@ -754,9 +756,8 @@ SELECT
   toDayOfWeek(event_at) AS weekday,
   toHour(event_at) AS hour_utc,
   count() AS page_views
-FROM events
-WHERE event_type = '$page-view'
-  AND event_at >= now() - INTERVAL 30 DAY
+FROM (${GROWTH_PAGE_VIEWS_SQL})
+WHERE event_at >= now() - INTERVAL 30 DAY
 GROUP BY weekday, hour_utc
 ORDER BY weekday, hour_utc`.trim(),
   },

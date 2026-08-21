@@ -3,6 +3,7 @@ import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { MAX_JAVASCRIPT_TIMESTAMP_MILLIS, telemetryMeteredAt } from "@/lib/telemetry-metering-time";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -64,7 +65,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       session_replay_segment_id: yupString().defined().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
-      sent_at_ms: yupNumber().defined().integer().min(0),
+      sent_at_ms: yupNumber().defined().integer().min(0).max(MAX_JAVASCRIPT_TIMESTAMP_MILLIS),
       events: yupArray(
         yupObject({
           event_type: yupString().defined().oneOf(["$page-view", "$click"]),
@@ -116,7 +117,7 @@ export const POST = createSmartRouteHandler({
           quantity: events.length,
           idempotency: {
             key: `analytics-events:${tenancyId}:${body.batch_id}`,
-            createdAt: new Date(body.sent_at_ms),
+            createdAt: telemetryMeteredAt(body.sent_at_ms, body.sent_at_ms, new Date()),
           },
         },
       ]);

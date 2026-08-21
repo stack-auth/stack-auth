@@ -43,14 +43,6 @@ const errorIngestPolicySchema = yupObject({
     dropKeys: errorIngestScrubOverrideRecordSchema(errorIngestOverrideKeySchema.defined().notOneOf(["url"], "The url selector is only valid for URL scrubbing")).optional(),
     urlKeys: errorIngestScrubOverrideRecordSchema(errorIngestOverrideKeySchema.defined()).optional(),
   }).optional(),
-  rateLimit: yupObject({
-    maxItemsPerWindow: yupNumber().integer().min(1).max(100_000).defined(),
-    windowSeconds: yupNumber().integer().min(1).max(86_400).defined(),
-  }).optional(),
-  quota: yupObject({
-    maxBytesPerWindow: yupNumber().integer().min(1).max(50 * 1024 * 1024).defined(),
-    windowSeconds: yupNumber().integer().min(1).max(86_400).defined(),
-  }).optional(),
 });
 
 declare module "yup" {
@@ -547,10 +539,6 @@ import.meta.vitest?.test("error-ingest policy schema matches the backend policy 
   await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: manyKeys } }))).rejects.toThrow("must not contain more than 32 keys");
   await expect(environmentConfigSchema.validate(config({ finalScrub: { dropKeys: Object.fromEntries(Object.entries(manyKeys).slice(0, 32)) } }))).resolves.toBeDefined();
 
-  await expect(environmentConfigSchema.validate(config({ rateLimit: { maxItemsPerWindow: 100 } }))).rejects.toThrow("windowSeconds must be defined");
-  await expect(environmentConfigSchema.validate(config({ rateLimit: { maxItemsPerWindow: 100, windowSeconds: 60 } }))).resolves.toBeDefined();
-  await expect(environmentConfigSchema.validate(config({ quota: { windowSeconds: 60 } }))).rejects.toThrow("maxBytesPerWindow must be defined");
-  await expect(environmentConfigSchema.validate(config({ quota: { maxBytesPerWindow: 1024, windowSeconds: 60 } }))).resolves.toBeDefined();
 });
 
 

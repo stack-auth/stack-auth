@@ -118,10 +118,6 @@ export type IssueAlertRuleRepository = {
   listActiveRules(scope: IssueAlertRuleScope): Promise<readonly IssueAlertRule[]>;
 };
 
-export type IssueAlertCooldownRepository = {
-  claim(key: string, now: Date, durationSeconds: number): Promise<"claimed" | "cooldown_active">;
-};
-
 export type IssueAlertNoMatchReason =
   | "rule_disabled"
   | "project_filter"
@@ -154,7 +150,6 @@ export type IssueAlertMatch = {
   cooldown: IssueAlertCooldown,
   cooldownKey: string,
   deduplicationKey: string,
-  runKey: string,
   signal: IssueAlertSignal,
 };
 

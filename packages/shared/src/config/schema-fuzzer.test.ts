@@ -274,14 +274,6 @@ const environmentSchemaFuzzerConfig = [{
         dropKeys: [undefined, { dropEmail: [undefined, "user.email", "tags.customer-id"] }],
         urlKeys: [undefined, { pathOnlyUrl: [undefined, "url", "request.url"] }],
       }],
-      rateLimit: [undefined, {
-        maxItemsPerWindow: [1, 250, 100_000],
-        windowSeconds: [1, 60, 86_400],
-      }],
-      quota: [undefined, {
-        maxBytesPerWindow: [1, 65_536, 50 * 1024 * 1024],
-        windowSeconds: [1, 60, 86_400],
-      }],
     }],
     errorGrouping: [{
       activeConfigId: [undefined, "hexclave-js:2026-08-01"] as const,

@@ -67,6 +67,22 @@ describe("GROWTH_METRIC_CATALOG", () => {
     }
   });
 
+  it("routes page-view metrics through the derived public store", () => {
+    const pageViewMetricIds = new Set([
+      "utm_source_breakdown",
+      "paid_click_landings",
+      "top_pages",
+      "landing_pages",
+      "referrer_domains",
+      "traffic_heatmap",
+    ]);
+    for (const metric of GROWTH_METRIC_CATALOG) {
+      if (!pageViewMetricIds.has(metric.id)) continue;
+      expect(metric.sqlTemplate).toContain("FROM page_views");
+      expect(metric.sqlTemplate).not.toContain("FROM spans");
+    }
+  });
+
   it("mentions every legacy growth metric id in some legacyIdNote", () => {
     const notes = GROWTH_METRIC_CATALOG
       .map((metric) => metric.legacyIdNote)
@@ -101,15 +117,13 @@ describe("GROWTH_METRIC_CATALOG", () => {
     }
   });
 
-  // This is the sync tripwire for GROWTH_AGENT_QUERYABLE_TABLES: the first 12 names MUST match the
-  // `tables` array in apps/backend/scripts/clickhouse-migrations.ts (which drives row policies and
-  // GRANT SELECT), plus the two growth metric tables added by the same script. If this test fails,
-  // update BOTH places together — a table listed here but missing a row policy would let the agent
-  // reference a table it can't actually read (or worse, the migration script grants a table the
-  // catalog doesn't know about).
+  // This is the sync tripwire for the row-policy and GRANT list in
+  // apps/backend/scripts/clickhouse-migrations.ts.
   it("matches the row-policy table list in scripts/clickhouse-migrations.ts", () => {
     expect([...GROWTH_AGENT_QUERYABLE_TABLES]).toEqual([
       "events",
+      "spans",
+      "page_views",
       "users",
       "contact_channels",
       "teams",

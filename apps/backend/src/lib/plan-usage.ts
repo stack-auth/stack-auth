@@ -352,10 +352,6 @@ export function getAnalyticsEventsUsageQueryForTest(): string {
     PREWHERE project_id IN {projectIds:Array(String)}
       AND event_at >= {periodStart:DateTime}
       AND event_at < {periodEnd:DateTime}
-    -- The former compatibility event source excluded the two log-shaped
-    -- event types. Keep that billing population exact after querying the
-    -- unified physical table directly.
-    WHERE event_type NOT IN ('$log', '$error')
   `;
 }
 

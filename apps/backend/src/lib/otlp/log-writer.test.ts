@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildOtlpIssueInputs, buildOtlpLogInsertPlan, buildOtlpLogRows, buildOtlpProductEventRows, getOtlpIssueBatchId, getOtlpLogBillingDebits, getOtlpLogPolicyData, getOtlpLogsDeduplicationToken } from "./log-writer";
+import { buildOtlpIssueInputs, buildOtlpLogInsertPlan, buildOtlpLogRows, getOtlpIssueBatchId, getOtlpLogBillingDebits, getOtlpLogPolicyData, getOtlpLogsDeduplicationToken } from "./log-writer";
 import { normalizeOtlpJsonLogsRequest } from "./logs";
 import { OTLP_LOG_REQUEST_FIXTURE } from "./logs.test-fixtures";
 import { decodeOtlpProtobufRequest, encodeOtlpProtobufRequest } from "./protobuf";
-import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
+import { evaluateErrorIngestPolicy } from "@/lib/error-ingest";
 
 const EVENT_ID = "0123456789abcdef0123456789abcdef";
 const OTHER_EVENT_ID = "fedcba9876543210fedcba9876543210";
@@ -103,12 +103,14 @@ describe("OTLP log storage mapping", () => {
     const canonical = normalizeOtlpJsonLogsRequest(requestForSignalType("event"));
     const tenant = TENANT;
 
-    expect(buildOtlpProductEventRows(canonical, tenant)).toMatchObject([{
+    expect(buildOtlpLogRows(canonical, tenant)).toMatchObject([{
       event_type: "checkout-completed",
       data: { attempt: 2 },
       project_id: "project",
     }]);
-    expect(buildOtlpProductEventRows(normalizeOtlpJsonLogsRequest(requestForSignalType("log")), tenant)).toEqual([]);
+    expect(buildOtlpLogRows(normalizeOtlpJsonLogsRequest(requestForSignalType("log")), tenant)).toMatchObject([{
+      event_type: "$log",
+    }]);
   });
 
   it("projects system autocapture events ($click) into the events table with their real type", () => {
@@ -125,11 +127,10 @@ describe("OTLP log storage mapping", () => {
     const canonical = normalizeOtlpJsonLogsRequest(request);
     const tenant = { projectId: "project", branchId: "main", userId: "user", refreshTokenId: "rt" };
 
-    expect(buildOtlpProductEventRows(canonical, tenant)).toMatchObject([{
+    expect(buildOtlpLogRows(canonical, tenant)).toMatchObject([{
       event_type: "$click",
       data: { selector: "#checkout" },
     }]);
-    expect(buildOtlpLogRows(canonical, tenant)).toMatchObject([{ event_type: "$click" }]);
   });
 
   it("derives issue grouping from marked OTel error records with a retry-stable UUID batch", () => {
@@ -229,6 +230,18 @@ describe("OTLP log storage mapping", () => {
     expect(getOtlpLogsDeduplicationToken(first, TENANT)).not.toBe(getOtlpLogsDeduplicationToken(second, TENANT));
   });
 
+  it("keeps derived identities stable across server scrub-policy changes", () => {
+    const [plain] = normalizeOtlpJsonLogsRequest({
+      resourceLogs: [{ scopeLogs: [{ logRecords: [{
+        observedTimeUnixNano: "1785888000000000003",
+        severityNumber: 9,
+        body: { stringValue: "plain log" },
+      }] }] }],
+    });
+    expect(getOtlpLogsDeduplicationToken([{ ...plain, policyScrubbedData: { value: "first" } }], TENANT))
+      .toBe(getOtlpLogsDeduplicationToken([{ ...plain, policyScrubbedData: { value: "second" } }], TENANT));
+  });
+
   it("plans independent destination writes with stable retry tokens and explicit partial destinations", () => {
     const mixed = normalizeOtlpJsonLogsRequest({
       resourceLogs: [{ scopeLogs: [{ logRecords: [
@@ -309,10 +322,7 @@ describe("OTLP log storage mapping", () => {
           },
         },
       },
-      scope: { tenancyId: "tenancy", projectId: TENANT.projectId, branchId: TENANT.branchId },
       items: [{ itemId: "log:0", itemType: "log", data: getOtlpLogPolicyData(canonical[0]) }],
-      nowMs: 60_000,
-      stateStore: createErrorIngestPolicyStateStore(),
     });
     const [row] = buildOtlpLogRows([{
       ...canonical[0],

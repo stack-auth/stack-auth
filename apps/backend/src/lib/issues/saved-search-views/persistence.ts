@@ -185,14 +185,16 @@ export async function listSavedIssueSearchViews(options: {
   }
   const database = await getDatabase(options.tenancy, options.dependencies?.database);
   const scope = scopeForTenancy(options.tenancy);
-  const rows = await database.$replica().$queryRaw<RawSavedIssueSearchView[]>(Prisma.sql`
-    SELECT ${SAVED_ISSUE_SEARCH_VIEW_COLUMNS}
-    FROM "IssueSavedSearchView"
-    WHERE ${scopeWhere(scope)}
-      AND ${accessWhere(options.actorUserId)}
-    ORDER BY "updatedAt" DESC, "id" DESC
-    LIMIT ${options.limit + 1}
-  `);
+  // Access control and deletion must be observed from one primary snapshot;
+  // a replica read can briefly expose a private/deleted view after mutation.
+  const rows = await retryTransaction(database, async (tx) => await tx.$queryRaw<RawSavedIssueSearchView[]>(Prisma.sql`
+      SELECT ${SAVED_ISSUE_SEARCH_VIEW_COLUMNS}
+      FROM "IssueSavedSearchView"
+      WHERE ${scopeWhere(scope)}
+        AND ${accessWhere(options.actorUserId)}
+      ORDER BY "updatedAt" DESC, "id" DESC
+      LIMIT ${options.limit + 1}
+    `));
   const views = rows.map(toSavedIssueSearchView);
   return {
     items: views.slice(0, options.limit),
@@ -208,14 +210,14 @@ export async function getSavedIssueSearchView(options: {
 }): Promise<SavedIssueSearchView | null> {
   const viewId = validateViewId(options.viewId);
   const database = await getDatabase(options.tenancy, options.dependencies?.database);
-  const rows = await database.$replica().$queryRaw<RawSavedIssueSearchView[]>(Prisma.sql`
-    SELECT ${SAVED_ISSUE_SEARCH_VIEW_COLUMNS}
-    FROM "IssueSavedSearchView"
-    WHERE ${scopeWhere(scopeForTenancy(options.tenancy))}
-      AND "id" = ${viewId}::uuid
-      AND ${accessWhere(options.actorUserId)}
-    LIMIT 1
-  `);
+  const rows = await retryTransaction(database, async (tx) => await tx.$queryRaw<RawSavedIssueSearchView[]>(Prisma.sql`
+      SELECT ${SAVED_ISSUE_SEARCH_VIEW_COLUMNS}
+      FROM "IssueSavedSearchView"
+      WHERE ${scopeWhere(scopeForTenancy(options.tenancy))}
+        AND "id" = ${viewId}::uuid
+        AND ${accessWhere(options.actorUserId)}
+      LIMIT 1
+    `));
   const row = rows.at(0);
   return row === undefined ? null : toSavedIssueSearchView(row);
 }

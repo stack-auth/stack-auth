@@ -202,7 +202,7 @@ describe("issue alert rule persistence", () => {
     expect(invalidScope).toEqual({ status: "invalid_rule" });
   });
 
-  it("records Workflows state and tracks replay", async () => {
+  it("records Workflows enqueue and drop", async () => {
     const rule = makeRule(`${RUN_PREFIX}-workflow-rule`, 1, 0);
     databaseRule = await service.saveRule(scope, rule);
     const match = evaluateMatch(rule, `${RUN_PREFIX}-occurrence-workflow`);
@@ -217,36 +217,24 @@ describe("issue alert rule persistence", () => {
     expect(enqueued.state).toBe("ENQUEUED");
     expect(enqueued.workflowEventId).toBe(WORKFLOW_EVENT_ID);
 
-    const failed = await service.recordWorkflowUpdate(scope, delivery.id, {
-      kind: "failed",
+    const dropped = await service.recordWorkflowUpdate(scope, delivery.id, {
+      kind: "dropped",
       error: "workflow execution failed",
-      nextRetryAt: new Date(now.getTime() + 1_000),
       at: now,
     });
-    expect(failed.state).toBe("FAILED");
-    expect(failed.attemptCount).toBe(1);
-
-    const replayed = await service.requestReplay(scope, delivery.id, new Date(now.getTime() + 3_000));
-    expect(replayed?.state).toBe("CLAIMED");
-    expect(replayed?.outcome).toBe("NONE");
-    expect(replayed?.replayCount).toBe(1);
-
-    const delivered = await service.recordWorkflowUpdate(scope, delivery.id, { kind: "delivered", at: now });
-    expect(delivered.state).toBe("DELIVERED");
-    expect(delivered.outcome).toBe("WORKFLOW_DELIVERED");
-    expect(delivered.attemptCount).toBe(2);
+    expect(dropped.state).toBe("DROPPED");
+    expect(dropped.attemptCount).toBe(1);
   });
 
-  it("rejects unbounded workflow errors and invalid replay limits", async () => {
+  it("rejects unbounded workflow errors and invalid list limits", async () => {
     const rule = makeRule(`${RUN_PREFIX}-validation-rule`, 1, 0);
     databaseRule = await service.saveRule(scope, rule);
     const match = evaluateMatch(rule, `${RUN_PREFIX}-occurrence-validation`);
     const claim = await service.claimDelivery({ scope, databaseRuleId: databaseRule.databaseId, match, now });
     const delivery = getClaimedDelivery([claim]);
     await expect(service.recordWorkflowUpdate(scope, delivery.id, {
-      kind: "failed",
+      kind: "dropped",
       error: "x".repeat(9_000),
-      nextRetryAt: null,
     })).rejects.toBeInstanceOf(IssueAlertPersistenceInputError);
     await expect(service.listDeliveries(scope, 0)).rejects.toBeInstanceOf(IssueAlertPersistenceInputError);
   });

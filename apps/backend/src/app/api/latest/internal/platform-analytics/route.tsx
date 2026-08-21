@@ -34,6 +34,9 @@ const AVG_DAYS_PER_MONTH = 365.25 / 12;
 const MRR_SUBSCRIPTION_STATUSES = ["active", "trialing"];
 const REVENUE_INVOICE_STATUSES = ["paid", "succeeded"];
 
+// The public view keeps retained event history behind the derived span store.
+const PAGE_VIEW_SOURCE = "default.page_views";
+
 function ymd(date: Date): string {
   return date.toISOString().split("T")[0];
 }
@@ -296,9 +299,8 @@ export const GET = createSmartRouteHandler({
           SELECT toDate(started_at) AS day,
             count() AS pv,
             uniqExact(sipHash64(assumeNotNull(user_id))) AS visitors
-          FROM analytics_internal.spans FINAL
-          WHERE span_type = '$page-view'
-            AND ${customerEventScope}
+          FROM ${PAGE_VIEW_SOURCE}
+          WHERE ${customerEventScope}
             AND started_at >= {since:DateTime} AND started_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
@@ -428,7 +430,7 @@ export const GET = createSmartRouteHandler({
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.teams FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.connected_accounts FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.email_outboxes FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.spans FINAL WHERE span_type = '$page-view' AND branch_id = {branchId:String} AND ${customerEventScope} GROUP BY project_id`, baseParams),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM ${PAGE_VIEW_SOURCE} WHERE branch_id = {branchId:String} AND ${customerEventScope} GROUP BY project_id`, baseParams),
       ]);
       ch = {
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,

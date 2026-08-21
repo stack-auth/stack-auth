@@ -1,5 +1,7 @@
 import type { SmartRequest } from "@/route-handlers/smart-request";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { loadIssueProductSnapshot, setIssueOwner } from "@/lib/issues/issue-product";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -9,6 +11,7 @@ import { POST as snoozeIssue } from "./snooze/route";
 import { POST as statusIssue } from "./status/route";
 import { POST as unassignIssue } from "./unassign/route";
 import { POST as unsnoozeIssue } from "./unsnooze/route";
+import { DELETE as clearIssueOwner } from "./owner/route";
 import { IssueActionAuthSchema } from "./_shared";
 
 const RUN_PREFIX = `issue-actions-${randomUUID()}`;
@@ -17,6 +20,13 @@ const createdRedirects: Array<{ tenancy: Tenancy, fromIssueId: string }> = [];
 
 let tenancy: Tenancy;
 let otherTenancy: Tenancy | null = null;
+let assignableUserIds: string[];
+
+function assignableUserId(index = 0): string {
+  const userId = assignableUserIds.at(index % assignableUserIds.length);
+  if (userId === undefined) throw new Error("Issue action route tests need a seeded project user.");
+  return userId;
+}
 
 async function findObservabilityTenancies(): Promise<Tenancy[]> {
   const rows = await globalPrismaClient.tenancy.findMany({
@@ -96,6 +106,13 @@ beforeAll(async () => {
   if (first === undefined) throw new Error("Issue action route tests need a seeded observability tenancy.");
   tenancy = first;
   otherTenancy = candidates.find((candidate) => candidate.id !== tenancy.id) ?? null;
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  assignableUserIds = (await prisma.projectUser.findMany({
+    where: { tenancyId: tenancy.id },
+    select: { projectUserId: true },
+    take: 8,
+  })).map((user) => user.projectUserId);
+  assignableUserId();
 });
 
 afterAll(async () => {
@@ -116,7 +133,7 @@ afterAll(async () => {
 describe("authenticated issue lifecycle action routes", () => {
   it("assigns, unassigns, resolves, ignores, reopens, regresses, snoozes, and unsnoozes", async () => {
     const issue = await createIssue();
-    const assigneeUserId = randomUUID();
+    const assigneeUserId = assignableUserId();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-06T12:00:00.000Z"));
     try {
@@ -172,7 +189,7 @@ describe("authenticated issue lifecycle action routes", () => {
     const source = await createIssue();
     await createRedirect(tenancy, source, survivor);
 
-    const assigneeUserId = randomUUID();
+    const assigneeUserId = assignableUserId();
     const response = await assignIssue.invoke(request(tenancy, source.id, { assignee_user_id: assigneeUserId }));
 
     expect(response.body).toMatchObject({
@@ -184,9 +201,24 @@ describe("authenticated issue lifecycle action routes", () => {
     });
   });
 
+  it("clears only manual owners through the owner action route", async () => {
+    const issue = await createIssue();
+    const ownerTeamId = getBillingTeamId(tenancy.project);
+    if (ownerTeamId === null) throw new Error("Issue owner route tests need a project owner team.");
+    await setIssueOwner({ tenancy, issueId: issue.id, owner: { type: "team", teamId: ownerTeamId, source: "manual" } });
+    await setIssueOwner({ tenancy, issueId: issue.id, owner: { type: "team", teamId: ownerTeamId, source: "codeowners" } });
+
+    const response = await clearIssueOwner.invoke({ ...request(tenancy, issue.id, {}), method: "DELETE" });
+
+    expect(response.body).toMatchObject({ issue_id: issue.id, deleted_count: 1, updated_at_millis: expect.any(Number) });
+    const snapshot = await loadIssueProductSnapshot({ tenancy, issueId: issue.id });
+    expect(snapshot.owners.some((owner) => owner.source === "manual")).toBe(false);
+    expect(snapshot.owners.some((owner) => owner.source === "codeowners")).toBe(true);
+  });
+
   it("rejects client access, cross-tenant ids, missing issues, malformed ids, and unknown JSON", async () => {
     const issue = await createIssue();
-    const assigneeUserId = randomUUID();
+    const assigneeUserId = assignableUserId();
 
     expect(await IssueActionAuthSchema.isValid({ type: "client", tenancy })).toBe(false);
     await expect(assignIssue.invoke(request(tenancy, issue.id, { assignee_user_id: assigneeUserId }, "client")))
@@ -220,7 +252,7 @@ describe("authenticated issue lifecycle action routes", () => {
 
   it("serializes concurrent assignments through the lifecycle lock", async () => {
     const issue = await createIssue();
-    const assignments: string[] = Array.from({ length: 8 }, () => randomUUID());
+    const assignments = Array.from({ length: 8 }, (_, index) => assignableUserId(index));
     const responses = await Promise.all(assignments.map((assigneeUserId) => assignIssue.invoke(
       request(tenancy, issue.id, { assignee_user_id: assigneeUserId }),
     )));

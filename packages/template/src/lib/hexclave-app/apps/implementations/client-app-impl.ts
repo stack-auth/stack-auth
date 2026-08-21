@@ -85,7 +85,7 @@ import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./analytics-config";
 import { createAnonymousAnalyticsTokenStore } from "./analytics-session";
 import { createErrorScope, getActiveErrorScope, runWithErrorScope, runWithErrorScopeAsync } from "./error-scope";
-import { DEFAULT_CONSOLE_CAPTURE_LEVELS, isObservabilityEnabled, normalizeTraceSampleRate, observabilityOptionsToJson, ObservabilityOptions } from "./observability-config";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, isObservabilityEnabled, normalizeTraceSampleRate, observabilityOptionsToJson, ObservabilityOptions, resolveClientOpenTelemetryProvider } from "./observability-config";
 import { resolveTelemetryResource, snapshotTelemetryOptions, TelemetryOptions, TelemetryResource, telemetryOptionsToJson } from "./telemetry-config";
 
 export function stripBrowserActionQueryParam() {
@@ -931,9 +931,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         environment: telemetryResource?.deploymentEnvironmentName ?? null,
         sdkVersion: clientVersion,
         analyticsBaseUrl: (this._interface.options.getAnalyticsBaseUrl ?? this._interface.options.getBaseUrl)(),
-        openTelemetryProvider: observabilityEnabled
-          ? this._observabilityOptions?.openTelemetry?.provider ?? "managed"
-          : "disabled",
+        openTelemetryProvider: resolveClientOpenTelemetryProvider(
+          this._observabilityOptions?.openTelemetry?.provider,
+          observabilityEnabled,
+        ),
         automaticSideEffects,
         consoleCaptureLevels: this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS,
         emitLog: (item) => this._emitLog(item),

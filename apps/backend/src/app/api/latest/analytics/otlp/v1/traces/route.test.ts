@@ -1,7 +1,7 @@
 import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
+import type { ErrorIngestPolicyItemOutcome } from "@/lib/error-ingest";
 import { describe, expect, it } from "vitest";
-import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
 import { createOtlpTraceProtocolProjection, otlpSpanPolicyItemId } from "@/lib/error-ingest/error-ingest-protocol-projections";
 
 const tenant: OtlpTenantContext = {
@@ -70,48 +70,40 @@ describe("OTLP traces protocol boundary", () => {
     expect(JSON.stringify(first)).not.toContain("secret-value");
   });
 
-  it("projects deterministic quota rejection through OTLP partial success and client reports", () => {
+  it("projects deterministic policy rejection through OTLP partial success and client reports", () => {
     const firstSpan = span("11111111111111111111111111111111", "2222222222222222");
     const spans = [firstSpan];
-    const policy = evaluateErrorIngestPolicy({
-      config: { observability: { errorIngest: { quota: { maxBytesPerWindow: 1, windowSeconds: 60 } } } },
-      scope: { tenancyId: "tenancy-1", projectId: tenant.projectId, branchId: tenant.branchId },
-      items: [{ itemId: otlpSpanPolicyItemId(firstSpan, 0), itemType: "span", data: { message: "span" } }],
-      nowMs: 60_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
-    const projection = createOtlpTraceProtocolProjection(spans, tenant, policy.outcomes);
+    const policyOutcomes: readonly ErrorIngestPolicyItemOutcome[] = [{
+      itemId: otlpSpanPolicyItemId(firstSpan, 0),
+      itemType: "span",
+      status: "rejected",
+      reason: "invalid",
+      scrubbed: false,
+      scrubbedBytes: 0,
+    }];
+    const projection = createOtlpTraceProtocolProjection(spans, tenant, policyOutcomes);
 
-    expect(policy.outcomes[0]).toMatchObject({ status: "rate_limited", reason: "quota" });
     expect(projection.otlpPartialSuccess.traces).toEqual({
       rejectedItems: 1,
-      body: { partialSuccess: { rejectedSpans: "1", errorMessage: "error ingest rejected 1 item(s): rate_limited=1" } },
+      body: { partialSuccess: { rejectedSpans: "1", errorMessage: "error ingest rejected 1 item(s): rejected=1" } },
     });
-    expect(projection.clientReport.rate_limited_events).toEqual([{ category: "span", reason: "quota", quantity: 1 }]);
+    expect(projection.clientReport.discarded_events).toEqual([{ category: "span", reason: "invalid", quantity: 1 }]);
   });
 
   it("keeps the live route pairing when one request repeats a W3C span identity", () => {
     const first = span("11111111111111111111111111111111", "2222222222222222");
     const second = span("11111111111111111111111111111111", "2222222222222222");
     const spans = [first, second];
-    const policy = evaluateErrorIngestPolicy({
-      config: { observability: { errorIngest: { rateLimit: { maxItemsPerWindow: 1, windowSeconds: 60 } } } },
-      scope: { tenancyId: "tenancy-1", projectId: tenant.projectId, branchId: tenant.branchId },
-      items: spans.map((item, index) => ({
-        itemId: otlpSpanPolicyItemId(item, index),
-        itemType: "span",
-        data: { message: "span" },
-      })),
-      nowMs: 60_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
+    const policyOutcomes: readonly ErrorIngestPolicyItemOutcome[] = [
+      { itemId: otlpSpanPolicyItemId(first, 0), itemType: "span", status: "accepted", scrubbed: false, scrubbedBytes: 0 },
+      { itemId: otlpSpanPolicyItemId(second, 1), itemType: "span", status: "rejected", reason: "invalid", scrubbed: false, scrubbedBytes: 0 },
+    ];
+    const projection = createOtlpTraceProtocolProjection(spans, tenant, policyOutcomes);
 
-    const projection = createOtlpTraceProtocolProjection(spans, tenant, policy.outcomes);
-
-    expect(policy.outcomes.map((outcome) => outcome.itemId)).toEqual([
+    expect(policyOutcomes.map((outcome) => outcome.itemId)).toEqual([
       otlpSpanPolicyItemId(first, 0),
       otlpSpanPolicyItemId(second, 1),
     ]);
-    expect(projection.items.map((item) => item.status)).toEqual(["accepted", "rate_limited"]);
+    expect(projection.items.map((item) => item.status)).toEqual(["accepted", "rejected"]);
   });
 });

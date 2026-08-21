@@ -11,7 +11,11 @@ import {
   type ArtifactObjectStorage,
   type ArtifactStorageObjectInfo,
 } from "../artifacts/artifact-storage";
-import { ArtifactUploadService, type ArtifactLookup } from "../artifacts/artifact-upload-service";
+import type { ArtifactLookup } from "../artifacts/artifact-upload-service";
+
+type ArtifactLookupService = {
+  lookupArtifact(scope: ArtifactScope, query: { debugId: string, release: string | null, dist: string | null }): Promise<ArtifactLookup | null>,
+};
 
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const INLINE_SOURCE_MAP_PATTERN = /^[ \t]*\/\/[#@][ \t]*sourceMappingURL=([^\s]*)[ \t]*$/gmu;
@@ -171,7 +175,7 @@ export class JavaScriptSymbolicationService {
   private readonly limits: JavaScriptSymbolicationLimits;
 
   public constructor(
-    private readonly artifacts: ArtifactUploadService,
+    private readonly artifacts: ArtifactLookupService,
     private readonly storage: ArtifactObjectStorage,
     limits: Partial<JavaScriptSymbolicationLimits> = {},
   ) {

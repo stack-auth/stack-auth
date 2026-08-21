@@ -361,14 +361,23 @@ export async function backfillGrowthMetricHistory(tenancy: Tenancy, now: Date): 
           countIf(event_type = '$page-view') AS page_views,
           countIf(event_type = '$click') AS clicks,
           uniqExactIf(assumeNotNull(user_id), event_type = '$page-view') AS visitors
-        FROM analytics_internal.events
+        FROM (
+          SELECT event_type, event_at, toString(data) AS data, user_id
+          FROM analytics_internal.events
+          WHERE event_type IN ('$token-refresh', '$click')
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+          UNION ALL
+          SELECT '$page-view' AS event_type, started_at AS event_at, data, user_id
+          FROM default.page_views
+          WHERE project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+        )
         WHERE event_type IN ('$token-refresh', '$page-view', '$click')
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
           AND user_id IS NOT NULL
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
-          AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          AND JSONExtractBool(data, 'is_anonymous') = 0
         GROUP BY day
         ORDER BY day
       `,

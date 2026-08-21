@@ -1,10 +1,11 @@
-import { IssueAlertDeliveryState, type IssueAlertDeliveryState as IssueAlertDeliveryStateValue } from "@/generated/prisma/enums";
+import { IssueAlertDeliveryState, WorkflowRunState, type IssueAlertDeliveryState as IssueAlertDeliveryStateValue } from "@/generated/prisma/enums";
 import {
   ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION,
   ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
 } from "@/lib/workflows/issue-alerts/contract";
 import {
   buildIssueAlertWorkflowReplayPlan,
+  observationFromRunState,
   reconcileIssueAlertWorkflowRun,
   reconcilePendingIssueAlertWorkflowDeliveries,
   type IssueAlertWorkflowDeliveryRef,
@@ -20,6 +21,13 @@ const tenancyId = "00000000-0000-4000-8000-000000000001";
 const triggerEventId = "00000000-0000-4000-8000-000000000003";
 const deliveryId = "00000000-0000-4000-8000-000000000004";
 const occurredAt = new Date("2026-08-06T12:00:00.000Z");
+
+describe("issue-alert workflow run observations", () => {
+  it("treats a completed durable email step as delivered during cooldown sleep", () => {
+    expect(observationFromRunState(WorkflowRunState.SLEEPING, null, true)).toEqual({ status: "completed" });
+    expect(observationFromRunState(WorkflowRunState.SLEEPING, null, false)).toEqual({ status: "in_flight" });
+  });
+});
 
 const scope: IssueAlertRuleScope = {
   tenancyId,
@@ -54,8 +62,15 @@ function makeStore(
         if (delivery.state !== IssueAlertDeliveryState.ENQUEUED) return [];
         return [delivery];
       },
-      async applyWorkflowUpdate(_scope, _deliveryId, expectedWorkflowEventId, _expectedDelivery, update) {
+      async applyWorkflowUpdate(updateScope, foundDeliveryId, expectedWorkflowEventId, expectedDelivery, update) {
+        expect(updateScope).toEqual(delivery.scope);
+        expect(foundDeliveryId).toBe(delivery.id);
         expect(expectedWorkflowEventId).toBe(delivery.workflowEventId);
+        expect(expectedDelivery).toEqual({
+          state: delivery.state,
+          nextRetryAt: delivery.nextRetryAt,
+          lastAttemptAt: delivery.lastAttemptAt,
+        });
         if (!applyResult) return false;
         updates.push(update);
         if (update.kind === "delivered") {
@@ -195,6 +210,54 @@ describe("issue-alert workflow run status", () => {
     });
     expect(result).toEqual({ scanned: 1, reconciled: 1 });
     expect(updates).toEqual([{ kind: "delivered", at: occurredAt }]);
+  });
+
+  it("continues beyond a full page of stalled deliveries", async () => {
+    const secondEventId = "00000000-0000-4000-8000-000000000006";
+    const secondDeliveryId = "00000000-0000-4000-8000-000000000007";
+    const deliveries: IssueAlertWorkflowDeliveryRef[] = [
+      {
+        id: deliveryId,
+        scope,
+        workflowEventId: triggerEventId,
+        state: IssueAlertDeliveryState.ENQUEUED,
+        nextRetryAt: null,
+        lastAttemptAt: null,
+      },
+      {
+        id: secondDeliveryId,
+        scope,
+        workflowEventId: secondEventId,
+        state: IssueAlertDeliveryState.ENQUEUED,
+        nextRetryAt: null,
+        lastAttemptAt: null,
+      },
+    ];
+    const cursors: Array<{ tenancyId: string, id: string } | undefined> = [];
+    const store: IssueAlertWorkflowStatusStore = {
+      async findDeliveryByWorkflowEventId() { return null; },
+      async listEnqueuedDeliveries(limit, afterDelivery) {
+        cursors.push(afterDelivery);
+        const start = afterDelivery === undefined
+          ? 0
+          : deliveries.findIndex(({ id }) => id === afterDelivery.id) + 1;
+        return deliveries.slice(start, start + limit);
+      },
+      async applyWorkflowUpdate() { return true; },
+    };
+    const runs: IssueAlertWorkflowRunLookup = {
+      async findRunByTriggerEventId(_tenancyId, workflowEventId) {
+        return workflowEventId === secondEventId ? { status: "completed" } : { status: "in_flight" };
+      },
+    };
+
+    expect(await reconcilePendingIssueAlertWorkflowDeliveries({ store, runs, limit: 1, at: occurredAt }))
+      .toEqual({ scanned: 2, reconciled: 1 });
+    expect(cursors).toEqual([
+      undefined,
+      { tenancyId, id: deliveryId },
+      { tenancyId, id: secondDeliveryId },
+    ]);
   });
 
   it("builds a deterministic replay event from the original trigger payload", () => {

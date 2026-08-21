@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Tenancy } from "@/lib/tenancies";
-import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import {
   WORKFLOW_ID_REGEX,
   type WorkflowManifestJson,
@@ -22,6 +22,14 @@ import { compileAndExtractWorkflowManifest } from "./compile";
 // Static route segments under /internal/workflows/ that would shadow a
 // workflow of the same name — refuse to create those.
 const RESERVED_WORKFLOW_IDS = ["runs", "events", "definitions"];
+
+async function lockWorkflowMutation(tx: PrismaClientTransaction, tenancyId: string, workflowId: string): Promise<void> {
+  // All definition mutations share one transaction-scoped lock. Re-reading
+  // after this point makes create/update/delete decisions linearizable.
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtext(${tenancyId}), hashtext(${workflowId}))
+  `);
+}
 
 export function validateWorkflowId(workflowId: string): void {
   if (!WORKFLOW_ID_REGEX.test(workflowId)) {
@@ -56,7 +64,13 @@ function getStoredScheduleKeys(manifest: Prisma.JsonValue): string[] {
 
 // ─── Sync (create + save source; every save of changed source mints a version) ───
 
-export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId: string, source: string, displayName?: string, mustBeNew: boolean }): Promise<WorkflowSyncResultJson> {
+export async function syncWorkflowSource(tenancy: Tenancy, options: {
+  workflowId: string,
+  source: string,
+  displayName?: string,
+  mustBeNew: boolean,
+  expectedLatestVersion?: number | null,
+}): Promise<WorkflowSyncResultJson> {
   validateWorkflowId(options.workflowId);
 
   const existing = await globalPrismaClient.workflowDefinition.findUnique({
@@ -77,19 +91,14 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
   }
 
   let previousScheduleKeys: string[] = [];
+  let sourceUnchanged = false;
   if (existing != null) {
     const latestVersion = await globalPrismaClient.workflowVersion.findUnique({
       where: { tenancyId_workflowId_version: { tenancyId: tenancy.id, workflowId: options.workflowId, version: existing.latestVersion } },
     }) ?? throwErr("WorkflowDefinition.latestVersion points at a missing version row");
     previousScheduleKeys = getStoredScheduleKeys(latestVersion.manifest);
     if (latestVersion.sourceHash === compiled.data.sourceHash) {
-      // Unchanged source (and runtime env): no version minted.
-      return {
-        workflow_id: options.workflowId,
-        version: existing.latestVersion,
-        created: false,
-        in_flight_runs_on_older_versions: await countInFlightRunsOnOlderVersions(tenancy.id, options.workflowId, existing.latestVersion),
-      };
+      sourceUnchanged = true;
     }
   }
 
@@ -99,8 +108,26 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
     .filter((trigger) => trigger.type === "schedule")
     .map((trigger) => `${trigger.cron}|${trigger.timezone}`);
   const newlyActivatedScheduleKeys = scheduleKeys.filter((scheduleKey) => !previousScheduleKeys.includes(scheduleKey));
+  let mutationResult: { version: number, created: boolean };
   try {
-    await retryTransaction(globalPrismaClient, async (tx) => {
+    mutationResult = await retryTransaction(globalPrismaClient, async (tx) => {
+      await lockWorkflowMutation(tx, tenancy.id, options.workflowId);
+      const lockedExisting = await tx.workflowDefinition.findUnique({
+        where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId: options.workflowId } },
+        select: { latestVersion: true },
+      });
+      if (options.expectedLatestVersion !== undefined
+        && (lockedExisting?.latestVersion ?? null) !== options.expectedLatestVersion) {
+        throw new StatusError(409, "The workflow changed after it was inspected — reload and try again");
+      }
+      const definitionChanged = lockedExisting?.latestVersion !== existing?.latestVersion;
+      if (definitionChanged) {
+        throw new StatusError(409, "Another workflow mutation happened concurrently — reload and try again");
+      }
+      if (sourceUnchanged) {
+        if (lockedExisting === null) throw new StatusError(409, "The workflow was deleted concurrently — reload and try again");
+        return { version: lockedExisting.latestVersion, created: false };
+      }
       await tx.workflowVersion.create({
         data: {
           tenancyId: tenancy.id,
@@ -162,6 +189,7 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
           skipDuplicates: true,
         });
       }
+      return { version: newVersionNumber, created: true };
     });
   } catch (error) {
     // Unique violation on the version pkey = a concurrent save raced us.
@@ -173,9 +201,9 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
 
   return {
     workflow_id: options.workflowId,
-    version: newVersionNumber,
-    created: true,
-    in_flight_runs_on_older_versions: await countInFlightRunsOnOlderVersions(tenancy.id, options.workflowId, newVersionNumber),
+    version: mutationResult.version,
+    created: mutationResult.created,
+    in_flight_runs_on_older_versions: await countInFlightRunsOnOlderVersions(tenancy.id, options.workflowId, mutationResult.version),
   };
 }
 
@@ -275,15 +303,14 @@ export async function listWorkflowsWithStats(tenancy: Tenancy): Promise<Workflow
 export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Promise<void> {
   validateWorkflowId(workflowId);
 
-  const definition = await globalPrismaClient.workflowDefinition.findUnique({
-    where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
-    select: { workflowId: true },
-  });
-  if (definition == null) {
-    throw new StatusError(404, `Workflow "${workflowId}" not found`);
-  }
-
   await retryTransaction(globalPrismaClient, async (tx) => {
+    await lockWorkflowMutation(tx, tenancy.id, workflowId);
+    const definition = await tx.workflowDefinition.findUnique({
+      where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
+      select: { workflowId: true },
+    });
+    if (definition == null) throw new StatusError(404, `Workflow "${workflowId}" not found`);
+
     // Remove the definition first so subsequent engine ticks stop matching
     // new events while the historical rows are being removed.
     await tx.workflowDefinition.delete({
@@ -301,6 +328,7 @@ export async function setWorkflowPaused(tenancy: Tenancy, workflowId: string, is
 
   const now = new Date();
   const result = await retryTransaction(globalPrismaClient, async (tx) => {
+    await lockWorkflowMutation(tx, tenancy.id, workflowId);
     const updated = await tx.$queryRaw<{ pausedAt: Date | null }[]>(Prisma.sql`
       UPDATE "WorkflowDefinition"
       SET "pausedAt" = ${isPaused ? now : null}, "updatedAt" = NOW()

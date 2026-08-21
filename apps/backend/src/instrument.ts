@@ -9,7 +9,7 @@ import backendPackageJson from "../package.json";
 import { getHexclaveServerApp } from "./hexclave";
 import { createBackendInstrumentationPlan } from "./instrumentation-plan";
 import { initPerfStats } from "./lib/dev-perf-stats";
-import { registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
+import { isNodeTelemetrySuppressed, registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
 import { getSentryRelease } from "./sentry-release";
 import { prepareBackendSentryEvent, sanitizeBackendSentrySpan } from "./sentry-scrubbing";
 
@@ -20,6 +20,13 @@ process.env.NEXT_RUNTIME ??= "nodejs";
 
 let registered = false;
 let disableBackendInstrumentations: (() => void) | null = null;
+
+function hasTelemetrySuppressionSetter(value: object): value is object & {
+  _setTelemetrySuppressionPredicate(predicate: (() => boolean) | null): void,
+} {
+  return "_setTelemetrySuppressionPredicate" in value
+    && typeof value._setTelemetrySuppressionPredicate === "function";
+}
 
 export function registerBackendInstrumentation() {
   if (registered) {
@@ -43,7 +50,11 @@ export function registerBackendInstrumentation() {
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
   initPerfStats();
 
-  getHexclaveServerApp();
+  const hexclaveServerApp = getHexclaveServerApp();
+  if (!hasTelemetrySuppressionSetter(hexclaveServerApp)) {
+    throw new Error("The backend Hexclave server app does not expose telemetry suppression registration");
+  }
+  hexclaveServerApp._setTelemetrySuppressionPredicate(isNodeTelemetrySuppressed);
 
   disableBackendInstrumentations = registerInstrumentations({
     instrumentations: [new PrismaInstrumentation()],

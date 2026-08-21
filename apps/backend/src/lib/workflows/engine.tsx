@@ -12,7 +12,7 @@ import {
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { deterministicWorkflowUuid, enqueueWorkflowEvent } from "./events";
-import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
+import { didAnySkippedWorkflowResume, workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
 import { invokeWorkflowSandbox } from "./invoke";
 import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from "./cron";
 import {
@@ -527,14 +527,25 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
         const definitions = await listDefinitionsForTenancy(event.tenancyId, definitionCache);
         const matching = definitions.filter((definition) => workflowDefinitionMatchesEvent(definition.workflowId, definition.manifest, event));
         const pausedWorkflowIds = matching.length === 0 ? new Set<string>() : await listPausedWorkflowIdsForTenancy(event.tenancyId);
+        const skippedPausedWorkflowIds = new Set<string>();
         let processedEveryDefinition = true;
         for (const definition of matching) {
-          if (pausedWorkflowIds.has(definition.workflowId)) continue;
+          if (pausedWorkflowIds.has(definition.workflowId)) {
+            skippedPausedWorkflowIds.add(definition.workflowId);
+            continue;
+          }
           if (Date.now() >= deadlineMs) {
             processedEveryDefinition = false;
             break;
           }
           await createRunForEvent(tenancy, event, definition);
+        }
+        if (processedEveryDefinition && skippedPausedWorkflowIds.size > 0) {
+          // A resume that commits after the initial pause snapshot must keep the
+          // event pending; otherwise marking it processed would permanently drop
+          // the resumed workflow's run.
+          const currentPausedWorkflowIds = await listPausedWorkflowIdsForTenancy(event.tenancyId);
+          processedEveryDefinition = !didAnySkippedWorkflowResume(skippedPausedWorkflowIds, currentPausedWorkflowIds);
         }
         if (!processedEveryDefinition) break;
       }

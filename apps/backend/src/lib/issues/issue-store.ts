@@ -399,6 +399,7 @@ type ClaimAndApplyResult =
 function buildMaterializationOutcomes(
   resolved: ReadonlyMap<string, { issueId: string, shortId: bigint, isNew: boolean }>,
   applied: readonly AppliedIssue[],
+  newIssueIds: ReadonlySet<string>,
 ): IssueBatchApplyOutcome[] {
   const regressionByIssueId = new Map(applied.map((row) => [row.issueId, row.isRegression]));
   return [...resolved.entries()].flatMap(([ownerHash, target]) => {
@@ -408,7 +409,7 @@ function buildMaterializationOutcomes(
       issueId: target.issueId,
       shortId: target.shortId,
       ownerHash,
-      isNew: target.isNew,
+      isNew: newIssueIds.has(target.issueId),
       isRegression,
     }];
   });
@@ -447,19 +448,32 @@ async function claimAndApply(
       return { status: "deferred_locked" };
     }
 
-    const lockedIssues = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+    const lockedIssues = await tx.$queryRaw<{
+      id: string,
+      timesSeen: bigint,
+      status: "UNRESOLVED" | "RESOLVED" | "IGNORED",
+      resolvedAt: Date | null,
+    }[]>(Prisma.sql`
       WITH target_ids (issue_id) AS (
         VALUES ${Prisma.join(deltas.map((delta) => Prisma.sql`(${delta.issueId}::uuid)`), ",")}
       )
-      SELECT i."id"
+      SELECT i."id", i."timesSeen", i."status", i."resolvedAt"
       FROM "Issue" AS i
       JOIN target_ids AS d ON d.issue_id = i."id"
       WHERE i."tenancyId" = ${tenancyId}::uuid
       FOR UPDATE OF i
     `);
     if (lockedIssues.length !== deltas.length) return { status: "deferred_locked" };
+    // isNew belongs to the materialization that first increments the issue,
+    // not whichever resolver happened to observe timesSeen=0 before this lock.
+    const newIssueIds = new Set(lockedIssues.filter((issue) => issue.timesSeen === 0n).map((issue) => issue.id));
+    const regressionIssueIds = new Set(lockedIssues
+      .filter((issue) => issue.status === "RESOLVED"
+        && issue.resolvedAt !== null
+        && receivedAt > issue.resolvedAt)
+      .map((issue) => issue.id));
 
-    const applied = await tx.$queryRaw<AppliedIssue[]>(Prisma.sql`
+    const applied = await tx.$queryRaw<Array<Pick<AppliedIssue, "issueId">>>(Prisma.sql`
       WITH deltas (issue_id, cnt, first_event_at, last_event_at, release, service_name) AS (
         VALUES ${Prisma.join(valueRows, ",")}
       ),
@@ -500,11 +514,7 @@ async function claimAndApply(
         WHERE i."tenancyId" = ${tenancyId}::uuid
           AND i."id" = d.issue_id
           AND EXISTS (SELECT 1 FROM claim)
-        RETURNING i."id" AS "issueId",
-          -- NULL = timestamptz is NULL, not false. New issues have no
-          -- regressedAt; storing that NULL makes a retry fail the boolean
-          -- ledger decoder.
-          COALESCE(i."regressedAt" = ${receivedAt}::timestamptz, false) AS "isRegression"
+        RETURNING i."id" AS "issueId"
       )
       SELECT * FROM applied
     `);
@@ -514,7 +524,15 @@ async function claimAndApply(
       return { status: "already_applied", ledger };
     }
 
-    const outcomes = buildMaterializationOutcomes(resolved, applied);
+    // PostgreSQL RETURNING exposes the post-update row. Deriving regression
+    // from regressedAt there makes a second batch with the same timestamp look
+    // like it performed the transition too, so carry the pre-update decision
+    // captured while the issue row was locked.
+    const outcomes = buildMaterializationOutcomes(
+      resolved,
+      applied.map(({ issueId }) => ({ issueId, isRegression: regressionIssueIds.has(issueId) })),
+      newIssueIds,
+    );
     await tx.$executeRaw`
       UPDATE "IssueMaterialization"
       SET "outcomes" = ${JSON.stringify(serializeOutcomes(outcomes))}::jsonb

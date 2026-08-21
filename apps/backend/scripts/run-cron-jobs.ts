@@ -1,10 +1,10 @@
-import { getLocalCronJobPaths } from "../src/lib/cron-job-registry";
+import { cronScheduleIntervalMs, getLocalCronJobs } from "../src/lib/cron-job-registry";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
-const endpoints = getLocalCronJobPaths();
+const jobs = getLocalCronJobs();
 
 async function main() {
   if (getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true") {
@@ -31,15 +31,15 @@ async function main() {
     console.log(`${endpoint} completed.`);
   };
 
-  for (const endpoint of endpoints) {
+  for (const job of jobs) {
     runAsynchronously(async () => {
       await wait(30_000); // Wait 30 seconds to make sure the server is fully started
       while (true) {
-        const runResult = await Result.fromPromise(run(endpoint));
+        const runResult = await Result.fromPromise(run(job.path));
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        await wait(1000);
+        await wait(cronScheduleIntervalMs(job.schedule));
       }
     });
   }

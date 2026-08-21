@@ -79,6 +79,24 @@ describe("fetchIssueAlertRules", () => {
     expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, "/issues/alerts", { method: "GET" });
   });
 
+  it("accepts backend-supported owner routing without rejecting the rule list", async () => {
+    const routedRule: IssueAlertRuleResponse = {
+      ...rule,
+      action: {
+        type: "email",
+        routing: { type: "issue_owners", fallthrough: "active_members" },
+        subject: "Issue alert",
+        html: "<p>Issue alert</p>",
+      },
+    };
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      rules: [routedRule],
+      truncated: false,
+    }), { status: 200 }));
+
+    await expect(fetchIssueAlertRules(adminApp)).resolves.toEqual({ rules: [routedRule], truncated: false });
+  });
+
   it("does not expose an upstream error body to the dashboard", async () => {
     sendInternalAdminRequestMock.mockResolvedValue(new Response("internal database details", { status: 502 }));
 

@@ -57,15 +57,6 @@ export type IssueAssignmentResult = {
   changed: boolean,
 };
 
-export type IssuePriorityCommand = {
-  operation: "priority",
-  tenancyId: string,
-  issueId: string,
-  priority: IssuePriority | null,
-  actorUserId: string | null,
-  occurredAt: Date,
-};
-
 export class IssueLifecycleInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -341,7 +332,7 @@ export async function assignIssue(options: IssueScope & {
         issueId: scope.issueId,
         actorUserId,
         type: "assignment_changed",
-        idempotencyKey: `assignment:${current.assigneeUserId ?? "none"}:${options.assigneeUserId ?? "none"}:${changedAt.toISOString()}:${actionId}`,
+        idempotencyKey: `assignment:${actionId}`,
         data: { previous_assignee_user_id: current.assigneeUserId, assignee_user_id: options.assigneeUserId },
         occurredAt: changedAt,
       });
@@ -491,25 +482,6 @@ export async function applyIssueOccurrenceLifecycle(options: IssueScope & {
   });
 }
 
-export function buildIssuePriorityCommand(options: IssueScope & {
-  priority: IssuePriority | null,
-  actorUserId?: string | null,
-  occurredAt?: Date,
-}): IssuePriorityCommand {
-  validateIssueScope(options);
-  if (options.priority !== null) parseIssuePriority(options.priority);
-  const actorUserId = validateActorUserId(options.actorUserId);
-  const occurredAt = resolveAt(options.occurredAt, "occurredAt");
-  return {
-    operation: "priority",
-    tenancyId: options.tenancy.id,
-    issueId: options.issueId,
-    priority: options.priority,
-    actorUserId,
-    occurredAt,
-  };
-}
-
 export async function setIssuePriority(options: IssueScope & {
   priority: IssuePriority | null,
   actorUserId?: string | null,
@@ -523,6 +495,9 @@ export async function setIssuePriority(options: IssueScope & {
   changedAt: Date,
   changed: boolean,
 }> {
-  buildIssuePriorityCommand(options);
+  validateIssueScope(options);
+  if (options.priority !== null) parseIssuePriority(options.priority);
+  validateActorUserId(options.actorUserId);
+  resolveAt(options.occurredAt, "occurredAt");
   return await persistIssuePriority(options);
 }

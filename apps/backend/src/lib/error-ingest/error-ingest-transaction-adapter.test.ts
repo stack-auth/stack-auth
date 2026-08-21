@@ -109,6 +109,10 @@ describe("Sentry transaction to canonical OTLP adapter", () => {
       endTimeUnixNano: "1754444800750000000",
     });
     expect(spans[1]?.attributes.get("sentry.span.data")).toEqual(expect.objectContaining({ type: "kvlist" }));
+    expect(spans.map((span) => span.attributes.get("hexclave.signal.type"))).toEqual([
+      { type: "string", value: "custom_span" },
+      { type: "string", value: "custom_span" },
+    ]);
   });
 
   it("retains the distributed upstream ancestor on the transaction root", () => {

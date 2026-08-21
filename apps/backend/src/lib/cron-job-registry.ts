@@ -47,3 +47,17 @@ export const CRON_JOB_REGISTRY: readonly CronJobDefinition[] = [
 export function getLocalCronJobPaths(): readonly string[] {
   return CRON_JOB_REGISTRY.filter((job) => job.localRunner).map((job) => job.path);
 }
+
+export function getLocalCronJobs(): readonly CronJobDefinition[] {
+  return CRON_JOB_REGISTRY.filter((job) => job.localRunner);
+}
+
+export function cronScheduleIntervalMs(schedule: string): number {
+  const minuteField = schedule.split(" ").at(0);
+  if (minuteField === "*") return 60_000;
+  const step = /^\*\/(\d+)$/u.exec(minuteField ?? "")?.[1];
+  if (step === undefined) throw new Error(`Local cron runner does not support schedule ${JSON.stringify(schedule)}`);
+  const minutes = Number(step);
+  if (!Number.isSafeInteger(minutes) || minutes <= 0) throw new Error(`Invalid local cron interval ${JSON.stringify(schedule)}`);
+  return minutes * 60_000;
+}

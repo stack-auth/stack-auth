@@ -83,7 +83,10 @@ export async function withIssueActionTarget<T>(options: {
     const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId, {
       consistency: attempt === 0 ? "replica" : "primary",
     });
-    if (target === null) throw new StatusError(StatusError.NotFound, "Issue not found");
+    if (target === null) {
+      if (attempt === 0) continue;
+      throw new StatusError(StatusError.NotFound, "Issue not found");
+    }
     try {
       return { target, result: await options.action(target) };
     } catch (error) {

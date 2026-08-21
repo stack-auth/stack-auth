@@ -1332,11 +1332,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   SELECT event_type, event_at, toString(data) AS data
                   FROM default.events
                   WHERE session_replay_id = {id:String}
+                    AND event_type != '$page-view'
                   UNION ALL
-                  SELECT span_type AS event_type, started_at AS event_at, data
-                  FROM default.spans
+                  SELECT CAST('$page-view', 'LowCardinality(String)') AS event_type, started_at AS event_at, data
+                  FROM default.page_views
                   WHERE session_replay_id = {id:String}
-                    AND span_type = '$page-view'
                 )
                 ORDER BY event_at ASC
                 LIMIT 2000`,

@@ -641,6 +641,15 @@ export async function updateIssueOwner(
   return await IssueOwnerUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue ownership"));
 }
 
+export async function clearManualIssueOwners(adminApp: object, issueId: string): Promise<void> {
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/owner`,
+    { method: "DELETE" },
+  );
+  await readJsonOrThrow(response, "Clearing manual issue ownership");
+}
+
 export async function updateIssueBookmark(
   adminApp: object,
   issueId: string,
@@ -716,4 +725,8 @@ export function setIssueSubscriptionState(
 export function setIssueOwnerState(detail: IssueDetailResponse, owner: IssueOwner): IssueDetailResponse {
   const owners = detail.product.owners.filter((value) => value.id !== owner.id);
   return { ...detail, product: { ...detail.product, owners: [owner, ...owners].slice(0, 100) } };
+}
+
+export function clearManualIssueOwnerState(detail: IssueDetailResponse): IssueDetailResponse {
+  return { ...detail, product: { ...detail.product, owners: detail.product.owners.filter((owner) => owner.source !== "manual") } };
 }

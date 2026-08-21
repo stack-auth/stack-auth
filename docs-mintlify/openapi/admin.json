@@ -7553,6 +7553,52 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Clear manual issue ownership",
+        "description": "Removes manual ownership while preserving rule and code-owner records.",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Issues"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/issues/{issue_id}/actions/owner",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "issue_id": {
+                      "type": "string"
+                    },
+                    "deleted_count": {
+                      "type": "integer"
+                    },
+                    "updated_at_millis": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "issue_id",
+                    "deleted_count",
+                    "updated_at_millis"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/issues/{issue_id}/actions/priority": {

@@ -128,8 +128,9 @@ function userTelemetrySubquery(startParam: "since" | "prevSince", endParam: "unt
       event_at,
       data,
       session_replay_id
-    FROM events
+    FROM default.events
     WHERE user_id = {userId:String}
+      AND event_type != '$page-view'
       AND event_at >= {${startParam}:DateTime}
       AND event_at < {${endParam}:DateTime}
     UNION ALL
@@ -138,9 +139,8 @@ function userTelemetrySubquery(startParam: "since" | "prevSince", endParam: "unt
       started_at AS event_at,
       CAST(data, 'JSON') AS data,
       session_replay_id
-    FROM spans
-    WHERE span_type = '$page-view'
-      AND user_id = {userId:String}
+    FROM default.page_views
+    WHERE user_id = {userId:String}
       AND started_at >= {${startParam}:DateTime}
       AND started_at < {${endParam}:DateTime}
   )`;
@@ -185,8 +185,8 @@ const TOP_PAGES_QUERY = `
       NULLIF(
         replaceRegexpOne(
           COALESCE(
-            NULLIF(JSONExtractString(data, 'path'), ''),
-            NULLIF(JSONExtractString(data, 'url'), ''),
+            NULLIF(JSONExtractString(toString(data), 'path'), ''),
+            NULLIF(JSONExtractString(toString(data), 'url'), ''),
             ''
           ),
           '[?#].*',
@@ -211,7 +211,7 @@ const TOP_REFERRERS_QUERY = `
     SELECT
       NULLIF(
         replaceRegexpOne(
-          COALESCE(NULLIF(JSONExtractString(data, 'referrer'), ''), ''),
+          COALESCE(NULLIF(JSONExtractString(toString(data), 'referrer'), ''), ''),
           '[?#].*',
           ''
         ),

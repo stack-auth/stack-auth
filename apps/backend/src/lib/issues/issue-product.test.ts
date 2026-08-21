@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   addIssueComment,
   appendIssueActivity,
+  clearManualIssueOwners,
   listIssueActivity,
   loadIssueProductSnapshot,
   setIssueBookmark,
@@ -89,6 +90,16 @@ describe("durable issue product metadata", () => {
     expect(snapshot.owners).toEqual(expect.arrayContaining([expect.objectContaining({ userId: otherUserId, source: "manual" })]));
     expect(snapshot.bookmarkedUserIds).not.toContain(otherUserId);
     expect((await listIssueActivity({ tenancy, issueId, limit: 100 })).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("clears manual owners without deleting non-manual provenance", async () => {
+    await setIssueOwner({ tenancy, issueId, owner: { type: "user", userId, source: "manual" }, actorUserId: userId });
+    await setIssueOwner({ tenancy, issueId, owner: { type: "team", teamId: ownerTeamId, source: "codeowners" }, actorUserId: userId });
+    const cleared = await clearManualIssueOwners({ tenancy, issueId, actorUserId: userId });
+    expect(cleared.deletedCount).toBeGreaterThan(0);
+    const snapshot = await loadIssueProductSnapshot({ tenancy, issueId });
+    expect(snapshot.owners.some((owner) => owner.source === "manual")).toBe(false);
+    expect(snapshot.owners.some((owner) => owner.source === "codeowners")).toBe(true);
   });
 
   it("rejects a customer-tenancy team and malformed ownership", async () => {

@@ -3,7 +3,6 @@ import {
   buildIssueAlertCooldownKey,
   buildIssueAlertDeduplicationKey,
   evaluateIssueAlertRule,
-  evaluateIssueAlertRules,
 } from "./evaluator";
 import type {
   IssueAlertRule,
@@ -85,7 +84,6 @@ describe("issue alert rule evaluation", () => {
     expect(result.outcome).toBe("match");
     if (result.outcome === "match") {
       expect(result.eventKind).toBe("new");
-      expect(result.cooldownKey).toBe(result.runKey);
       expect(result.deduplicationKey).not.toBe(result.cooldownKey);
     }
   });
@@ -147,9 +145,4 @@ describe("issue alert rule evaluation", () => {
     expect(buildIssueAlertCooldownKey(rule, first)).toBe(buildIssueAlertCooldownKey(rule, first));
   });
 
-  it("evaluates a list of rules against one signal", () => {
-    const results = evaluateIssueAlertRules([createRule()], createSignal());
-    expect(results).toHaveLength(1);
-    expect(results[0]?.outcome).toBe("match");
-  });
 });

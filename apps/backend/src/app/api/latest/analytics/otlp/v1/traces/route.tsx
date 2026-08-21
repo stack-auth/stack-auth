@@ -84,17 +84,11 @@ export const POST = createSmartRouteHandler({
     };
     const policyDecision = evaluateErrorIngestPolicy({
       config: auth.tenancy.config,
-      scope: {
-        tenancyId: auth.tenancy.id,
-        projectId: auth.tenancy.project.id,
-        branchId: auth.tenancy.branchId,
-      },
       items: spans.map((span, index) => ({
         itemId: otlpSpanPolicyItemId(span, index),
         itemType: "span" as const,
         data: getOtlpSpanPolicyData(span),
       })),
-      nowMs: new Date().getTime(),
     });
     const acceptedSpans = selectOtlpSpansAcceptedByPolicy(spans, policyDecision);
     const rows = buildOtlpTraceRows(acceptedSpans, tenant);

@@ -8,6 +8,7 @@ import {
 } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import type {
   IssueAlertCooldownKeyScope,
@@ -34,7 +35,7 @@ export const ISSUE_ALERT_RULE_CONFIG_MAX_BYTES = 64 * 1024;
 export const ISSUE_ALERT_MAX_ACTIVE_RULES = 1_000;
 export const ISSUE_ALERT_KEY_MAX_BYTES = 256;
 export const ISSUE_ALERT_OCCURRENCE_ID_MAX_BYTES = 256;
-export const ISSUE_ALERT_RETRY_ERROR_MAX_BYTES = 8 * 1024;
+export const ISSUE_ALERT_ERROR_MAX_BYTES = 8 * 1024;
 export const ISSUE_ALERT_MAX_COOLDOWN_SECONDS = 30 * 24 * 60 * 60;
 
 const ISSUE_ALERT_MAX_FILTER_VALUES = 64;
@@ -122,7 +123,6 @@ export type IssueAlertDeliveryClaimResult =
 export type IssueAlertWorkflowUpdate =
   | { kind: "enqueued", workflowEventId: string, payload?: IssueAlertWorkflowEventPayload, at?: Date }
   | { kind: "delivered", at?: Date }
-  | { kind: "failed", error: string, nextRetryAt: Date | null, at?: Date }
   | { kind: "dropped", error?: string, at?: Date };
 
 export type IssueAlertWorkflowDeliveryExpectation = {
@@ -735,103 +735,95 @@ async function recordWorkflowUpdateInTransaction(
     nextRetryAt: expectedDelivery.nextRetryAt,
     lastAttemptAt: expectedDelivery.lastAttemptAt,
   };
-  const lifecycleStateGuard = expectedWorkflowEventId === undefined ? {} : {
-    state: { notIn: [IssueAlertDeliveryState.DELIVERED, IssueAlertDeliveryState.DROPPED] },
+  const lifecycleStateGuard = {
+    state: {
+      notIn: [
+        IssueAlertDeliveryState.DELIVERED,
+        IssueAlertDeliveryState.DROPPED,
+        IssueAlertDeliveryState.SUPPRESSED,
+      ],
+    },
   };
-  if (update.kind === "enqueued") {
-    validateWorkflowEventId(update.workflowEventId);
-    if (expectedDelivery !== undefined && expectedDelivery.state !== IssueAlertDeliveryState.CLAIMED) return null;
-    const updated = await client.issueAlertDelivery.updateMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        id: deliveryId,
-        ...(expectedDelivery === undefined
-          ? { ...workflowEventGuard, state: IssueAlertDeliveryState.CLAIMED }
-          : { ...workflowEventGuard, ...expectedDeliveryGuard }),
-      },
-      data: {
-        state: IssueAlertDeliveryState.ENQUEUED,
-        outcome: IssueAlertDeliveryOutcome.WORKFLOW_ENQUEUED,
-        workflowEventId: update.workflowEventId,
-        ...(update.payload === undefined ? {} : { workflowPayload: update.payload }),
-        enqueuedAt: at,
-      },
-    });
-    if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
-  } else if (update.kind === "delivered") {
-    const updated = await client.issueAlertDelivery.updateMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        id: deliveryId,
-        ...workflowEventGuard,
-        ...lifecycleStateGuard,
-        ...expectedDeliveryGuard,
-      },
-      data: {
-        state: IssueAlertDeliveryState.DELIVERED,
-        outcome: IssueAlertDeliveryOutcome.WORKFLOW_DELIVERED,
-        completedAt: at,
-        lastAttemptAt: at,
-        attemptCount: { increment: 1 },
-        nextRetryAt: null,
-        lastError: null,
-      },
-    });
-    if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
-  } else if (update.kind === "failed") {
-    if (!isBoundedText(update.error, ISSUE_ALERT_RETRY_ERROR_MAX_BYTES)) {
-      throw new IssueAlertPersistenceInputError("workflow failure error must be a non-empty bounded string");
+  switch (update.kind) {
+    case "enqueued": {
+      validateWorkflowEventId(update.workflowEventId);
+      if (expectedDelivery !== undefined && expectedDelivery.state !== IssueAlertDeliveryState.CLAIMED) return null;
+      const updated = await client.issueAlertDelivery.updateMany({
+        where: {
+          tenancyId: scope.tenancyId,
+          projectId: scope.projectId,
+          branchId: scope.branchId,
+          id: deliveryId,
+          ...(expectedDelivery === undefined
+            ? { ...workflowEventGuard, state: IssueAlertDeliveryState.CLAIMED }
+            : { ...workflowEventGuard, ...expectedDeliveryGuard }),
+        },
+        data: {
+          state: IssueAlertDeliveryState.ENQUEUED,
+          outcome: IssueAlertDeliveryOutcome.WORKFLOW_ENQUEUED,
+          workflowEventId: update.workflowEventId,
+          ...(update.payload === undefined ? {} : { workflowPayload: update.payload }),
+          enqueuedAt: at,
+        },
+      });
+      if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
+      break;
     }
-    const updated = await client.issueAlertDelivery.updateMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        id: deliveryId,
-        ...workflowEventGuard,
-        ...lifecycleStateGuard,
-        ...expectedDeliveryGuard,
-      },
-      data: {
-        state: IssueAlertDeliveryState.FAILED,
-        outcome: IssueAlertDeliveryOutcome.WORKFLOW_FAILED,
-        completedAt: null,
-        lastAttemptAt: at,
-        attemptCount: { increment: 1 },
-        nextRetryAt: update.nextRetryAt,
-        lastError: update.error,
-      },
-    });
-    if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
-  } else {
-    if (update.error !== undefined && !isBoundedText(update.error, ISSUE_ALERT_RETRY_ERROR_MAX_BYTES)) {
-      throw new IssueAlertPersistenceInputError("workflow drop error must be a bounded string");
+    case "delivered": {
+      const updated = await client.issueAlertDelivery.updateMany({
+        where: {
+          tenancyId: scope.tenancyId,
+          projectId: scope.projectId,
+          branchId: scope.branchId,
+          id: deliveryId,
+          ...workflowEventGuard,
+          ...lifecycleStateGuard,
+          ...expectedDeliveryGuard,
+        },
+        data: {
+          state: IssueAlertDeliveryState.DELIVERED,
+          outcome: IssueAlertDeliveryOutcome.WORKFLOW_DELIVERED,
+          completedAt: at,
+          lastAttemptAt: at,
+          attemptCount: { increment: 1 },
+          nextRetryAt: null,
+          lastError: null,
+        },
+      });
+      if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
+      break;
     }
-    const updated = await client.issueAlertDelivery.updateMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        id: deliveryId,
-        ...workflowEventGuard,
-        ...lifecycleStateGuard,
-        ...expectedDeliveryGuard,
-      },
-      data: {
-        state: IssueAlertDeliveryState.DROPPED,
-        outcome: IssueAlertDeliveryOutcome.WORKFLOW_DROPPED,
-        completedAt: at,
-        lastAttemptAt: at,
-        attemptCount: { increment: 1 },
-        nextRetryAt: null,
-        lastError: update.error ?? null,
-      },
-    });
-    if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
+    case "dropped": {
+      if (update.error !== undefined && !isBoundedText(update.error, ISSUE_ALERT_ERROR_MAX_BYTES)) {
+        throw new IssueAlertPersistenceInputError("workflow drop error must be a bounded string");
+      }
+      const updated = await client.issueAlertDelivery.updateMany({
+        where: {
+          tenancyId: scope.tenancyId,
+          projectId: scope.projectId,
+          branchId: scope.branchId,
+          id: deliveryId,
+          ...workflowEventGuard,
+          ...lifecycleStateGuard,
+          ...expectedDeliveryGuard,
+        },
+        data: {
+          state: IssueAlertDeliveryState.DROPPED,
+          outcome: IssueAlertDeliveryOutcome.WORKFLOW_DROPPED,
+          completedAt: at,
+          lastAttemptAt: at,
+          attemptCount: { increment: 1 },
+          nextRetryAt: null,
+          lastError: update.error ?? null,
+        },
+      });
+      if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
+      break;
+    }
+    default: {
+      const exhaustive: never = update;
+      throw new HexclaveAssertionError(`Unhandled issue alert workflow update: ${JSON.stringify(exhaustive)}`);
+    }
   }
 
   const row = await findDelivery(client, scope, { id: deliveryId });
@@ -848,16 +840,6 @@ export async function recordIssueAlertWorkflowUpdateInTransaction(
   const row = await recordWorkflowUpdateInTransaction(client, scope, deliveryId, update);
   if (row === null) throw new Error("Issue alert delivery was not found while recording workflow state");
   return row;
-}
-
-export async function recordIssueAlertWorkflowUpdateIfCurrentInTransaction(
-  client: PrismaClientTransaction,
-  scope: IssueAlertRuleScope,
-  deliveryId: string,
-  expectedWorkflowEventId: string,
-  update: IssueAlertWorkflowUpdate,
-): Promise<IssueAlertDeliverySnapshot | null> {
-  return await recordWorkflowUpdateInTransaction(client, scope, deliveryId, update, expectedWorkflowEventId);
 }
 
 export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
@@ -963,10 +945,15 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
     ));
   }
 
-  async inspectDelivery(scope: IssueAlertRuleScope, deliveryId: string): Promise<IssueAlertDeliverySnapshot | null> {
+  async inspectDelivery(
+    scope: IssueAlertRuleScope,
+    deliveryId: string,
+    options?: { consistency: "primary" | "replica" },
+  ): Promise<IssueAlertDeliverySnapshot | null> {
     validateScope(scope);
     if (!UUID_PATTERN.test(deliveryId)) throw new IssueAlertPersistenceInputError("deliveryId must be a UUID");
-    const row = await this.client.$replica().issueAlertDelivery.findFirst({
+    const client = options?.consistency === "primary" ? this.client : this.client.$replica();
+    const row = await client.issueAlertDelivery.findFirst({
       where: { tenancyId: scope.tenancyId, projectId: scope.projectId, branchId: scope.branchId, id: deliveryId },
       select: DELIVERY_SELECT,
     });
@@ -983,31 +970,6 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
       select: DELIVERY_SELECT,
     });
     return rows.map(toDeliverySnapshot);
-  }
-
-  async requestReplay(scope: IssueAlertRuleScope, deliveryId: string, now = new Date()): Promise<IssueAlertDeliverySnapshot | null> {
-    validateScope(scope);
-    if (!UUID_PATTERN.test(deliveryId)) throw new IssueAlertPersistenceInputError("deliveryId must be a UUID");
-    const timestamp = validateTimestamp(now, "replay time");
-    await this.client.issueAlertDelivery.updateMany({
-      where: {
-        tenancyId: scope.tenancyId,
-        projectId: scope.projectId,
-        branchId: scope.branchId,
-        id: deliveryId,
-        state: { in: [IssueAlertDeliveryState.FAILED, IssueAlertDeliveryState.DROPPED] },
-      },
-      data: {
-        state: IssueAlertDeliveryState.CLAIMED,
-        outcome: IssueAlertDeliveryOutcome.NONE,
-        replayCount: { increment: 1 },
-        nextRetryAt: null,
-        lastError: null,
-        completedAt: null,
-        claimedAt: timestamp,
-      },
-    });
-    return await findDelivery(this.client, scope, { id: deliveryId });
   }
 }
 

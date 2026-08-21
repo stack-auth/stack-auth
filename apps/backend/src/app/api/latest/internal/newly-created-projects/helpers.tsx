@@ -372,16 +372,9 @@ export function buildInternalOwnerReplayIdsQuery(): string {
       SELECT DISTINCT assumeNotNull(session_replay_id) AS sessionReplayId
       FROM (
         SELECT session_replay_id, user_id, data AS payload
-        FROM analytics_internal.spans FINAL
-        PREWHERE project_id = {internalProjectId:String}
+        FROM default.page_views
+        WHERE project_id = {internalProjectId:String}
           AND branch_id = {branchId:String}
-          AND span_type = '$page-view'
-        UNION ALL
-        SELECT session_replay_id, user_id, toString(data) AS payload
-        FROM analytics_internal.events
-        PREWHERE project_id = {internalProjectId:String}
-          AND branch_id = {branchId:String}
-          AND event_type = '$page-view'
       )
       WHERE user_id IN {ownerUserIds:Array(String)}
         AND session_replay_id IS NOT NULL

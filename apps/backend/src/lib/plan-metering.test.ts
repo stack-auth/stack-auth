@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   bulldozerTryDecreaseItemQuantityChanges: vi.fn(),
   createMany: vi.fn(),
   deleteMany: vi.fn(),
+  findMany: vi.fn(),
   ensureCustomerExists: vi.fn(),
   getPrismaClientForTenancy: vi.fn(),
   executeRaw: vi.fn(),
@@ -57,12 +58,14 @@ describe("plan metering persistence", () => {
     mocks.bulldozerTryDecreaseItemQuantityChanges.mockResolvedValue({ insufficientItemId: null });
     mocks.createMany.mockResolvedValue({ count: 1 });
     mocks.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.findMany.mockResolvedValue([]);
     mocks.executeRaw.mockResolvedValue(0);
     mocks.retryTransaction.mockImplementation(async (_prisma, callback) => await callback({
       $executeRaw: mocks.executeRaw,
       itemQuantityChange: {
         createMany: mocks.createMany,
         deleteMany: mocks.deleteMany,
+        findMany: mocks.findMany,
       },
     }));
   });
@@ -73,10 +76,10 @@ describe("plan metering persistence", () => {
       quantity: 3,
       idempotency: { key: "analytics-events:tenancy:batch", createdAt: new Date("2026-08-04T12:00:00.123Z") },
     };
-    await tryDecreasePlanItemQuantities("billing-team", [debit]);
+    const debitResult = await tryDecreasePlanItemQuantities("billing-team", [debit]);
     const originalChange = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.calls[0][0][0];
 
-    await rollbackPlanItemDebits("billing-team", [debit]);
+    await rollbackPlanItemDebits("billing-team", [debit], new Set(debitResult.createdChangeIds));
 
     expect(mocks.bulldozerDeleteItemQuantityChanges).toHaveBeenCalledOnce();
     expect(mocks.bulldozerDeleteItemQuantityChanges).toHaveBeenCalledWith([originalChange]);
@@ -117,5 +120,25 @@ describe("plan metering persistence", () => {
     expect(firstChange.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(retryChange).toEqual(firstChange);
     expect(firstChange.createdAt).toEqual(createdAt);
+  });
+
+  it("does not let an idempotent retry claim or roll back another invocation's debit", async () => {
+    const debit = {
+      itemId: ITEM_IDS.sessionReplays,
+      quantity: 1,
+      idempotency: { key: "session-replay:tenancy:batch", createdAt: new Date("2026-08-04T12:00:00.123Z") },
+    };
+    const first = await tryDecreasePlanItemQuantities("billing-team", [debit]);
+    const createdChangeId = first.createdChangeIds.at(0);
+    if (createdChangeId === undefined) throw new Error("Expected the first debit to own a plan change");
+
+    mocks.findMany.mockResolvedValueOnce([{ id: createdChangeId }]);
+    const retry = await tryDecreasePlanItemQuantities("billing-team", [debit]);
+    expect(retry.createdChangeIds).toEqual([]);
+    expect(mocks.bulldozerTryDecreaseItemQuantityChanges).toHaveBeenCalledOnce();
+
+    await rollbackPlanItemDebits("billing-team", [debit], new Set(retry.createdChangeIds));
+    expect(mocks.bulldozerDeleteItemQuantityChanges).not.toHaveBeenCalled();
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
   });
 });

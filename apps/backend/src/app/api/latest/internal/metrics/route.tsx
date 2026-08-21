@@ -1274,7 +1274,7 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
   };
 }
 
-const PAGE_VIEWS_FROM_SPANS_SQL = `
+const PAGE_VIEWS_SQL = `
   SELECT
     CAST('$page-view', 'LowCardinality(String)') AS event_type,
     started_at AS event_at,
@@ -1285,12 +1285,10 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
     team_id,
     refresh_token_id,
     session_replay_id,
-    session_replay_segment_id,
-    created_at
-  FROM analytics_internal.spans FINAL
-  PREWHERE project_id = {projectId:String}
+    session_replay_segment_id
+  FROM default.page_views
+  WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
-    AND span_type = '$page-view'
     AND started_at >= {since:DateTime}
     AND started_at < {untilExclusive:DateTime}
 `;
@@ -1306,20 +1304,19 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     team_id,
     refresh_token_id,
     session_replay_id,
-    session_replay_segment_id,
-    created_at
+    session_replay_segment_id
   FROM analytics_internal.events
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
-    AND event_type IN ('$click', '$page-view')
+    AND event_type = '$click'
     AND event_at >= {since:DateTime}
     AND event_at < {untilExclusive:DateTime}
   UNION ALL
-  ${PAGE_VIEWS_FROM_SPANS_SQL}
+  ${PAGE_VIEWS_SQL}
 `;
 
 export function getAnalyticsOverviewTelemetrySqlForTest(): string {
-  return PAGE_VIEWS_AND_CLICKS_SQL;
+  return [PAGE_VIEWS_SQL, PAGE_VIEWS_AND_CLICKS_SQL].join("\n");
 }
 
 export function reconcileAnalyticsVisitorCount(
@@ -1455,7 +1452,7 @@ export async function loadAnalyticsOverview(
       ? `
             AND user_id IN (
               SELECT assumeNotNull(e.user_id)
-              FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
+              FROM (${PAGE_VIEWS_SQL}) AS e
               ${filters.country_code != null ? analyticsUserJoinWithCountry : ""}
               WHERE e.project_id = {projectId:String}
                 AND e.branch_id = {branchId:String}
@@ -1542,7 +1539,7 @@ export async function loadAnalyticsOverview(
         query: `
           SELECT
             uniqExact(${analyticsVisitorKey}) AS visitors
-          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
+          FROM (${PAGE_VIEWS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
           WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
@@ -1566,7 +1563,7 @@ export async function loadAnalyticsOverview(
           SELECT
             nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
             uniqExact(${analyticsVisitorKey}) AS visitors
-          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
+          FROM (${PAGE_VIEWS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
           WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
@@ -1600,7 +1597,7 @@ export async function loadAnalyticsOverview(
           SELECT
             upper(coalesce(token_refresh_users.latest_country, '')) AS country_code,
             uniqExact(${analyticsVisitorKey}) AS visitors
-          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
+          FROM (${PAGE_VIEWS_SQL}) AS e
           ${analyticsUserJoinWithCountry}
           WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
@@ -1717,7 +1714,7 @@ export async function loadAnalyticsOverview(
               ${analyticsOverviewBrowserSql} AS browser,
               ${analyticsOverviewOsSql} AS os,
               ${analyticsOverviewDeviceSql} AS device
-            FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
+            FROM (${PAGE_VIEWS_SQL}) AS e
             ${analyticsUserJoinForFilteredEvents}
             WHERE e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}

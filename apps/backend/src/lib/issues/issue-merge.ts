@@ -386,9 +386,18 @@ async function applyMerge(
     comments_moved AS (
       UPDATE "IssueComment" c
       SET "issueId" = ${primaryId}::uuid,
-          -- Keys were scoped to the old issue. Preserve every comment even
-          -- when two merged issues happened to reuse the same request key.
-          "idempotencyKey" = 'merged:' || c."id"::text
+          -- Preserve retry keys unless another participant already owns the
+          -- same key in the merged scope. Rewriting every key would make an
+          -- ordinary post-merge retry create a duplicate comment.
+          "idempotencyKey" = CASE WHEN EXISTS (
+            SELECT 1 FROM "IssueComment" conflict
+            WHERE conflict."tenancyId" = c."tenancyId"
+              AND conflict."projectId" = c."projectId"
+              AND conflict."branchId" = c."branchId"
+              AND conflict."idempotencyKey" = c."idempotencyKey"
+              AND conflict."issueId" = ANY(${[primaryId, ...loserIds]}::uuid[])
+              AND (conflict."issueId" = ${primaryId}::uuid OR conflict."id"::text < c."id"::text)
+          ) THEN 'merged:' || c."id"::text ELSE c."idempotencyKey" END
       WHERE c."tenancyId" = ${tenancyId}::uuid
         AND c."issueId" = ANY(${[...loserIds]}::uuid[])
         AND EXISTS (SELECT 1 FROM primary_updated)
@@ -397,7 +406,15 @@ async function applyMerge(
     activities_moved AS (
       UPDATE "IssueActivity" a
       SET "issueId" = ${primaryId}::uuid,
-          "idempotencyKey" = 'merged:' || a."id"::text
+          "idempotencyKey" = CASE WHEN EXISTS (
+            SELECT 1 FROM "IssueActivity" conflict
+            WHERE conflict."tenancyId" = a."tenancyId"
+              AND conflict."projectId" = a."projectId"
+              AND conflict."branchId" = a."branchId"
+              AND conflict."idempotencyKey" = a."idempotencyKey"
+              AND conflict."issueId" = ANY(${[primaryId, ...loserIds]}::uuid[])
+              AND (conflict."issueId" = ${primaryId}::uuid OR conflict."id"::text < a."id"::text)
+          ) THEN 'merged:' || a."id"::text ELSE a."idempotencyKey" END
       WHERE a."tenancyId" = ${tenancyId}::uuid
         AND a."issueId" = ANY(${[...loserIds]}::uuid[])
         AND EXISTS (SELECT 1 FROM primary_updated)
@@ -416,7 +433,7 @@ async function applyMerge(
             AND (keep."issueId" = ${primaryId}::uuid OR keep."issueId"::text < b."issueId"::text)
         )
         AND EXISTS (SELECT 1 FROM primary_updated)
-      RETURNING b."userId"
+      RETURNING b."issueId", b."userId"
     ),
     bookmarks_moved AS (
       UPDATE "IssueBookmark" b
@@ -424,7 +441,8 @@ async function applyMerge(
       WHERE b."tenancyId" = ${tenancyId}::uuid
         AND b."issueId" = ANY(${[...loserIds]}::uuid[])
         AND NOT EXISTS (
-          SELECT 1 FROM bookmark_duplicates_deleted d WHERE d."userId" = b."userId"
+          SELECT 1 FROM bookmark_duplicates_deleted d
+          WHERE d."issueId" = b."issueId" AND d."userId" = b."userId"
         )
         AND EXISTS (SELECT 1 FROM primary_updated)
       RETURNING b."userId"
@@ -698,9 +716,6 @@ async function applyUnmerge(
         "serviceName", "deploymentEnvironmentName", "firstSeenRelease", "lastSeenRelease",
         "updatedAt"
       )
-      -- id is generated in SQL for the same reason issue-store.ts does it:
-      -- Issue.id is @default(uuid()) at the PRISMA level only, so the column has
-      -- no database default and a raw INSERT that omits it fails with 23502.
       SELECT
         gen_random_uuid(), ${tenancyId}::uuid, c."shortId",
         ${source.type}, ${source.value}, ${source.culprit}, ${source.platform},

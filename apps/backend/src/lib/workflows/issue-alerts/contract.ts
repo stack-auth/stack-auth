@@ -498,11 +498,18 @@ export async function enqueueIssueAlertWorkflowEventWithWriter(
   writer: IssueAlertWorkflowEventWriter,
   routingResolution?: OwnershipRoutingResolution,
 ): Promise<IssueAlertWorkflowEnqueueResult> {
-  const recipientEmails = isIssueAlertTenancy(tenancy)
+  const recipientResolution = isIssueAlertTenancy(tenancy)
     && match.action.type === "email"
     && match.action.userIds !== undefined
     ? await resolveIssueAlertOwnerTeamEmails(tenancy, match.action.userIds)
     : undefined;
+  if (recipientResolution !== undefined && recipientResolution.status !== "ok") {
+    // Explicit user IDs are owner-team identities, not arbitrary project-user
+    // fallbacks. If any identity can no longer be proven, fail closed before
+    // constructing a workflow payload that could send to the wrong account.
+    return { status: "dropped", reason: "ownership_resolution_required", byteLength: 0 };
+  }
+  const recipientEmails = recipientResolution?.emails;
   const writeResult = buildIssueAlertWorkflowEventWrite(tenancy, match, routingResolution, recipientEmails);
   if (writeResult.status === "drop") return { status: "dropped", reason: writeResult.reason, byteLength: writeResult.byteLength };
   const result = await writer(writeResult.write);

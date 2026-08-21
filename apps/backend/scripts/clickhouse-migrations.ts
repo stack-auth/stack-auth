@@ -45,6 +45,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
     client.command({ query: SPANS_TABLE_BASE_SQL }),
+    client.command({ query: PAGE_VIEWS_TABLE_SQL }),
     client.command({ query: SPAN_LINKS_TABLE_SQL }),
     client.command({ query: SPAN_WRITES_TABLE_SQL }),
     client.command({ query: TRACE_ROOTS_TABLE_SQL }),
@@ -66,6 +67,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: TELEMETRY_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPAN_EVENTS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPANS_SCHEMA_UPGRADE_SQL }),
+    client.command({ query: PAGE_VIEWS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: SPAN_LINKS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: TRACE_ROOTS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: TRACE_SERVICES_SCHEMA_UPGRADE_SQL }),
@@ -84,6 +86,7 @@ export async function runClickhouseMigrations() {
     ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "spans", ttlDays: TELEMETRY_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "page_views", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "started_at" }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_links", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_roots", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_services", ttlDays: TELEMETRY_TTL_DAYS }),
@@ -111,6 +114,7 @@ export async function runClickhouseMigrations() {
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
   await client.command({ query: CLICKMAP_EVENTS_MV_UPGRADE_SQL });
   await Promise.all([
+    client.command({ query: PAGE_VIEWS_MV_SQL }),
     client.command({ query: TRACE_ROOTS_MV_SQL }),
     client.command({ query: TRACE_SERVICES_MV_SQL }),
     client.command({ query: SPAN_WRITES_MV_SQL }),
@@ -122,6 +126,7 @@ export async function runClickhouseMigrations() {
   // Each helper reads historical spans. Run them sequentially so a large
   // installation never starts two source-table backfills competing for the
   // same disk and merge bandwidth.
+  await backfillDerivedSpanTable(client, { table: "page_views", selectSql: PAGE_VIEWS_SOURCE_SELECT_SQL, targetColumns: PAGE_VIEWS_COLUMNS });
   await backfillDerivedSpanTable(client, { table: "trace_roots", selectSql: TRACE_ROOTS_SOURCE_SELECT_SQL, targetColumns: TRACE_ROOTS_COLUMNS });
   await backfillDerivedSpanTable(client, { table: "trace_services", selectSql: TRACE_SERVICES_SOURCE_SELECT_SQL, targetColumns: TRACE_SERVICES_COLUMNS });
 
@@ -143,6 +148,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
     client.command({ query: SPANS_VIEW_SQL }),
+    client.command({ query: PAGE_VIEWS_VIEW_SQL }),
     client.command({ query: SPAN_LINKS_VIEW_SQL }),
     client.command({ query: TRACE_ROOTS_VIEW_SQL }),
     client.command({ query: TRACE_SERVICES_VIEW_SQL }),
@@ -165,7 +171,7 @@ export async function runClickhouseMigrations() {
     "events", "logs", "errors", "span_events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
-    "spans", "span_links", "trace_roots", "trace_services",
+    "spans", "page_views", "span_links", "trace_roots", "trace_services",
     "growth_daily_metrics", "growth_daily_ad_metrics",
   ];
   await Promise.all(tables.map(table =>
@@ -251,7 +257,10 @@ function normalizeClickhouseType(type: string): string {
 }
 
 function normalizeClickhouseSql(sql: string): string {
-  return sql.toLowerCase().replace(/[`"]/g, "").replace(/\s+/g, " ").trim().replace(/;$/, "");
+  const normalized = sql.toLowerCase().replace(/[`"]/g, "").replace(/\s+/g, " ").trim().replace(/;$/, "");
+  return normalized.replace(/\(([a-z0-9_.]+\s*(?:=|!=|<>)\s*[^()]+)\)/g, (match, predicate: string) => {
+    return /\b(?:and|or)\b/.test(predicate) ? match : predicate;
+  });
 }
 
 function getSqlSourceTable(sql: string): string | undefined {
@@ -336,6 +345,7 @@ export function decideFingerprintGuard(input: {
         };
       }
       const liveSql = normalizeClickhouseSql(liveObject.asSelect);
+      const expectedSql = normalizeClickhouseSql(expectedObject.asSelect);
       const expectedSourceTable = getSqlSourceTable(expectedObject.asSelect);
       const liveSourceTable = getSqlSourceTable(liveObject.asSelect);
       if (expectedSourceTable === undefined || liveSourceTable !== expectedSourceTable) {
@@ -354,6 +364,14 @@ export function decideFingerprintGuard(input: {
           stored: "absent",
           expected: input.expected,
           detail: `${liveObject.name} is missing expected predicate ${missingPredicate}`,
+        };
+      }
+      if (liveSql !== expectedSql) {
+        return {
+          kind: "mismatch",
+          stored: "absent",
+          expected: input.expected,
+          detail: `${liveObject.name} SELECT definition differs from the expected migration`,
         };
       }
     }
@@ -710,7 +728,7 @@ export async function backfillDerivedSpanTable(
  */
 export async function ensureTableTtl(
   client: ClickHouseClient,
-  options: { database: string, table: string, ttlDays: number, timestampColumn?: "created_at" | "event_at" },
+  options: { database: string, table: string, ttlDays: number, timestampColumn?: "created_at" | "event_at" | "started_at" },
 ): Promise<void> {
   const timestampColumn = options.timestampColumn ?? "created_at";
   const resultSet = await client.query({
@@ -779,7 +797,7 @@ export function buildTelemetryInsertDeduplicationSettingSql(
   return `ALTER TABLE analytics_internal.${table} MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`;
 }
 
-function buildRetentionTtlSql(ttlDays: number, timestampColumn: "created_at" | "event_at" = "created_at"): string {
+function buildRetentionTtlSql(ttlDays: number, timestampColumn: "created_at" | "event_at" | "started_at" = "created_at"): string {
   return `toDateTime(${timestampColumn}) + INTERVAL ${ttlDays} DAY DELETE`;
 }
 
@@ -1436,6 +1454,57 @@ const SPAN_LINKS_TABLE_SQL = buildSpanLinksCreateTableSql("analytics_internal.sp
 
 const SPAN_LINKS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.span_links", SPAN_LINKS_COLUMNS);
 
+export const PAGE_VIEWS_COLUMNS: readonly ClickhouseColumn[] = pickColumns(SPANS_COLUMNS, [
+  "project_id",
+  "branch_id",
+  "user_id",
+  "team_id",
+  "refresh_token_id",
+  "session_replay_id",
+  "session_replay_segment_id",
+  "started_at",
+  "data",
+  "trace_id",
+  "span_id",
+  "version",
+]);
+
+// Time is the product access path, but the complete span identity remains in
+// the key so two traces that reuse a span id cannot collapse into one row.
+export function buildPageViewsCreateTableSql(fullTableName: string): string {
+  return buildCreateTableSql(fullTableName, PAGE_VIEWS_COLUMNS, `
+ENGINE ReplacingMergeTree(version)
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (project_id, branch_id, started_at, span_id, trace_id)
+TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS, "started_at")}`);
+}
+
+const PAGE_VIEWS_TABLE_SQL = buildPageViewsCreateTableSql("analytics_internal.page_views");
+
+const PAGE_VIEWS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.page_views", PAGE_VIEWS_COLUMNS);
+
+export function buildPageViewsSourceSelectSql(database: string): string {
+  return `
+SELECT
+  ${buildViewSelectList(PAGE_VIEWS_COLUMNS)}
+FROM ${database}.spans
+WHERE span_type = '$page-view'
+`;
+}
+
+export const PAGE_VIEWS_SOURCE_SELECT_SQL = buildPageViewsSourceSelectSql("analytics_internal");
+
+export function buildPageViewsMvSql(database: string): string {
+  return `
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${database}.page_views_mv
+TO ${database}.page_views
+AS
+${buildPageViewsSourceSelectSql(database)};
+`;
+}
+
+const PAGE_VIEWS_MV_SQL = buildPageViewsMvSql("analytics_internal");
+
 // Root spans are a tiny, time-ordered read model for the trace inbox. The main
 // spans table is ordered by trace/span identity for point lookup and contains
 // every auto-instrumented child, so asking it for recent roots would require
@@ -1698,6 +1767,32 @@ FROM analytics_internal.spans FINAL
 UNION ALL
 
 ${REFRESH_TOKEN_SPAN_SELECT_SQL};
+`;
+
+export const PAGE_VIEWS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.page_views
+SQL SECURITY DEFINER
+AS
+SELECT
+  ${buildViewSelectList(PAGE_VIEWS_COLUMNS, ["version"])}
+FROM analytics_internal.page_views FINAL
+
+UNION ALL
+
+SELECT
+  project_id,
+  branch_id,
+  user_id,
+  team_id,
+  refresh_token_id,
+  session_replay_id,
+  session_replay_segment_id,
+  event_at AS started_at,
+  toString(data) AS data,
+  trace_id,
+  span_id
+FROM analytics_internal.events
+WHERE event_type = '$page-view';
 `;
 
 const SPAN_LINKS_VIEW_SQL = `
@@ -2196,6 +2291,7 @@ const OTEL_VIEW_COLUMN_COMMENT_STATEMENTS = [
   ...buildOtelViewColumnCommentStatements("errors", LOGS_COLUMNS),
   ...buildOtelViewColumnCommentStatements("span_events", SPAN_EVENTS_COLUMNS),
   ...buildOtelViewColumnCommentStatements("span_links", SPAN_LINKS_COLUMNS),
+  ...buildOtelViewColumnCommentStatements("page_views", PAGE_VIEWS_COLUMNS, ["version"]),
   ...buildOtelViewColumnCommentStatements("trace_roots", TRACE_ROOTS_COLUMNS, ["version"]),
   ...buildOtelViewColumnCommentStatements("trace_services", TRACE_SERVICES_COLUMNS, ["created_at", "version"]),
 ];
@@ -2266,7 +2362,7 @@ FINAL;
 // hardcoded schema in the prompt.
 const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── events ──
-  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$keystroke, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger, \$log (log lines), \$error (captured errors); other values are customer-defined custom events. Page views are NOT events — query default.spans WHERE span_type = \$page-view'`,
+  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$keystroke, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger, \$log (log lines), \$error (captured errors); other values are customer-defined custom events. Query default.page_views for page views across current and legacy SDK writes'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
   `ALTER TABLE default.events COMMENT COLUMN level 'Log severity level (trace, debug, info, warn, or error). Always empty here: \$log and \$error rows are exposed via default.logs and default.errors instead of this view'`,
   `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
@@ -2495,6 +2591,7 @@ const COLUMN_COMMENT_TABLES = [
   "errors",
   "span_events",
   "span_links",
+  "page_views",
   "trace_roots",
   "trace_services",
   "growth_daily_metrics",

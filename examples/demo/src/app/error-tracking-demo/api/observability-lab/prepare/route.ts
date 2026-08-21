@@ -1,4 +1,5 @@
 import { prepareObservabilityLab } from "../../../observability-lab-upload";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,8 @@ export async function POST(): Promise<Response> {
       sourceMaps: result.sourceMaps,
     }, { headers: NO_STORE_HEADERS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : `Unexpected failure: ${String(error)}`;
-    return Response.json({ ok: false, message }, { status: 500, headers: NO_STORE_HEADERS });
+    captureError("observability-lab-prepare", error);
+    return Response.json({ ok: false, message: "Failed to prepare the observability lab" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
 

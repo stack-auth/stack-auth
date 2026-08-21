@@ -61,13 +61,21 @@ export type IssueAlertRule = {
   action: IssueAlertAction,
 };
 
-export type IssueAlertEmailAction = {
-    type: "email",
-    userIds: string[],
-    subject: string,
-    html: string,
-    notificationCategoryName?: string,
+export type IssueAlertEmailRouting =
+  | { type: "team", teamId: string }
+  | { type: "issue_owners", fallthrough: "active_members" | "all_members" | "none" };
+
+type IssueAlertEmailActionBase = {
+  type: "email",
+  subject: string,
+  html: string,
+  notificationCategoryName?: string,
 };
+
+export type IssueAlertEmailAction = IssueAlertEmailActionBase & (
+  | { userIds: string[], routing?: never }
+  | { userIds?: never, routing: IssueAlertEmailRouting }
+);
 
 export type IssueAlertWebhookAction = {
   type: "webhook",
@@ -80,10 +88,23 @@ function isIssueAlertAction(value: unknown): value is IssueAlertAction {
   if (value == null || typeof value !== "object" || Array.isArray(value)) return false;
   const action: Record<string, unknown> = Object.fromEntries(Object.entries(value));
   if (action.type === "webhook") return typeof action.integrationId === "string" && action.integrationId.length > 0;
-  return action.type === "email"
-    && Array.isArray(action.userIds)
+  const hasValidUserIds = Array.isArray(action.userIds)
     && action.userIds.length > 0
-    && action.userIds.every((userId) => typeof userId === "string" && userId.length > 0)
+    && action.userIds.every((userId) => typeof userId === "string" && userId.length > 0);
+  const routing: Record<string, unknown> | null = action.routing != null
+    && typeof action.routing === "object"
+    && !Array.isArray(action.routing)
+    ? Object.fromEntries(Object.entries(action.routing))
+    : null;
+  const hasValidRouting = routing != null
+    && (
+      (routing.type === "team" && typeof routing.teamId === "string" && routing.teamId.length > 0)
+      || (routing.type === "issue_owners"
+        && typeof routing.fallthrough === "string"
+        && ["active_members", "all_members", "none"].includes(routing.fallthrough))
+    );
+  return action.type === "email"
+    && hasValidUserIds !== hasValidRouting
     && typeof action.subject === "string"
     && typeof action.html === "string"
     && (action.notificationCategoryName === undefined || typeof action.notificationCategoryName === "string");

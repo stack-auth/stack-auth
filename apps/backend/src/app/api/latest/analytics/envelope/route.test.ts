@@ -79,13 +79,13 @@ beforeEach(() => {
   vi.mocked(parseErrorIngestEnvelope).mockClear();
   mocks.arePlanLimitsEnforced.mockReturnValue(true);
   mocks.getBillingTeamId.mockReturnValue("billing-team");
-  mocks.tryDecreasePlanItemQuantities.mockResolvedValue({ insufficientItemId: null });
+  mocks.tryDecreasePlanItemQuantities.mockResolvedValue({ insufficientItemId: null, createdChangeIds: [] });
 });
 
-function sentryEnvelopeBytes(): Uint8Array {
+function sentryEnvelopeBytes(sentAt = "2026-08-06T00:00:02.000Z"): Uint8Array {
   const eventId = "55555555555555555555555555555555";
   const lines = [
-    JSON.stringify({ event_id: eventId, sent_at: "2026-08-06T00:00:02.000Z" }),
+    JSON.stringify({ event_id: eventId, sent_at: sentAt }),
     JSON.stringify({ type: "event" }),
     JSON.stringify({ event_id: eventId, timestamp: "2026-08-06T00:00:01.000Z", message: "captured", handled: true }),
     JSON.stringify({ type: "transaction", content_type: "application/json" }),
@@ -149,7 +149,7 @@ describe("sentry envelope parse boundary", () => {
         itemId: "analytics_spans",
         quantity: 2,
         idempotency: {
-          key: "sentry-envelope-spans:11111111-2222-4333-8444-555555555555:envelope:event:55555555555555555555555555555555",
+          key: expect.stringMatching(/^sentry-envelope-spans:11111111-2222-4333-8444-555555555555:[0-9a-f]{64}$/u),
           createdAt: new Date("2026-08-06T00:00:02.000Z"),
         },
       },
@@ -158,5 +158,15 @@ describe("sentry envelope parse boundary", () => {
     expect(mocks.insertBatchEvents).toHaveBeenCalledOnce();
     expect(mocks.insertOtlpTraces).toHaveBeenCalledOnce();
     expect(result.body).toMatchObject({ inserted: 2, status: "accepted" });
+  });
+
+  it("uses accepted item time when the envelope sent_at is malformed", async () => {
+    await ingestEnvelope.invoke(request(sentryEnvelopeBytes("not-a-date")));
+
+    expect(mocks.tryDecreasePlanItemQuantities).toHaveBeenCalledWith("billing-team", expect.arrayContaining([
+      expect.objectContaining({
+        idempotency: expect.objectContaining({ createdAt: new Date("2025-08-06T01:46:40.000Z") }),
+      }),
+    ]));
   });
 });

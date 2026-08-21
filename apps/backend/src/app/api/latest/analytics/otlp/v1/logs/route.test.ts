@@ -1,7 +1,7 @@
 import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import type { CanonicalOtlpLogRecord } from "@/lib/otlp/logs";
+import type { ErrorIngestPolicyItemOutcome } from "@/lib/error-ingest";
 import { describe, expect, it } from "vitest";
-import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
 import { createOtlpLogProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 
 const tenant: OtlpTenantContext = {
@@ -84,27 +84,23 @@ describe("OTLP logs protocol boundary", () => {
     expect(retry.otlpPartialSuccess.logs.body).toEqual({});
   });
 
-  it("projects deterministic policy rate limits through OTLP partial success and client reports", () => {
+  it("projects deterministic policy rejection through OTLP partial success and client reports", () => {
     const records = [logRecord("first"), logRecord("second")];
-    const policy = evaluateErrorIngestPolicy({
-      config: { observability: { errorIngest: { rateLimit: { maxItemsPerWindow: 1, windowSeconds: 60 } } } },
-      scope: { tenancyId: "tenancy-1", projectId: tenant.projectId, branchId: tenant.branchId },
-      items: records.map((record, index) => ({ itemId: `log:${index}`, itemType: "log" as const, data: { message: record.eventName } })),
-      nowMs: 60_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
+    const policyOutcomes: readonly ErrorIngestPolicyItemOutcome[] = [
+      { itemId: "log:0", itemType: "log", status: "accepted", scrubbed: false, scrubbedBytes: 0 },
+      { itemId: "log:1", itemType: "log", status: "rejected", reason: "invalid", scrubbed: false, scrubbedBytes: 0 },
+    ];
     const projection = createOtlpLogProtocolProjection(
       records,
-      new Set(policy.acceptedLogIndexes),
+      new Set([0]),
       tenant,
-      policy.outcomes,
+      policyOutcomes,
     );
 
-    expect(policy.outcomes.map((outcome) => outcome.status)).toEqual(["accepted", "rate_limited"]);
     expect(projection.otlpPartialSuccess.logs).toEqual({
       rejectedItems: 1,
-      body: { partialSuccess: { rejectedLogRecords: "1", errorMessage: "error ingest rejected 1 item(s): rate_limited=1" } },
+      body: { partialSuccess: { rejectedLogRecords: "1", errorMessage: "error ingest rejected 1 item(s): rejected=1" } },
     });
-    expect(projection.clientReport.rate_limited_events).toEqual([{ category: "log_item", reason: "rate_limit", quantity: 1 }]);
+    expect(projection.clientReport.discarded_events).toEqual([{ category: "log_item", reason: "invalid", quantity: 1 }]);
   });
 });

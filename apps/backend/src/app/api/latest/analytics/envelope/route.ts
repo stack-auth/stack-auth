@@ -19,9 +19,8 @@ import {
   ErrorIngestTransactionAdapterError,
   sentryTransactionToCanonicalOtlpSpans,
 } from "@/lib/error-ingest/error-ingest-transaction-adapter";
-import { buildErrorIngestRateLimitHeaders } from "@/lib/error-ingest/error-ingest-rate-limits";
 import { buildTelemetryWritePlan, insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
-import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
+import { getOtlpTraceDeduplicationToken, insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
 import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { tryDecreasePlanItemQuantities, type PlanItemDebit } from "@/lib/plan-metering";
@@ -33,6 +32,7 @@ import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
+import { telemetryMeteredAt } from "@/lib/telemetry-metering-time";
 
 const MAX_TRANSACTION_SPANS_PER_ENVELOPE = 10_000;
 
@@ -165,13 +165,11 @@ export const POST = createSmartRouteHandler({
     };
     const policy = evaluateErrorIngestPolicy({
       config: auth.tenancy.config,
-      scope,
       items: eventItems.map(({ item, projected }) => ({
         itemId: item.itemId,
         itemType: "event" as const,
         data: projected.data,
       })),
-      nowMs: receivedAtMs,
     });
     const policyByItemId = new Map(policy.outcomes.map((outcome) => [outcome.itemId, outcome]));
     const acceptedEvents = eventItems.flatMap(({ item, projected }) => {
@@ -223,6 +221,10 @@ export const POST = createSmartRouteHandler({
     }
 
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    const transactionMeteringIdentity = getOtlpTraceDeduplicationToken(
+      preparedTransactions.flatMap(({ spans }) => spans),
+      transactionTenant,
+    );
     if (
       auth.tenancy.project.id !== "internal"
       && billingTeamId != null
@@ -233,9 +235,11 @@ export const POST = createSmartRouteHandler({
         ...acceptedEvents.map(({ event_at_ms }) => event_at_ms),
         ...preparedTransactions.flatMap(({ item }) => item.transaction === undefined ? [] : [item.transaction.startTimestampMs]),
       ];
-      const meteredAt = envelope.header.sentAt === null
-        ? new Date(Math.min(...timestampCandidates))
-        : new Date(envelope.header.sentAt);
+      const meteredAt = telemetryMeteredAt(
+        envelope.header.sentAt,
+        Math.min(...timestampCandidates),
+        new Date(),
+      );
       const debits: PlanItemDebit[] = [
         ...(acceptedEvents.length === 0 ? [] : [{
           itemId: ITEM_IDS.analyticsEvents,
@@ -249,7 +253,10 @@ export const POST = createSmartRouteHandler({
           itemId: ITEM_IDS.analyticsSpans,
           quantity: transactionSpanCount,
           idempotency: {
-            key: `sentry-envelope-spans:${auth.tenancy.id}:${envelope.batchId}`,
+            // Storage and billing share the same canonical identity. A retry
+            // that reuses the Sentry event ID but changes embedded spans must
+            // neither receive free storage nor collapse onto the old debit.
+            key: `sentry-envelope-spans:${auth.tenancy.id}:${transactionMeteringIdentity}`,
             createdAt: meteredAt,
           },
         }]),
@@ -372,7 +379,7 @@ export const POST = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      headers: buildErrorIngestRateLimitHeaders(projection.items),
+      headers: {},
       body: {
         batch_id: envelope.batchId,
         status: projection.status,

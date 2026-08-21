@@ -85,11 +85,14 @@ describe("buildIssueAlertSignal", () => {
     expect(signal.frequencyCounts).toEqual(new Map([[60, 4]]));
   });
 
-  it("derives a stable bounded occurrence identity for reconciler-aggregated deltas that have no single occurrence", () => {
-    const first = buildIssueAlertSignal(makeInput({ input: { ...makeInput().input, occurrenceId: undefined } }));
-    const second = buildIssueAlertSignal(makeInput({ input: { ...makeInput().input, occurrenceId: undefined } }));
+  it("derives a stable per-batch occurrence identity for reconciler-aggregated deltas", () => {
+    const input = { input: { ...makeInput().input, occurrenceId: undefined }, batchId: "batch-one" };
+    const first = buildIssueAlertSignal(makeInput(input));
+    const second = buildIssueAlertSignal(makeInput(input));
+    const nextBatch = buildIssueAlertSignal(makeInput({ ...input, batchId: "batch-two" }));
     expect(first.occurrence.id).toMatch(/^[0-9a-f]{32}$/);
     expect(first.occurrence.id).toBe(second.occurrence.id);
+    expect(nextBatch.occurrence.id).not.toBe(first.occurrence.id);
   });
 
   it("normalizes Sentry warning and fatal spellings at the materialization boundary", () => {

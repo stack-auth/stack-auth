@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_GROUPING_CONFIG_ID, type GroupingConfigId } from "./grouping-config";
-import { computeGrouping } from "./grouping";
+import { computeGrouping, computeGroupingWithReadableConfigs } from "./grouping";
 import * as groupingFingerprint from "./grouping-fingerprint";
 import type { GroupingInput, GroupingResult } from "./types";
 
@@ -84,6 +84,19 @@ describe("computeGrouping — frame normalization", () => {
 
     expect(source.ownerHash).toBe(sameSource.ownerHash);
     expect(source.ownerHash).not.toBe(differentDirectory.ownerHash);
+  });
+
+  it("keeps the basename-only predecessor readable after the path-aware rollout", () => {
+    const nodeStack = (file: string) => ["TypeError: boom", `    at loadConfig (${file}:42:9)`].join("\n");
+    const input: GroupingInput = { type: "TypeError", message: "boom", platform: "node", stack: nodeStack("/srv/checkout/src/auth/config.ts") };
+    const historical = computeGrouping(input, "hexclave-js:2026-08-01");
+    const current = computeGroupingWithReadableConfigs(input, {
+      activeConfigId: "hexclave-js:2026-08-20",
+      readableConfigIds: ["hexclave-js:2026-08-01"],
+      provenance: { active: "default", readable: "default" },
+    });
+    expect(current.ownerHash).not.toBe(historical.ownerHash);
+    expect(current.aliasHashes).toContain(historical.ownerHash);
   });
 
   it("collapses consecutive identical frames so recursion depth does not split the issue", () => {

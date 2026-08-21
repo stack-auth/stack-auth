@@ -1,5 +1,5 @@
 
-export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
+export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01", "hexclave-js:2026-08-20"] as const;
 
 export type GroupingConfigId = typeof GROUPING_CONFIG_IDS[number];
 
@@ -18,9 +18,17 @@ export const GROUPING_CONFIGS: ReadonlyMap<GroupingConfigId, GroupingConfig> = n
       description: "Initial JS/Node grouping: exception type + normalized stack frames, app/system variants, length-prefixed SHA-256 leaves.",
     },
   ],
+  [
+    "hexclave-js:2026-08-20",
+    {
+      id: "hexclave-js:2026-08-20",
+      introducedAt: "2026-08-20",
+      description: "JS/Node grouping with checkout-root-independent source paths so same-named files in different directories remain distinct.",
+    },
+  ],
 ]);
 
-export const DEFAULT_GROUPING_CONFIG_ID: GroupingConfigId = "hexclave-js:2026-08-01";
+export const DEFAULT_GROUPING_CONFIG_ID: GroupingConfigId = "hexclave-js:2026-08-20";
 
 export type GroupingRuntimeConfig = {
   activeConfigId?: string,
@@ -57,7 +65,7 @@ export function resolveGroupingConfig(settings: GroupingRuntimeConfig | undefine
 
   const activeIds = new Set<GroupingConfigId>([activeConfigId]);
   const readableConfigIds = configuredReadable === undefined
-    ? []
+    ? [...GROUPING_CONFIG_IDS].reverse().filter((id) => !activeIds.has(id))
     : [...GROUPING_CONFIG_IDS]
       .reverse()
       .filter((id) => !activeIds.has(id) && configuredReadable[id]?.enabled === true);

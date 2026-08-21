@@ -60,8 +60,14 @@ describe("QStash outbox job contracts", () => {
     })).toThrow("qstashOptions.job is invalid");
   });
 
-  it("rejects network-path and backslash-prefixed outbox URLs", () => {
-    for (const url of ["//attacker.example.test/job", String.raw`/\attacker.example.test/job`]) {
+  it("rejects network-path, backslash-prefixed, and normalized-control outbox URLs", () => {
+    for (const url of [
+      "//attacker.example.test/job",
+      String.raw`/\attacker.example.test/job`,
+      "/\t\\attacker.example.test/job",
+      "/\n\\attacker.example.test/job",
+      "/\r\\attacker.example.test/job",
+    ]) {
       expect(() => decodeQstashMessage({ url, body: {} })).toThrow("internal relative paths");
     }
     expect(decodeQstashMessage({ url: "/api/latest/internal/job", body: {} }).url)

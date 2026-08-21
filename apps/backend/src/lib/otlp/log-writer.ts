@@ -72,8 +72,9 @@ function getOtlpLogIdentity(log: CanonicalOtlpLogRecord, ordinal: number): strin
   if (log.errorEnvelope?.identityError === null && log.errorEnvelope.eventId !== null) {
     return `event:${log.errorEnvelope.eventId}`;
   }
+  const { policyScrubbedData: _policyScrubbedData, ...stableLog } = log;
   return `derived:${ordinal}:${JSON.stringify({
-    ...log,
+    ...stableLog,
     body: log.body === null ? null : taggedValue(log.body),
     attributes: attributesJson(log.attributes),
     resource: { ...log.resource, attributes: attributesJson(log.resource.attributes) },
@@ -233,37 +234,6 @@ export function buildOtlpIssueInputs(logs: CanonicalOtlpLogRecord[], tenant: Otl
 
 export function getOtlpIssueBatchId(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): string {
   return getOtlpLogsBatchId(logs, tenant);
-}
-
-export function buildOtlpProductEventRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext) {
-  const canonicalRows = buildOtlpLogRows(logs, tenant);
-  return logs.flatMap((sourceLog, index) => {
-    if (stringAttribute(sourceLog.attributes, "hexclave.signal.type") !== "event" || !isProductEventName(sourceLog.eventName)) return [];
-    const row = canonicalRows[index];
-    return {
-      event_type: sourceLog.eventName,
-      event_at: row.event_at,
-      data: stripLoneSurrogates(productData(sourceLog)),
-      producer: row.producer,
-      runtime: row.runtime,
-      project_id: row.project_id,
-      branch_id: row.branch_id,
-      user_id: row.user_id,
-      team_id: row.team_id,
-      refresh_token_id: row.refresh_token_id,
-      session_replay_id: row.session_replay_id,
-      session_replay_segment_id: row.session_replay_segment_id,
-      trace_id: row.trace_id,
-      span_id: row.span_id,
-      page_view_span_id: row.page_view_span_id,
-      service_namespace: row.service_namespace,
-      service_name: row.service_name,
-      service_version: row.service_version,
-      service_instance_id: row.service_instance_id,
-      deployment_environment_name: row.deployment_environment_name,
-      resource_attributes: row.resource_attributes,
-    };
-  });
 }
 
 export async function insertOtlpLogs(client: ClickHouseClient, logs: CanonicalOtlpLogRecord[], tenant: OtlpLogTenantContext): Promise<void> {

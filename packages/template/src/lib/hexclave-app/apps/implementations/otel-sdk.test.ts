@@ -1,5 +1,6 @@
 import { SpanKind, trace } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildHexclaveOtlpLogExporterConfig, buildHexclaveOtlpTraceExporterConfig, registerManagedOtel, resetManagedOtelForTesting } from "./otel-sdk";
@@ -139,6 +140,46 @@ describe("Hexclave managed OTel SDK", () => {
       ...options,
       projectId: "second-project",
     })).toThrow("Hexclave OpenTelemetry is already configured for a different project or service in this process");
+  });
+
+  it("throws when a host provider is already registered in managed mode", () => {
+    const host = new NodeTracerProvider();
+    expect(trace.setGlobalTracerProvider(host)).toBe(true);
+
+    expect(() => registerManagedOtel({
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+    })).toThrow("another global tracer provider is already registered");
+  });
+
+  it("adopts a host provider in auto mode", () => {
+    const host = new NodeTracerProvider();
+    expect(trace.setGlobalTracerProvider(host)).toBe(true);
+
+    const registration = registerManagedOtel({
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+      existingProviderConflict: "adopt",
+    });
+
+    expect(registration.provider).toBe(trace.getTracerProvider());
+    expect(registerManagedOtel({
+      analyticsBaseUrl: "http://127.0.0.1:8102",
+      projectId: "project",
+      secretServerKey: "secret",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { serviceName: "checkout" },
+      existingProviderConflict: "adopt",
+    })).toBe(registration);
   });
 
   it("emits the official OTLP/HTTP JSON identity and timestamp representation", async () => {

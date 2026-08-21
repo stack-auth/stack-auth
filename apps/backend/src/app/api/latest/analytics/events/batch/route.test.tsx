@@ -97,11 +97,18 @@ describe("analytics batch data contract", () => {
     mocks.arePlanLimitsEnforced.mockReturnValue(true);
     mocks.getBillingTeamId.mockReturnValue("billing-team");
     mocks.findRecentSessionReplay.mockResolvedValue(null);
-    mocks.tryDecreasePlanItemQuantities.mockResolvedValue({ insufficientItemId: null });
+    mocks.tryDecreasePlanItemQuantities.mockResolvedValue({ insufficientItemId: null, createdChangeIds: [] });
   });
 
   it("accepts any JSON data on batches — old SDKs hold that contract forever", async () => {
     await expect(validateBatchRequest(LEGACY_BODY)).resolves.toBeDefined();
+  });
+
+  it("rejects timestamps that JavaScript Date cannot represent", async () => {
+    await expect(validateBatchRequest({
+      ...LEGACY_BODY,
+      sent_at_ms: 8_640_000_000_000_001,
+    })).rejects.toThrow();
   });
 
   it("uses one retry-stable debit and does not refund an ambiguous ClickHouse failure", async () => {

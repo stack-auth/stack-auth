@@ -54,6 +54,7 @@ import {
   regressIssue,
   setIssueAssignee,
   setIssueBookmarkState,
+  clearManualIssueOwnerState,
   setIssueOwnerState,
   setIssueSubscriptionState,
   setIssueTeam,
@@ -64,6 +65,7 @@ import {
   updateIssueAssignment,
   updateIssueBookmark,
   updateIssueOwner,
+  clearManualIssueOwners,
   updateIssueSubscription,
   updateIssueStatus,
   updateIssueTeam,
@@ -395,12 +397,18 @@ export default function PageClient() {
     }
   }, [adminApp, detail, productSaving]);
 
-  const changeOwner = useCallback(async (type: "user" | "team", id: string) => {
+  const changeOwner = useCallback(async (type: "user" | "team" | "none", id: string | null) => {
     if (detail == null || productSaving) return;
     const previous = detail;
     setProductError(null);
     setProductSaving(true);
     try {
+      if (type === "none") {
+        await clearManualIssueOwners(adminApp, detail.issue.id);
+        setDetail((current) => current == null ? current : clearManualIssueOwnerState(current));
+        return;
+      }
+      if (id === null) throw new Error("A manual issue owner requires an identity");
       const result = await updateIssueOwner(adminApp, detail.issue.id, {
         type,
         userId: type === "user" ? id : null,

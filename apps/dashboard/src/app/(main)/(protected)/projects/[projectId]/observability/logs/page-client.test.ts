@@ -22,7 +22,7 @@ describe("observability logs page", () => {
     expect(query).toContain("FROM default.logs");
     expect(query).not.toContain("event_type");
     expect(query).toContain("event_at >= now64(3) - INTERVAL 720 HOUR");
-    expect(query).toContain("e.body AS message");
+    expect(query).toContain("JSONExtractString(toString(e.body), 'value')");
     expect(query).toContain("e.level");
     expect(query).toContain("lowerUTF8(e.severity_text)");
     expect(query).toContain("e.service_namespace");
@@ -34,7 +34,7 @@ describe("observability logs page", () => {
     expect(query).toContain("e.span_id");
     expect(query).toContain("e.session_replay_id");
     expect(query).not.toContain("source");
-    expect(query).toContain("body AS message");
+    expect(query).toContain("AS message");
     expect(query).toContain("severity_text");
     expect(query).not.toContain("scope_");
     expect(query).not.toContain("resource_");

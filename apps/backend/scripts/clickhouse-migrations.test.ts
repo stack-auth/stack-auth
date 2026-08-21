@@ -14,6 +14,9 @@ import {
   LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
   LOGS_ISSUE_HASH_INDEX_NAME,
   LOGS_VIEW_SQL,
+  PAGE_VIEWS_COLUMNS,
+  PAGE_VIEWS_SOURCE_SELECT_SQL,
+  PAGE_VIEWS_VIEW_SQL,
   REFRESH_TOKEN_SPAN_SELECT_ALIASES,
   REFRESH_TOKEN_SPAN_SELECT_SQL,
   SPANS_COLUMNS,
@@ -37,6 +40,8 @@ import {
   computeSpansSubsystemFingerprint,
   buildIssueOccurrenceRollupCreateTableSql,
   buildIssueOccurrenceRollupMvSql,
+  buildPageViewsCreateTableSql,
+  buildPageViewsMvSql,
   buildSpanEventsCreateTableSql,
   buildSpanLinksCreateTableSql,
   buildSpanWritesCreateTableSql,
@@ -215,6 +220,24 @@ describe("fingerprint guard decision", () => {
 });
 
 describe("derived read models", () => {
+  test("the page-view read model is time-ordered without weakening span identity", () => {
+    expect(buildPageViewsCreateTableSql("analytics_internal.page_views")).toContain(
+      "ORDER BY (project_id, branch_id, started_at, span_id, trace_id)",
+    );
+    expect(PAGE_VIEWS_SOURCE_SELECT_SQL).toContain("WHERE span_type = '$page-view'");
+    expect(PAGE_VIEWS_VIEW_SQL).toContain("FROM analytics_internal.page_views FINAL");
+    expect(PAGE_VIEWS_VIEW_SQL).toContain("FROM analytics_internal.events");
+    expect(PAGE_VIEWS_VIEW_SQL).toContain("toString(data) AS data");
+    expect(PAGE_VIEWS_VIEW_SQL).not.toContain("default.spans");
+  });
+
+  test("page_views reuses the selected spans column types verbatim", () => {
+    const spansByName = new Map<string, ClickhouseColumn>(SPANS_COLUMNS.map((column) => [column.name, column]));
+    for (const column of PAGE_VIEWS_COLUMNS) {
+      expect(column).toEqual(spansByName.get(column.name));
+    }
+  });
+
   test("the trace inbox is fed by the scalar-parent root test", () => {
     expect(TRACE_ROOTS_SOURCE_SELECT_SQL).toContain("WHERE parent_span_id IS NULL");
   });
@@ -573,6 +596,35 @@ describe("clickhouse upgrade helpers (integration)", () => {
     expect(ledgerRows).toEqual([{ project_id: "billed-project" }]);
   });
 
+  test("the page_views materialized view keeps only the latest page-view span version", async () => {
+    await withThrowawayDatabase(async (database) => {
+      await client.command({ query: buildSpansCreateTableSql(`${database}.spans`) });
+      await client.command({ query: buildPageViewsCreateTableSql(`${database}.page_views`) });
+      await client.command({ query: buildPageViewsMvSql(database) });
+
+      await client.command({
+        query: `
+          INSERT INTO ${database}.spans
+            (trace_id, span_id, span_type, started_at, data, project_id, branch_id, version)
+          VALUES
+            ('trace-page', 'span-page', '$page-view', '2026-08-01 00:00:00.000', '{"path":"/old"}', 'project', 'main', 1),
+            ('trace-page', 'span-page', '$page-view', '2026-08-01 00:00:00.000', '{"path":"/new"}', 'project', 'main', 2),
+            ('trace-noise', 'span-noise', 'GET /noise', '2026-08-01 00:00:00.000', '{}', 'project', 'main', 1)
+        `,
+      });
+
+      const resultSet = await client.query({
+        query: `SELECT trace_id, span_id, data FROM ${database}.page_views FINAL`,
+        format: "JSONEachRow",
+      });
+      expect(await resultSet.json<{ trace_id: string, span_id: string, data: string }>()).toEqual([{
+        trace_id: "trace-page",
+        span_id: "span-page",
+        data: '{"path":"/new"}',
+      }]);
+    });
+  });
+
   test("ensureTableTtl applies the retention TTL exactly once, and re-applies on a changed retention", async () => {
     const table = "ttl_probe";
     await client.command({
@@ -597,13 +649,14 @@ describe("clickhouse upgrade helpers (integration)", () => {
     // already in place; ensureTableTtl must see it as current (ClickHouse
     // normalizes `INTERVAL n DAY` to `toIntervalDay(n)` in metadata) and not
     // schedule a MODIFY TTL mutation on every boot.
-    for (const [table, buildCreateSql] of [
-      ["trace_roots", buildTraceRootsCreateTableSql],
-      ["trace_services", buildTraceServicesCreateTableSql],
+    for (const [table, buildCreateSql, timestampColumn] of [
+      ["page_views", buildPageViewsCreateTableSql, "started_at"],
+      ["trace_roots", buildTraceRootsCreateTableSql, "created_at"],
+      ["trace_services", buildTraceServicesCreateTableSql, "created_at"],
     ] as const) {
       await client.command({ query: buildCreateSql(`${testDatabase}.${table}`) });
-      await ensureTableTtl(client, { database: testDatabase, table, ttlDays: TELEMETRY_TTL_DAYS });
-      expect((await getTableLayout(table)).engine_full).toContain(`toDateTime(created_at) + toIntervalDay(${TELEMETRY_TTL_DAYS})`);
+      await ensureTableTtl(client, { database: testDatabase, table, ttlDays: TELEMETRY_TTL_DAYS, timestampColumn });
+      expect((await getTableLayout(table)).engine_full).toContain(`toDateTime(${timestampColumn}) + toIntervalDay(${TELEMETRY_TTL_DAYS})`);
       expect(await countMutations(table)).toBe(0);
     }
   });

@@ -83,7 +83,7 @@ export function getLogsQuery(
 SELECT
   e.event_at,
   ${levelExpression} AS level,
-  e.body AS message,
+  if(JSONExtractString(toString(e.body), 'type') = 'string', JSONExtractString(toString(e.body), 'value'), toString(e.body)) AS message,
   e.service_namespace,
   e.service_name,
   e.deployment_environment_name,

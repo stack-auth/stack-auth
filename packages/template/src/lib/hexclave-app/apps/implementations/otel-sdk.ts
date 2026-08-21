@@ -111,6 +111,29 @@ export function createHexclaveCorrelationSpanProcessor(): SpanProcessor {
   return new HexclaveCorrelationSpanProcessor();
 }
 
+function adoptExistingGlobals(): ManagedOtelRegistration {
+  return {
+    provider: trace.getTracerProvider(),
+    loggerProvider: logs.getLoggerProvider(),
+    meterProvider: metrics.getMeterProvider(),
+    forceFlush: async () => {},
+    shutdown: async () => {},
+  };
+}
+
+function cacheAdoptedRegistration(signature: string, value: ManagedOtelRegistration): ManagedOtelRegistration {
+  managedRegistration = {
+    signature,
+    value,
+    installInstrumentations: () => {},
+  };
+  return value;
+}
+
+function shouldAdoptExistingProvider(options: ManagedOtelOptions): boolean {
+  return options.existingProviderConflict === "adopt";
+}
+
 let managedRegistration: {
   signature: string,
   value: ManagedOtelRegistration,
@@ -153,9 +176,10 @@ function registrationSignature(options: ManagedOtelOptions): string {
 }
 
 /**
- * Installs Hexclave's managed Node SDK exactly once. A pre-existing global
- * provider is an explicit configuration conflict: silently falling back would
- * make Hexclave spans appear to work while exporting somewhere else (or nowhere).
+ * Installs Hexclave's managed Node SDK exactly once. Managed mode treats a
+ * pre-existing global as a configuration error. Auto mode (`adopt`) uses the
+ * host provider instead of throwing, including when the host registers after
+ * construction but before this function runs.
  */
 export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelRegistration {
   const signature = registrationSignature(options);
@@ -202,6 +226,10 @@ export function registerManagedOtel(options: ManagedOtelOptions): ManagedOtelReg
   // succeeding proves nothing else was registered in that slot.
   if (!trace.setGlobalTracerProvider(provider)) {
     ignoreUnhandledRejection(meterProvider.shutdown());
+    ignoreUnhandledRejection(provider.shutdown());
+    if (shouldAdoptExistingProvider(options)) {
+      return cacheAdoptedRegistration(signature, adoptExistingGlobals());
+    }
     throw new Error("Hexclave could not install its managed OpenTelemetry provider because another global tracer provider is already registered. Configure that provider with Hexclave's OTLP endpoint instead of enabling managed mode.");
   }
   const contextManager = new AsyncLocalStorageContextManager().enable();

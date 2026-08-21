@@ -225,10 +225,6 @@ export async function listIssueAlertRulesPage(tenancy: Tenancy, limit = ISSUE_AL
   };
 }
 
-export async function listIssueAlertRules(tenancy: Tenancy, limit = ISSUE_ALERT_API_DEFAULT_LIMIT): Promise<readonly IssueAlertRuleResponse[]> {
-  return (await listIssueAlertRulesPage(tenancy, limit)).items;
-}
-
 export async function getIssueAlertRule(tenancy: Tenancy, databaseId: string): Promise<IssueAlertRuleResponse | null> {
   const row = await loadIssueAlertRuleRow(tenancy, databaseId, true);
   return row === null ? null : toIssueAlertRuleResponse(storedRuleRecord(row));
@@ -315,7 +311,7 @@ export async function replayIssueAlertDelivery(tenancy: Tenancy, deliveryId: str
   const replay = await replayIssueAlertWorkflowDelivery(scope, deliveryId, now);
   if (replay.status === "not_replayed" && replay.reason === "delivery_not_found") return null;
 
-  const after = await issueAlertPersistenceService.inspectDelivery(scope, deliveryId);
+  const after = await issueAlertPersistenceService.inspectDelivery(scope, deliveryId, { consistency: "primary" });
   if (after === null) return null;
   return {
     delivery: await toIssueAlertDeliveryResponse(tenancy, after),

@@ -11,15 +11,13 @@ import {
 } from "./helpers";
 
 describe("newly-created-projects helpers", () => {
-  it("finds current span page views and retained legacy event page views with branch isolation", () => {
+  it("finds owner replays through the derived page-view store with branch isolation", () => {
     const query = buildInternalOwnerReplayIdsQuery();
 
-    expect(query).toContain("FROM analytics_internal.spans FINAL");
-    expect(query).toContain("span_type = '$page-view'");
-    expect(query).toContain("FROM analytics_internal.events");
-    expect(query).toContain("event_type = '$page-view'");
-    expect(query.match(/branch_id = \{branchId:String\}/g)).toHaveLength(2);
-    expect(query).toContain("UNION ALL");
+    expect(query).toContain("FROM default.page_views");
+    expect(query).not.toContain("analytics_internal.spans");
+    expect(query).not.toContain("analytics_internal.events");
+    expect(query.match(/branch_id = \{branchId:String\}/g)).toHaveLength(1);
   });
 
   it("chunks project IDs without changing their order", () => {

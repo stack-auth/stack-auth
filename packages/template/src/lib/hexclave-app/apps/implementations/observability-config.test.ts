@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTraceSampleRate, observabilityOptionsToJson } from "./observability-config";
+import { existingProviderConflictFor, normalizeTraceSampleRate, observabilityOptionsToJson, resolveClientOpenTelemetryProvider, resolveOpenTelemetryProviderMode, shouldInstallManagedOtel } from "./observability-config";
 
 describe("normalizeTraceSampleRate", () => {
   it("defaults to 10% root trace sampling", () => {
@@ -14,6 +14,30 @@ describe("normalizeTraceSampleRate", () => {
   it("rejects invalid or conflicting rates at app construction", () => {
     expect(() => normalizeTraceSampleRate({ traceSampleRate: -0.1 })).toThrow(/between 0 and 1/);
     expect(() => normalizeTraceSampleRate({ traceSampleRate: Number.NaN })).toThrow(/between 0 and 1/);
+  });
+});
+
+describe("OpenTelemetry provider mode", () => {
+  it("defaults to managed", () => {
+    expect(resolveOpenTelemetryProviderMode(undefined)).toBe("managed");
+  });
+
+  it("installs a managed SDK unless the host owns the provider", () => {
+    expect(shouldInstallManagedOtel("managed")).toBe(true);
+    expect(shouldInstallManagedOtel("auto")).toBe(true);
+    expect(shouldInstallManagedOtel("existing-provider")).toBe(false);
+  });
+
+  it("adopts a host provider only in auto mode", () => {
+    expect(existingProviderConflictFor("managed")).toBe("throw");
+    expect(existingProviderConflictFor("auto")).toBe("adopt");
+    expect(() => existingProviderConflictFor("existing-provider")).toThrow("does not register a managed SDK");
+  });
+
+  it("maps auto to managed on the browser client", () => {
+    expect(resolveClientOpenTelemetryProvider("auto", true)).toBe("managed");
+    expect(resolveClientOpenTelemetryProvider("existing-provider", true)).toBe("existing-provider");
+    expect(resolveClientOpenTelemetryProvider("managed", false)).toBe("disabled");
   });
 });
 

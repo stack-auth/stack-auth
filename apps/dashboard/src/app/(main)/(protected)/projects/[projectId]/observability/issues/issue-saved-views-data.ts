@@ -94,8 +94,8 @@ export function issueFiltersToSavedIssueSearchQuery(filters: IssueFilters): Save
 export function savedIssueSearchQueryToIssueFilters(query: SavedIssueSearchQuery): IssueFilters {
   const params = new URLSearchParams();
   const filters = query.filters;
+  params.set("status", filters.status ?? "all");
   if (filters.hours !== undefined) params.set("range", filters.hours);
-  if (filters.status !== undefined) params.set("status", filters.status);
   if (filters.service !== undefined && filters.service !== "") {
     params.set("service", serviceIdentityToSelectValue({ namespace: "", name: filters.service }));
   }
@@ -160,8 +160,10 @@ export function savedIssueSearchViewVisibilityLabel(visibility: SavedIssueSearch
 export function savedIssueSearchViewQueryIsCompatible(query: SavedIssueSearchQuery): boolean {
   const rawHours = Number(query.filters.hours);
   const handled = query.filters.handled;
+  const supportedKeys = new Set(["record", "hours", "limit", "status", "service", "environment", "handled", "message"]);
   return query.version === 1
     && query.filters.record === "issue"
+    && Object.keys(query.filters).every((key) => supportedKeys.has(key))
     && isObservabilityTimeRangeHours(rawHours)
     && (handled === undefined || handled === "true" || handled === "false" || handled === "1" || handled === "0");
 }

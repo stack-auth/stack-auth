@@ -63,6 +63,7 @@ describe("ensureIssueAlertEmailWorkflow", () => {
       source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
       displayName: "Issue alert email",
       mustBeNew: true,
+      expectedLatestVersion: null,
     });
   });
 
@@ -101,27 +102,19 @@ describe("ensureIssueAlertEmailWorkflow", () => {
     expect(syncCalls).toBe(0);
   });
 
-  it("upgrades an older built-in source that still passes the email-boundary validator", async () => {
+  it("does not infer built-in ownership from email-boundary markers", async () => {
     const previousSource = 'customEvent("hexclave.issue-alert"); hexclaveApp.sendEmail({ userIds: event.data.action.user_ids });';
     let current: IssueAlertWorkflowLatestSource = { version: 3, source: previousSource };
     const calls: IssueAlertWorkflowSyncOptions[] = [];
-    const result = await ensureIssueAlertEmailWorkflow(tenancy, dependencies({
+    await expect(ensureIssueAlertEmailWorkflow(tenancy, dependencies({
       readLatest: async () => current,
       sync: async (_, options) => {
         calls.push(options);
         current = { version: 4, source: options.source };
         return syncResult(false, 4);
       },
-    }));
-
-    expect(result.status).toBe("unchanged");
-    expect(result.version).toBe(4);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      workflowId: ISSUE_ALERT_EMAIL_WORKFLOW_ID,
-      source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
-      mustBeNew: false,
-    });
+    }))).rejects.toMatchObject({ statusCode: 409 });
+    expect(calls).toHaveLength(0);
   });
 
   it("retries a concurrent first install, then converges on the built-in version", async () => {

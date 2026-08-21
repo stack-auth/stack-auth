@@ -21,11 +21,12 @@ describe("issue reconciliation boundaries", () => {
       issue_hash: "owner-hash",
       grouping_config: "hexclave-js:2026-08-01",
       grouping_provenance: "[]",
+      issue_variant: "app",
     })).toEqual([{
       hash: "owner-hash",
       role: "primary",
       config_id: "hexclave-js:2026-08-01",
-      variant: "degraded",
+      variant: "app",
       fingerprint: { type: "default", source: "degraded", tokens: [], resolved_tokens: [] },
     }]);
   });

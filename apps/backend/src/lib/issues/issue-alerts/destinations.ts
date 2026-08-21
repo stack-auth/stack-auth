@@ -93,6 +93,13 @@ export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
     };
   }
 
+  if (value.type === "webhook"
+    && Object.keys(value).every((key) => key === "type" || key === "integrationId")
+    && isBoundedText(value.integrationId, MAX_IDENTIFIER_BYTES)
+    && SAFE_INTEGRATION_ID.test(value.integrationId)) {
+    return { type: "webhook", integrationId: value.integrationId };
+  }
+
   return null;
 }
 

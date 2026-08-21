@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   close: vi.fn(async () => true),
   flush: vi.fn(async () => {}),
+  setTelemetrySuppressionPredicate: vi.fn(),
   getHexclaveServerApp: vi.fn(),
   initPerfStats: vi.fn(),
   disableBackendInstrumentations: vi.fn(),
@@ -12,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   sentryInit: vi.fn(),
 }));
 
-mocks.getHexclaveServerApp.mockReturnValue({ flush: mocks.flush });
+mocks.getHexclaveServerApp.mockReturnValue({
+  flush: mocks.flush,
+  _setTelemetrySuppressionPredicate: mocks.setTelemetrySuppressionPredicate,
+});
 mocks.registerInstrumentations.mockReturnValue(mocks.disableBackendInstrumentations);
 
 vi.mock("@hexclave/shared/dist/utils/env", () => ({
@@ -43,13 +47,17 @@ vi.mock("./hexclave", () => ({
 }));
 vi.mock("./lib/dev-perf-stats", () => ({ initPerfStats: mocks.initPerfStats }));
 vi.mock("./lib/node-telemetry-suppression", () => ({
+  isNodeTelemetrySuppressed: () => false,
   registerNodeTelemetrySuppressionRunner: mocks.registerNodeTelemetrySuppressionRunner,
 }));
 
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  mocks.getHexclaveServerApp.mockReturnValue({ flush: mocks.flush });
+  mocks.getHexclaveServerApp.mockReturnValue({
+    flush: mocks.flush,
+    _setTelemetrySuppressionPredicate: mocks.setTelemetrySuppressionPredicate,
+  });
   mocks.registerInstrumentations.mockReturnValue(mocks.disableBackendInstrumentations);
   mocks.close.mockResolvedValue(true);
 });
@@ -63,6 +71,7 @@ it("installs the Hexclave SDK provider before the optional Sentry sink", async (
     .toBeLessThan(mocks.sentryInit.mock.invocationCallOrder[0] ?? 0);
   expect(mocks.registerInstrumentations.mock.invocationCallOrder[0])
     .toBeLessThan(mocks.sentryInit.mock.invocationCallOrder[0] ?? 0);
+  expect(mocks.setTelemetrySuppressionPredicate).toHaveBeenCalledWith(expect.any(Function));
   expect(mocks.registerNodeTelemetrySuppressionRunner)
     .toHaveBeenCalledWith(expect.any(Function));
 });

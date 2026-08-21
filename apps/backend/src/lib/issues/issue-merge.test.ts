@@ -394,6 +394,61 @@ describe("mergeIssues (real DB)", () => {
     expect(await readIssue(newer.id)).toBeNull();
   });
 
+  it("preserves a non-conflicting comment retry key while moving it", async () => {
+    const older = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z") });
+    const newer = await seedIssue({ firstSeenAt: new Date("2026-02-01T00:00:00Z") });
+    const author = await globalPrismaClient.projectUser.findFirst({
+      where: { tenancyId: tenancy.id },
+      select: { projectUserId: true },
+    });
+    if (author === null) throw new Error("Issue merge tests need a project user for comment coverage");
+    await globalPrismaClient.issueComment.create({
+      data: {
+        tenancyId: tenancy.id,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        issueId: newer.id,
+        authorUserId: author.projectUserId,
+        body: "retry-stable merge comment",
+        idempotencyKey: "merge-comment-retry-key",
+      },
+    });
+
+    await mergeIssues({ tenancy, issueIds: [older.id, newer.id] });
+
+    const moved = await globalPrismaClient.issueComment.findFirst({
+      where: { tenancyId: tenancy.id, issueId: older.id, body: "retry-stable merge comment" },
+      select: { idempotencyKey: true },
+    });
+    expect(moved?.idempotencyKey).toBe("merge-comment-retry-key");
+  });
+
+  it("keeps one loser bookmark when duplicate loser bookmarks merge without a primary bookmark", async () => {
+    const primary = await seedIssue({ firstSeenAt: new Date("2026-01-01T00:00:00Z") });
+    const loserOne = await seedIssue({ firstSeenAt: new Date("2026-02-01T00:00:00Z") });
+    const loserTwo = await seedIssue({ firstSeenAt: new Date("2026-03-01T00:00:00Z") });
+    const user = await globalPrismaClient.projectUser.findFirst({
+      where: { tenancyId: tenancy.id },
+      select: { projectUserId: true },
+    });
+    if (user === null) throw new Error("Issue merge tests need a project user for bookmark coverage");
+    await globalPrismaClient.issueBookmark.createMany({
+      data: [loserOne.id, loserTwo.id].map((issueId) => ({
+        tenancyId: tenancy.id,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        issueId,
+        userId: user.projectUserId,
+      })),
+    });
+
+    await mergeIssues({ tenancy, issueIds: [primary.id, loserOne.id, loserTwo.id] });
+
+    expect(await globalPrismaClient.issueBookmark.count({
+      where: { tenancyId: tenancy.id, issueId: primary.id, userId: user.projectUserId },
+    })).toBe(1);
+  });
+
   it("requires at least two distinct issues", async () => {
     const a = await seedIssue();
     await expect(mergeIssues({ tenancy, issueIds: [a.id, a.id] })).rejects.toThrow(/at least two distinct/);

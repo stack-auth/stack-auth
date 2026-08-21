@@ -5,8 +5,9 @@ import {
 } from "./destinations";
 
 describe("issue alert destinations", () => {
-  it("rejects webhook destinations because no executor exists", () => {
-    expect(parseIssueAlertAction({ type: "webhook", integrationId: "integration-prod-errors" })).toBeNull();
+  it("parses safe webhook destinations so capability checks can reject them explicitly", () => {
+    expect(parseIssueAlertAction({ type: "webhook", integrationId: "integration-prod-errors" }))
+      .toEqual({ type: "webhook", integrationId: "integration-prod-errors" });
     expect(parseIssueAlertAction({
       type: "webhook",
       integrationId: "integration-prod-errors",

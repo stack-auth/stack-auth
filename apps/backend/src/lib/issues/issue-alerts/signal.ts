@@ -43,6 +43,7 @@ export type IssueAlertSignalInput = {
   issue: IssueAlertIssueSnapshot,
   errorEnvelope?: unknown,
   frequencyCounts?: ReadonlyMap<number, number>,
+  batchId?: string,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,10 +120,13 @@ function signalEnvelope(value: unknown): Record<string, unknown> {
   return isRecord(scrubbed.value) ? scrubbed.value : {};
 }
 
-function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta): string {
+function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta, batchId: string | undefined): string {
   if (input.occurrenceId !== undefined && input.occurrenceId.length > 0) return input.occurrenceId;
+  if (batchId === undefined || batchId.length === 0) {
+    throw new Error("Aggregated issue-alert inputs require their materialization batch ID");
+  }
   return createHash("sha256")
-    .update(`issue-alert:${outcome.issueId}:${outcome.ownerHash}`, "utf8")
+    .update(`issue-alert:${batchId}:${outcome.issueId}:${outcome.ownerHash}`, "utf8")
     .digest("hex")
     .slice(0, 32);
 }
@@ -172,7 +176,7 @@ export function buildIssueAlertSignal(input: IssueAlertSignalInput): IssueAlertS
       isRegression: input.outcome.isRegression,
     },
     occurrence: {
-      id: eventOccurrenceId(input.outcome, input.input),
+      id: eventOccurrenceId(input.outcome, input.input, input.batchId),
       occurredAt: input.input.lastEventAt,
     },
     level: normalizeIssueAlertLevel(input.input.level),

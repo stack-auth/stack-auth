@@ -1360,7 +1360,6 @@ export class EventTracker {
   }
 
 
-
   private readonly _onIntegrityVisibilityChange = () => {
     this._setAwayReason("tab-hidden", document.visibilityState === "hidden");
   };

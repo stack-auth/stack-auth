@@ -26,6 +26,11 @@ export type ManagedOtelOptions = {
   resource: HexclaveOtelResource,
   instrumentations?: Instrumentation[],
   shouldInstrumentOutboundRequest?: (url: string) => boolean,
+  /**
+   * `throw` is managed mode. `adopt` is auto mode: if a host already claimed
+   * the global tracer, use that provider instead of failing the process.
+   */
+  existingProviderConflict?: "throw" | "adopt",
 };
 
 export type ManagedOtelRegistration = {

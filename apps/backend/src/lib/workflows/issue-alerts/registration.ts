@@ -3,6 +3,7 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { syncWorkflowSource } from "@/lib/workflows/api";
 import type { WorkflowSyncResultJson } from "@hexclave/shared/dist/interface/workflows";
 import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createHash } from "node:crypto";
 import {
   ISSUE_ALERT_EMAIL_WORKFLOW_ID,
   ISSUE_ALERT_WORKFLOW_EVENT_TYPE,
@@ -25,6 +26,7 @@ export type IssueAlertWorkflowSyncOptions = {
   source: string,
   displayName?: string,
   mustBeNew: boolean,
+  expectedLatestVersion?: number | null,
 };
 
 export type IssueAlertWorkflowRegistrationDependencies = {
@@ -87,8 +89,12 @@ function isExpectedRegistrationRace(error: unknown): boolean {
   return error.statusCode === 404 && error.message === `Workflow "${ISSUE_ALERT_EMAIL_WORKFLOW_ID}" not found`;
 }
 
+const KNOWN_BUILT_IN_SOURCE_HASHES = new Set([
+  createHash("sha256").update(ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE).digest("hex"),
+]);
+
 function canReplaceInstalledSource(source: string): boolean {
-  return validateIssueAlertWorkflowSource(source).status === "ok";
+  return KNOWN_BUILT_IN_SOURCE_HASHES.has(createHash("sha256").update(source).digest("hex"));
 }
 
 function throwWorkflowIdCollision(current: IssueAlertWorkflowLatestSource): never {
@@ -115,6 +121,7 @@ export async function ensureIssueAlertEmailWorkflow(
       source: ISSUE_ALERT_EMAIL_WORKFLOW_SOURCE,
       displayName: ISSUE_ALERT_EMAIL_WORKFLOW_DISPLAY_NAME,
       mustBeNew: current === null,
+      expectedLatestVersion: current?.version ?? null,
     };
 
     try {

@@ -56,7 +56,10 @@ export type IssueAlertWorkflowRunLookup = {
 
 export type IssueAlertWorkflowStatusStore = {
   findDeliveryByWorkflowEventId(tenancyId: string, workflowEventId: string): Promise<IssueAlertWorkflowDeliveryRef | null>,
-  listEnqueuedDeliveries(limit: number): Promise<IssueAlertWorkflowDeliveryRef[]>,
+  listEnqueuedDeliveries(
+    limit: number,
+    afterDelivery?: { tenancyId: string, id: string },
+  ): Promise<IssueAlertWorkflowDeliveryRef[]>,
   applyWorkflowUpdate(
     scope: IssueAlertRuleScope,
     deliveryId: string,
@@ -111,7 +114,12 @@ function validateDate(value: Date, field: string): void {
   if (!Number.isFinite(value.getTime())) throw new IssueAlertPersistenceInputError(`${field} must be a valid date`);
 }
 
-function observationFromRunState(state: WorkflowRunState, errorSummary: string | null): IssueAlertWorkflowRunObservation {
+export function observationFromRunState(
+  state: WorkflowRunState,
+  errorSummary: string | null,
+  emailStepCompleted = false,
+): IssueAlertWorkflowRunObservation {
+  if (emailStepCompleted) return { status: "completed" };
   switch (state) {
     case WorkflowRunState.QUEUED:
     case WorkflowRunState.RUNNING:
@@ -158,7 +166,7 @@ function updateForObservation(observation: IssueAlertWorkflowRunObservation, at:
       };
     }
     default: {
-      const exhaustive: never = observation.status;
+      const exhaustive: never = observation;
       throw new HexclaveAssertionError(`Unhandled workflow run observation: ${exhaustive}`);
     }
   }
@@ -194,10 +202,22 @@ const defaultRunLookup: IssueAlertWorkflowRunLookup = {
     const runId = deterministicWorkflowUuid(`run:${tenancyId}:${workflowEventId}:${ISSUE_ALERT_EMAIL_WORKFLOW_ID}`);
     const run = await globalPrismaClient.workflowRun.findUnique({
       where: { tenancyId_id: { tenancyId, id: runId } },
-      select: { state: true, errorSummary: true },
+      select: {
+        state: true,
+        errorSummary: true,
+        stepResults: {
+          where: { stepId: "send-email", kind: "RUN" },
+          select: { stepKey: true },
+          take: 1,
+        },
+      },
     });
     if (run === null) return { status: "missing" };
-    return observationFromRunState(run.state, run.errorSummary);
+    // The built-in workflow deliberately sleeps after durable email enqueue to
+    // implement cooldown. A recorded send-email step is the delivery boundary;
+    // waiting for the later cooldown sleep to finish would leave successful
+    // deliveries looking queued for minutes or hours.
+    return observationFromRunState(run.state, run.errorSummary, run.stepResults.length > 0);
   },
 };
 
@@ -219,14 +239,18 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
     if (row === null) return null;
     return toDeliveryRef(row);
   },
-  async listEnqueuedDeliveries(limit) {
+  async listEnqueuedDeliveries(limit, afterDelivery) {
     const rows = await globalPrismaClient.issueAlertDelivery.findMany({
       where: {
         state: IssueAlertDeliveryState.ENQUEUED,
         workflowEventId: { not: null },
       },
-      orderBy: { enqueuedAt: "asc" },
+      orderBy: [{ enqueuedAt: "asc" }, { id: "asc" }],
       take: limit,
+      ...(afterDelivery === undefined ? {} : {
+        cursor: { tenancyId_id: { tenancyId: afterDelivery.tenancyId, id: afterDelivery.id } },
+        skip: 1,
+      }),
       select: {
         id: true,
         tenancyId: true,
@@ -318,14 +342,23 @@ export async function reconcilePendingIssueAlertWorkflowDeliveries(options?: {
   const at = options?.at ?? new Date();
   validateDate(at, "issue alert workflow reconcile time");
   const limit = options?.limit ?? ISSUE_ALERT_WORKFLOW_RECONCILE_BATCH_SIZE;
-  const deliveries = await store.listEnqueuedDeliveries(limit);
+  let afterDelivery: { tenancyId: string, id: string } | undefined;
+  let scanned = 0;
   let reconciled = 0;
-  for (const delivery of deliveries) {
-    const observation = await runs.findRunByTriggerEventId(delivery.scope.tenancyId, delivery.workflowEventId);
-    const result = await applyRunObservation({ delivery, observation, store, at });
-    if (result.status === "reconciled") reconciled += 1;
+  while (true) {
+    const deliveries = await store.listEnqueuedDeliveries(limit, afterDelivery);
+    for (const delivery of deliveries) {
+      const observation = await runs.findRunByTriggerEventId(delivery.scope.tenancyId, delivery.workflowEventId);
+      const result = await applyRunObservation({ delivery, observation, store, at });
+      if (result.status === "reconciled") reconciled += 1;
+    }
+    scanned += deliveries.length;
+    if (deliveries.length < limit) break;
+    const lastDelivery = deliveries.at(-1);
+    if (lastDelivery === undefined) break;
+    afterDelivery = { tenancyId: lastDelivery.scope.tenancyId, id: lastDelivery.id };
   }
-  return { scanned: deliveries.length, reconciled };
+  return { scanned, reconciled };
 }
 
 export type IssueAlertWorkflowReplayPlan = {
@@ -466,6 +499,8 @@ async function replayIssueAlertWorkflowDeliveryInTransaction(
     },
   });
   if (delivery === null) return { status: "not_replayed", reason: "delivery_not_found" };
+  // FAILED is leftover from the old retry writer. Live reconcile writes DROPPED
+  // when a workflow run fails; replay still accepts historical FAILED rows.
   if (delivery.state !== IssueAlertDeliveryState.FAILED && delivery.state !== IssueAlertDeliveryState.DROPPED) {
     return { status: "not_replayed", reason: "delivery_not_failed" };
   }
@@ -542,5 +577,3 @@ export async function replayIssueAlertWorkflowDelivery(
     level: "serializable",
   });
 }
-
-export const retryIssueAlertWorkflowDelivery = replayIssueAlertWorkflowDelivery;

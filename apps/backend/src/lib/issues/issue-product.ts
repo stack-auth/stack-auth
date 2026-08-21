@@ -15,7 +15,6 @@ import { DEFAULT_BRANCH_ID } from "@/lib/branch-constants";
 import type { IssuePriority } from "./issue-lifecycle";
 import type { IssueActivitySubject } from "./issue-activity";
 
-export const ISSUE_PRODUCT_MAX_ACTIVITY_DATA_BYTES = 65_536;
 export const ISSUE_PRODUCT_MAX_PAGE_SIZE = 100;
 export const ISSUE_PRODUCT_MAX_OWNER_CONTEXT_BYTES = 65_536;
 
@@ -490,6 +489,42 @@ export async function setIssueOwner(options: IssueProductScope & {
   }));
 }
 
+export async function clearManualIssueOwners(options: IssueProductScope & {
+  actorUserId?: string | null,
+  occurredAt?: Date,
+}): Promise<{ deletedCount: number, updatedAt: Date }> {
+  assertScope(options);
+  const actorUserId = actorId(options.actorUserId);
+  const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  return await retryTransaction(prisma, async (tx) => {
+    await assertIssueExists(tx, options);
+    if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
+    const deleted = await tx.issueOwner.deleteMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        projectId: options.tenancy.project.id,
+        branchId: options.tenancy.branchId,
+        issueId: options.issueId,
+        source: PrismaIssueOwnerSource.MANUAL,
+      },
+    });
+    if (deleted.count > 0) {
+      await appendActivityInTransaction({
+        tx,
+        tenancy: options.tenancy,
+        issueId: options.issueId,
+        actorUserId,
+        type: "owner_changed",
+        idempotencyKey: activityKey("owner", `clear:${occurredAt.toISOString()}:${randomUUID()}`),
+        data: { owner_type: null, owner_id: null, source: "manual" },
+        occurredAt,
+      });
+    }
+    return { deletedCount: deleted.count, updatedAt: occurredAt };
+  });
+}
+
 export async function addIssueComment(options: IssueProductScope & {
   body: string,
   actorUserId: string,
@@ -752,27 +787,6 @@ export async function loadIssueProductSnapshot(options: IssueProductScope & { li
     subscriptions: subscriptions.map((row) => ({ type: subjectTypeFromPrisma(row.subjectType), id: requireSubjectId(row.subjectUserId, row.subjectTeamId), isActive: row.isActive, reason: row.reason, createdAt: row.createdAt, updatedAt: row.updatedAt })),
     bookmarkedUserIds: bookmarks.map((row) => row.userId),
   };
-}
-
-export async function removeIssueOwner(options: IssueProductScope & { ownerId: string, actorUserId?: string | null, occurredAt?: Date }): Promise<void> {
-  assertScope(options);
-  assertUuid(options.ownerId, "ownerId");
-  const actorUserId = actorId(options.actorUserId);
-  const occurredAt = assertValidDate(options.occurredAt ?? new Date(), "occurredAt");
-  const actionId = randomUUID();
-  const prisma = await getPrismaClientForTenancy(options.tenancy);
-  await retryTransaction(prisma, async (tx) => {
-    await assertIssueExists(tx, options);
-    if (actorUserId !== null) await assertProjectUser(tx, options.tenancy, actorUserId, "actorUserId");
-    const owner = await tx.issueOwner.findUnique({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.ownerId } } });
-    if (owner === null || owner.issueId !== options.issueId || owner.projectId !== options.tenancy.project.id || owner.branchId !== options.tenancy.branchId) throw new IssueProductInputError("Owner was not found in the authenticated branch");
-    await tx.issueOwner.delete({ where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.ownerId } } });
-    await appendActivityInTransaction({
-      tx, tenancy: options.tenancy, issueId: options.issueId, actorUserId,
-      type: "owner_changed", idempotencyKey: activityKey("owner-remove", `${owner.id}:${occurredAt.toISOString()}:${actionId}`),
-      data: { owner_id: owner.id, removed: true }, occurredAt,
-    });
-  });
 }
 
 export async function appendIssueActivityInTransaction(options: {

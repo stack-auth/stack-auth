@@ -65,6 +65,18 @@ describe("scrubErrorIngestPayload", () => {
     expect(JSON.stringify(result.value)).not.toContain("bare-secret");
   });
 
+  it("filters quoted credentials following authorization schemes", () => {
+    const result = scrubErrorIngestPayload({
+      message: String.raw`authorization=Bearer "two words,still secret" credential=Basic 'alpha;beta'`,
+    });
+
+    expect(result.value).toEqual({
+      message: "authorization=Bearer [Filtered] credential=Basic [Filtered]",
+    });
+    expect(JSON.stringify(result.value)).not.toContain("two words");
+    expect(JSON.stringify(result.value)).not.toContain("alpha;beta");
+  });
+
   it("does not consume query or fragment at-signs as URL password text", () => {
     const result = scrubErrorIngestPayload({
       message: "redirect https://user:pass@example.test/callback?next=a@b#owner=c@d",
@@ -72,6 +84,15 @@ describe("scrubErrorIngestPayload", () => {
 
     expect(result.value).toEqual({
       message: "redirect https://[Filtered]@example.test/callback?next=a@b#owner=c@d",
+    });
+  });
+
+  it("filters structurally sensitive keys embedded in free-form query strings", () => {
+    const result = scrubErrorIngestPayload({
+      message: "request failed ?body=secret-body&form_data=secret-form&session_id=secret-session&safe=value",
+    });
+    expect(result.value).toEqual({
+      message: "request failed ?body=[Filtered]&form_data=[Filtered]&session_id=[Filtered]&safe=value",
     });
   });
 

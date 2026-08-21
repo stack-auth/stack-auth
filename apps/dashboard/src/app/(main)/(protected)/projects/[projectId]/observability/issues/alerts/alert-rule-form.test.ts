@@ -99,6 +99,17 @@ describe("buildIssueAlertRule", () => {
     }))).toBeNull();
   });
 
+  it("keeps executable owner-routing rules visible but read-only in the explicit-recipient editor", () => {
+    expect(getSupportedAlertRuleDraft(sampleRule({
+      action: {
+        type: "email",
+        routing: { type: "team", teamId: "team-prod-errors" },
+        subject: "Issue alert",
+        html: "<p>Issue alert</p>",
+      },
+    }))).toBeNull();
+  });
+
   it("rejects unsafe or incomplete editor input", () => {
     expect(buildIssueAlertRule({
       ...DEFAULT_ALERT_RULE_DRAFT,

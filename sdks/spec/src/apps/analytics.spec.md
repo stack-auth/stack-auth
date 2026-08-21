@@ -167,7 +167,7 @@ by `observability.traceSampleRate`; that option only selects root traces.
     }
     logs?: { captureConsole?: ("log" | "warn" | "error" | "info" | "debug")[] }
     openTelemetry?: {
-      provider?: "managed" | "existing-provider"
+      provider?: "managed" | "existing-provider" | "auto"
     }
     spanPropagation?: {
       enabled?: bool
@@ -194,6 +194,12 @@ AsyncLocalStorage context manager, W3C trace-context+baggage propagator,
 parent-based ratio sampler, Hexclave correlation processor, and authenticated
 OTLP/HTTP trace and log exporters. Any pre-existing global registration is a configuration
 error and MUST throw rather than silently routing spans elsewhere.
+
+`auto` mode MUST install the same managed graph when no global tracer
+provider is registered. If a host provider is already registered when
+installation runs, `auto` MUST adopt that provider and MUST NOT throw.
+Adoption MUST NOT install Hexclave's TracerProvider, context manager,
+propagator, MeterProvider, LoggerProvider, or instrumentations.
 
 `existing-provider` mode MUST NOT mutate any OpenTelemetry global. The
 application configures its own trace/logger providers with the exporters and correlation

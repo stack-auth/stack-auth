@@ -122,13 +122,12 @@ async function createDelivery(target: Tenancy, rule: IssueAlertRuleRecord): Prom
     workflowEventId: enqueue.eventId,
     at: TEST_TIME,
   });
-  const failed = await service.recordWorkflowUpdate(scope(target), claim.delivery.id, {
-    kind: "failed",
+  const dropped = await service.recordWorkflowUpdate(scope(target), claim.delivery.id, {
+    kind: "dropped",
     error: "test workflow failure",
-    nextRetryAt: new Date(TEST_TIME.getTime() + 1_000),
     at: TEST_TIME,
   });
-  return failed;
+  return dropped;
 }
 
 function request(target: Tenancy, options: {
@@ -244,7 +243,7 @@ describe("authenticated issue alert management routes", () => {
 
     const listed = await listDeliveries.invoke(request(tenancy, { method: "GET", query: { limit: "1" } }));
     expect(listed.body.deliveries).toHaveLength(1);
-    expect(listed.body.deliveries[0]).toMatchObject({ id: delivery.id, state: "failed" });
+    expect(listed.body.deliveries[0]).toMatchObject({ id: delivery.id, state: "dropped" });
 
     const detail = await getDelivery.invoke(request(tenancy, {
       method: "GET",

@@ -105,6 +105,7 @@ function status(value: string | null): { code: number, message: string } {
 
 function rootAttributes(transaction: ErrorIngestEnvelopeTransactionMetadata): OtlpAttributes {
   const attributes: OtlpAttributes = new Map();
+  addStringAttribute(attributes, "hexclave.signal.type", "custom_span");
   addStringAttribute(attributes, "sentry.event_id", transaction.eventId);
   addStringAttribute(attributes, "sentry.transaction.source", transaction.source);
   addStringAttribute(attributes, "sentry.transaction.op", transaction.traceOperation);
@@ -125,6 +126,7 @@ function childAttributes(
   span: ErrorIngestEnvelopeTransactionMetadata["spans"][number],
 ): OtlpAttributes {
   const attributes: OtlpAttributes = new Map();
+  addStringAttribute(attributes, "hexclave.signal.type", "custom_span");
   addStringAttribute(attributes, "sentry.event_id", transaction.eventId);
   addStringAttribute(attributes, "sentry.transaction.name", transaction.name);
   addStringAttribute(attributes, "sentry.span.op", span.op);

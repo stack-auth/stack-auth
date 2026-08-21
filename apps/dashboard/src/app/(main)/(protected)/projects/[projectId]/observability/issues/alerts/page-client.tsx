@@ -760,11 +760,18 @@ export default function PageClient() {
               <div className="-mx-2 divide-y divide-border/50">
                 {rules.map((rule) => {
                   const editable = getSupportedAlertRuleDraft(rule) != null;
-                  const statusLabel = rule.enabled ? "Active" : "Disabled";
+                  const statusLabel = rule.action.type === "webhook"
+                    ? "Unsupported"
+                    : rule.enabled ? "Active" : "Disabled";
                   const trigger = issueAlertTriggerLabel(rule);
-                  const destination = rule.action.type === "email"
-                    ? `${rule.action.userIds.length} recipient${rule.action.userIds.length === 1 ? "" : "s"}`
-                    : `webhook ${rule.action.integrationId}`;
+                  let destination: string;
+                  if (rule.action.type === "webhook") {
+                    destination = `webhook ${rule.action.integrationId}`;
+                  } else if (rule.action.userIds !== undefined) {
+                    destination = `${rule.action.userIds.length} recipient${rule.action.userIds.length === 1 ? "" : "s"}`;
+                  } else {
+                    destination = rule.action.routing.type === "team" ? "team routing" : "issue-owner routing";
+                  }
                   const subtitle = `${statusLabel} · ${trigger} · ${destination} · v${rule.version}`;
                   const toggleButton: DesignListItemButton = {
                     id: "toggle",

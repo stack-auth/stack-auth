@@ -10,11 +10,13 @@ import {
   setIssueAssignee,
   setIssueBookmarkState,
   setIssueOwnerState,
+  clearManualIssueOwnerState,
   setIssueSubscriptionState,
   setIssueTeam,
   updateIssueAssignment,
   updateIssueBookmark,
   updateIssueOwner,
+  clearManualIssueOwners,
   updateIssueSubscription,
   updateIssueTeam,
   mergeIssues,
@@ -373,6 +375,12 @@ describe("issue triage action helpers", () => {
     await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: USER_ID, teamId: null })).resolves.toMatchObject({ user_id: USER_ID });
     expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/owner`, expect.objectContaining({ body: JSON.stringify({ type: "user", user_id: USER_ID, team_id: null, source: "manual", context: null }) }));
     await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: null, teamId: null })).rejects.toThrow("A user owner requires only a user ID");
+
+    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+      issue_id: ISSUE_ID, deleted_count: 1, updated_at_millis: 13,
+    }), { status: 200 }));
+    await expect(clearManualIssueOwners(adminApp, ISSUE_ID)).resolves.toBeUndefined();
+    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/owner`, { method: "DELETE" });
   });
 
   it("posts bookmark and subscription changes for the authenticated subject", async () => {
@@ -406,6 +414,7 @@ describe("issue triage optimistic state", () => {
     expect(owned.product).toMatchObject({ assignee_user_id: USER_ID, team_id: TEAM_ID, bookmarked_user_ids: [USER_ID] });
     expect(owned.product.subscriptions[0]?.is_active).toBe(true);
     expect(owned.product.owners[0]?.team_id).toBe(TEAM_ID);
+    expect(clearManualIssueOwnerState(owned).product.owners).toEqual([]);
   });
 
   it("searches public issue records with the extra event dimensions", async () => {

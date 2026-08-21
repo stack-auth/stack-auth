@@ -487,12 +487,7 @@ export function evaluateIssueAlertRule(rule: IssueAlertRule, signal: IssueAlertS
     cooldown: rule.cooldown,
     cooldownKey,
     deduplicationKey,
-    runKey: cooldownKey,
     signal,
   };
   return match;
-}
-
-export function evaluateIssueAlertRules(rules: readonly IssueAlertRule[], signal: IssueAlertSignal): readonly IssueAlertEvaluation[] {
-  return rules.map((rule) => evaluateIssueAlertRule(rule, signal));
 }

@@ -43,6 +43,7 @@ type OccurrenceGroupRow = {
   batch_id: string,
   issue_hash: string,
   grouping_config: string,
+  issue_variant: string,
   grouping_provenance: string,
   occurrences: string | number,
   first_event_at_millis: string | number,
@@ -59,13 +60,13 @@ type OccurrenceGroupRow = {
   synthetic: boolean,
 };
 
-export function groupingProvenanceForReconciliation(row: Pick<OccurrenceGroupRow, "grouping_config" | "grouping_provenance" | "issue_hash">): DurableGroupingHashProvenance[] {
+export function groupingProvenanceForReconciliation(row: Pick<OccurrenceGroupRow, "grouping_config" | "grouping_provenance" | "issue_hash" | "issue_variant">): DurableGroupingHashProvenance[] {
   if (row.grouping_provenance !== "[]") return parseDurableGroupingProvenance(row.grouping_provenance);
   return [{
     hash: row.issue_hash,
     role: "primary",
     config_id: row.grouping_config,
-    variant: "degraded",
+    variant: row.issue_variant,
     fingerprint: {
       type: "default",
       source: "degraded",
@@ -142,6 +143,7 @@ async function rebuildInputs(options: {
         batch_id,
         issue_hash,
         any(issue_grouping_config) AS grouping_config,
+        any(issue_variant) AS issue_variant,
         -- \`any\` matches the neighboring column projections. The alias hashes are
         -- deliberately NOT selected from \`issue_hashes\`: the provenance column
         -- records every hash of the decision (owner primary + alias secondaries),
@@ -257,6 +259,7 @@ async function dispatchMaterializationSideEffects(options: {
   if (options.result.sideEffects.alertsDispatchedAt === null) {
     await dispatchIssueAlertsForMaterialization({
       tenancy: options.tenancy,
+      batchId: options.batchId,
       outcomes: options.result.outcomes,
       inputs: options.inputs,
       receivedAt: options.receivedAt,

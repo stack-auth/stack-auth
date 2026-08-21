@@ -13,6 +13,7 @@ import { normalizeUrlPath } from "./normalize-url";
 import { computeLayout, type GraphNode, type GraphEdge } from "./force-layout";
 import { buildPathsGraphPresentation } from "./graph-presentation";
 import { PathsGraphCanvas } from "./paths-graph-canvas";
+import { pageViewTelemetrySubquery } from "../page-view-query";
 
 type TransitionRow = {
   from_path: string,
@@ -43,9 +44,8 @@ FROM (
       PARTITION BY user_id
       ORDER BY started_at ASC
     ) as prev_path
-  FROM default.spans
-  WHERE span_type = '$page-view'
-    AND JSONExtractString(data, 'path') != ''
+  FROM ${pageViewTelemetrySubquery()}
+  WHERE JSONExtractString(data, 'path') != ''
     AND user_id != ''
 ) sub
 WHERE prev_path != '' AND prev_path != path
@@ -59,9 +59,8 @@ SELECT
   JSONExtractString(data, 'path') as path,
   any(domain(JSONExtractString(data, 'url'))) as page_domain,
   count() as views
-FROM default.spans
-WHERE span_type = '$page-view'
-  AND JSONExtractString(data, 'path') != ''
+FROM ${pageViewTelemetrySubquery()}
+WHERE JSONExtractString(data, 'path') != ''
 GROUP BY path
 ORDER BY views DESC
 LIMIT 200

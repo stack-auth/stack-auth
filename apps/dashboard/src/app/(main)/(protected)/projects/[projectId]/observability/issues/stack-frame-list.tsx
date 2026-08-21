@@ -131,6 +131,26 @@ function throwMissingCollapsedFrame(): never {
   throw new Error("A collapsed frame group can never be empty — groupStackFrames only emits runs of two or more frames");
 }
 
+function stackContentKey(frames: readonly StackFrameView[], rawStack: string | null): string {
+  return JSON.stringify([
+    rawStack,
+    frames.map((frame) => [
+      frame.filename,
+      frame.function,
+      frame.module,
+      frame.abs_path,
+      frame.lineno,
+      frame.colno,
+      frame.in_app,
+      frame.debug_id,
+      frame.context?.line,
+      frame.context?.pre,
+      frame.context?.post,
+      frame.symbolication?.status,
+    ]),
+  ]);
+}
+
 export function StackFrameList({
   frames,
   rawStack,
@@ -140,9 +160,10 @@ export function StackFrameList({
   rawStack: string | null,
   order: StackFrameOrder,
 }) {
-  const [selection, setSelection] = useState<{ frame: StackFrameView, frames: readonly StackFrameView[], rawStack: string | null } | null>(null);
-  const selectedFrame = selection?.frames === frames && selection.rawStack === rawStack ? selection.frame : null;
-  const selectFrame = (frame: StackFrameView) => setSelection({ frame, frames, rawStack });
+  const currentStackKey = stackContentKey(frames, rawStack);
+  const [selection, setSelection] = useState<{ frame: StackFrameView, stackKey: string } | null>(null);
+  const selectedFrame = selection?.stackKey === currentStackKey ? selection.frame : null;
+  const selectFrame = (frame: StackFrameView) => setSelection({ frame, stackKey: currentStackKey });
 
   if (frames.length === 0) {
     if (rawStack == null || rawStack.trim() === "") {

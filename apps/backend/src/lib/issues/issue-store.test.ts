@@ -227,6 +227,7 @@ describe("materializeIssuesFromBatch", () => {
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
     expect(first[0]?.issueId).toBe(second[0]?.issueId);
+    expect([first[0]?.isNew, second[0]?.isNew].sort((a, b) => Number(a) - Number(b))).toEqual([false, true]);
     const rows = await readIssueRowsForValue(value);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.timesSeen).toBe(2n);

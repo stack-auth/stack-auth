@@ -1,5 +1,4 @@
-import { createErrorIngestPolicyStateStore, evaluateErrorIngestPolicy } from "@/lib/error-ingest";
-import { getOtlpSpanPolicyData } from "@/lib/otlp/trace-writer";
+import type { ErrorIngestPolicyDecision } from "@/lib/error-ingest";
 import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { describe, expect, it } from "vitest";
 import { otlpSpanPolicyItemId, selectOtlpSpansAcceptedByPolicy } from "./policy-selection";
@@ -30,19 +29,18 @@ function span(name: string): CanonicalOtlpSpan {
 describe("OTLP trace policy selection", () => {
   it("does not grant one accepted duplicate identity to a rejected occurrence", () => {
     const spans = [span("first"), span("second")];
-    const policy = evaluateErrorIngestPolicy({
-      config: { observability: { errorIngest: { rateLimit: { maxItemsPerWindow: 1, windowSeconds: 60 } } } },
-      scope: { tenancyId: "tenancy-1", projectId: "project-1", branchId: "branch-1" },
-      items: spans.map((item, index) => ({
-        itemId: otlpSpanPolicyItemId(item, index),
-        itemType: "span",
-        data: getOtlpSpanPolicyData(item),
-      })),
-      nowMs: 60_000,
-      stateStore: createErrorIngestPolicyStateStore(),
-    });
+    const firstId = otlpSpanPolicyItemId(spans[0], 0);
+    const secondId = otlpSpanPolicyItemId(spans[1], 1);
+    const policy: ErrorIngestPolicyDecision = {
+      acceptedItemIds: [firstId],
+      scrubbedData: new Map(),
+      outcomes: [
+        { itemId: firstId, itemType: "span", status: "accepted", scrubbed: false, scrubbedBytes: 0 },
+        { itemId: secondId, itemType: "span", status: "rejected", reason: "invalid", scrubbed: false, scrubbedBytes: 0 },
+      ],
+    };
 
-    expect(policy.outcomes.map((outcome) => outcome.status)).toEqual(["accepted", "rate_limited"]);
+    expect(policy.outcomes.map((outcome) => outcome.status)).toEqual(["accepted", "rejected"]);
     expect(selectOtlpSpansAcceptedByPolicy(spans, policy).map((item) => item.name)).toEqual(["first"]);
   });
 });

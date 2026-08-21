@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { rollbackPlanItemDebits, tryDecreasePlanItemQuantities, type PlanItemDebit } from "@/lib/plan-metering";
+import { MAX_JAVASCRIPT_TIMESTAMP_MILLIS, telemetryMeteredAt } from "@/lib/telemetry-metering-time";
 import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
 import { KnownErrors } from "@hexclave/shared";
@@ -93,8 +94,8 @@ export const POST = createSmartRouteHandler({
       browser_session_id: yupString().defined().matches(UUID_RE, "Invalid browser_session_id"),
       session_replay_segment_id: yupString().defined().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
-      started_at_ms: yupNumber().defined().integer().min(0),
-      sent_at_ms: yupNumber().defined().integer().min(0),
+      started_at_ms: yupNumber().defined().integer().min(0).max(MAX_JAVASCRIPT_TIMESTAMP_MILLIS),
+      sent_at_ms: yupNumber().defined().integer().min(0).max(MAX_JAVASCRIPT_TIMESTAMP_MILLIS),
       events: yupArray(yupMixed().defined()).defined(),
     }).defined().test(
       "wire-version",
@@ -168,16 +169,18 @@ export const POST = createSmartRouteHandler({
       quantity: 1,
       idempotency: {
         key: `session-replay:${tenancyId}:${batchId}`,
-        createdAt: new Date(body.sent_at_ms),
+        createdAt: telemetryMeteredAt(body.sent_at_ms, body.started_at_ms, new Date()),
       },
     };
     let sessionReplayQuotaDebited = false;
+    let ownedPlanChangeIds = new Set<string>();
     if (isNewSession && billingTeamId != null && arePlanLimitsEnforced()) {
       const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [sessionReplayDebit]);
       if (debitResult.insufficientItemId != null) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, 1);
       }
-      sessionReplayQuotaDebited = true;
+      ownedPlanChangeIds = new Set(debitResult.createdChangeIds);
+      sessionReplayQuotaDebited = ownedPlanChangeIds.size > 0;
     }
 
     const replayId = recentSession?.id ?? randomUUID();
@@ -205,7 +208,7 @@ export const POST = createSmartRouteHandler({
       } catch (error) {
         if (sessionReplayQuotaDebited && billingTeamId != null) {
           try {
-            await rollbackPlanItemDebits(billingTeamId, [sessionReplayDebit]);
+            await rollbackPlanItemDebits(billingTeamId, [sessionReplayDebit], ownedPlanChangeIds);
           } catch (refundError) {
             captureError("session-replay-create-refund", refundError);
           }

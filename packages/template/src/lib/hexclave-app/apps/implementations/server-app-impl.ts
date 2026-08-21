@@ -46,7 +46,7 @@ import { clientVersion, createCache, createCacheBySession, getAnalyticsBaseUrl, 
 import { assertValidSpanStartInput, autoDetectedBackgroundTaskHook, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, withSpanImpl, getCustomTelemetryDataError, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { buildCapturedEventData, buildErrorEventData, generateErrorEventId, installServerErrorMonitor } from "./error-capture";
 import type { CapturedErrorEvent, CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScopeData } from "../interfaces/error-capture";
-import { DEFAULT_CONSOLE_CAPTURE_LEVELS, isObservabilityEnabled } from "./observability-config";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, existingProviderConflictFor, isObservabilityEnabled, resolveOpenTelemetryProviderMode, shouldInstallManagedOtel } from "./observability-config";
 import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
 import { emitHexclaveOtelError, emitHexclaveOtelEvent, emitHexclaveOtelLog } from "./otel-log-facade";
 import { createOtelSpanFacade } from "./otel-span-facade";
@@ -2173,13 +2173,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   /**
    * Registers the official OTel Node SDK and authenticated OTLP exporter.
-   * A conflicting global provider fails loudly instead of silently dropping or
-   * rerouting spans. Public-but-underscored: reached through framework glue.
+   * Managed mode fails loudly on a host provider. Auto mode adopts it.
+   * Public-but-underscored: reached through framework glue.
    */
   private _buildManagedOtelOptions(instrumentations: Instrumentation[]): Parameters<typeof registerManagedOtelAsync>[0] | null {
     if (this._clientAnalytics) return null;
     if (!isObservabilityEnabled(this._observabilityOptions)) return null;
-    if (this._observabilityOptions?.openTelemetry?.provider === "existing-provider") return null;
+    const providerMode = resolveOpenTelemetryProviderMode(this._observabilityOptions?.openTelemetry?.provider);
+    if (!shouldInstallManagedOtel(providerMode)) return null;
     const interfaceOptions = this._interface.options;
     if (!("secretServerKey" in interfaceOptions)) return null;
     return {
@@ -2187,6 +2188,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       projectId: this.projectId,
       secretServerKey: interfaceOptions.secretServerKey,
       clientVersion,
+      existingProviderConflict: existingProviderConflictFor(providerMode),
       traceSampleRate: this._traceSampleRate,
       resource: {
         serviceName: this._telemetryResource.service.name,

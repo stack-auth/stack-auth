@@ -42,19 +42,86 @@ export type SpanPropagationOptions = {
   useTrustedDomains?: boolean,
 };
 
+export type OpenTelemetryProviderMode = "managed" | "existing-provider" | "auto";
+
 export type OpenTelemetryOptions = {
   /**
    * Who owns the process-wide OpenTelemetry provider.
    *
    * `managed` installs a Node provider, parent-aware sampler, Hexclave OTLP
-   * exporter, W3C propagators, and async context manager. `existing-provider`
-   * leaves every global untouched; configure the application's provider with
-   * the exports from that framework package's Node-only `/otel` entrypoint.
+   * exporter, W3C propagators, and async context manager. A pre-existing
+   * global is a configuration error. `existing-provider` leaves every global
+   * untouched; configure the application's provider with the exports from that
+   * framework package's Node-only `/otel` entrypoint. `auto` installs when the
+   * process has no provider and adopts the host provider when one is already
+   * registered, including the case where the host registers after construction
+   * but before the async Node SDK load finishes.
    *
    * @default "managed"
    */
-  provider?: "managed" | "existing-provider",
+  provider?: OpenTelemetryProviderMode,
 };
+
+export function resolveOpenTelemetryProviderMode(
+  provider: OpenTelemetryProviderMode | undefined,
+): OpenTelemetryProviderMode {
+  return provider ?? "managed";
+}
+
+export function shouldInstallManagedOtel(provider: OpenTelemetryProviderMode): boolean {
+  switch (provider) {
+    case "existing-provider": {
+      return false;
+    }
+    case "managed":
+    case "auto": {
+      return true;
+    }
+    default: {
+      const unexpected: never = provider;
+      throw new Error(`Unexpected OpenTelemetry provider: ${JSON.stringify(unexpected)}`);
+    }
+  }
+}
+
+export function resolveClientOpenTelemetryProvider(
+  provider: OpenTelemetryProviderMode | undefined,
+  observabilityEnabled: boolean,
+): "managed" | "existing-provider" | "disabled" {
+  if (!observabilityEnabled) return "disabled";
+  const mode = resolveOpenTelemetryProviderMode(provider);
+  switch (mode) {
+    case "existing-provider": {
+      return "existing-provider";
+    }
+    case "managed":
+    case "auto": {
+      return "managed";
+    }
+    default: {
+      const unexpected: never = mode;
+      throw new Error(`Unexpected OpenTelemetry provider: ${JSON.stringify(unexpected)}`);
+    }
+  }
+}
+
+export function existingProviderConflictFor(provider: OpenTelemetryProviderMode): "throw" | "adopt" {
+  switch (provider) {
+    case "managed": {
+      return "throw";
+    }
+    case "auto": {
+      return "adopt";
+    }
+    case "existing-provider": {
+      throw new Error("existing-provider does not register a managed SDK");
+    }
+    default: {
+      const unexpected: never = provider;
+      throw new Error(`Unexpected OpenTelemetry provider: ${JSON.stringify(unexpected)}`);
+    }
+  }
+}
 
 export type ObservabilityOptions = {
   /**

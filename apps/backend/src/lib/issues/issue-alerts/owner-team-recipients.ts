@@ -61,9 +61,8 @@ export async function loadOwnerTeamMemberEmailsByUserId(tenancy: Tenancy): Promi
 export async function resolveIssueAlertOwnerTeamEmails(
   tenancy: Tenancy,
   userIds: readonly string[],
-): Promise<readonly string[] | undefined> {
+): Promise<MatchOwnerTeamRecipientsResult | { status: "owner_team_unavailable" }> {
   const emailsByUserId = await loadOwnerTeamMemberEmailsByUserId(tenancy);
-  if (emailsByUserId == null) return undefined;
-  const matched = matchOwnerTeamRecipients(userIds, emailsByUserId);
-  return matched.status === "ok" ? matched.emails : undefined;
+  if (emailsByUserId == null) return { status: "owner_team_unavailable" };
+  return matchOwnerTeamRecipients(userIds, emailsByUserId);
 }

@@ -448,7 +448,7 @@ export function IssueProductSection({
   actionLoading: boolean,
   onAssignmentChange: (userId: string | null) => Promise<void>,
   onTeamChange: () => Promise<void>,
-  onOwnerChange: (type: "user" | "team", id: string) => Promise<void>,
+  onOwnerChange: (type: "user" | "team" | "none", id: string | null) => Promise<void>,
   onBookmarkChange: (bookmarked: boolean) => Promise<void>,
   onSubscriptionChange: (subscribed: boolean) => Promise<void>,
   onTeamSubscriptionChange: (subscribed: boolean) => Promise<void>,
@@ -588,7 +588,8 @@ export function IssueProductSection({
               triggerId="issue-owner"
               triggerClassName="w-full"
               onValueChange={(value) => {
-                if (value === "user:self") startTriageAction(async () => await onOwnerChange("user", currentUserId));
+                if (value === "none") startTriageAction(async () => await onOwnerChange("none", null));
+                else if (value === "user:self") startTriageAction(async () => await onOwnerChange("user", currentUserId));
                 else if (value === `team:${ownerTeam.id}`) startTriageAction(async () => await onOwnerChange("team", ownerTeam.id));
               }}
             />

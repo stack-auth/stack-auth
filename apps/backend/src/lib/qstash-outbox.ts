@@ -75,7 +75,9 @@ export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelo
 }
 
 function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
-  if (!/^\/(?![\\/])/u.test(message.url)) throw new Error("QStash outbox URLs must be internal relative paths");
+  if (!/^\/(?![\\/])/u.test(message.url) || /[\u0000-\u0020\u007f]/u.test(message.url)) {
+    throw new Error("QStash outbox URLs must be internal relative paths");
+  }
   if (message.flowControl !== undefined) {
     if (!/^[a-zA-Z0-9._-]+$/.test(message.flowControl.key)) {
       throw new Error("QStash flow-control keys must be non-empty and contain only alphanumerics, hyphens, underscores, or periods");

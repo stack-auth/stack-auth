@@ -65,6 +65,12 @@ class MemoryArtifactStorage implements ArtifactObjectStorage {
   public upload(key: string, body: Uint8Array): void {
     this.objects.set(key, new Uint8Array(body));
   }
+
+  public deleteMatching(suffix: string): void {
+    for (const key of this.objects.keys()) {
+      if (key.endsWith(suffix)) this.objects.delete(key);
+    }
+  }
 }
 
 function createManifest(overrides: Partial<ArtifactManifest> = {}): ArtifactManifest {
@@ -152,6 +158,20 @@ describe("artifact upload service", () => {
     expect(repeatedFinalize.alreadyUploaded).toEqual([DEBUG_ID]);
   });
 
+  it("does not serve a debug-ID index until its manifest finalize marker exists", async () => {
+    const storage = new MemoryArtifactStorage();
+    const service = new ArtifactUploadService(storage);
+    const registered = await register(service, storage);
+    await service.finalizeManifest(SCOPE, { manifestSha256: registered.manifestSha256 });
+    storage.deleteMatching(`/finalized/${registered.manifestSha256}.json`);
+
+    await expect(service.lookupArtifact(SCOPE, {
+      debugId: DEBUG_ID,
+      release: "web@2026.08.06",
+      dist: "production",
+    })).resolves.toBeNull();
+  });
+
   it("keeps exact debug-ID lookup isolated by authenticated tenancy and release binding", async () => {
     const storage = new MemoryArtifactStorage();
     const service = new ArtifactUploadService(storage);
@@ -230,6 +250,38 @@ describe("artifact upload service", () => {
     storage.upload(descriptor.sourceMapObjectKey, sectionsMapGzip);
     await expect(service.finalizeManifest(SCOPE, { manifestSha256: registered.manifestSha256 }))
       .rejects.toMatchObject({ code: "unsupported_source_map" });
+  });
+
+  it("uses the symbolicator's bounded VLQ parser during finalization", async () => {
+    const storage = new MemoryArtifactStorage();
+    const service = new ArtifactUploadService(storage);
+    const invalidMap = new TextEncoder().encode(JSON.stringify({
+      version: 3,
+      sources: ["src/index.ts"],
+      names: [],
+      mappings: "!",
+    }));
+    const compressed = gzipSync(invalidMap);
+    const manifest = createManifest({
+      artifacts: [{
+        debugId: DEBUG_ID,
+        codeFile: "static/chunk.js",
+        sourceMapFile: "static/chunk.js.map",
+        sourceMapInline: false,
+        bundleSha256: sha256Hex(BUNDLE),
+        bundleBytes: BUNDLE.byteLength,
+        sourceMapSha256: sha256Hex(invalidMap),
+        sourceMapBytes: invalidMap.byteLength,
+        sourceMapGzippedBytes: compressed.byteLength,
+      }],
+    });
+    const registered = await service.registerManifest(SCOPE, { manifest, manifestSha256: manifestDigest(manifest) });
+    const descriptor = registered.artifacts[0];
+    if (descriptor.sourceMapObjectKey === null) throw new Error("Expected an external source map object.");
+    storage.upload(descriptor.bundleObjectKey, BUNDLE);
+    storage.upload(descriptor.sourceMapObjectKey, compressed);
+    await expect(service.finalizeManifest(SCOPE, { manifestSha256: registered.manifestSha256 }))
+      .rejects.toMatchObject({ code: "integrity_mismatch", message: expect.stringContaining("base64 VLQ") });
   });
 
   it("verifies inline source-map bytes against the manifest digest at finalization", async () => {
