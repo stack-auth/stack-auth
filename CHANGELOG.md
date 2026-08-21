@@ -2,6 +2,10 @@
 
 ---
 
+## 8/28/26
+
+- _(entries added throughout the week)_
+
 ## 8/14/26
 
 ![Onboarding welcome step](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-onboarding-welcome.webp)
