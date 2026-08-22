@@ -835,6 +835,7 @@ function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERRO
   const dist = stringValue(field(input, "dist"), state, "dist", limits.maxStringBytes);
   const environment = stringValue(field(input, "environment"), state, "environment", limits.maxStringBytes);
   const request = normalizeRequest(field(input, "request"), state, limits);
+  const user = normalizeUser(field(input, "user"), state, limits);
   const attachments = normalizeAttachments(field(input, "attachments"), state, limits);
   const itemMetadata = normalizeItemMetadata(field(input, "item_metadata"), state, limits);
   const seed = {
@@ -857,7 +858,7 @@ function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERRO
     ...topStacktrace === undefined ? {} : { stacktrace: topStacktrace },
     ...mechanism === undefined ? {} : { mechanism },
     ...request === undefined ? {} : { request },
-    ...normalizeUser(field(input, "user"), state, limits) === undefined ? {} : { user: normalizeUser(field(input, "user"), state, limits) },
+    ...user === undefined ? {} : { user },
     tags,
     contexts,
     extra,

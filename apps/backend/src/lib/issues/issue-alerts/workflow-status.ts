@@ -21,11 +21,11 @@ import {
   type IssueAlertWorkflowUpdate,
 } from "./persistence";
 import type { IssueAlertRuleScope } from "./types";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ISSUE_ALERT_WORKFLOW_REPLAY_MAX_COUNT = 1_000;
 export const ISSUE_ALERT_WORKFLOW_REPLAY_MAX_PAYLOAD_BYTES = 32 * 1024;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const IDENTIFIER_PATTERN = /^[^\u0000-\u001f\u007f]+$/u;
 const TEXT_ENCODER = new TextEncoder();
 type IssueAlertWorkflowReplayPayload = { [key: string]: ErrorIngestScrubbedValue };

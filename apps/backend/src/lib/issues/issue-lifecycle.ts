@@ -5,6 +5,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { randomUUID } from "node:crypto";
 import { appendIssueActivityInTransaction, assertIssueProjectUserInTransaction, assignIssueToTeam as persistIssueTeamAssignment, setIssuePriority as persistIssuePriority } from "./issue-product";
 import { emitIssueLifecycleWebhook } from "./issue-webhooks";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ISSUE_LIFECYCLE_STATUSES = ["unresolved", "resolved", "ignored"] as const;
 export type IssueLifecycleStatus = (typeof ISSUE_LIFECYCLE_STATUSES)[number];
@@ -83,7 +84,6 @@ export class IssueLifecycleInvariantError extends Error {
   }
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function assertUuid(value: string, fieldName: string): void {
   if (!UUID_PATTERN.test(value)) {

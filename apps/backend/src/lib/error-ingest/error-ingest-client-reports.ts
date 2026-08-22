@@ -8,6 +8,7 @@ import type {
   ErrorIngestClientReportReason,
   ErrorIngestProtocolProjection,
 } from "./error-ingest-protocol-adapter";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ERROR_INGEST_CLIENT_REPORT_PROTOCOLS = ["otlp_logs", "otlp_traces", "sentry_envelope", "client_report"] as const;
 export type ErrorIngestClientReportProtocol = typeof ERROR_INGEST_CLIENT_REPORT_PROTOCOLS[number];
@@ -59,7 +60,6 @@ const MAX_REPORT_ROWS = 100;
 const MAX_REPORT_QUANTITY = 1_000_000_000;
 export const ERROR_INGEST_CLIENT_REPORT_REASON_CATEGORY_MAX_BYTES = 64;
 export const ERROR_INGEST_CLIENT_REPORT_IDEMPOTENCY_KEY_MAX_BYTES = 256;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function isBoundedText(value: unknown, maxBytes: number): value is string {
   return typeof value === "string"

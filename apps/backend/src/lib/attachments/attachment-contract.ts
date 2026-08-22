@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const MAX_ERROR_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 export const MAX_ERROR_ATTACHMENT_BASE64_BYTES = Math.ceil(MAX_ERROR_ATTACHMENT_BYTES / 3) * 4 + 4;
@@ -167,9 +168,6 @@ function validateScopePart(value: unknown, label: string): string {
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");

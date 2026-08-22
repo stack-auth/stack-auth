@@ -16,13 +16,13 @@ import {
   type IssueAlertRuleRecord,
 } from "./persistence";
 import type { IssueAlertRule, IssueAlertRuleScope } from "./types";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export type IssueAlertRuleJson = IssueAlertRule;
 
 export const ISSUE_ALERT_API_DEFAULT_LIMIT = 50;
 export const ISSUE_ALERT_API_MAX_LIMIT = 100;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export type IssueAlertRuleResponse = IssueAlertRuleJson & {
   database_id: string,

@@ -12,6 +12,7 @@ import {
   type ArtifactStorageObjectInfo,
 } from "../artifacts/artifact-storage";
 import type { ArtifactLookup } from "../artifacts/artifact-upload-service";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 type ArtifactLookupService = {
   lookupArtifact(scope: ArtifactScope, query: { debugId: string, release: string | null, dist: string | null }): Promise<ArtifactLookup | null>,
@@ -1027,6 +1028,3 @@ function decodeUtf8(bytes: Uint8Array): string | null {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

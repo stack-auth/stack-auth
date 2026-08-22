@@ -26,6 +26,7 @@ import {
   sha256Hex,
   type SourceMapArtifactCandidate,
 } from "../lib/source-maps.js";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type SourceMapsUploadOptions = {
   release?: string,
@@ -723,9 +724,6 @@ function readResponseBoolean(record: Record<string, unknown>, key: string, opera
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function resolveScanDirs(dirs: readonly string[], cwd: string): string[] {
   if (dirs.length === 0) {

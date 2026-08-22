@@ -7,6 +7,7 @@ import { ISSUE_LOCK_LEASE_MS } from "./issue-merge";
 import { randomUUID } from "node:crypto";
 import { toDurableGroupingProvenance } from "./grouping-provenance";
 import type { GroupingHashProvenance } from "./types";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 
 export type IssueBatchApplyOutcome = {
@@ -32,9 +33,6 @@ type IssueMaterializationLedgerRow = IssueMaterializationSideEffectState & {
   outcomes: IssueBatchApplyOutcome[],
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function decodeStoredOutcomes(value: unknown): IssueBatchApplyOutcome[] {
   if (value == null) return [];

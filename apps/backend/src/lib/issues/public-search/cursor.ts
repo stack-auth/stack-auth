@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { PublicSearchFilters, PublicSearchRecordType } from "./contract";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type PublicSearchIssueCursorPosition = {
   kind: "issue",
@@ -36,9 +37,6 @@ type UnsignedCursor = {
   position: PublicSearchCursorPosition,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isSafeMillis(value: unknown): value is number {
   return typeof value === "number"

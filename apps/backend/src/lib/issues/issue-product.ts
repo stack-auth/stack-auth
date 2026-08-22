@@ -14,11 +14,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { DEFAULT_BRANCH_ID } from "@/lib/branch-constants";
 import type { IssuePriority } from "./issue-lifecycle";
 import type { IssueActivitySubject } from "./issue-activity";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ISSUE_PRODUCT_MAX_PAGE_SIZE = 100;
 export const ISSUE_PRODUCT_MAX_OWNER_CONTEXT_BYTES = 65_536;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ISSUE_OWNER_SOURCES = ["manual", "ownership_rule", "codeowners", "suspect_commit", "seer_suggested"] as const;
 export type IssueOwnerSource = (typeof ISSUE_OWNER_SOURCES)[number];
 export type IssueOwnerType = "user" | "team";

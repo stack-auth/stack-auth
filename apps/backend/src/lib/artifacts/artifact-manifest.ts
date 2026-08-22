@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ArtifactServiceError } from "./artifact-errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const ARTIFACT_MANIFEST_SCHEMA_VERSION = 1 as const;
 
@@ -12,7 +13,7 @@ export const MAX_METADATA_BYTES = 256;
 export const MAX_ARTIFACT_PATH_BYTES = 1_024;
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
-const DEBUG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const DEBUG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export type ArtifactScope = {
   tenantId: string,
@@ -249,9 +250,6 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function invalidManifest(message: string): ArtifactServiceError {
   return new ArtifactServiceError("invalid_manifest", message);

@@ -6,10 +6,8 @@ import { LogLevelChip } from "../log-level";
 import { ClockCounterClockwiseIcon, SpinnerGapIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { LeadingUpToLogLine } from "./correlation";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value != null && !Array.isArray(value);
-}
 
 function parseStructuredLogMessage(message: string): { type: string, value: string } | null {
   const parsed = tryParseJson(message);

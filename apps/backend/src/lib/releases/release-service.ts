@@ -14,6 +14,8 @@ import type {
 } from "@/generated/prisma/client";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
+import { DEBUG_ID_RE } from "../artifacts/artifact-manifest";
 
 const RELEASE_VERSION_MAX_BYTES = 250;
 const RELEASE_REF_MAX_BYTES = 250;
@@ -32,8 +34,6 @@ const DEFAULT_RELEASE_LIST_LIMIT = 50;
 const MAX_RELEASE_LIST_LIMIT = 100;
 const RELEASE_GRAPH_LIST_LIMIT = 50;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export const RELEASE_STATUSES = [
@@ -206,8 +206,8 @@ export function releaseScopeFields(scope: ReleaseScope): {
   branchId: string,
 } {
   const tenancyId = validateUuid(scope.tenancy.id, "tenancy.id");
-  const projectId = validateScopedText(scope.tenancy.project.id, "tenancy.project.id", 512);
-  const branchId = validateScopedText(scope.tenancy.branchId, "tenancy.branchId", 512);
+  const projectId = validateText(scope.tenancy.project.id, "tenancy.project.id", 512);
+  const branchId = validateText(scope.tenancy.branchId, "tenancy.branchId", 512);
   return { tenancyId, projectId, branchId };
 }
 
@@ -227,7 +227,7 @@ export function validateSha256(value: string, fieldName: string): string {
 }
 
 export function validateDebugId(value: string): string {
-  if (!DEBUG_ID_PATTERN.test(value)) {
+  if (!DEBUG_ID_RE.test(value)) {
     throw new ReleaseInputError("debugId must be a lowercase hyphenated UUID");
   }
   return value;
@@ -727,10 +727,6 @@ function validateArtifactStatus(value: ReleaseArtifactStatusValue): void {
 function validateUuid(value: string, fieldName: string): string {
   if (!UUID_PATTERN.test(value)) throw new ReleaseInputError(`${fieldName} must be a UUID`);
   return value;
-}
-
-function validateScopedText(value: string, fieldName: string, maxBytes: number): string {
-  return validateText(value, fieldName, maxBytes);
 }
 
 function validateText(value: string, fieldName: string, maxBytes: number): string {

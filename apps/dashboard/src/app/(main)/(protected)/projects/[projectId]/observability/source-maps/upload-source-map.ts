@@ -1,3 +1,5 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
+
 const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const BUNDLE_EXTENSION_PATTERN = /\.(?:js|mjs|cjs)$/i;
 const SOURCE_MAP_EXTENSION_PATTERN = /\.map$/i;

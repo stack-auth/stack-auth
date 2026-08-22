@@ -3,6 +3,7 @@ import type { IssueBatchApplyOutcome } from "../issue-store";
 import type { IssueBatchDelta } from "../issue-materialization-contract";
 import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 import type { IssueAlertLevel, IssueAlertScalar, IssueAlertSignal, IssueAlertStatus } from "./types";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 const MAX_SIGNAL_MAP_ENTRIES = 100;
 const MAX_SIGNAL_KEY_BYTES = 256;
@@ -46,9 +47,6 @@ export type IssueAlertSignalInput = {
   batchId?: string,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function isScalar(value: unknown): value is IssueAlertScalar {
   return value === null || typeof value === "string" || typeof value === "boolean"

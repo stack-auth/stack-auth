@@ -13,7 +13,6 @@ import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics
 
 const TEXT_ENCODER = new TextEncoder();
 const EVENT_ID_RE = /^[0-9a-f]{32}$/u;
-const SHA256_RE = /^[0-9a-f]{64}$/u;
 const SAFE_TEXT_RE = /^[^\u0000-\u001f\u007f]*$/u;
 const SECRET_KEY_RE = /(?:access[-_.]?token|api[-_.]?key|authorization|cookie|credential|password|private[-_.]?key|refresh[-_.]?token|secret|session[-_.]?token|signature|token)/iu;
 const SECRET_TEXT_RE = /(?:bearer\s+|basic\s+|-----begin [^-]*private key-----|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/iu;
@@ -604,7 +603,6 @@ function parseAttachmentMetadata(
   const contentType = safeOptionalText(header.content_type, "Attachment content_type", limits.maxContentTypeBytes) ?? "application/octet-stream";
   const attachmentType = safeOptionalText(header.attachment_type, "Attachment attachment_type", limits.maxAttachmentTypeBytes) ?? "event.attachment";
   const sha256 = createHash("sha256").update(payload).digest("hex");
-  if (!SHA256_RE.test(sha256)) throw new ErrorIngestEnvelopeError("malformed", "Attachment digest could not be calculated");
   return { eventId, filename, contentType, attachmentType, byteLength: payload.byteLength, sha256 };
 }
 

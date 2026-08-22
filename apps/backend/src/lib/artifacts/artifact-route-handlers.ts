@@ -1,6 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { ArtifactServiceError } from "./artifact-errors";
 import {
   validateArtifactMetadata,
@@ -297,10 +298,6 @@ function readRecord(input: unknown, label: string): Record<string, unknown> {
     throw new ArtifactServiceError("invalid_manifest", `${label} must be an object.`);
   }
   return input;
-}
-
-function isRecord(input: unknown): input is Record<string, unknown> {
-  return typeof input === "object" && input !== null && !Array.isArray(input);
 }
 
 function readRequiredString(record: Record<string, unknown>, key: string): string {

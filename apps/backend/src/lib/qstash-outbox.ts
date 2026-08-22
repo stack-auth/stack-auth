@@ -5,6 +5,7 @@ import {
   type BackgroundJobEnvelope,
   type BackgroundJobType,
 } from "./telemetry/contract";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type QstashFlowControl = {
   key: string;
@@ -28,9 +29,6 @@ export type QstashOutboxMessage<TPayload extends Record<string, unknown>> = {
   message: QstashMessage<TPayload>;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function isQstashDelay(value: unknown): value is QstashDelay {
   if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0;

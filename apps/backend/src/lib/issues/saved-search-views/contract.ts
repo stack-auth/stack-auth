@@ -5,6 +5,7 @@ import {
   parsePublicSearchQuery,
   type PublicSearchFilters,
 } from "../public-search/contract";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const SAVED_ISSUE_SEARCH_QUERY_VERSION = 1 as const;
 export const SAVED_ISSUE_SEARCH_QUERY_MAX_BYTES = 16 * 1024;
@@ -117,11 +118,6 @@ function forbidden(message: string): never {
   throw new StatusError(StatusError.Forbidden, message);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object"
-    && value !== null
-    && !Array.isArray(value);
-}
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");

@@ -10,6 +10,7 @@ import {
   type ServiceSummary,
   type ServiceTimeRangeHours,
 } from "../services/services-data";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const PERFORMANCE_TIME_RANGES = [
   { label: "1h", hours: 1 },
@@ -174,9 +175,6 @@ const PERFORMANCE_METRIC_TYPES: readonly PerformanceMetricType[] = [
   "summary",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function requiredRecord(value: unknown, field: string): Record<string, unknown> {
   if (!isRecord(value)) throw new Error(`Native metrics response field ${field} must be an object`);

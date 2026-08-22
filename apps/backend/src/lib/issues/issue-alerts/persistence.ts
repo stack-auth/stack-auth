@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import { parseIssueAlertAction } from "./destinations";
 import type { IssueAlertWorkflowEventPayload } from "@/lib/workflows/issue-alerts/contract";
+import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ISSUE_ALERT_RULE_CONFIG_MAX_BYTES = 64 * 1024;
 export const ISSUE_ALERT_MAX_ACTIVE_RULES = 1_000;
@@ -43,7 +44,6 @@ const ISSUE_ALERT_MAX_TAG_FILTERS = 32;
 const ISSUE_ALERT_MAX_PREDICATES = 64;
 const ISSUE_ALERT_RULE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
 const ISSUE_ALERT_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TEXT_ENCODER = new TextEncoder();
 
 const ISSUE_ALERT_VALUE_OPERATORS: readonly IssueAlertValueOperator[] = [
@@ -600,7 +600,7 @@ function validateTimestamp(value: Date | undefined, field: string): Date {
   return result;
 }
 
-async function claimIssueAlertDeliveryInTransactionImpl(
+export async function claimIssueAlertDeliveryInTransaction(
   client: PrismaClientTransaction,
   input: IssueAlertDeliveryClaimInput,
 ): Promise<IssueAlertDeliveryClaimResult> {
@@ -705,13 +705,6 @@ async function claimIssueAlertDeliveryInTransactionImpl(
   const delivery = await findDelivery(client, input.scope, { id: insertedDelivery[0].id });
   if (delivery === null) throw new Error("Issue alert delivery disappeared after claim");
   return { status: resultStatus, delivery };
-}
-
-export async function claimIssueAlertDeliveryInTransaction(
-  client: PrismaClientTransaction,
-  input: IssueAlertDeliveryClaimInput,
-): Promise<IssueAlertDeliveryClaimResult> {
-  return await claimIssueAlertDeliveryInTransactionImpl(client, input);
 }
 
 async function recordWorkflowUpdateInTransaction(
@@ -915,7 +908,7 @@ export class IssueAlertPersistenceService implements IssueAlertRuleRepository {
   }
 
   async claimDelivery(input: IssueAlertDeliveryClaimInput): Promise<IssueAlertDeliveryClaimResult> {
-    return await retryTransaction(this.client, async (tx) => await claimIssueAlertDeliveryInTransactionImpl(tx, input), {
+    return await retryTransaction(this.client, async (tx) => await claimIssueAlertDeliveryInTransaction(tx, input), {
       level: "serializable",
     });
   }

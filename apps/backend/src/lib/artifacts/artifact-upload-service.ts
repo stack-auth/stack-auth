@@ -20,6 +20,7 @@ import {
   type ArtifactStorageObject,
   type ArtifactUploadContentType,
 } from "./artifact-storage";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 const ARTIFACT_STORAGE_SCHEMA_VERSION = 1 as const;
 const MANIFEST_CONTENT_TYPE: ArtifactUploadContentType = "application/json";
@@ -533,9 +534,6 @@ function validateStoredManifest(value: unknown, scope: ArtifactScope, label: str
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function sameScope(left: ArtifactScope, right: ArtifactScope): boolean {
   return left.tenantId === right.tenantId && left.projectId === right.projectId && left.branchId === right.branchId;

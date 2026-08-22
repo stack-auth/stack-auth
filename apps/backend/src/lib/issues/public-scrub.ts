@@ -1,9 +1,6 @@
 import { scrubErrorIngestPayload } from "@/lib/error-ingest";
 
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+export { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export function scrubPublicValue(value: unknown): unknown {
   return scrubErrorIngestPayload(value).value;

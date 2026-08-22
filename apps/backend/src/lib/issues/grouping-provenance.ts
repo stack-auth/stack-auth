@@ -6,6 +6,7 @@ import type {
   GroupingHashProvenance,
   GroupingVariant,
 } from "./types";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type DurableGroupingHashProvenance = {
   hash: string,
@@ -65,9 +66,6 @@ function isGroupingFingerprintSource(value: unknown): value is GroupingFingerpri
   return typeof value === "string" && Object.hasOwn(GROUPING_FINGERPRINT_SOURCE_SET, value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function parseStringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) throw new Error(`Stored grouping provenance has a malformed ${label} list`);

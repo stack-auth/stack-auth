@@ -1168,8 +1168,7 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
       if (!OTLP_EXPORT_RETRYABLE_STATUSES.has(response.status)) return { kind: "permanent_failure" };
       const retryAfterMs = parseRetryAfterDelay(response.headers.get("retry-after")) ?? OTLP_EXPORT_RETRY_BASE_DELAY_MS;
       return { kind: "retryable", nextAttemptAt: Date.now() + retryAfterMs };
-    } catch (error) {
-      if (isDeadlineError(error)) return { kind: "retryable", nextAttemptAt: Date.now() + OTLP_EXPORT_RETRY_BASE_DELAY_MS };
+    } catch {
       return { kind: "retryable", nextAttemptAt: Date.now() + OTLP_EXPORT_RETRY_BASE_DELAY_MS };
     }
   }

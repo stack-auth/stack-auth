@@ -30,6 +30,7 @@ import {
 } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
+import { DEBUG_ID_RE } from "../artifacts/artifact-manifest";
 
 const MAX_RELEASE_VERSION_BYTES = 250;
 const MAX_RELEASE_REF_BYTES = 250;
@@ -46,7 +47,6 @@ const MAX_AUTHOR_NAME_BYTES = 256;
 const MAX_AUTHOR_EMAIL_BYTES = 320;
 const MAX_DATE_BYTES = 64;
 const MAX_DATABASE_INT = 2_147_483_647;
-const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export const ReleaseAuthSchema = yupObject({
@@ -113,7 +113,7 @@ const ArtifactRegistrationBodySchema = yupObject({
 
 const DebugIdAssociationBodySchema = yupObject({
   release_artifact_id: yupString().uuid().defined(),
-  debug_id: yupString().matches(DEBUG_ID_PATTERN).defined(),
+  debug_id: yupString().matches(DEBUG_ID_RE).defined(),
   code_file: yupString().max(MAX_CODE_FILE_BYTES).defined(),
   source_map_file: yupString().max(MAX_CODE_FILE_BYTES).nullable().defined(),
   source_map_inline: yupBoolean().defined(),
@@ -127,7 +127,7 @@ const DebugIdAssociationBodySchema = yupObject({
 }).defined();
 
 const DebugIdLookupQuerySchema = yupObject({
-  debug_id: yupString().matches(DEBUG_ID_PATTERN).defined(),
+  debug_id: yupString().matches(DEBUG_ID_RE).defined(),
   release: yupString().max(MAX_RELEASE_VERSION_BYTES).optional(),
   dist: yupString().max(MAX_ARTIFACT_DIST_BYTES).optional(),
   environment: yupString().max(MAX_ENVIRONMENT_BYTES).optional(),
