@@ -7,7 +7,8 @@ export const TV_EMAIL_BASELINE_REFRESH_MS = 6 * 60 * 60 * 1000;
 export const TV_EMAIL_BASELINE_STALE_MS = 12 * 60 * 60 * 1000;
 export const TV_EMAIL_RECOVERY_TITLE = "Email Delivery Restored";
 export const TV_EMAIL_RULE_VERSION = 2;
-export const TV_PAYMENT_RULE_VERSION = 1;
+// Persisted payment candidates need a fresh interpretation after splitting the critical rule paths.
+export const TV_PAYMENT_RULE_VERSION = 2;
 export const TV_PAYMENT_BASELINE_REFRESH_MS = 6 * 60 * 60 * 1000;
 export const TV_PAYMENT_BASELINE_STALE_MS = 12 * 60 * 60 * 1000;
 export const TV_PAYMENT_RECOVERY_TITLE = "Subscription Payments Restored";
@@ -138,8 +139,10 @@ export type TvPaymentSample = {
   baseline: TvPaymentBaseline | null,
 };
 
+export type TvPaymentRulePath = "standard" | "low-volume" | "strict" | "critical" | "strict-critical" | "low-volume-critical";
+
 type TvPaymentCandidate = {
-  rulePath: "standard" | "low-volume" | "strict" | "critical" | "strict-critical",
+  rulePath: TvPaymentRulePath,
   presentationClass: TvEmailPresentationClass,
   accumulatedMs: number,
 };
@@ -195,7 +198,7 @@ function paymentBreach(sample: TvPaymentSample): TvPaymentCandidate | null {
     return { rulePath: "critical", presentationClass: "critical-incident", accumulatedMs: 0 };
   }
   if (sample.lowVolume.outcomes >= 5 && sample.lowVolume.failures >= 4 && lowRate != null && lowRate <= 40 && baseline - lowRate >= 25) {
-    return { rulePath: "critical", presentationClass: "critical-incident", accumulatedMs: 0 };
+    return { rulePath: "low-volume-critical", presentationClass: "critical-incident", accumulatedMs: 0 };
   }
   if (sample.current.outcomes >= 10 && sample.current.failures >= 3 && currentRate != null && currentRate <= 80 && baseline - currentRate >= 10) {
     return { rulePath: "standard", presentationClass: "incident", accumulatedMs: 0 };
@@ -209,14 +212,14 @@ function paymentBreach(sample: TvPaymentSample): TvPaymentCandidate | null {
 function paymentRequiredMs(candidate: TvPaymentCandidate): number {
   if (candidate.rulePath === "critical") return 5 * 60_000;
   if (candidate.rulePath === "standard") return 10 * 60_000;
-  if (candidate.rulePath === "low-volume" || candidate.rulePath === "strict-critical") return 30 * 60_000;
+  if (candidate.rulePath === "low-volume" || candidate.rulePath === "strict-critical" || candidate.rulePath === "low-volume-critical") return 30 * 60_000;
   return 60 * 60_000;
 }
 
 export function evaluateTvSubscriptionCollection(
   previous: TvPaymentEvaluatorState,
   sample: TvPaymentSample,
-): { state: TvPaymentEvaluatorState, action: TvEmailEvaluationAction, qualification: string | null } {
+): { state: TvPaymentEvaluatorState, action: TvEmailEvaluationAction, qualification: TvPaymentRulePath | "recovery" | null } {
   const baseline = sample.baseline ?? previous.baseline;
   if (sample.status !== "fresh" || sample.current == null || sample.lowVolume == null) {
     return { state: { ...previous, baseline }, action: { type: "none" }, qualification: null };
@@ -233,7 +236,10 @@ export function evaluateTvSubscriptionCollection(
   const breach = paymentBreach({ ...sample, baseline });
   if (previous.activeClass != null) {
     if (previous.activeClass === "incident" && breach?.presentationClass === "critical-incident") {
-      const accumulatedMs = previous.candidate?.presentationClass === "critical-incident" ? previous.candidate.accumulatedMs + elapsed : 0;
+      const accumulatedMs = previous.candidate?.presentationClass === "critical-incident"
+        && previous.candidate.rulePath === breach.rulePath
+        ? previous.candidate.accumulatedMs + elapsed
+        : 0;
       const candidate = { ...breach, accumulatedMs };
       return accumulatedMs >= paymentRequiredMs(candidate)
         ? { state: { ...baseState, activeClass: "critical-incident", candidate: null, recovery: null }, action: { type: "escalate", presentationClass: "critical-incident" }, qualification: candidate.rulePath }

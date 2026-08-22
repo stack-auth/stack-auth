@@ -26,6 +26,8 @@ import {
   type TvPaymentBaseline,
   type TvPaymentEvaluatorState,
   type TvPaymentSample,
+  type TvPaymentRulePath,
+  type TvPaymentWindow,
 } from "@/lib/tv-mode/event-evaluators";
 import {
   createTvPresentationAssignment,
@@ -742,7 +744,7 @@ async function evaluateEmailIfDue(tenancy: Tenancy, now: Date): Promise<void> {
   await persistEmailEvaluation({ tenancy, claim, previousState: state, sample, now });
 }
 
-function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState["activeClass"]): TvPaymentEvaluatorState {
+export function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState["activeClass"]): TvPaymentEvaluatorState {
   if (!isObject(value) || readNumber(value, "ruleVersion") !== TV_PAYMENT_RULE_VERSION) {
     return createTvPaymentEvaluatorState({ activeClass });
   }
@@ -765,7 +767,7 @@ function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState
     const presentationClass = readString(value.candidate, "presentationClass");
     const accumulatedMs = readNumber(value.candidate, "accumulatedMs");
     if (
-      (rulePath === "standard" || rulePath === "low-volume" || rulePath === "strict" || rulePath === "critical" || rulePath === "strict-critical")
+      (rulePath === "standard" || rulePath === "low-volume" || rulePath === "strict" || rulePath === "critical" || rulePath === "strict-critical" || rulePath === "low-volume-critical")
       && (presentationClass === "incident" || presentationClass === "critical-incident")
       && accumulatedMs != null
     ) candidate = { rulePath, presentationClass, accumulatedMs };
@@ -777,6 +779,41 @@ function readTvPaymentState(value: unknown, activeClass: TvPaymentEvaluatorState
     if ((window === "current" || window === "low-volume") && accumulatedMs != null) recovery = { window, accumulatedMs };
   }
   return { ruleVersion: TV_PAYMENT_RULE_VERSION, activeClass, baseline, lastFreshEvaluatedAt: freshAt, candidate, recovery };
+}
+
+export function getTvPaymentEvidenceWindow(
+  qualification: TvPaymentRulePath | "recovery" | null,
+  sample: TvPaymentSample,
+): TvPaymentWindow | null {
+  switch (qualification) {
+    case "low-volume": {
+      return sample.lowVolume;
+    }
+    case "strict": {
+      return sample.lowVolume;
+    }
+    case "strict-critical": {
+      return sample.lowVolume;
+    }
+    case "low-volume-critical": {
+      return sample.lowVolume;
+    }
+    case "standard": {
+      return sample.current;
+    }
+    case "critical": {
+      return sample.current;
+    }
+    case "recovery": {
+      return sample.current;
+    }
+    case null: {
+      return sample.current;
+    }
+    default: {
+      throw new Error(`Unknown TV payment qualification: ${qualification}`);
+    }
+  }
 }
 
 export async function loadTvSubscriptionCollectionOutcomes(
@@ -858,7 +895,7 @@ async function persistPaymentEvaluation(options: { tenancy: Tenancy, claim: Eval
   await retryTransaction(prisma, async (transaction) => {
     if (!(await evaluatorClaimStillCurrent(transaction, schema, options.tenancy.id, "subscription-collection", options.claim))) return;
     let activeOccurrenceId = options.claim.activeOccurrenceId;
-    const window = result.qualification === "low-volume" || result.qualification?.startsWith("strict") ? options.sample.lowVolume : options.sample.current;
+    const window = getTvPaymentEvidenceWindow(result.qualification, options.sample);
     const metricValue = window?.successRatePercent == null ? "Unavailable" : `${window.successRatePercent}%`;
     const evidence = { ruleVersion: TV_PAYMENT_RULE_VERSION, evaluatedAt: options.sample.evaluatedAt, qualification: result.qualification, current: options.sample.current, lowVolume: options.sample.lowVolume, baseline: options.sample.baseline };
     const previousEvidence = isObject(options.claim.activeAggregateEvidence) ? options.claim.activeAggregateEvidence : {};

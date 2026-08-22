@@ -3,27 +3,38 @@ import {
   createTvPaymentEvaluatorState,
   evaluateTvSubscriptionCollection,
   selectTvSubscriptionInvoiceOutcome,
+  TV_PAYMENT_RULE_VERSION,
   type TvPaymentSample,
+  type TvPaymentEvaluatorState,
 } from "./event-evaluators";
+import { getTvPaymentEvidenceWindow, readTvPaymentState } from "./events";
 
 const now = new Date("2026-08-14T12:00:00.000Z");
 
-function sample(options: { outcomes: number, failures: number, baseline?: number | null, evaluatedAt?: Date, baselineComputedAt?: Date }): TvPaymentSample {
+function sample(options: {
+  outcomes: number,
+  failures: number,
+  baseline?: number | null,
+  evaluatedAt?: Date,
+  baselineComputedAt?: Date,
+  current?: { outcomes: number, failures: number },
+  lowVolume?: { outcomes: number, failures: number },
+}): TvPaymentSample {
   const evaluatedAt = options.evaluatedAt ?? now;
-  const window = (hours: number) => ({
+  const window = (hours: number, values: { outcomes: number, failures: number }) => ({
     startsAt: new Date(evaluatedAt.getTime() - hours * 60 * 60 * 1000).toISOString(),
     endsAt: evaluatedAt.toISOString(),
-    outcomes: options.outcomes,
-    successes: options.outcomes - options.failures,
-    failures: options.failures,
-    successRatePercent: options.outcomes === 0 ? null : (options.outcomes - options.failures) / options.outcomes * 100,
+    outcomes: values.outcomes,
+    successes: values.outcomes - values.failures,
+    failures: values.failures,
+    successRatePercent: values.outcomes === 0 ? null : (values.outcomes - values.failures) / values.outcomes * 100,
   });
   return {
     status: "fresh",
     evaluatedAt: evaluatedAt.toISOString(),
     observedAt: evaluatedAt.toISOString(),
-    current: window(24),
-    lowVolume: window(14 * 24),
+    current: window(24, options.current ?? { outcomes: options.outcomes, failures: options.failures }),
+    lowVolume: window(14 * 24, options.lowVolume ?? { outcomes: options.outcomes, failures: options.failures }),
     baseline: options.baseline === undefined ? null : {
       computedAt: (options.baselineComputedAt ?? evaluatedAt).toISOString(),
       qualifiedWeeks: 4,
@@ -55,6 +66,168 @@ describe("subscription collection evaluator", () => {
     const result = evaluateTvSubscriptionCollection(createTvPaymentEvaluatorState(), sample({ outcomes: 10, failures: 5, baseline: 99 }));
     expect(result.qualification).toBe("critical");
     expect(result.state.candidate?.presentationClass).toBe("critical-incident");
+  });
+
+  it("requires thirty observed minutes for a low-volume critical breach", () => {
+    let state = createTvPaymentEvaluatorState();
+    let action: ReturnType<typeof evaluateTvSubscriptionCollection>["action"] = { type: "none" };
+    for (let minute = 0; minute <= 5; minute += 1) {
+      const result = evaluateTvSubscriptionCollection(state, sample({
+        outcomes: 0,
+        failures: 0,
+        baseline: 99,
+        lowVolume: { outcomes: 5, failures: 4 },
+        evaluatedAt: new Date(now.getTime() + minute * 60_000),
+      }));
+      state = result.state;
+      action = result.action;
+    }
+    expect(action).toEqual({ type: "none" });
+    for (let minute = 6; minute <= 30; minute += 1) {
+      const result = evaluateTvSubscriptionCollection(state, sample({
+        outcomes: 0,
+        failures: 0,
+        baseline: 99,
+        lowVolume: { outcomes: 5, failures: 4 },
+        evaluatedAt: new Date(now.getTime() + minute * 60_000),
+      }));
+      state = result.state;
+      action = result.action;
+    }
+    expect(action).toEqual({ type: "activate", presentationClass: "critical-incident" });
+    expect(state.activeClass).toBe("critical-incident");
+  });
+
+  it("keeps the current-window critical breach at five observed minutes", () => {
+    let state = createTvPaymentEvaluatorState();
+    let action: ReturnType<typeof evaluateTvSubscriptionCollection>["action"] = { type: "none" };
+    for (let minute = 0; minute <= 5; minute += 1) {
+      const result = evaluateTvSubscriptionCollection(state, sample({
+        outcomes: 10,
+        failures: 5,
+        baseline: 99,
+        lowVolume: { outcomes: 0, failures: 0 },
+        evaluatedAt: new Date(now.getTime() + minute * 60_000),
+      }));
+      state = result.state;
+      action = result.action;
+    }
+    expect(action).toEqual({ type: "activate", presentationClass: "critical-incident" });
+  });
+
+  it("resets activation persistence when critical evidence switches windows", () => {
+    let currentState = createTvPaymentEvaluatorState();
+    for (let minute = 0; minute <= 4; minute += 1) {
+      currentState = evaluateTvSubscriptionCollection(currentState, sample({
+        outcomes: 10,
+        failures: 5,
+        baseline: 99,
+        lowVolume: { outcomes: 0, failures: 0 },
+        evaluatedAt: new Date(now.getTime() + minute * 60_000),
+      })).state;
+    }
+    const lowVolumeSwitch = evaluateTvSubscriptionCollection(currentState, sample({
+      outcomes: 0,
+      failures: 0,
+      baseline: 99,
+      lowVolume: { outcomes: 5, failures: 4 },
+      evaluatedAt: new Date(now.getTime() + 5 * 60_000),
+    }));
+    expect(lowVolumeSwitch.state.candidate).toEqual({
+      rulePath: "low-volume-critical",
+      presentationClass: "critical-incident",
+      accumulatedMs: 0,
+    });
+
+    let lowVolumeState = createTvPaymentEvaluatorState();
+    for (let minute = 0; minute <= 4; minute += 1) {
+      lowVolumeState = evaluateTvSubscriptionCollection(lowVolumeState, sample({
+        outcomes: 0,
+        failures: 0,
+        baseline: 99,
+        lowVolume: { outcomes: 5, failures: 4 },
+        evaluatedAt: new Date(now.getTime() + minute * 60_000),
+      })).state;
+    }
+    const currentSwitch = evaluateTvSubscriptionCollection(lowVolumeState, sample({
+      outcomes: 10,
+      failures: 5,
+      baseline: 99,
+      lowVolume: { outcomes: 0, failures: 0 },
+      evaluatedAt: new Date(now.getTime() + 5 * 60_000),
+    }));
+    expect(currentSwitch.state.candidate).toEqual({
+      rulePath: "critical",
+      presentationClass: "critical-incident",
+      accumulatedMs: 0,
+    });
+  });
+
+  it("resets escalation persistence when critical evidence switches windows", () => {
+    const currentState: TvPaymentEvaluatorState = {
+      ...createTvPaymentEvaluatorState({ activeClass: "incident" }),
+      lastFreshEvaluatedAt: new Date(now.getTime() + 4 * 60_000).toISOString(),
+      candidate: { rulePath: "critical", presentationClass: "critical-incident", accumulatedMs: 4 * 60_000 },
+    };
+    const lowVolumeSwitch = evaluateTvSubscriptionCollection(currentState, sample({
+      outcomes: 0,
+      failures: 0,
+      baseline: 99,
+      lowVolume: { outcomes: 5, failures: 4 },
+      evaluatedAt: new Date(now.getTime() + 5 * 60_000),
+    }));
+    expect(lowVolumeSwitch.action).toEqual({ type: "none" });
+    expect(lowVolumeSwitch.state.candidate).toEqual({
+      rulePath: "low-volume-critical",
+      presentationClass: "critical-incident",
+      accumulatedMs: 0,
+    });
+
+    const lowVolumeState: TvPaymentEvaluatorState = {
+      ...createTvPaymentEvaluatorState({ activeClass: "incident" }),
+      lastFreshEvaluatedAt: new Date(now.getTime() + 4 * 60_000).toISOString(),
+      candidate: { rulePath: "low-volume-critical", presentationClass: "critical-incident", accumulatedMs: 4 * 60_000 },
+    };
+    const currentSwitch = evaluateTvSubscriptionCollection(lowVolumeState, sample({
+      outcomes: 10,
+      failures: 5,
+      baseline: 99,
+      lowVolume: { outcomes: 0, failures: 0 },
+      evaluatedAt: new Date(now.getTime() + 5 * 60_000),
+    }));
+    expect(currentSwitch.action).toEqual({ type: "none" });
+    expect(currentSwitch.state.candidate).toEqual({
+      rulePath: "critical",
+      presentationClass: "critical-incident",
+      accumulatedMs: 0,
+    });
+  });
+
+  it("preserves the new payment rule path and resets version-one state", () => {
+    const currentState = createTvPaymentEvaluatorState();
+    const persisted: TvPaymentEvaluatorState = {
+      ...currentState,
+      candidate: { rulePath: "low-volume-critical", presentationClass: "critical-incident", accumulatedMs: 12_000 },
+    };
+    expect(readTvPaymentState(persisted, null).candidate).toEqual(persisted.candidate);
+    expect(readTvPaymentState({
+      ruleVersion: 1,
+      candidate: persisted.candidate,
+    }, null).candidate).toBeNull();
+    expect(readTvPaymentState({
+      ruleVersion: 1,
+      candidate: persisted.candidate,
+    }, null).ruleVersion).toBe(TV_PAYMENT_RULE_VERSION);
+  });
+
+  it("uses the low-volume evidence window for low-volume critical breaches", () => {
+    const paymentSample = sample({
+      outcomes: 10,
+      failures: 5,
+      lowVolume: { outcomes: 5, failures: 4 },
+    });
+    expect(getTvPaymentEvidenceWindow("low-volume-critical", paymentSample)).toBe(paymentSample.lowVolume);
+    expect(getTvPaymentEvidenceWindow("critical", paymentSample)).toBe(paymentSample.current);
   });
 
   it("freezes candidate accumulation for unavailable evidence", () => {
