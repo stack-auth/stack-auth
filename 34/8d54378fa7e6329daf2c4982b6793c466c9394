@@ -1,0 +1,79 @@
+apps/backend/src/lib/error-ingest/error-ingest-client-reports.ts
+  s_bcfa3fccd004b1::t_b232d8109b8397 11
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-leading-up-to.tsx
+  s_bcfa3fccd004b1::t_46cc138aee20b3 9
+apps/backend/src/lib/attachments/attachment-contract.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 2
+apps/backend/src/lib/artifacts/artifact-route-handlers.ts
+  s_bcfa3fccd004b1::t_7af193f4af3f6a 4
+apps/backend/src/lib/issues/public-search/cursor.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 5
+packages/shared/src/utils/error-envelope.ts
+  s_bcfa3fccd004b1::t_350e62932a06ad 861
+  s_bcfa3fccd004b1::t_cdb397395f289c 838
+apps/backend/src/lib/artifacts/artifact-manifest.ts
+  s_bcfa3fccd004b1::t_dbde2667bccf0d 16
+  s_bcfa3fccd004b1::t_46cc138aee20b3 3
+apps/backend/src/lib/issues/issue-alerts/signal.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 6
+packages/cli/src/commands/source-maps.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 29
+apps/backend/src/lib/issues/issue-product.ts
+  s_bcfa3fccd004b1::t_b467d24aad2c8d 17
+apps/backend/src/lib/issues/issue-alerts/workflow-status.ts
+  s_bcfa3fccd004b1::t_b232d8109b8397 24
+apps/backend/src/lib/artifacts/artifact-upload-service.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 23
+apps/backend/src/lib/issues/issue-lifecycle.ts
+  s_bcfa3fccd004b1::t_b467d24aad2c8d 8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/performance/performance-data.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 13
+packages/shared/src/utils/objects.tsx
+  s_bcfa3fccd004b1::t_a69fdaafabb420 19-35
+apps/backend/src/lib/issues/saved-search-views/contract.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 8
+packages/shared/src/utils/uuids.tsx
+  s_bcfa3fccd004b1::t_865d9f918077c0 92-113
+apps/backend/src/lib/releases/release-route-handlers.ts
+  s_bcfa3fccd004b1::t_dbde2667bccf0d 33,116,130
+apps/backend/src/lib/issues/public-scrub.ts
+  s_bcfa3fccd004b1::t_84eb41e94707f5 3
+apps/backend/src/lib/symbolication/javascript-symbolication.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 15
+apps/backend/src/lib/issues/issue-alerts/api.ts
+  s_bcfa3fccd004b1::t_b232d8109b8397 19
+packages/template/src/lib/hexclave-app/apps/implementations/browser-otel-sdk.ts
+  s_bcfa3fccd004b1::t_e23234ea57acea 1171
+apps/backend/src/lib/issues/issue-store.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 10
+apps/backend/src/lib/issues/issue-alerts/persistence.ts
+  s_bcfa3fccd004b1::t_b232d8109b8397 33
+  s_bcfa3fccd004b1::t_155ffffa31b283 603
+  s_bcfa3fccd004b1::t_165254ba518553 911
+apps/backend/src/lib/qstash-outbox.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 8
+apps/backend/src/lib/releases/release-service.ts
+  s_bcfa3fccd004b1::t_dbde2667bccf0d 18,230
+  s_bcfa3fccd004b1::t_b467d24aad2c8d 17
+  s_bcfa3fccd004b1::t_7f50e3c7f6dcc1 209-210
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/source-maps/upload-source-map.ts
+  s_bcfa3fccd004b1::t_a99a7e7c158c73 1-2
+apps/backend/src/lib/issues/grouping-provenance.ts
+  s_bcfa3fccd004b1::t_46cc138aee20b3 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "348d54378fa7e6329daf2c4982b6793c466c9394",
+  "prompts": {},
+  "sessions": {
+    "s_bcfa3fccd004b1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fd9e3b434ffe5cUjBz33EfYotJ",
+        "model": "x-preview-f-free"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
