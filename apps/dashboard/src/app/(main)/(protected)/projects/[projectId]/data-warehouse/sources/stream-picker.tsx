@@ -29,6 +29,10 @@ const NON_TEMPORAL_CURSOR_WARNING =
   "This column only changes when a row is inserted, so edits to existing rows will never be synced. "
   + "Pick a timestamp your application updates on every write — usually updated_at — unless this table is append-only.";
 
+function replicationSlotsAreFull(slotsUsed: number, slotsMax: number | null): boolean {
+  return slotsMax != null && slotsUsed >= slotsMax;
+}
+
 /** Concrete remediation for the specific reason CDC is off, not generic advice. */
 function getCdcRemediation(capabilities: DataSourceCatalogJson["capabilities"]): string | null {
   if (capabilities.wal_level !== "logical") {
@@ -40,7 +44,7 @@ function getCdcRemediation(capabilities: DataSourceCatalogJson["capabilities"]):
   if (capabilities.in_recovery) {
     return "Replication slots cannot live on a read replica. Point Hexclave at the primary instead.";
   }
-  if (capabilities.slots_used >= capabilities.slots_max) {
+  if (replicationSlotsAreFull(capabilities.slots_used, capabilities.slots_max)) {
     return "Every replication slot on the server is in use. Free one, or raise max_replication_slots.";
   }
   return null;
@@ -48,19 +52,20 @@ function getCdcRemediation(capabilities: DataSourceCatalogJson["capabilities"]):
 
 type Selection = { on: boolean, mode: DataSourceSyncMode | null, cursorColumn: string | null };
 
-function buildInitialSelection(
+export function buildInitialSelection(
   catalog: DataSourceCatalogJson,
-  existing: DataSourceStreamConfig[],
+  existing: DataSourceStreamConfig[] | undefined,
 ): Record<string, Selection | undefined> {
-  const existingByKey = new Map(existing.map(s => [`${s.schema_name}.${s.table_name}`, s]));
+  const existingByKey = new Map((existing ?? []).map(s => [`${s.schema_name}.${s.table_name}`, s]));
   const selection: Record<string, Selection | undefined> = {};
   for (const table of catalog.tables) {
     const key = `${table.schema_name}.${table.table_name}`;
     const prior = existingByKey.get(key);
     selection[key] = prior != null
       ? { on: true, mode: prior.mode, cursorColumn: prior.cursor_column ?? table.default_cursor_column }
-      // Default to the recommendation, so the common case needs no decisions.
-      : { on: table.recommended_mode != null, mode: table.recommended_mode, cursorColumn: table.default_cursor_column };
+      // Recommendations are defaults only during initial setup. While editing,
+      // newly discovered tables must require an explicit opt-in.
+      : { on: existing == null && table.recommended_mode != null, mode: table.recommended_mode, cursorColumn: table.default_cursor_column };
   }
   return selection;
 }
@@ -93,7 +98,7 @@ export function StreamPicker(props: {
   onCancel?: () => void,
   onSubmit: (streams: DataSourceStreamConfig[]) => Promise<void>,
 }) {
-  const [selection, setSelection] = useState(() => buildInitialSelection(props.catalog, props.existingStreams ?? []));
+  const [selection, setSelection] = useState(() => buildInitialSelection(props.catalog, props.existingStreams));
   const [saving, setSaving] = useState(false);
 
   const cdcAvailability = useMemo(() => {

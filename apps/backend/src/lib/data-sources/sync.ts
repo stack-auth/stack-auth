@@ -13,12 +13,7 @@ import { buildDestinationRow, coerceTextValue, versionFromCursorValue } from "./
 
 /** Rows per round trip. Large enough to amortise latency, small enough to bound memory. */
 const READ_BATCH_SIZE = 10_000;
-/**
- * Stops one enormous table from monopolising a sync run. Only safe for cursor
- * mode, which resumes from its watermark next run — a full refresh or a CDC
- * snapshot that stopped early would publish a partial table, so those read to
- * exhaustion instead.
- */
+/** Stops one enormous, keyset-paginated table from monopolising a sync run. */
 const MAX_BATCHES_PER_CURSOR_SYNC = 50;
 /** WAL changes decoded per peek. Postgres always completes the transaction it is in, so this is a floor. */
 const MAX_WAL_CHANGES_PER_SYNC = 20_000;
@@ -84,6 +79,18 @@ function tableKey(schemaName: string, tableName: string): string {
   return `${schemaName}.${tableName}`;
 }
 
+/**
+ * Keyset pagination can stop at the fairness cap and resume strictly after the
+ * last `(cursor, primary key)` pair. A keyless stream has to resume inclusively
+ * so it does not skip late rows at the watermark. Capping that query could leave
+ * it forever behind a tie larger than the cap, so correctness requires reading
+ * it to exhaustion. The server-side cursor still bounds memory, but such a sync
+ * can run substantially longer than a keyed one.
+ */
+export function getCursorSyncBatchLimit(primaryKeyColumns: readonly string[]): number | null {
+  return primaryKeyColumns.length > 0 ? MAX_BATCHES_PER_CURSOR_SYNC : null;
+}
+
 async function prepareDestination(context: SyncContext, plan: StreamSyncPlan, table: ProbedTable): Promise<void> {
   if (plan.isPending) {
     // Rebuilt from scratch rather than merged into: see StreamSyncPlan.isPending.
@@ -105,14 +112,14 @@ async function forEachBatch(
   query: string,
   params: unknown[],
   onBatch: (rows: Record<string, unknown>[]) => Promise<void>,
-  options: { maxBatches: number },
+  options: { maxBatches: number | null },
 ): Promise<number> {
   const cursorName = `hexclave_sync_${Math.random().toString(36).slice(2, 10)}`;
   let total = 0;
   await client.query("BEGIN");
   try {
     await client.query(`DECLARE ${quotePgIdentifier(cursorName)} NO SCROLL CURSOR FOR ${query}`, params);
-    for (let batch = 0; batch < options.maxBatches; batch++) {
+    for (let batch = 0; options.maxBatches == null || batch < options.maxBatches; batch++) {
       const result = await client.query(`FETCH ${READ_BATCH_SIZE} FROM ${quotePgIdentifier(cursorName)}`);
       if (result.rows.length === 0) break;
       await onBatch(result.rows as Record<string, unknown>[]);
@@ -217,7 +224,7 @@ async function syncCursor(
         rows: destinationRows,
       });
     },
-    { maxBatches: MAX_BATCHES_PER_CURSOR_SYNC },
+    { maxBatches: getCursorSyncBatchLimit(plan.primaryKeyColumns) },
   );
 
   const nextValue = maxCursor;

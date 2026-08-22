@@ -1,5 +1,6 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { createHash } from "node:crypto";
 import type { DataSourceColumn } from "./probe";
 
 /** Metadata every destination table carries, whatever the source. */
@@ -25,13 +26,26 @@ export function quoteClickhouseIdentifier(identifier: string): string {
 }
 
 /**
- * Destination name for a source table. Schema-qualified and flattened, because
- * ClickHouse has one level of namespacing and the project's warehouse database
- * is already spent on tenancy.
+ * Destination name for a source table. The readable prefix helps customers
+ * recognise it, while the full source/table identity hash makes the name stable
+ * and collision-resistant across sources and quoted Postgres identifiers.
+ *
+ * The identity must be part of every name, not only a collision fallback. Stream
+ * metadata can be deleted while its destination table is deliberately retained;
+ * allocating pretty names from only the currently configured streams could later
+ * reuse that retained table and drop or mix the customer's existing data.
  */
-export function getDestinationTableName(schemaName: string, tableName: string): string {
+export function getDestinationTableName(dataSourceId: string, schemaName: string, tableName: string): string {
   const sanitize = (value: string) => value.replace(/[^A-Za-z0-9_]/g, "_");
-  return `${sanitize(schemaName)}_${sanitize(tableName)}`;
+  const readablePrefix = `${sanitize(schemaName)}_${sanitize(tableName)}`.slice(0, 96);
+  const identity = createHash("sha256")
+    .update(dataSourceId)
+    .update("\0")
+    .update(schemaName)
+    .update("\0")
+    .update(tableName)
+    .digest("hex");
+  return `${readablePrefix}_${identity}`;
 }
 
 const NUMERIC_WITH_PRECISION = /^numeric\((\d+),\s*(\d+)\)$/i;

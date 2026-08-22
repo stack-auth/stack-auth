@@ -86,7 +86,8 @@ export type DataSourceCapabilitiesJson = {
   has_replication: boolean,
   in_recovery: boolean,
   slots_used: number,
-  slots_max: number,
+  /** Null when the source provider does not expose the replication slot budget. */
+  slots_max: number | null,
   probed_at_millis: number,
 };
 

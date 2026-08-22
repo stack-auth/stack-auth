@@ -134,6 +134,23 @@ export async function createDataSource(
   return { source, probe };
 }
 
+/**
+ * A logical slot that nobody consumes retains WAL on the source database. Keep
+ * teardown in one idempotent path so configuration changes and source deletion
+ * cannot accidentally disagree about which objects Hexclave owns.
+ */
+async function dropCdcInfrastructure(source: DataSource): Promise<void> {
+  const credentials = await getCredentials(source);
+  const slotName = getReplicationSlotName(source.id);
+  await withDataSourceClient(credentials, async client => {
+    await client.query(
+      `SELECT pg_drop_replication_slot($1) WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1)`,
+      [slotName],
+    );
+    await client.query(`DROP PUBLICATION IF EXISTS ${quotePgIdentifier(slotName)}`);
+  }, { allowWrites: true });
+}
+
 export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): Promise<void> {
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -145,16 +162,8 @@ export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): 
   // because that column is written after a sync completes — a sync that created
   // the slot and then timed out leaves one behind with no record of it. The name
   // is derived from the source id, so it is always recoverable.
-  const slotName = getReplicationSlotName(source.id);
   try {
-    const credentials = await getCredentials(source);
-    await withDataSourceClient(credentials, async client => {
-      await client.query(
-        `SELECT pg_drop_replication_slot($1) WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1)`,
-        [slotName],
-      );
-      await client.query(`DROP PUBLICATION IF EXISTS ${quotePgIdentifier(slotName)}`);
-    }, { allowWrites: true });
+    await dropCdcInfrastructure(source);
   } catch (error) {
     // The source may be unreachable, which must not make it undeletable. The slot
     // is then the customer's to drop, and this records why we could not.
@@ -215,23 +224,8 @@ export async function setDataSourceStreams(
 
   const tablesByName = new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
   const existingByName = new Map(source.streams.map(s => [`${s.schemaName}.${s.tableName}`, s]));
-
-  // Two sources in one project can easily both have `public.users`, and both would
-  // otherwise map to the same destination table — where a full refresh's
-  // EXCHANGE TABLES would atomically replace the other source's data. Names stay
-  // clean for the first source to claim one and are suffixed after that.
-  const claimedByOtherSources = new Set(
-    (await prisma.dataSourceStream.findMany({
-      where: { dataSource: { tenancyId: tenancy.id }, NOT: { dataSourceId: source.id } },
-      select: { destinationTable: true },
-    })).map(row => row.destinationTable),
-  );
-  const resolveDestinationTable = (schemaName: string, tableName: string, existing: string | undefined) => {
-    if (existing != null) return existing;
-    const preferred = getDestinationTableName(schemaName, tableName);
-    if (!claimedByOtherSources.has(preferred)) return preferred;
-    return `${preferred}_${source.id.replace(/-/g, "").slice(0, 8)}`;
-  };
+  const removesLastCdcStream = source.streams.some(stream => stream.mode === "CDC")
+    && !configs.some(config => config.mode === "cdc");
 
   for (const config of configs) {
     const key = `${config.schemaName}.${config.tableName}`;
@@ -251,81 +245,112 @@ export async function setDataSourceStreams(
     }
   }
 
-  const keep = new Set(configs.map(c => `${c.schemaName}.${c.tableName}`));
-  await retryTransaction(prisma, async tx => {
-    for (const stream of source.streams) {
-      if (!keep.has(`${stream.schemaName}.${stream.tableName}`)) {
-        await tx.dataSourceStream.delete({ where: { id: stream.id } });
-      }
+  // Removing the final CDC stream destroys infrastructure used by an in-flight
+  // sync, so take the same lease as a sync before touching either side. Teardown
+  // happens before the local transaction: if that transaction fails, the still-
+  // configured CDC stream will detect the missing slot and resnapshot next time.
+  const configurationClaimStartedAt = removesLastCdcStream ? new Date() : null;
+  if (configurationClaimStartedAt != null) {
+    const claimed = await prisma.$executeRaw`
+      UPDATE "DataSource"
+      SET "lastSyncStartedAt" = ${configurationClaimStartedAt}
+      WHERE "id" = ${source.id}::uuid
+        AND (
+          "lastSyncStartedAt" IS NULL
+          OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
+          OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
+        )
+    `;
+    if (claimed === 0) {
+      throw new StatusError(StatusError.Conflict, "Wait for the running sync to finish before removing the last CDC stream.");
     }
-    for (const config of configs) {
-      const key = `${config.schemaName}.${config.tableName}`;
-      const table = tablesByName.get(key)!;
-      const existing = existingByName.get(key);
-      const cursorColumn = config.mode === "cursor"
-        ? (config.cursorColumn ?? getDefaultCursorColumn(table))
-        : null;
-      // Any change of mode or cursor invalidates the resume point: the new mode
-      // cannot interpret the old one's cursor, and reusing it would skip rows.
-      const modeChanged = existing != null && (
-        MODE_FROM_PRISMA[existing.mode] !== config.mode || existing.cursorColumn !== cursorColumn
-      );
-      const data = {
-        mode: MODE_TO_PRISMA[config.mode],
-        cursorColumn,
-        primaryKeyColumns: table.primaryKeyColumns,
-        destinationTable: resolveDestinationTable(config.schemaName, config.tableName, existing?.destinationTable),
-        ...(modeChanged || existing == null
-          // Prisma distinguishes "set the column to JSON null" from "SQL NULL";
-          // clearing a resume point means the latter.
-          ? { syncCursor: Prisma.DbNull, status: "PENDING" as const, error: null, rowsSynced: 0n }
-          : {}),
-      };
-      if (existing == null) {
-        await tx.dataSourceStream.create({
-          data: { dataSourceId: source.id, schemaName: config.schemaName, tableName: config.tableName, ...data },
-        });
-      } else {
-        await tx.dataSourceStream.update({ where: { id: existing.id }, data });
-      }
+  }
+
+  try {
+    if (removesLastCdcStream) {
+      // Unlike source deletion, a configuration update must fail loudly here.
+      // Otherwise it can succeed while leaving an unconsumed, WAL-retaining slot.
+      await dropCdcInfrastructure(source);
     }
-    await tx.dataSource.update({
-      where: { id: source.id },
-      data: { status: configs.length > 0 ? "ACTIVE" : "PENDING", capabilities: probe.capabilities },
+
+    const keep = new Set(configs.map(c => `${c.schemaName}.${c.tableName}`));
+    await retryTransaction(prisma, async tx => {
+      for (const stream of source.streams) {
+        if (!keep.has(`${stream.schemaName}.${stream.tableName}`)) {
+          await tx.dataSourceStream.delete({ where: { id: stream.id } });
+        }
+      }
+      for (const config of configs) {
+        const key = `${config.schemaName}.${config.tableName}`;
+        const table = tablesByName.get(key)!;
+        const existing = existingByName.get(key);
+        const cursorColumn = config.mode === "cursor"
+          ? (config.cursorColumn ?? getDefaultCursorColumn(table))
+          : null;
+        // Any change of mode or cursor invalidates the resume point: the new mode
+        // cannot interpret the old one's cursor, and reusing it would skip rows.
+        const modeChanged = existing != null && (
+          MODE_FROM_PRISMA[existing.mode] !== config.mode || existing.cursorColumn !== cursorColumn
+        );
+        const data = {
+          mode: MODE_TO_PRISMA[config.mode],
+          cursorColumn,
+          primaryKeyColumns: table.primaryKeyColumns,
+          destinationTable: existing?.destinationTable
+            ?? getDestinationTableName(source.id, config.schemaName, config.tableName),
+          ...(modeChanged || existing == null
+            // Prisma distinguishes "set the column to JSON null" from "SQL NULL";
+            // clearing a resume point means the latter.
+            ? { syncCursor: Prisma.DbNull, status: "PENDING" as const, error: null, rowsSynced: 0n }
+            : {}),
+        };
+        if (existing == null) {
+          await tx.dataSourceStream.create({
+            data: { dataSourceId: source.id, schemaName: config.schemaName, tableName: config.tableName, ...data },
+          });
+        } else {
+          await tx.dataSourceStream.update({ where: { id: existing.id }, data });
+        }
+      }
+      await tx.dataSource.update({
+        where: { id: source.id },
+        data: {
+          status: configs.length > 0 ? "ACTIVE" : "PENDING",
+          capabilities: probe.capabilities,
+          ...(removesLastCdcStream ? { replicationSlotName: null, publicationName: null } : {}),
+        },
+      });
     });
-  });
+  } finally {
+    if (configurationClaimStartedAt != null) {
+      // Never restore the previous start token: a worker whose old lease expired
+      // could otherwise finish later and regain permission to overwrite state.
+      await prisma.dataSource.updateMany({
+        where: { id: source.id, lastSyncStartedAt: configurationClaimStartedAt },
+        data: { lastSyncStartedAt: source.lastSyncFinishedAt },
+      });
+    }
+  }
 
   return await getDataSourceOrThrow(tenancy, dataSourceId);
 }
 
-export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Promise<DataSourceWithStreams> {
-  // Also covers the scheduler: a project that drops off the plan stops syncing
-  // rather than keeping an outbound connection on a one-minute cron forever.
-  await ensureDataWarehouseEntitlement(tenancy);
-  const source = await getDataSourceOrThrow(tenancy, dataSourceId);
-  if (source.streams.length === 0) return source;
-
+async function syncClaimedDataSource(
+  tenancy: Tenancy,
+  source: DataSourceWithStreams,
+  startedAt: Date,
+): Promise<DataSourceWithStreams> {
   const prisma = await getPrismaClientForTenancy(tenancy);
+  if (source.streams.length === 0) {
+    await prisma.dataSource.updateMany({
+      where: { id: source.id, lastSyncStartedAt: startedAt },
+      data: { lastSyncFinishedAt: new Date() },
+    });
+    return await getDataSourceOrThrow(tenancy, source.id);
+  }
+
   const databaseName = await getWarehouseDatabaseName(tenancy);
   const credentials = await getCredentials(source);
-  const startedAt = new Date();
-
-  // The same lease the scheduler takes, so a manual "Sync now" during a cron
-  // sweep is refused rather than running a second sync against the same source —
-  // which would have two runs sharing one staging table and one replication slot.
-  const claimed = await prisma.$executeRaw`
-    UPDATE "DataSource"
-    SET "lastSyncStartedAt" = ${startedAt}, "error" = NULL
-    WHERE "id" = ${source.id}::uuid
-      AND (
-        "lastSyncStartedAt" IS NULL
-        OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
-        OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
-      )
-  `;
-  if (claimed === 0) {
-    throw new StatusError(StatusError.Conflict, "A sync is already running for this source.");
-  }
 
   let probe: DataSourceProbeResult;
   try {
@@ -335,11 +360,11 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
     // Recorded, but the source stays ACTIVE: the scheduler only picks up ACTIVE
     // rows, so parking it on FAILED would make one DNS blip stop syncing forever.
     const message = error instanceof Error ? error.message : String(error);
-    await prisma.dataSource.update({
-      where: { id: source.id },
+    await prisma.dataSource.updateMany({
+      where: { id: source.id, lastSyncStartedAt: startedAt },
       data: { error: message, lastSyncFinishedAt: new Date() },
     });
-    return await getDataSourceOrThrow(tenancy, dataSourceId);
+    return await getDataSourceOrThrow(tenancy, source.id);
   }
 
   const tablesByName = new Map<string, ProbedTable>(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
@@ -397,8 +422,8 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
       });
     }
     const failed = results.filter(result => result.error != null);
-    await tx.dataSource.update({
-      where: { id: source.id },
+    const completed = await tx.dataSource.updateMany({
+      where: { id: source.id, lastSyncStartedAt: startedAt },
       data: {
         lastSyncFinishedAt: new Date(),
         status: "ACTIVE",
@@ -408,29 +433,71 @@ export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Pr
         ...(usesCdc ? { replicationSlotName: slotName, publicationName: slotName } : {}),
       },
     });
+    if (completed.count === 0) {
+      // All stream updates above roll back with this transaction. A newer lease is
+      // now authoritative, so this worker must not publish any of its stale state.
+      throw new StatusError(StatusError.Conflict, "This sync's lease expired before it could finish.");
+    }
   });
 
-  return await getDataSourceOrThrow(tenancy, dataSourceId);
+  return await getDataSourceOrThrow(tenancy, source.id);
+}
+
+export async function syncDataSource(tenancy: Tenancy, dataSourceId: string): Promise<DataSourceWithStreams> {
+  await ensureDataWarehouseEntitlement(tenancy);
+  const source = await getDataSourceOrThrow(tenancy, dataSourceId);
+  if (source.streams.length === 0) return source;
+
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const startedAt = new Date();
+  const claimed = await prisma.$executeRaw`
+    UPDATE "DataSource"
+    SET "lastSyncStartedAt" = ${startedAt}, "error" = NULL
+    WHERE "id" = ${source.id}::uuid
+      AND (
+        "lastSyncStartedAt" IS NULL
+        OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
+        OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
+      )
+  `;
+  if (claimed === 0) {
+    throw new StatusError(StatusError.Conflict, "A sync is already running for this source.");
+  }
+
+  try {
+    // Configuration may have changed between the initial read and our claim.
+    // Once the lease is ours, re-read so execution cannot resurrect a removed CDC
+    // stream (and its replication slot) from a stale plan.
+    const claimedSource = await getDataSourceOrThrow(tenancy, dataSourceId);
+    return await syncClaimedDataSource(tenancy, claimedSource, startedAt);
+  } catch (error) {
+    await prisma.dataSource.updateMany({
+      where: { id: source.id, lastSyncStartedAt: startedAt },
+      data: { lastSyncFinishedAt: new Date(), error: error instanceof Error ? error.message : String(error) },
+    });
+    throw error;
+  }
 }
 
 /**
- * One pass of the scheduler: syncs every source whose interval has elapsed.
- * Returns whether it did anything, so the cron route can keep going until the
- * queue is empty or its time budget runs out.
+ * One step of the scheduler: claims and syncs the oldest source whose interval
+ * has elapsed. Returns whether it did anything, so the cron route can keep going
+ * until the queue is empty or its time budget runs out.
  *
  * Sources are taken oldest-sync-first so that one source erroring quickly cannot
  * starve the others by being picked repeatedly.
  */
 export async function runDueDataSourceSyncs(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+  if (Date.now() >= options.deadlineMs) return { didWork: false };
+
   // Claims in the same statement that selects. The cron fires every minute while
   // a sweep may run for minutes, so without a claim every overlapping invocation
   // would pick the same rows and sync one source several times at once —
-  // concurrent slot reads, duplicate inserts, and a full refresh whose staging
-  // table is dropped underneath it.
-  const due = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string }[]>`
+  // causing concurrent slot reads and duplicate inserts.
+  const due = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string, lastSyncStartedAt: Date }[]>`
     UPDATE "DataSource"
-    SET "lastSyncStartedAt" = NOW()
-    WHERE "id" IN (
+    SET "lastSyncStartedAt" = NOW(), "error" = NULL
+    WHERE "id" = (
       SELECT "id" FROM "DataSource"
       WHERE "status" = 'ACTIVE'
         AND EXISTS (SELECT 1 FROM "DataSourceStream" s WHERE s."dataSourceId" = "DataSource"."id")
@@ -446,35 +513,31 @@ export async function runDueDataSourceSyncs(options: { deadlineMs: number }): Pr
           OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
         )
       ORDER BY "lastSyncFinishedAt" ASC NULLS FIRST
-      LIMIT 20
+      LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING "id", "tenancyId"
+    RETURNING "id", "tenancyId", "lastSyncStartedAt"
   `;
   if (due.length === 0) return { didWork: false };
 
-  let didWork = false;
   for (const row of due) {
-    if (Date.now() >= options.deadlineMs) break;
     try {
       const tenancy = await getTenancy(row.tenancyId);
-      if (tenancy == null) continue;
-      await syncDataSource(tenancy, row.id);
-      didWork = true;
+      if (tenancy == null) throw new Error(`No tenancy exists for data source ${row.id}.`);
+      await ensureDataWarehouseEntitlement(tenancy);
+      const source = await getDataSourceOrThrow(tenancy, row.id);
+      await syncClaimedDataSource(tenancy, source, row.lastSyncStartedAt);
     } catch (error) {
       // A source that cannot sync must not stop the sweep, and the failure is
       // already recorded on the row for the dashboard to show.
       captureError("data-source-scheduled-sync", error);
       // lastSyncFinishedAt is set so the interval applies to the retry too; the
       // status stays ACTIVE so a transient failure does not park the source.
-      await globalPrismaClient.dataSource.update({
-        where: { id: row.id },
+      await globalPrismaClient.dataSource.updateMany({
+        where: { id: row.id, lastSyncStartedAt: row.lastSyncStartedAt },
         data: { lastSyncFinishedAt: new Date(), error: error instanceof Error ? error.message : String(error) },
-      }).catch(() => {
-        // The row may have been deleted mid-sweep.
       });
-      didWork = true;
     }
   }
-  return { didWork };
+  return { didWork: true };
 }

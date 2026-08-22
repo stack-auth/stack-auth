@@ -61,6 +61,10 @@ describe("CDC availability", () => {
   it("does not report a keyless table's problem as a server-level one", () => {
     expect(getCdcAvailability(capable)).toEqual({ available: true, reason: null });
   });
+
+  it("does not treat an unknown replication slot budget as full", () => {
+    expect(getCdcAvailability({ ...capable, slotsMax: null }, table())).toEqual({ available: true, reason: null });
+  });
 });
 
 describe("mode availability", () => {

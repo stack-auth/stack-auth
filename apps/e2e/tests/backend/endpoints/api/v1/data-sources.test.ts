@@ -136,6 +136,32 @@ const syncSource = (id: string) => niceBackendFetch(`/api/v1/data-sources/${id}/
 const deleteSource = (id: string) => niceBackendFetch(`/api/v1/data-sources/${id}`, {
   method: "DELETE", accessType: "admin",
 });
+const runScheduledSyncs = () => niceBackendFetch("/api/v1/internal/data-source-sync-step", {
+  method: "GET",
+  headers: { "Authorization": "Bearer mock_cron_secret" },
+  query: { max_duration_ms: "120000" },
+});
+
+async function getCdcInfrastructureCounts(database: string): Promise<{ slots: number, publications: number }> {
+  return await onSource(database, async client => {
+    const slots = await client.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM pg_replication_slots WHERE database = current_database() AND slot_name LIKE 'hexclave_%'`,
+    );
+    const publications = await client.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM pg_publication WHERE pubname LIKE 'hexclave_%'`,
+    );
+    return { slots: slots.rows[0].count, publications: publications.rows[0].count };
+  });
+}
+
+function getDestinationTable(
+  response: { body: { data_source: { streams: { table_name: string, destination_table: string }[] } } },
+  tableName: string,
+): string {
+  const stream = response.body.data_source.streams.find(candidate => candidate.table_name === tableName);
+  if (stream == null) throw new HexclaveAssertionError(`Response has no stream for table ${tableName}`);
+  return stream.destination_table;
+}
 
 /** Reads the destination as the customer would, with the project's own warehouse user. */
 async function queryWarehouse(credentials: { username: string, password: string }, query: string) {
@@ -316,12 +342,17 @@ it("replaces the stream list wholesale and reports it back", async ({ expect }) 
       ["events", "cursor", "created_at"],
       ["plans", "cursor", "id"],
     ]);
-    expect(first.body.data_source.streams[0].destination_table).toBe("public_events");
+    const eventsDestination = getDestinationTable(first, "events");
+    const plansDestination = getDestinationTable(first, "plans");
+    expect(eventsDestination).toMatch(/^public_events_[0-9a-f]{64}$/);
+    expect(plansDestination).toMatch(/^public_plans_[0-9a-f]{64}$/);
+    expect(eventsDestination).not.toBe(plansDestination);
 
     const second = await setStreams(data_source.id, [
       { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
     ]);
     expect(second.body.data_source.streams.map((s: any) => s.table_name)).toEqual(["plans"]);
+    expect(getDestinationTable(second, "plans")).toBe(plansDestination);
 
     const fetched = await getSource(data_source.id);
     expect(fetched.status).toBe(200);
@@ -330,6 +361,26 @@ it("replaces the stream list wholesale and reports it back", async ({ expect }) 
 });
 
 // ─── syncing ────────────────────────────────────────────────────────────────
+
+it("executes a due source through the scheduler's existing claim", async ({ expect }) => {
+  const { projectId, credentials } = await createProjectWithWarehouse();
+  await withSourceDatabase(SIMPLE_SCHEMA, async source => {
+    const { body: { data_source } } = await connectSource(source.database);
+    const configured = await setStreams(data_source.id, [
+      { schema_name: "public", table_name: "plans", mode: "cursor", cursor_column: "id" },
+    ]);
+
+    const scheduled = await runScheduledSyncs();
+    expect(scheduled.status).toBe(200);
+
+    const synced = await getSource(data_source.id);
+    expect(synced.body.data_source.error).toBe(null);
+    expect(synced.body.data_source.streams[0]).toMatchObject({ status: "active", rows_synced: 2 });
+    const destinationTable = getDestinationTable(configured, "plans");
+    const rows = await queryWarehouse(credentials, `SELECT name FROM \`${projectId}\`.\`${destinationTable}\` FINAL ORDER BY id`);
+    expect(rows.text).toBe("free\npro");
+  });
+});
 
 it("syncs cursor streams into the project's warehouse", async ({ expect }) => {
   const { projectId, credentials } = await createProjectWithWarehouse();
@@ -348,11 +399,13 @@ it("syncs cursor streams into the project's warehouse", async ({ expect }) => {
     ]);
     expect(sync.body.data_source.streams.find((s: any) => s.table_name === "events").rows_synced).toBe(25);
 
-    const plans = await queryWarehouse(credentials, `SELECT name FROM \`${projectId}\`.public_plans FINAL ORDER BY id`);
+    const plansDestination = getDestinationTable(sync, "plans");
+    const eventsDestination = getDestinationTable(sync, "events");
+    const plans = await queryWarehouse(credentials, `SELECT name FROM \`${projectId}\`.\`${plansDestination}\` FINAL ORDER BY id`);
     expect(plans.status).toBe(200);
     expect(plans.text).toBe("free\npro");
 
-    const events = await queryWarehouse(credentials, `SELECT count() FROM \`${projectId}\`.public_events FINAL`);
+    const events = await queryWarehouse(credentials, `SELECT count() FROM \`${projectId}\`.\`${eventsDestination}\` FINAL`);
     expect(events.text).toBe("25");
   });
 });
@@ -375,7 +428,8 @@ it("resumes a cursor stream instead of re-reading the table", async ({ expect })
     // that loses precision would re-read all 25 every time.
     expect(second.body.data_source.streams[0].rows_synced).toBe(26);
 
-    const rows = await queryWarehouse(credentials, `SELECT count() FROM \`${projectId}\`.public_events FINAL`);
+    const destinationTable = getDestinationTable(second, "events");
+    const rows = await queryWarehouse(credentials, `SELECT count() FROM \`${projectId}\`.\`${destinationTable}\` FINAL`);
     expect(rows.text).toBe("26");
   });
 });
@@ -387,13 +441,13 @@ it("holds a cursor stream back from now(), so a late commit is not skipped", asy
     await setStreams(data_source.id, [
       { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
     ]);
-    await syncSource(data_source.id);
+    const first = await syncSource(data_source.id);
     await source.query(`INSERT INTO events (label, created_at) VALUES ('too-fresh', now())`);
     await syncSource(data_source.id);
 
     const fresh = await queryWarehouse(
       credentials,
-      `SELECT count() FROM \`${projectId}\`.public_events FINAL WHERE label = 'too-fresh'`,
+      `SELECT count() FROM \`${projectId}\`.\`${getDestinationTable(first, "events")}\` FINAL WHERE label = 'too-fresh'`,
     );
     expect(fresh.text).toBe("0");
   });
@@ -424,20 +478,20 @@ it("syncs inserts, updates and deletes through change data capture", async ({ ex
 
     const live = await queryWarehouse(
       credentials,
-      `SELECT count() FROM \`${projectId}\`.public_events FINAL WHERE _hexclave_deleted = 0`,
+      `SELECT count() FROM \`${projectId}\`.\`${getDestinationTable(second, "events")}\` FINAL WHERE _hexclave_deleted = 0`,
     );
     expect(live.text).toBe("25"); // 25 + 1 inserted - 1 deleted
 
     const renamed = await queryWarehouse(
       credentials,
-      `SELECT count() FROM \`${projectId}\`.public_events FINAL WHERE label = 'renamed' AND _hexclave_deleted = 0`,
+      `SELECT count() FROM \`${projectId}\`.\`${getDestinationTable(second, "events")}\` FINAL WHERE label = 'renamed' AND _hexclave_deleted = 0`,
     );
     expect(renamed.text).toBe("1");
 
     // The only mode that can observe a delete at all.
     const deleted = await queryWarehouse(
       credentials,
-      `SELECT count() FROM \`${projectId}\`.public_events FINAL WHERE label = 'e2' AND _hexclave_deleted = 0`,
+      `SELECT count() FROM \`${projectId}\`.\`${getDestinationTable(second, "events")}\` FINAL WHERE label = 'e2' AND _hexclave_deleted = 0`,
     );
     expect(deleted.text).toBe("0");
 
@@ -463,11 +517,37 @@ it("rebuilds the destination when a stream changes mode", async ({ expect }) => 
 
     const updated = await queryWarehouse(
       credentials,
-      `SELECT count() FROM \`${projectId}\`.public_events FINAL WHERE label = 'after-switch'`,
+      `SELECT count() FROM \`${projectId}\`.\`${getDestinationTable(afterSwitch, "events")}\` FINAL WHERE label = 'after-switch'`,
     );
     expect(updated.text).toBe("1");
 
     await deleteSource(data_source.id);
+  });
+});
+
+it("drops CDC infrastructure when switching or removing the final CDC stream", async ({ expect }) => {
+  await createProjectWithWarehouse();
+  await withSourceDatabase(SIMPLE_SCHEMA, async source => {
+    const { body: { data_source } } = await connectSource(source.database);
+    await setStreams(data_source.id, [{ schema_name: "public", table_name: "events", mode: "cdc" }]);
+    await syncSource(data_source.id);
+    expect(await getCdcInfrastructureCounts(source.database)).toEqual({ slots: 1, publications: 1 });
+
+    const switched = await setStreams(data_source.id, [
+      { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
+    ]);
+    expect(switched.status).toBe(200);
+    expect(await getCdcInfrastructureCounts(source.database)).toEqual({ slots: 0, publications: 0 });
+
+    // Recreate both objects, then cover removing the stream rather than merely
+    // switching its mode. Teardown is idempotent across both transitions.
+    await setStreams(data_source.id, [{ schema_name: "public", table_name: "events", mode: "cdc" }]);
+    await syncSource(data_source.id);
+    expect(await getCdcInfrastructureCounts(source.database)).toEqual({ slots: 1, publications: 1 });
+
+    const removed = await setStreams(data_source.id, []);
+    expect(removed.status).toBe(200);
+    expect(await getCdcInfrastructureCounts(source.database)).toEqual({ slots: 0, publications: 0 });
   });
 });
 

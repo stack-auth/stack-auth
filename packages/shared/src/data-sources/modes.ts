@@ -37,7 +37,8 @@ export type DataSourceCapabilities = {
   /** Slots cannot be created on a hot standby, whatever wal_level says. */
   inRecovery: boolean,
   slotsUsed: number,
-  slotsMax: number,
+  /** Null when the provider does not allow the slot budget to be inspected. */
+  slotsMax: number | null,
   probedAtMillis: number,
 };
 
@@ -81,7 +82,7 @@ export function getCdcAvailability(
   if (capabilities.inRecovery) {
     return { available: false, reason: "not on a read replica" };
   }
-  if (capabilities.slotsUsed >= capabilities.slotsMax) {
+  if (capabilities.slotsMax != null && capabilities.slotsUsed >= capabilities.slotsMax) {
     return { available: false, reason: "no replication slots free" };
   }
   if (table != null) {

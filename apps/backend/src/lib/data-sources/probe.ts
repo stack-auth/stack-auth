@@ -66,18 +66,19 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
   // the budget must not fail the whole probe, so fall back to "none used" and let
   // slot creation surface the real error if it ever comes to that.
   let slotsUsed = 0;
-  // Unknown must not read as "full": `slotsUsed >= slotsMax` would report
-  // "no replication slots free" and hide CDC on a server that supports it.
-  let slotsMax = Number.POSITIVE_INFINITY;
+  // Keep unknown explicit. Non-finite sentinels cannot survive either Prisma's
+  // JSON column protocol or an API response without silently becoming null.
+  let slotsMax: number | null = null;
   try {
     const slots = await client.query<{ used: string, max: string }>(`
       SELECT (SELECT count(*) FROM pg_replication_slots) AS used,
              current_setting('max_replication_slots') AS max
     `);
     slotsUsed = Number.parseInt(slots.rows[0].used, 10);
-    slotsMax = Number.parseInt(slots.rows[0].max, 10);
+    const parsedSlotsMax = Number.parseInt(slots.rows[0].max, 10);
+    slotsMax = Number.isFinite(parsedSlotsMax) ? parsedSlotsMax : null;
   } catch {
-    slotsMax = Number.POSITIVE_INFINITY;
+    // Some managed providers intentionally hide pg_replication_slots.
   }
 
   return {
