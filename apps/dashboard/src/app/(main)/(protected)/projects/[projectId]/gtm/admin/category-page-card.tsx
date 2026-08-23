@@ -92,6 +92,38 @@ export function hasUnsavedEdits(seed: Seed | null, text: { mdx: string, dataJson
   return seed != null && (text.mdx !== seed.mdx || text.dataJson !== seed.dataJson);
 }
 
+/**
+ * Whether the editor should be filled from the stage's stored version.
+ *
+ * Only when that version is one the editor is not based on, and neither of the two things that make
+ * the loaded version untrustworthy is true: unsaved edits (which re-seeding would discard), and a
+ * mutation of this stage still in flight (whose refresh has not landed, so what is loaded is the
+ * stage as it was *before* the mutation — including before the save whose text the editor just
+ * adopted).
+ */
+export function shouldSeedFromStored(args: {
+  storedKey: string | null,
+  seededKey: string | null,
+  dirty: boolean,
+  mutating: boolean,
+}): boolean {
+  return args.storedKey != null && args.storedKey !== args.seededKey && !args.dirty && !args.mutating;
+}
+
+/**
+ * Whether to tell the author their edits are based on a version that is no longer the stored one —
+ * true only for a stored version that really is someone else's, which is why an in-flight mutation
+ * of this stage rules it out.
+ */
+export function isSupersededByStored(args: {
+  storedKey: string | null,
+  seededKey: string | null,
+  dirty: boolean,
+  mutating: boolean,
+}): boolean {
+  return args.storedKey != null && args.storedKey !== args.seededKey && args.dirty && !args.mutating;
+}
+
 /** The draft the editor starts from: the stage's draft if there is one, else the live page's source. */
 function initialSource(page: GrowthAdminCategoryPage | null): { mdx: string, dataJson: string } {
   const version = page?.draft ?? page?.published ?? null;
@@ -142,11 +174,15 @@ export function GrowthAdminCategoryPageCard(props: {
   const [dataJson, setDataJson] = useState(EMPTY_DATA_JSON);
   const [seeded, setSeeded] = useState<Seed | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // True from the start of a save/publish/discard until the refresh that follows it has landed. In
+  // that window the loaded pages still describe the stage as it was before the mutation, so they are
+  // not evidence of anything and must not drive seeding: a save adopts its own text as the seed, and
+  // re-seeding from the pre-save version here would undo it (and leave the next save carrying an
+  // outdated timestamp, which the backend would then reject as a conflict that never happened).
+  const [mutating, setMutating] = useState(false);
 
   // The editor is filled from the stage's stored version when that version is one it has not seen
-  // yet — keyed by last-saved time as well as id, so content a colleague replaced does not linger —
-  // but never while there are unsaved edits: a save elsewhere on the admin page refreshes this data,
-  // and overwriting then would discard what the author has pasted but not yet saved.
+  // yet — keyed by last-saved time as well as id, so content a colleague replaced does not linger.
   const seedKey = context.state.status === "loaded" ? seedKeyOf(category, page?.draft ?? null, page?.published ?? null) : null;
   const dirty = hasUnsavedEdits(seeded, { mdx, dataJson });
   const seedFrom = useCallback((key: string, page: GrowthAdminCategoryPage | null) => {
@@ -155,15 +191,15 @@ export function GrowthAdminCategoryPageCard(props: {
     setDataJson(source.dataJson);
     setSeeded({ key, draftUpdatedAtMillis: page?.draft?.updatedAtMillis ?? null, ...source });
   }, []);
+  const seededKey = seeded?.key ?? null;
   useEffect(() => {
-    if (seedKey == null || seedKey === seeded?.key || dirty) return;
+    if (seedKey == null || !shouldSeedFromStored({ storedKey: seedKey, seededKey, dirty, mutating })) return;
     seedFrom(seedKey, page);
-  }, [seedKey, seeded?.key, dirty, page, seedFrom]);
+  }, [seedKey, seededKey, dirty, mutating, page, seedFrom]);
 
-  // A stored version this editor is not based on: either a colleague saved the stage, or the author
-  // reverted their own edits to match an older seed. Only worth saying anything about while there
-  // are unsaved edits, since otherwise the effect above just re-seeds.
-  const supersededByStored = seedKey != null && seedKey !== seeded?.key && dirty;
+  // A stored version this editor is not based on: a colleague saved the stage, or the author reverted
+  // their own edits to match an older seed.
+  const supersededByStored = isSupersededByStored({ storedKey: seedKey, seededKey, dirty, mutating });
 
   const findings = overview.findings.filter((item) => item.category === category);
   const notes = overview.notes.filter((item) => item.category === category);
@@ -173,13 +209,16 @@ export function GrowthAdminCategoryPageCard(props: {
 
   const run = async (label: string, mutation: () => Promise<void>) => {
     setError(null);
+    setMutating(true);
     const result = await Result.fromThrowingAsync(mutation);
     if (result.status === "error") {
       captureError(label, result.error);
       setError(result.error instanceof Error ? result.error.message : String(result.error));
+      setMutating(false);
       return;
     }
     await context.refresh();
+    setMutating(false);
   };
 
   // The version being previewed carries the actions its own buttons reference, so the preview
@@ -218,7 +257,7 @@ export function GrowthAdminCategoryPageCard(props: {
           {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
           <StaleSourceNotice version={page?.draft ?? null} label="draft" />
           {page?.draft == null && <StaleSourceNotice version={page?.published ?? null} label="live page" />}
-          {supersededByStored && (
+          {supersededByStored && seedKey != null && (
             <DesignAlert variant="warning">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span>This stage&apos;s stored version changed after the editor was filled, so your unsaved edits below were kept rather than overwritten. Saving them will be rejected until you load the stored version.</span>
