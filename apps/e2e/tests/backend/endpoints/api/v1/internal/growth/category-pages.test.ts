@@ -172,7 +172,9 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
     expect(discarded.status).toBe(404);
   });
 
-  it("refuses a draft save that was written against an older version of the draft", async ({ expect }) => {
+  // Onboarding a project already lands near the suite's 90s under full-suite load, and this test adds
+  // four sequential saves on top of it, so it gets the same headroom as the other multi-round tests.
+  it("refuses a draft save that was written against an older version of the draft", { timeout: 180_000 }, async ({ expect }) => {
     const { projectId, conversionActionId } = await createFixture();
     const save = async (body: { source_mdx: string, expected: number | null }) => await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
       accessType: "client",
