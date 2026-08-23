@@ -69,6 +69,8 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
         category: "conversion",
         document: documentWith(conversionActionId),
         source_action_ids: [conversionActionId],
+        // No draft exists yet, and saying so is what makes the save fail if one appeared meanwhile.
+        expected_draft_updated_at_millis: null,
       },
     }));
     expect(saved).toMatchObject({ status: 200, body: { category: "conversion", version: 1, status: "draft", stale_source_ids: [] } });
@@ -125,14 +127,14 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
     const crossStage = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
       accessType: "client",
       method: "PUT",
-      body: { target_project_id: projectId, category: "conversion", document: documentWith(retentionActionId) },
+      body: { target_project_id: projectId, category: "conversion", document: documentWith(retentionActionId), expected_draft_updated_at_millis: null },
     }));
     expect(crossStage.status).toBe(400);
 
     const uncompilable = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
       accessType: "client",
       method: "PUT",
-      body: { target_project_id: projectId, category: "conversion", document: { format: "growth-mdx-v1", source_mdx: "<script>alert(1)</script>", data: [] } },
+      body: { target_project_id: projectId, category: "conversion", document: { format: "growth-mdx-v1", source_mdx: "<script>alert(1)</script>", data: [] }, expected_draft_updated_at_millis: null },
     }));
     expect(uncompilable.status).toBe(400);
 
@@ -182,6 +184,8 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
         category: "conversion",
         document: { format: "growth-mdx-v1", source_mdx: `## ${body}`, data: [] },
         source_action_ids: [conversionActionId],
+        // Publishing consumes the draft slot, so each save here starts from no draft.
+        expected_draft_updated_at_millis: null,
       },
     }));
 

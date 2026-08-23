@@ -93,6 +93,8 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
             overview={props.overview}
             projectId={projectId}
             projectName={props.project.displayName}
+            // The admin page always edits a real project's records; there is no demo fixture mode here.
+            demo={false}
             onRefresh={refresh}
             categoryPageEditor={(category) => (
               <GrowthAdminCategoryPageCard

@@ -145,10 +145,15 @@ const CALLOUT_META = new Map<"Evidence" | "Hypothesis" | "Experiment" | "DataGap
  * them once one is activated or dismissed. Documents rendered without this provider (findings,
  * reports, action narratives) simply have no action buttons in them.
  */
-const GrowthDocumentActionsContext = createContext<{ actions: GrowthActionItem[], onChanged: () => Promise<void> } | null>(null);
+const GrowthDocumentActionsContext = createContext<{ actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean } | null>(null);
 
-export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, children: ReactNode }) {
-  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged }}>{props.children}</GrowthDocumentActionsContext.Provider>;
+/**
+ * `demo` travels with the actions rather than being read from the growth status context, because the
+ * internal admin page renders authored pages (as a preview) outside the customer frame that provides
+ * that context. Whoever supplies the actions knows whether they are demo fixtures.
+ */
+export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean, children: ReactNode }) {
+  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged, demo: props.demo }}>{props.children}</GrowthDocumentActionsContext.Provider>;
 }
 
 /**
@@ -187,7 +192,7 @@ function ActionButtonBlock(props: { actionId: string }) {
       </div>
       <div className="mt-3"><GrowthWatchedMetricChips action={action} /></div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <GrowthActionMutationControls action={action} onChanged={context.onChanged} className="flex flex-wrap items-center gap-2" />
+        <GrowthActionMutationControls action={action} onChanged={context.onChanged} demo={context.demo} className="flex flex-wrap items-center gap-2" />
         <Link href={withQuery(`/projects/${projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
           Review action<ArrowRightIcon className="size-3.5" />
         </Link>

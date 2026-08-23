@@ -213,6 +213,12 @@ export function GrowthWorkspaceContent(props: {
   projectId: string,
   projectName: string,
   /**
+   * Whether the overview is the demo fixture rather than the project's real records. Passed down
+   * instead of read from the growth status context, because the internal admin page renders this
+   * component outside the customer frame that provides that context.
+   */
+  demo: boolean,
+  /**
    * Rendered directly above the stage/insights section. Passed in rather than fetched here because
    * this component is ALSO what the admin page renders, and that page has no business firing the
    * customer's own quiz request. The customer wrapper below passes the live banner; admin passes
@@ -311,7 +317,7 @@ export function GrowthWorkspaceContent(props: {
           <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
           {editors == null && publishedPage != null && (
             <section className="py-8">
-              <GrowthDocumentActionsProvider actions={publishedPage.actions} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
+              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
                 <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
               </GrowthDocumentActionsProvider>
             </section>
@@ -381,6 +387,7 @@ export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
       status={props.status}
       projectId={projectId}
       projectName={project.displayName}
+      demo={demo}
       quizBanner={<GrowthQuizBannerSlot demo={demo} />}
       onRefresh={refresh}
     />

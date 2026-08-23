@@ -2,7 +2,6 @@
 
 import { DesignAlert, DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
 import { activateGrowthAction, dismissGrowthAction } from "@/lib/growth/growth-api";
-import { useGrowthStatus } from "@/lib/growth/growth-data";
 import type { GrowthActionItem, GrowthActionWorkflow } from "@/lib/growth/growth-types";
 import { humanizeGrowthWorkflowTriggers, splitGrowthWorkflowWarnings } from "@/lib/growth/growth-workflow-format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -147,10 +146,15 @@ export function GrowthActivateWorkflowDialogBody(props: { workflow: GrowthAction
   );
 }
 
-export function GrowthActionMutationControls(props: { action: GrowthActionItem, onChanged: () => Promise<void>, className?: string }) {
-  const { action } = props;
+/**
+ * `demo` is a prop rather than a `useGrowthStatus()` read because these controls also render inside
+ * authored stage pages, which the internal Growth admin page renders too — and that page is not under
+ * the customer frame's `GrowthStatusProvider`. Reading the context here crashed the whole admin page
+ * as soon as a stage's page contained an <ActionButton>.
+ */
+export function GrowthActionMutationControls(props: { action: GrowthActionItem, onChanged: () => Promise<void>, demo: boolean, className?: string }) {
+  const { action, demo } = props;
   const app = useAdminApp();
-  const { demo } = useGrowthStatus();
   // Completed and dismissed are terminal: there is nothing left to confirm, so the controls go away
   // rather than rendering a disabled button the customer would try to click.
   if (action.status !== "proposed" && action.status !== "active") return null;

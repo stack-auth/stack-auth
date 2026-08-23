@@ -295,7 +295,7 @@ export function GrowthAdminCategoryPageCard(props: {
               ? <p className="mt-2 text-xs text-muted-foreground">Save a draft to preview it exactly as the customer will see it.</p>
               : (
                 <div className="mt-3">
-                  <GrowthDocumentActionsProvider actions={previewActions} onChanged={props.onPublishedChanged}>
+                  <GrowthDocumentActionsProvider actions={previewActions} demo={false} onChanged={props.onPublishedChanged}>
                     <GrowthDocumentRenderer document={preview} className="max-w-3xl" />
                   </GrowthDocumentActionsProvider>
                 </div>

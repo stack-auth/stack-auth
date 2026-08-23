@@ -78,7 +78,7 @@ describe("GrowthDocumentRenderer", () => {
 
   it("resolves an <ActionButton> against the workspace's own actions", () => {
     const html = renderToStaticMarkup(
-      <GrowthDocumentActionsProvider actions={[ACTION]} onChanged={async () => {}}>
+      <GrowthDocumentActionsProvider actions={[ACTION]} demo={false} onChanged={async () => {}}>
         <GrowthDocumentRenderer document={actionButtonDocument(ACTION.id)} />
       </GrowthDocumentActionsProvider>,
     );
@@ -90,7 +90,7 @@ describe("GrowthDocumentRenderer", () => {
 
   it("degrades to a notice when the referenced action is gone", () => {
     const html = renderToStaticMarkup(
-      <GrowthDocumentActionsProvider actions={[]} onChanged={async () => {}}>
+      <GrowthDocumentActionsProvider actions={[]} demo={false} onChanged={async () => {}}>
         <GrowthDocumentRenderer document={actionButtonDocument(ACTION.id)} />
       </GrowthDocumentActionsProvider>,
     );

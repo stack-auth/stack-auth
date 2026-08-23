@@ -154,6 +154,7 @@ function ActionDetailBody() {
       {backLink}
       <ActionNarrative
         action={data.value.action}
+        demo={demo}
         onChanged={load}
       />
       <ActionPayloadSection action={data.value.action} demo={demo} onChanged={load} />
@@ -197,7 +198,7 @@ function ActionNarrativeSection(props: { title: "Hypothesis" | "Evidence" | "Exp
   );
 }
 
-function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Promise<void> }) {
+function ActionNarrative(props: { action: GrowthActionItem, demo: boolean, onChanged: () => Promise<void> }) {
   const { action } = props;
   const document = action.document ?? null;
   const sections = document == null
@@ -212,7 +213,7 @@ function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Pro
           <ActionNarrativeSection title="Evidence" document={document} blocks={sections.evidence} />
           <ActionNarrativeSection title="Experiment" document={document} blocks={sections.experiment}>
             {action.workflow != null && <div className="mt-5"><ActionAutomationPreview action={action} workflow={action.workflow} /></div>}
-            <div className="mt-5"><GrowthActionMutationControls action={action} onChanged={props.onChanged} /></div>
+            <div className="mt-5"><GrowthActionMutationControls action={action} onChanged={props.onChanged} demo={props.demo} /></div>
           </ActionNarrativeSection>
         </div>
       </article>
