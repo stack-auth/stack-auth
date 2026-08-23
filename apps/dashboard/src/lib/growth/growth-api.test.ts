@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { growthRequestHeaders, parseGrowthAdsBody } from "./growth-api";
+import { growthAdminActionRequestBody, growthRequestHeaders, parseGrowthAdsBody } from "./growth-api";
+import type { GrowthActionItem } from "./growth-types";
 
 // Regression coverage for a bug that silently broke every bodyless growth mutation — retry, skip,
 // retake, activate, dismiss, mark-brief-read. Declaring `content-type: application/json` with no
@@ -132,5 +133,42 @@ describe("parseGrowthAdsBody", () => {
     expect(parseGrowthAdsBody(adsWire({
       execution: { mode: "sideways", attempt: null, status: null, dispatched_at_millis: null, lease_expires_at_millis: null, agent_reported_ids: {} },
     })).execution.mode).toBeNull();
+  });
+});
+
+// Regression coverage for the admin action PATCH: an action's payload column is nullable, but the
+// endpoint declares `payload` as optional-but-not-nullable, so sending the null back made every edit
+// (including flipping a proposal to active) fail with "body.payload cannot be null".
+describe("growthAdminActionRequestBody", () => {
+  const action: GrowthActionItem = {
+    id: "action-1", typeId: "custom", category: "reach", tags: ["funnel"], title: "Trial-extension offer", description: "Offer stalled signups a longer trial.",
+    status: "proposed", payload: null, watchedMetrics: [{ metricId: "new_signups", windowDays: 14 }], reportId: null, briefId: null, workflow: null,
+    createdAtMillis: 0, activatedAtMillis: null, completedAtMillis: null,
+  };
+
+  test("omits a null payload so the field is left untouched", () => {
+    const body = growthAdminActionRequestBody("project-1", action, { payload: action.payload, watchedMetrics: action.watchedMetrics, workflow: null });
+    expect("payload" in body).toBe(false);
+    expect(body.watched_metrics).toEqual([{ metric_id: "new_signups", window_days: 14 }]);
+  });
+
+  test("sends a payload the admin actually set", () => {
+    const body = growthAdminActionRequestBody("project-1", action, { payload: { qa: 1 }, watchedMetrics: [], workflow: null });
+    expect(body.payload).toEqual({ qa: 1 });
+  });
+
+  test("leaves out every functional field for an action that is no longer a proposal", () => {
+    const body = growthAdminActionRequestBody("project-1", { ...action, status: "active" });
+    expect(Object.keys(body).sort()).toMatchInlineSnapshot(`
+      [
+        "category",
+        "description",
+        "status",
+        "tags",
+        "target_project_id",
+        "title",
+        "type_id",
+      ]
+    `);
   });
 });

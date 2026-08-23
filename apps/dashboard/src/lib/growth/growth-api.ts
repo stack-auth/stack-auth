@@ -739,18 +739,31 @@ export type GrowthAdminFunctionalActionFields = {
   workflow: null | Pick<NonNullable<GrowthActionItem["workflow"]>, "workflowId" | "source" | "explanation" | "rollbackNote">,
 };
 
+/**
+ * The admin action endpoint replaces every field it receives, so an edit to one field has to resend the
+ * others; the functional fields are only included when the caller may change them (while the action is
+ * still a proposal).
+ */
+export function growthAdminActionRequestBody(projectId: string, action: GrowthActionItem, functionalFields?: GrowthAdminFunctionalActionFields): Record<string, unknown> {
+  return {
+    target_project_id: projectId, type_id: action.typeId, category: action.category, tags: action.tags, title: action.title, description: action.description,
+    status: action.status,
+    ...functionalFields === undefined ? {} : {
+      // The endpoint takes `payload` as optional-but-not-nullable, and an action's payload column is
+      // nullable (that is its default until the agent fills it in), so a null payload has to be left
+      // out of the body entirely — sending `null` is rejected and would make an otherwise unrelated
+      // edit, such as flipping a proposal to active, impossible for those actions.
+      ...functionalFields.payload == null ? {} : { payload: functionalFields.payload },
+      watched_metrics: functionalFields.watchedMetrics.map((metric) => ({ metric_id: metric.metricId, window_days: metric.windowDays })),
+      workflow: functionalFields.workflow == null ? null : { workflow_id: functionalFields.workflow.workflowId, source: functionalFields.workflow.source, explanation: functionalFields.workflow.explanation, rollback_note: functionalFields.workflow.rollbackNote },
+    },
+  };
+}
+
 export async function updateGrowthAdminAction(app: object, projectId: string, action: GrowthActionItem, functionalFields?: GrowthAdminFunctionalActionFields): Promise<void> {
   await requestGrowthAdminJson(app, `/actions/${encodeURIComponent(action.id)}`, {
     method: "PATCH",
-    body: JSON.stringify({
-      target_project_id: projectId, type_id: action.typeId, category: action.category, tags: action.tags, title: action.title, description: action.description,
-      status: action.status,
-      ...functionalFields === undefined ? {} : {
-        payload: functionalFields.payload,
-        watched_metrics: functionalFields.watchedMetrics.map((metric) => ({ metric_id: metric.metricId, window_days: metric.windowDays })),
-        workflow: functionalFields.workflow == null ? null : { workflow_id: functionalFields.workflow.workflowId, source: functionalFields.workflow.source, explanation: functionalFields.workflow.explanation, rollback_note: functionalFields.workflow.rollbackNote },
-      },
-    }),
+    body: JSON.stringify(growthAdminActionRequestBody(projectId, action, functionalFields)),
   });
 }
 
