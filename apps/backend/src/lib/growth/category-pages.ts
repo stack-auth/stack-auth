@@ -3,6 +3,7 @@ import type { Tenancy } from "@/lib/tenancies";
 import type { PrismaTransaction } from "@/lib/types";
 import { PRISMA_ERROR_CODES, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { growthActionItemToWire, loadGrowthActionWorkflowRuntimeInfo } from "./actions";
 import { toJsonInput } from "./agent-writes";
 import { assertGrowthCategory, type GrowthCategory } from "./categories";
 import { collectGrowthDocumentActionIds, collectStoredGrowthDocumentActionIds, compileGrowthDocument, type GrowthDocument } from "./content-document";
@@ -153,7 +154,10 @@ export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
   });
 
   const editable = rows.filter((row) => row.status !== "archived");
-  const staleByPageId = await loadStaleSourceIds(tenancy, editable.map((row) => ({ page: row, sources: readSourceItemIds(row.sourceItemIds) })));
+  const [staleByPageId, referencedActionsById] = await Promise.all([
+    loadStaleSourceIds(tenancy, editable.map((row) => ({ page: row, sources: readSourceItemIds(row.sourceItemIds) }))),
+    loadReferencedActions(tenancy, editable),
+  ]);
 
   const byCategory = new Map<string, { draft: GrowthCategoryPageRow | null, published: GrowthCategoryPageRow | null, archived: GrowthCategoryPageRow[] }>();
   for (const row of rows) {
@@ -167,6 +171,13 @@ export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
   const withStaleness = (row: GrowthCategoryPageRow | null) => row == null ? null : {
     ...versionToWire(row),
     stale_source_ids: staleByPageId.get(row.id) ?? [],
+    // The version carries the actions its own <ActionButton>s point at, so the staff preview of a
+    // draft resolves them exactly like the customer's copy of a live page would — including actions
+    // the overview's capped, active-only lanes leave out.
+    actions: collectStoredGrowthDocumentActionIds(row.document).flatMap((id) => {
+      const action = referencedActionsById.get(id);
+      return action == null ? [] : [action];
+    }),
   };
 
   return [...byCategory.entries()].map(([category, entry]) => ({
@@ -175,6 +186,23 @@ export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
     published: withStaleness(entry.published),
     archived: entry.archived.slice(0, MAX_ARCHIVED_VERSIONS).map(versionSummaryToWire),
   }));
+}
+
+/**
+ * The action records the given versions' <ActionButton>s point at, for the staff preview.
+ *
+ * A page can reference an action the overview's capped lanes omit (completed, dismissed, or past
+ * the cap), so resolving references against the overview alone would tell staff a perfectly valid
+ * draft points at a suggestion that no longer exists.
+ */
+async function loadReferencedActions(tenancy: Tenancy, rows: GrowthCategoryPageRow[]) {
+  const actionIds = [...new Set(rows.flatMap((row) => collectStoredGrowthDocumentActionIds(row.document)))];
+  if (actionIds.length === 0) return new Map<string, ReturnType<typeof growthActionItemToWire>>();
+  const actions = await globalPrismaClient.growthActionItem.findMany({
+    where: { projectId: tenancy.project.id, branchId: tenancy.branchId, id: { in: actionIds } },
+  });
+  const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, actions);
+  return new Map(actions.map((item) => [item.id, growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)]));
 }
 
 /**
@@ -295,7 +323,11 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
     throw error;
   }
 
-  return { ...versionToWire(row), stale_source_ids: [] };
+  return {
+    ...versionToWire(row),
+    stale_source_ids: [],
+    actions: [...(await loadReferencedActions(tenancy, [row])).values()],
+  };
 }
 
 export async function deleteGrowthAdminCategoryPageDraft(tenancy: Tenancy, category: GrowthCategory) {

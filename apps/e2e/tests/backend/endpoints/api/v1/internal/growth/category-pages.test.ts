@@ -121,6 +121,29 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
     expect(customerCategoryPages(afterTakedown.body)).toEqual([]);
   });
 
+  it("carries a draft's referenced actions so staff can preview its buttons", async ({ expect }) => {
+    const { projectId, conversionActionId } = await createFixture();
+
+    const saved = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
+      accessType: "client",
+      method: "PUT",
+      body: { target_project_id: projectId, category: "conversion", document: documentWith(conversionActionId), expected_draft_updated_at_millis: null },
+    }));
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ actions: [{ id: conversionActionId, title: "Trim the signup form" }] });
+
+    // The staff preview renders the draft, so the draft must carry its own referenced actions: the
+    // overview's lanes are capped and active-only, and a dismissed (or past-the-cap) action would
+    // otherwise make a perfectly publishable draft preview as "no longer available".
+    const dismissed = await niceBackendFetch(`${GROWTH_BASE}/actions/${conversionActionId}/dismiss`, { accessType: "admin", method: "POST" });
+    expect(dismissed.status).toBe(200);
+
+    const listed = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages?project_id=${projectId}`, { accessType: "client" }));
+    expect(listed.status).toBe(200);
+    const conversion = (listed.body as { pages: { category: string, draft: { actions: { id: string, status: string }[] } | null }[] }).pages.find((page) => page.category === "conversion");
+    expect(conversion?.draft?.actions).toMatchObject([{ id: conversionActionId, status: "dismissed" }]);
+  });
+
   it("refuses action references from another stage, and drafts that do not compile", async ({ expect }) => {
     const { projectId, retentionActionId } = await createFixture();
 

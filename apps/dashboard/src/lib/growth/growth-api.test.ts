@@ -194,6 +194,7 @@ describe("parseGrowthAdminCategoryPagesBody", () => {
       document: null,
       source_item_ids: { findings: ["f1"], actions: ["a1"] },
       stale_source_ids: ["f1"],
+      actions: [],
       ...overrides,
     };
   }
@@ -206,6 +207,38 @@ describe("parseGrowthAdminCategoryPagesBody", () => {
     expect(pages[0]?.category).toBe("conversion");
     expect(pages[0]?.published?.source?.sourceMdx).toBe("## Where signups are lost");
     expect(pages[0]?.published?.staleSourceIds).toEqual(["f1"]);
+  });
+
+  test("carries a version's referenced actions, so previewing a draft resolves its buttons", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{
+        category: "conversion",
+        draft: versionWire({
+          status: "draft",
+          published_at_millis: null,
+          actions: [{
+            id: "a1",
+            type_id: "custom",
+            category: "conversion",
+            tags: [],
+            title: "Fix the checkout drop-off",
+            description: "Shorten the form.",
+            status: "completed",
+            payload: null,
+            watched_metrics: [],
+            report_id: null,
+            brief_id: null,
+            workflow: null,
+            created_at_millis: 1_700_000_000_000,
+            activated_at_millis: null,
+            completed_at_millis: null,
+          }],
+        }),
+        published: null,
+        archived: [],
+      }],
+    });
+    expect(pages[0]?.draft?.actions.map((action) => action.id)).toEqual(["a1"]);
   });
 
   test("rejects a bare array, so a future contract change fails loudly instead of rendering an empty composer", () => {

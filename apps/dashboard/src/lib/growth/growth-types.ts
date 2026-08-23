@@ -317,6 +317,12 @@ export type GrowthCategoryPageVersion = GrowthCategoryPageVersionSummary & {
   sourceItemIds: { findings: string[], actions: string[] },
   /** Source items that changed (or were deleted) after this version was last saved. */
   staleSourceIds: string[],
+  /**
+   * The actions this version's buttons reference, carried with it for the same reason a live page
+   * carries its own: the overview's lanes are capped and active-only, so a preview resolving a
+   * reference against them would call a perfectly valid draft's button unavailable.
+   */
+  actions: GrowthActionItem[],
 };
 
 export type GrowthAdminCategoryPage = {

@@ -130,10 +130,6 @@ export function GrowthAdminCategoryPageCard(props: {
   const findings = overview.findings.filter((item) => item.category === category);
   const notes = overview.notes.filter((item) => item.category === category);
   const actions = overview.actions.filter((item) => item.category === category);
-  // The preview must resolve the same references the customer's copy does, and a live page may point
-  // at an action the overview's capped lanes left out — so it contributes the actions it carries.
-  const livePageActions = overview.categoryPages.find((item) => item.category === category)?.actions ?? [];
-  const previewActions = [...actions, ...livePageActions.filter((item) => !actions.some((known) => known.id === item.id))];
   const score = overview.categories.find((item) => item.category === category)?.score ?? null;
   const prompt = buildGrowthCategoryPagePrompt({ category, score, findings, notes, actions });
 
@@ -148,7 +144,12 @@ export function GrowthAdminCategoryPageCard(props: {
     await context.refresh();
   };
 
-  const preview = page?.draft?.document ?? page?.published?.document ?? null;
+  // The version being previewed carries the actions its own buttons reference, so the preview
+  // resolves them exactly like the customer's copy would — rather than against the overview's
+  // capped, active-only lanes, which would report a valid reference as unavailable.
+  const previewVersion = page?.draft ?? page?.published ?? null;
+  const preview = previewVersion?.document ?? null;
+  const previewActions = previewVersion?.actions ?? [];
 
   return (
     <section className="mt-6 rounded-2xl border border-dashed border-foreground/[0.16] bg-foreground/[0.02] p-5">

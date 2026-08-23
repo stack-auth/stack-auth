@@ -759,6 +759,7 @@ const categoryPageVersionSchema = categoryPageVersionSummarySchema.extend({
   document: z.unknown().nullable(),
   source_item_ids: z.object({ findings: z.array(z.string()), actions: z.array(z.string()) }),
   stale_source_ids: z.array(z.string()),
+  actions: z.array(actionItemSchema),
 });
 
 /** The authored payload as it goes over the wire, and as it comes back on a stored version. */
@@ -791,6 +792,7 @@ function mapCategoryPageVersion(value: z.infer<typeof categoryPageVersionSchema>
     document: document.success ? document.data : null,
     sourceItemIds: value.source_item_ids,
     staleSourceIds: value.stale_source_ids,
+    actions: value.actions.map(mapGrowthActionItem),
   };
 }
 
