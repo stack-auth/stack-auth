@@ -39,7 +39,7 @@ export function GrowthAdminRunNowCard(props: { app: object, projectId: string, p
             Run scheduler for this project
           </DesignButton>
         </div>
-        <p className="text-xs text-muted-foreground">Targets only this selected project — it never advances anyone else&apos;s workflows. The internal admin session is used; the cron secret is not exposed.</p>
+        <p className="text-xs text-muted-foreground">Runs a global engine tick and waits for this project&apos;s analysis leg; other projects&apos; due work may advance too. The internal admin session is used; the cron secret is not exposed.</p>
       </div>
     </DesignCard>
   );

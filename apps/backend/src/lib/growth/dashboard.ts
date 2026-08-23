@@ -19,6 +19,7 @@ import {
   GROWTH_COMPUTE_METRICS_PHASE_KEY,
   GROWTH_INTEGRATIONS_PHASE_KEY,
   GROWTH_REPORT_PHASE_KEY,
+  GROWTH_ACTIVE_RUN_STATUSES,
   type GrowthRunTrigger,
 } from "./phases";
 import { GROWTH_ANALYSIS_WORKFLOW_ID } from "./workflow-sources";
@@ -366,19 +367,15 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
     throw new StatusError(400, "Growth onboarding has not been completed for this project.");
   }
 
-  const activeRuns = await globalPrismaClient.growthAnalysisRun.findMany({
-    where: {
-      projectId,
-      branchId,
-      status: { in: [GrowthRunStatus.PENDING, GrowthRunStatus.RUNNING, GrowthRunStatus.AWAITING_INTERVIEW, GrowthRunStatus.COMPOSING_REPORT] },
-    },
-    select: { id: true },
-  });
-  const activeRunIds = activeRuns.map((run) => run.id);
-
   const cancelledRunIds = await retryTransaction(globalPrismaClient, async (tx) => {
-    const cancelled: string[] = [];
-    for (const runId of activeRunIds) {
+    // This selection must happen inside the read-committed transaction: a pre-transaction read
+    // could miss a run created between that read and the onboarding delete.
+    const cancelledRuns = await tx.growthAnalysisRun.updateManyAndReturn({
+      where: { projectId, branchId, status: { in: [...GROWTH_ACTIVE_RUN_STATUSES] } },
+      data: { status: GrowthRunStatus.CANCELLED, completedAt: new Date() },
+      select: { id: true },
+    });
+    for (const { id: runId } of cancelledRuns) {
       for (const type of [GROWTH_EVENT_TYPES.analysisRunActivated, GROWTH_EVENT_TYPES.interviewFinished]) {
         await tx.workflowEvent.updateMany({
           where: {
@@ -390,17 +387,9 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
           data: { processedAt: new Date() },
         });
       }
-      const result = await tx.growthAnalysisRun.updateMany({
-        where: {
-          id: runId,
-          status: { in: [GrowthRunStatus.PENDING, GrowthRunStatus.RUNNING, GrowthRunStatus.AWAITING_INTERVIEW, GrowthRunStatus.COMPOSING_REPORT] },
-        },
-        data: { status: GrowthRunStatus.CANCELLED, completedAt: new Date() },
-      });
-      if (result.count === 1) cancelled.push(runId);
     }
     await tx.growthOnboarding.deleteMany({ where: { projectId, branchId } });
-    return cancelled;
+    return cancelledRuns.map((run) => run.id);
   });
   for (const runId of cancelledRunIds) {
     for (const runKey of getGrowthAnalysisLegRunKeys(runId)) {

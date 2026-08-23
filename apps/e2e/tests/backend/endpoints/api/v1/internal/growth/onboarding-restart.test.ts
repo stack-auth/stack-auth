@@ -13,6 +13,17 @@ function requireItems(body: unknown): unknown[] {
   return body.items;
 }
 
+function requireAnalysisSummary(body: unknown): { run_id: unknown, state: unknown } {
+  if (typeof body !== "object" || body == null || !("analysis" in body)) {
+    throw new Error("Expected the growth response to contain an analysis object.");
+  }
+  const analysis = body.analysis;
+  if (typeof analysis !== "object" || analysis == null || !("run_id" in analysis) || !("state" in analysis)) {
+    throw new Error("Expected the growth response analysis to contain state and run_id.");
+  }
+  return { run_id: analysis.run_id, state: analysis.state };
+}
+
 describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
   it("rejects restarts without admin access and on projects without the app", async ({ expect }) => {
     await Project.createAndSwitch();
@@ -57,6 +68,12 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
       onboarding: { completed: false, website_url: null, completed_at_millis: null },
       analysis: { state: "none", run_id: null, trigger: null },
     });
+    expect(requireAnalysisSummary(afterRestart.body)).toMatchInlineSnapshot(`
+      {
+        "run_id": null,
+        "state": "none",
+      }
+    `);
 
     const second = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
       accessType: "admin",
