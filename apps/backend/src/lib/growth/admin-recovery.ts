@@ -1,7 +1,7 @@
 import { GrowthRunStatus, WorkflowRunState } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { runWorkflowEngineStep } from "@/lib/workflows/engine";
 import { getGrowthAnalysisSnapshot, tickGrowthAnalysisRun } from "./orchestration";
 import { GROWTH_ANALYSIS_WORKFLOW_ID } from "./workflow-sources";
@@ -28,8 +28,8 @@ export async function hasPendingGrowthBoundaryEvent(options: {
   tenancyId: string,
   growthRunId: string,
   type: typeof GROWTH_EVENT_TYPES.analysisRunActivated | typeof GROWTH_EVENT_TYPES.interviewFinished,
-}): Promise<boolean> {
-  const event = await globalPrismaClient.workflowEvent.findFirst({
+}, client: PrismaClientTransaction = globalPrismaClient): Promise<boolean> {
+  const event = await client.workflowEvent.findFirst({
     where: {
       tenancyId: options.tenancyId,
       type: options.type,
@@ -107,14 +107,17 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepai
   }
 
   const eventType = leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished;
-  if (!await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType })) {
-    const enqueued = await enqueueWorkflowEvent(globalPrismaClient, {
+  // Keep the pending check and insert together: concurrent repairs must serialize before either
+  // can decide that this run needs a new boundary event.
+  const enqueued = await retryTransaction(globalPrismaClient, async (tx) => {
+    if (await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType }, tx)) return null;
+    return await enqueueWorkflowEvent(tx, {
       tenancy,
       type: eventType,
       payload: leg === "activation" ? { growth_run_id: run.id, trigger: run.trigger } : { growth_run_id: run.id },
     });
-    didWork = enqueued != null || didWork;
-  }
+  }, { level: "serializable" });
+  didWork = enqueued?.created || didWork;
 
   const legStarted = await driveGrowthLegUntilActive(tenancy, run.id);
   const tick = await runGrowthProjectAnalysisStep(tenancy);
