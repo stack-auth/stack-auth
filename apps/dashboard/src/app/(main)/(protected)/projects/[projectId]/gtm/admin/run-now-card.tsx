@@ -27,11 +27,11 @@ export function GrowthAdminRunNowCard(props: { app: object, projectId: string, p
       <div className="space-y-3">
         {state.status === "error" && <DesignAlert variant="error">{state.message}</DesignAlert>}
         {/* Three outcomes, not two. `legStarted === false` is the one that used to be reported as
-          * success: the boundary event is durably queued but its workflow leg did not come up inside
-          * the request's budget, so the run has NOT started and pressing again is the right move. */}
+          * success: the boundary event is durably queued but no workflow leg was created inside the
+          * request's budget, so the run has NOT started and pressing again is the right move. */}
         {state.status === "success" && (
           state.result.legStarted === false
-            ? <DesignAlert variant="warning">Work is queued, but the analysis leg did not start within the time limit. Nothing is lost — run it again.</DesignAlert>
+            ? <DesignAlert variant="warning">Work is queued, but no analysis leg was created within the time limit. Nothing is lost — run it again.</DesignAlert>
             : <DesignAlert variant="info">Scheduler pass completed{state.result.didWork ? " and moved this project forward." : ", but found no work to process."}</DesignAlert>
         )}
         <div className="flex flex-wrap gap-2">
@@ -39,7 +39,7 @@ export function GrowthAdminRunNowCard(props: { app: object, projectId: string, p
             Run scheduler for this project
           </DesignButton>
         </div>
-        <p className="text-xs text-muted-foreground">Runs a global engine tick and waits for this project&apos;s analysis leg; other projects&apos; due work may advance too. The internal admin session is used; the cron secret is not exposed.</p>
+        <p className="text-xs text-muted-foreground">Queues this project&apos;s analysis leg and advances its phases; the leg itself is executed by the engine tick, so it may finish shortly after this returns. The internal admin session is used; the cron secret is not exposed.</p>
       </div>
     </DesignCard>
   );

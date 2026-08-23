@@ -3,6 +3,7 @@ import { syncWorkflowSource } from "@/lib/workflows/api";
 import { globalPrismaClient } from "@/prisma-client";
 import { WORKFLOW_CUSTOM_EVENT_PREFIX } from "@hexclave/shared/dist/interface/workflows";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import {
   GROWTH_ANALYSIS_RUN_ACTIVATED_EVENT_NAME,
   GROWTH_ANALYSIS_WORKFLOW_ID,
@@ -84,26 +85,36 @@ export function isGrowthWorkflowSourceEdited(workflowId: string, storedSource: s
 export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<string, { created: boolean }>> {
   const results = new Map<string, { created: boolean }>();
   for (const [workflowId, spec] of GROWTH_WORKFLOW_DEFINITIONS) {
-    const existing = await globalPrismaClient.workflowDefinition.findUnique({
-      where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
-      select: { workflowId: true },
-    });
-    if (existing != null) {
-      results.set(workflowId, { created: false });
-      continue;
-    }
-    try {
-      await syncWorkflowSource(tenancy, { workflowId, source: spec.source, displayName: spec.displayName, mustBeNew: true });
-      results.set(workflowId, { created: true });
-    } catch (error) {
-      if (isGrowthSeedRaceError(error) && await growthWorkflowExists(tenancy, workflowId)) {
-        results.set(workflowId, { created: false });
-        continue;
-      }
-      throw error;
-    }
+    results.set(workflowId, await ensureGrowthWorkflow(tenancy, workflowId, spec));
   }
   return results;
+}
+
+const GROWTH_SEED_ATTEMPTS = 3;
+
+/**
+ * Attempts a seed for one workflow, re-reading and re-seeding while we keep losing a seed race.
+ *
+ * Retrying (rather than adopting the winner's definition after a single re-read) is load-bearing:
+ * losing the race does not prove the winner will commit — a seeder that fails after we collided with
+ * its uncommitted version row leaves the definition missing, and a single re-read would then
+ * propagate a 409 for a workflow nobody ended up creating. Each iteration re-reads first, so the
+ * common case adopts the winner, and the attempt budget keeps a genuinely conflicting definition
+ * from looping forever.
+ */
+async function ensureGrowthWorkflow(tenancy: Tenancy, workflowId: string, spec: GrowthWorkflowDefinitionSpec): Promise<{ created: boolean }> {
+  for (let attempt = 1; ; attempt++) {
+    if (await growthWorkflowExists(tenancy, workflowId)) return { created: false };
+    try {
+      await syncWorkflowSource(tenancy, { workflowId, source: spec.source, displayName: spec.displayName, mustBeNew: true });
+      return { created: true };
+    } catch (error) {
+      if (!isGrowthSeedRaceError(error) || attempt >= GROWTH_SEED_ATTEMPTS) throw error;
+      // Give the winner's transaction a moment to settle before re-reading, so the next attempt
+      // sees its definition instead of colliding with it again.
+      await wait(100 * attempt);
+    }
+  }
 }
 
 /**
@@ -112,8 +123,8 @@ export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<strin
  *   - the winner's definition was already committed, so mustBeNew rejects with an already-exists 400;
  *   - the winner was still inside its own transaction, so both mint version 1 and the loser loses the
  *     WorkflowVersion unique constraint, which the workflow API reports as a 409.
- * Both mean "the definition we wanted now exists", so both are success for seeding — but the caller
- * only accepts them after re-reading the definition, so an unrelated conflict still propagates.
+ * Both mean "another seeder is creating this definition", which the caller resolves by re-reading
+ * and, if it is still missing, seeding again — so an unrelated conflict still propagates.
  */
 export function isGrowthSeedRaceError(error: unknown): boolean {
   if (!StatusError.isStatusError(error)) return false;

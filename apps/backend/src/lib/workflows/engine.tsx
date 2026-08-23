@@ -1468,13 +1468,22 @@ let stepCounter = 0;
 /**
  * One engine step. Returns whether any work was done, so the caller can
  * idle-wait longer between steps when the system is quiet.
+ *
+ * `executeRuns: false` performs only the parts that are bounded by `deadlineMs` — materializing
+ * schedules and turning events into QUEUED runs. Run execution is not bounded by it: the deadline is
+ * checked between steps, but a claimed step runs to completion, and a workflow step may legitimately
+ * block for minutes (our growth legs long-poll for analysis progress). Callers that live inside an
+ * HTTP request use this to queue work without inheriting a step's runtime, leaving execution to the
+ * engine tick.
  */
-export async function runWorkflowEngineStep(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+export async function runWorkflowEngineStep(options: { deadlineMs: number, executeRuns?: boolean }): Promise<{ didWork: boolean }> {
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
   didWork = await materializeScheduleOccurrences(tenancyCache, options.deadlineMs) || didWork;
   didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs) || didWork;
-  didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
+  if (options.executeRuns !== false) {
+    didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
+  }
   // Retention pruning is cheap but pointless to run every second.
   if (stepCounter++ % 60 === 0) {
     await pruneWorkflowRetention();

@@ -85,10 +85,10 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     expect(response.status).toBe(400);
   });
 
-  // Both racers run a full repair pass (onboarding, then a phase dispatch per analysis phase, each
-  // retrying against an Eve that isn't running in tests), so this one test is minutes of work when
-  // the CI worker pool is saturated by the other growth suites — hence the outsized timeout.
-  it("deduplicates concurrent repairs for the same growth run", { timeout: 480_000 }, async ({ expect }) => {
+  // The fixture onboards a fresh project and both racers then run a full repair pass (a phase
+  // dispatch per analysis phase, against an Eve that isn't running in tests), so this test needs
+  // more headroom than the default when the CI worker pool is saturated by the other growth suites.
+  it("deduplicates concurrent repairs for the same growth run", { timeout: 180_000 }, async ({ expect }) => {
     const keys = await createGrowthProject();
     if (keys === "no-project") throw new Error("Growth admin test requires a fresh project.");
     const onboarding = await niceBackendFetch(urlString`/api/latest/internal/growth/onboarding`, {

@@ -51,7 +51,18 @@ export async function runGrowthProjectAnalysisStep(tenancy: Tenancy): Promise<{ 
   return { didWork: before?.fingerprint !== after?.fingerprint };
 }
 
-const REPAIR_ENGINE_BUDGET_MS = 60_000;
+/**
+ * Wall-clock budget for a whole repair pass. The pass runs inside an admin HTTP request and every
+ * step it performs is idempotent, so work the budget doesn't cover is better left to the next repair
+ * than to a request that outlives its client.
+ */
+const REPAIR_BUDGET_MS = 60_000;
+
+/**
+ * Share of {@link REPAIR_BUDGET_MS} the engine drive may spend, so a leg that never gets queued
+ * still leaves room for the closing tick — the step that actually moves phases out of PENDING.
+ */
+const REPAIR_LEG_DRIVE_BUDGET_MS = REPAIR_BUDGET_MS / 2;
 
 async function findActiveGrowthLeg(tenancy: Tenancy, growthRunId: string) {
   return await globalPrismaClient.workflowRun.findFirst({
@@ -65,13 +76,22 @@ async function findActiveGrowthLeg(tenancy: Tenancy, growthRunId: string) {
   });
 }
 
-async function driveGrowthLegUntilActive(tenancy: Tenancy, growthRunId: string): Promise<boolean> {
+/**
+ * Turns the boundary event we just enqueued into a QUEUED leg run, without executing it.
+ *
+ * Executing is deliberately left to the engine tick: a growth leg's first step long-polls for
+ * analysis progress for minutes, so an engine step that executes runs cannot be bounded by a budget
+ * (the deadline is only honoured between steps). Driving execution from here used to keep the admin
+ * request open for the entire poll and read as a hang. Queuing the leg is the part a repair actually
+ * owns — it is what the missing event lost.
+ */
+async function driveGrowthLegUntilQueued(tenancy: Tenancy, growthRunId: string, budgetMs: number): Promise<boolean> {
   const startedAt = performance.now();
-  const engineDeadlineMs = Date.now() + REPAIR_ENGINE_BUDGET_MS;
+  const engineDeadlineMs = Date.now() + budgetMs;
   while (true) {
-    const step = await runWorkflowEngineStep({ deadlineMs: engineDeadlineMs });
+    const step = await runWorkflowEngineStep({ deadlineMs: engineDeadlineMs, executeRuns: false });
     if (await findActiveGrowthLeg(tenancy, growthRunId) != null) return true;
-    if (performance.now() - startedAt >= REPAIR_ENGINE_BUDGET_MS) return false;
+    if (performance.now() - startedAt >= budgetMs) return false;
     if (!step.didWork) await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
@@ -82,6 +102,7 @@ export type GrowthRepairResult = {
 };
 
 export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepairResult> {
+  const startedAt = performance.now();
   let didWork = false;
   const workflowResults = await ensureGrowthWorkflows(tenancy);
   didWork = [...workflowResults.values()].some((result) => result.created) || didWork;
@@ -119,7 +140,8 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepai
   }, { level: "serializable" });
   didWork = enqueued?.created || didWork;
 
-  const legStarted = await driveGrowthLegUntilActive(tenancy, run.id);
+  const legStarted = await driveGrowthLegUntilQueued(tenancy, run.id, REPAIR_LEG_DRIVE_BUDGET_MS);
+  if (performance.now() - startedAt >= REPAIR_BUDGET_MS) return { didWork: legStarted || didWork, legStarted };
   const tick = await runGrowthProjectAnalysisStep(tenancy);
   return { didWork: legStarted || tick.didWork || didWork, legStarted };
 }
