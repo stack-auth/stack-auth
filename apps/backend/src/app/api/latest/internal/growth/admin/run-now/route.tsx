@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
     if (auth.user == null) throw new KnownErrors.UserAuthenticationRequired();
     const tenancy = await requireGrowthAdminTenancy(auth.project.id, auth.user, body.target_project_id);
     const result = body.step === "analysis_tick"
-      ? await runGrowthProjectAnalysisStep(tenancy)
+      ? { ...await runGrowthProjectAnalysisStep(tenancy), legStarted: null }
       : await repairGrowthProject(tenancy);
 
     return {
@@ -43,6 +43,7 @@ export const POST = createSmartRouteHandler({
       body: {
         step: body.step,
         did_work: result.didWork,
+        leg_started: result.legStarted,
       },
     };
   },

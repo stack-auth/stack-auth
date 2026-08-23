@@ -1,43 +1,18 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth, GROWTH_CHAT_PHASE_KEY } from "#lib/run-context.ts";
+import { followSessionEvents } from "#lib/session-stream.ts";
 import type { GrowthAgentTokenRef, GrowthProjectRef } from "#lib/types.ts";
 import { WRITING_STYLE_RULES } from "#lib/writing-style.ts";
 
-/**
- * One turn of the freeform growth chat, dispatched from the `/chat` channel route.
- *
- * STREAMING: the turn emits `ChatTurnStreamEvent`s through `onEvent` as the model produces them
- * (eve's `message.appended` deltas), and the channel route relays them to the backend as NDJSON,
- * which re-emits them as AI SDK UI chunks. The completed `AssistantUiMessage` is STILL returned at
- * the end and is what the backend persists — the stream is for the live view only, so a dropped
- * connection can never leave a half-written transcript. The interview remains non-streamed (its
- * turns are short and its payload is a structured question card, not prose).
- *
- * See run-interview.ts for the root-handled-not-delegated rationale, which applies unchanged here:
- * the projected tool calls must stay on the one root event stream.
- *
- * Chat turns are STATELESS on the Eve side, like interview turns: the transcript lives in the
- * backend (GrowthChatConversation/GrowthChatMessage) and rides in on every request, so each turn is
- * its own task-mode session and nothing is ever resumed.
- */
 
 /** Inbound body of POST /chat (backend -> agent). */
 export type ChatTurnRequest = GrowthProjectRef & GrowthAgentTokenRef & {
-  /**
-   * Fresh per backend request; used as the session continuation token. The backend deliberately
-   * does NOT derive it from the conversation id (new conversations have no id until after the
-   * turn succeeds, and a deterministic "new" token would collide across concurrent new chats).
-   */
   readonly turn_id: string,
   /** AI SDK UIMessages (ending with the latest user message), opaque prompt context here. */
   readonly transcript: readonly unknown[],
 };
 
-/**
- * Minimal AI SDK v6 UIMessage part shapes this module emits (wire contract with the backend's
- * parseEveChatResponse; identical to run-interview.ts's shapes, duplicated because the two turn
- * kinds are separate contracts that must be able to evolve independently).
- */
+
 type AssistantTextPart = {
   readonly type: "text",
   readonly text: string,
@@ -138,8 +113,8 @@ function buildChatTurnPrompt(input: ChatTurnRequest): string {
  * kept local for the same reason its author kept theirs local (each turn kind is self-contained,
  * and a shared helper would couple their evolution).
  */
-export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonly send: SendFn }): Promise<ChatTurnResult> {
-  const session = await helpers.send(buildChatTurnPrompt(input), {
+export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonly from: ChannelFrom }): Promise<ChatTurnResult> {
+  const session = await helpers.from(`chat:${input.turn_id}`).send(buildChatTurnPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
@@ -150,9 +125,10 @@ export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonl
       finding_source: "chat",
       agent_token: input.agent_token,
     }),
-    continuationToken: `chat:${input.turn_id}`,
     mode: "task",
     title: `Growth chat turn (project ${input.project_id})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const parts: AssistantUiMessage["parts"] = [];
@@ -161,87 +137,61 @@ export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonl
   // `message.completed` fires per step, so a tool-calling turn repeats its pre-call prose.
   const seenTextParts = new Set<string>();
 
-  const stream = await session.getEventStream({ startIndex: 0 });
-  const reader = stream.getReader();
-  // Resolve-only timer raced against every read; mirrors run-interview.ts.
-  let timeoutTimer: NodeJS.Timeout | undefined;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timeoutTimer = setTimeout(() => resolve("timeout"), MAX_CHAT_TURN_MS);
-    timeoutTimer.unref();
-  });
-  try {
-    collect: while (true) {
-      const readResult = await Promise.race([reader.read(), timeoutPromise]);
-      if (readResult === "timeout") {
-        await reader.cancel();
-        throw new Error(`Chat turn timed out: session=${session.id}`);
+  collect: for await (const event of followSessionEvents({ session, label: "Chat turn", maxSessionMs: MAX_CHAT_TURN_MS })) {
+    switch (event.type) {
+      case "message.completed": {
+        if (event.data.message != null && event.data.message.length > 0) {
+          if (!seenTextParts.has(event.data.message)) {
+            seenTextParts.add(event.data.message);
+            parts.push({ type: "text", text: event.data.message, state: "done" });
+          }
+        }
+        break;
       }
-      const { done, value: event } = readResult;
-      if (done) {
-        throw new Error(`Chat turn event stream ended without a terminal event: session=${session.id}`);
+      case "actions.requested": {
+        for (const action of event.data.actions) {
+          if (action.kind !== "tool-call" || !PROJECTED_CHAT_TOOLS.has(action.toolName)) continue;
+          const part: AssistantToolPart = {
+            type: `tool-${action.toolName}`,
+            toolCallId: action.callId,
+            state: "input-available",
+            input: action.input,
+          };
+          parts.push(part);
+          toolPartsByCallId.set(action.callId, part);
+        }
+        break;
       }
-      switch (event.type) {
-        case "message.completed": {
-          if (event.data.message != null && event.data.message.length > 0) {
-            if (!seenTextParts.has(event.data.message)) {
-              seenTextParts.add(event.data.message);
-              parts.push({ type: "text", text: event.data.message, state: "done" });
-            }
-          }
-          break;
+      case "action.result": {
+        const result = event.data.result;
+        if (result.kind !== "tool-result") break;
+        const part = toolPartsByCallId.get(result.callId);
+        if (part == null) break;
+        if (event.data.status === "completed") {
+          part.state = "output-available";
+          part.output = result.output;
+        } else {
+          part.state = "output-error";
+          part.errorText = event.data.error?.message ?? "Tool call failed";
         }
-        case "actions.requested": {
-          for (const action of event.data.actions) {
-            if (action.kind !== "tool-call" || !PROJECTED_CHAT_TOOLS.has(action.toolName)) continue;
-            const part: AssistantToolPart = {
-              type: `tool-${action.toolName}`,
-              toolCallId: action.callId,
-              state: "input-available",
-              input: action.input,
-            };
-            parts.push(part);
-            toolPartsByCallId.set(action.callId, part);
-          }
-          break;
-        }
-        case "action.result": {
-          const result = event.data.result;
-          if (result.kind !== "tool-result") break;
-          const part = toolPartsByCallId.get(result.callId);
-          if (part == null) break;
-          if (event.data.status === "completed") {
-            part.state = "output-available";
-            part.output = result.output;
-          } else {
-            part.state = "output-error";
-            part.errorText = event.data.error?.message ?? "Tool call failed";
-          }
-          break;
-        }
-        case "session.completed": {
-          break collect;
-        }
-        case "session.failed": {
-          throw new Error(`Chat turn session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
-        }
-        case "session.waiting": {
-          // Task mode should never park; treat it as a failure rather than hanging to the timeout.
-          throw new Error(`Chat turn session parked waiting for input in task mode: session=${session.id}`);
-        }
-        default: {
-          // Progress events (turn/step/deltas/...) — keep waiting.
-          break;
-        }
+        break;
+      }
+      case "session.completed": {
+        break collect;
+      }
+      case "session.failed": {
+        throw new Error(`Chat turn session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
+      }
+      case "session.waiting": {
+        throw new Error(`Chat turn session parked waiting for input in task mode: session=${session.id}`);
+      }
+      default: {
+        break;
       }
     }
-  } finally {
-    if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
-    reader.releaseLock();
   }
 
   if (parts.length === 0) {
-    // An empty assistant turn would render as a blank chat bubble; surface it as a failure so the
-    // backend returns its retryable 502 instead of persisting a broken transcript.
     throw new Error(`Chat turn produced no user-visible content: session=${session.id}`);
   }
   return {

@@ -1,23 +1,8 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth } from "#lib/run-context.ts";
+import { followSessionEvents } from "#lib/session-stream.ts";
 import { PLAIN_LANGUAGE_RULE } from "#lib/writing-style.ts";
 
-/**
- * On-demand generation of one blog post for a `publish_blog` action item, dispatched synchronously
- * from the `/blog-draft` channel route (the backend awaits the finished post and stores it).
- *
- * WHY THIS IS NOT PART OF A RUN: writing a full post inline made the SEO & AEO analysis topic the
- * slowest phase of every run by ~4x, and since analysis phases run in parallel the slowest one sets
- * the run's wall clock. The run now produces only the idea; the post is written here, once a human
- * has actually chosen it. See lib/growth/blog-drafts.ts on the backend for the full rationale.
- *
- * DESIGN — no tools, no token: everything this session reasons from is passed inline by the backend
- * (the idea plus the product context). That keeps it a single fast model turn, and means no run
- * token is minted and no agent-write surface is involved; the backend stores the returned markdown
- * itself. `agent_token` is deliberately absent from the request shape for the same reason.
- */
-
-/** Inbound body of POST /blog-draft (backend -> agent). */
 export type BlogDraftRequest = {
   readonly project_id: string,
   readonly branch_id: string,
@@ -40,10 +25,6 @@ export type BlogDraftResult = {
   readonly draft_markdown: string,
 };
 
-/**
- * Upper bound on one generation. Below the backend's own Eve timeout so a stuck session surfaces as
- * this module's error (which the route maps to a 500) rather than as an opaque client-side abort.
- */
 const MAX_BLOG_DRAFT_MS = 3 * 60 * 1000;
 
 function buildBlogDraftPrompt(input: BlogDraftRequest): string {
@@ -73,74 +54,45 @@ function buildBlogDraftPrompt(input: BlogDraftRequest): string {
   ].join("\n");
 }
 
-/** Runs the generation session and returns its final text as the post. */
-export async function executeBlogDraft(input: BlogDraftRequest, helpers: { readonly send: SendFn }): Promise<BlogDraftResult> {
-  const session = await helpers.send(buildBlogDraftPrompt(input), {
+export async function executeBlogDraft(input: BlogDraftRequest, helpers: { readonly from: ChannelFrom }): Promise<BlogDraftResult> {
+  const session = await helpers.from(`blog-draft:${input.action_item_id}`).send(buildBlogDraftPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
-      // No run/phase context and no agent_token: this session calls no backend routes at all, so it
-      // holds no capability. "report" is the honest finding_source bucket if a tool ever were added.
       finding_source: "report",
     }),
-    // One session per action item: a repeat request for the same item is a retry of the same work,
-    // and the backend only calls this at all when no draft exists yet.
-    continuationToken: `blog-draft:${input.action_item_id}`,
     mode: "task",
     title: `Growth blog draft (${input.blog_idea.title})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const chunks: string[] = [];
-  const stream = await session.getEventStream({ startIndex: 0 });
-  const reader = stream.getReader();
-  let timeoutTimer: NodeJS.Timeout | undefined;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timeoutTimer = setTimeout(() => resolve("timeout"), MAX_BLOG_DRAFT_MS);
-    timeoutTimer.unref();
-  });
-  try {
-    collect: while (true) {
-      const readResult = await Promise.race([reader.read(), timeoutPromise]);
-      if (readResult === "timeout") {
-        await reader.cancel();
-        throw new Error(`Blog draft generation timed out: session=${session.id}`);
+  collect: for await (const event of followSessionEvents({ session, label: "Blog draft", maxSessionMs: MAX_BLOG_DRAFT_MS })) {
+    switch (event.type) {
+      case "message.completed": {
+        if (event.data.message != null && event.data.message.length > 0 && !chunks.includes(event.data.message)) {
+          chunks.push(event.data.message);
+        }
+        break;
       }
-      const { done, value: event } = readResult;
-      if (done) {
-        throw new Error(`Blog draft event stream ended without a terminal event: session=${session.id}`);
+      case "session.completed": {
+        break collect;
       }
-      switch (event.type) {
-        case "message.completed": {
-          // Same per-step duplication `message.completed` has in run-interview.ts: a multi-step
-          // session repeats earlier prose, and concatenating blindly would emit the post twice.
-          if (event.data.message != null && event.data.message.length > 0 && !chunks.includes(event.data.message)) {
-            chunks.push(event.data.message);
-          }
-          break;
-        }
-        case "session.completed": {
-          break collect;
-        }
-        case "session.failed": {
-          throw new Error(`Blog draft session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
-        }
-        case "session.waiting": {
-          throw new Error(`Blog draft session parked waiting for input in task mode: session=${session.id}`);
-        }
-        default: {
-          break;
-        }
+      case "session.failed": {
+        throw new Error(`Blog draft session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
+      }
+      case "session.waiting": {
+        throw new Error(`Blog draft session parked waiting for input in task mode: session=${session.id}`);
+      }
+      default: {
+        break;
       }
     }
-  } finally {
-    if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
-    reader.releaseLock();
   }
 
   const draftMarkdown = chunks.join("\n\n").trim();
   if (draftMarkdown.length === 0) {
-    // The backend maps a non-2xx to a customer-visible "try again"; an empty draft must never be
-    // stored, because storing it would make the item look generated and hide the failure.
     throw new Error(`Blog draft generation produced no content: session=${session.id}`);
   }
   return { draft_markdown: draftMarkdown };

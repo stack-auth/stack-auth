@@ -24,8 +24,8 @@
   "dependencies": {
     "@agent-browser/sandbox": "0.32.4",
     "@vercel/sandbox": "2.8.0",
-    "ai": "7.0.38",
-    "eve": "0.30.8",
+    "ai": "7.0.66",
+    "eve": "0.38.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
