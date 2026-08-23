@@ -7,6 +7,7 @@ import { executeChatTurn } from "#lib/run-chat.ts";
 import { executeInterviewTurn } from "#lib/run-interview.ts";
 import { executeQuizAuthoring } from "#lib/run-quiz.ts";
 import { settleGrowthPhaseFromTerminalEvent } from "#lib/phase-settlement.ts";
+import { beatGrowthPhaseFromProgressEvent, forgetGrowthPhaseHeartbeat } from "#lib/heartbeat.ts";
 
 
 const projectRefSchema = z.object({
@@ -121,11 +122,24 @@ const SESSION_FAILED_PHASE_MESSAGE = "The analysis step failed unexpectedly. It 
 
 export default defineChannel({
   events: {
+    // Progress events double as the phase heartbeat (see lib/heartbeat.ts): an analysis phase runs
+    // in a background session, so nothing is left holding a timer that could beat on its behalf.
+    "turn.started": async (_data, channel) => {
+      await beatGrowthPhaseFromProgressEvent(channel);
+    },
+    "action.result": async (_data, channel) => {
+      await beatGrowthPhaseFromProgressEvent(channel);
+    },
+    "message.appended": async (_data, channel) => {
+      await beatGrowthPhaseFromProgressEvent(channel);
+    },
     "session.completed": async (_data, channel) => {
+      forgetGrowthPhaseHeartbeat(channel);
       await settleGrowthPhaseFromTerminalEvent(channel, null);
     },
     "session.failed": async (data, channel) => {
       console.error(`[growth-agent] session failed: session=${data.sessionId} code=${data.code} message=${data.message}`);
+      forgetGrowthPhaseHeartbeat(channel);
       await settleGrowthPhaseFromTerminalEvent(channel, SESSION_FAILED_PHASE_MESSAGE);
     },
   },

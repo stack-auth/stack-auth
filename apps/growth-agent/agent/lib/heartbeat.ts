@@ -1,67 +1,62 @@
 import { phaseHeartbeat } from "#lib/hexclave-client.ts";
-import type { AnalysisPhaseRunRequest } from "#lib/types.ts";
+import { parsePhaseContinuationToken } from "#lib/phase-continuation.ts";
+import type { PhaseSettlementContext } from "#lib/phase-settlement.ts";
 
 /**
- * Interval between heartbeats. The backend engine reaps phases that have not
- * heartbeated for 15 minutes, so 60s gives us ~15 missed beats of slack
- * before a live run gets reaped — transient backend blips won't kill a run,
- * while a genuinely dead agent process is detected within the reap window.
+ * Minimum spacing between two beats for the same phase. The backend engine reaps phases that have
+ * not heartbeated for 15 minutes, so 60s leaves ~15 missed beats of slack before a live run gets
+ * reaped: transient backend blips won't kill a run, while a genuinely dead session is detected
+ * within the reap window.
  */
-const HEARTBEAT_INTERVAL_MS = 60_000;
+const HEARTBEAT_MIN_INTERVAL_MS = 60_000;
 
 /**
- * Starts the phase heartbeat loop for an in-flight analysis phase and returns
- * a stop function (call it in a `finally`). Each beat echoes the attempt
- * number, so a beat from a stale attempt is rejected by the backend's fencing
- * and shows up here as an error.
+ * Phase liveness is event-driven rather than timer-driven, because a phase no longer runs inside the
+ * request that dispatched it: that request only starts a background eve session and returns, so
+ * there is no long-lived caller left to hold a `setInterval`. Instead every progress event the
+ * session emits (tool results, appended assistant text, new turns) doubles as a liveness signal, and
+ * a phase that emits nothing for 15 minutes is genuinely wedged — which is exactly what the backend
+ * should reap.
+ */
+export function shouldBeatPhaseNow(lastBeatAt: number | null, now: number): boolean {
+  return lastBeatAt == null || now - lastBeatAt >= HEARTBEAT_MIN_INTERVAL_MS;
+}
+
+const lastBeatAtByToken = new Map<string, number>();
+
+/**
+ * Beats the phase behind this session's continuation token, throttled to {@link
+ * HEARTBEAT_MIN_INTERVAL_MS}. Sessions that carry no phase token (chat, interview, quiz, …) are
+ * ignored: they have no phase lifecycle to keep alive.
  *
- * A failed beat is logged, not thrown: the timer callback is a detachment
- * boundary (nothing awaits it, so a throw would be an unhandled rejection and
- * could crash the process), and a missed beat is recoverable — the run keeps
- * going and the next beat retries. If every beat fails for 15 minutes the
- * backend reaps the phase, which is exactly the intended dead-agent behavior.
+ * A failed beat is logged, not thrown: the caller is a channel event handler whose failure would
+ * abort event delivery for the session, and a missed beat is recoverable — the next progress event
+ * retries it. If every beat fails for the whole reap window the phase is reaped, which is the
+ * intended dead-agent behavior.
  */
-/**
- * Minimal local stand-in for @hexclave/shared's `runAsynchronously` (this app
- * does not depend on the shared package): detaches a promise from a context
- * that cannot await it (a timer callback), logging any rejection. The two-arg
- * `.then` marks the promise as handled for the floating-promise lint while
- * keeping the error path explicit.
- */
-function runDetachedFromTimer(label: string, fn: () => Promise<void>): void {
-  fn().then(
-    () => undefined,
-    (error: unknown) => console.error(`[growth-agent] ${label}`, error),
-  );
+export async function beatGrowthPhaseFromProgressEvent(channel: PhaseSettlementContext): Promise<void> {
+  const continuationToken = channel.continuation?.token;
+  if (continuationToken == null) return;
+  const identity = parsePhaseContinuationToken(continuationToken);
+  if (identity == null) return;
+  const now = performance.now();
+  if (!shouldBeatPhaseNow(lastBeatAtByToken.get(continuationToken) ?? null, now)) return;
+  // Recorded before awaiting so a slow beat also acts as the in-flight guard: overlapping beats add
+  // backend load without adding liveness signal.
+  lastBeatAtByToken.set(continuationToken, now);
+  try {
+    await phaseHeartbeat(identity);
+  } catch (error) {
+    console.error(`[growth-agent] phase heartbeat failed (will retry on the next progress event): run=${identity.run_id} phase=${identity.phase_key} attempt=${identity.attempt}`, error);
+  }
 }
 
 /**
- * The loop itself, shared by every run kind that has a heartbeat endpoint. `label` is used only to
- * describe a failed beat in the log line, so it must identify the anchor without being a secret.
+ * Drops the throttle bookkeeping for a settled session so the map does not grow with the process's
+ * lifetime.
  */
-function startHeartbeatLoop(label: string, beat: () => Promise<void>): () => void {
-  let inFlight = false;
-  const timer = setInterval(() => {
-    // Skip a tick if the previous beat is still in flight (e.g. the backend is
-    // slow); overlapping beats would add load without adding liveness signal.
-    if (inFlight) return;
-    inFlight = true;
-    runDetachedFromTimer(`${label} heartbeat failed (will retry next interval)`, async () => {
-      try {
-        await beat();
-      } finally {
-        inFlight = false;
-      }
-    });
-  }, HEARTBEAT_INTERVAL_MS);
-  // Don't let the heartbeat timer keep the process alive on shutdown.
-  timer.unref();
-  return () => clearInterval(timer);
-}
-
-export function startPhaseHeartbeat(input: AnalysisPhaseRunRequest): () => void {
-  return startHeartbeatLoop(
-    `phase run=${input.run_id} phase=${input.phase_key} attempt=${input.attempt}`,
-    async () => { await phaseHeartbeat(input); },
-  );
+export function forgetGrowthPhaseHeartbeat(channel: PhaseSettlementContext): void {
+  const continuationToken = channel.continuation?.token;
+  if (continuationToken == null) return;
+  lastBeatAtByToken.delete(continuationToken);
 }
