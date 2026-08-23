@@ -742,6 +742,14 @@ export async function listGrowthAdminProjects(app: object): Promise<GrowthAdminP
   return rows.map((row) => ({ id: row.id, displayName: row.display_name, websiteUrl: row.website_url, completedAtMillis: row.completed_at_millis }));
 }
 
+/**
+ * The selected project's lifecycle status. Parsed with the customer status schema on purpose — the
+ * admin page renders the same lifecycle view the customer gets, so the two must not drift.
+ */
+export async function getGrowthAdminStatus(app: object, projectId: string): Promise<GrowthStatus> {
+  return mapGrowthStatus(statusSchema.parse(await requestGrowthAdminJson(app, urlString`/status?project_id=${projectId}`)));
+}
+
 export async function getGrowthAdminOverview(app: object, projectId: string): Promise<GrowthOverview> {
   const value = overviewSchema.parse(await requestGrowthAdminJson(app, `/overview?project_id=${encodeURIComponent(projectId)}`));
   return {
