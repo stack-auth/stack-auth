@@ -88,7 +88,7 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
   it("deduplicates concurrent repairs for the same growth run", { timeout: 180_000 }, async ({ expect }) => {
     const keys = await createGrowthProject();
     if (keys === "no-project") throw new Error("Growth admin test requires a fresh project.");
-    const onboarding = await niceBackendFetch(urlString`${GROWTH_BASE}/onboarding`, {
+    const onboarding = await niceBackendFetch(urlString`/api/latest/internal/growth/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://admin-recovery-race.example.com", company_summary: "Growth admin recovery race fixture" },
@@ -120,12 +120,12 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     });
 
     const responses = await Promise.all([
-      niceBackendFetch(urlString`${ADMIN_BASE}/run-now`, {
+      niceBackendFetch(urlString`/api/latest/internal/growth/admin/run-now`, {
         accessType: "client",
         method: "POST",
         body: { step: "project_recovery", target_project_id: keys.projectId },
       }),
-      niceBackendFetch(urlString`${ADMIN_BASE}/run-now`, {
+      niceBackendFetch(urlString`/api/latest/internal/growth/admin/run-now`, {
         accessType: "client",
         method: "POST",
         body: { step: "project_recovery", target_project_id: keys.projectId },
