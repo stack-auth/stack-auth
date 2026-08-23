@@ -132,7 +132,12 @@ function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) 
     : `/projects/${props.projectId}/gtm/findings/${value.id}`;
   const body = props.item.kind === "action" ? props.item.value.description : props.item.value.body;
   const item = props.item;
-  const save = async (patch: GrowthWorkspaceItemPatch) => await editors?.saveItem(item, patch);
+  // Reached only from the row's edit affordances, which do not exist without the provider — so a
+  // missing one is a broken assumption rather than a save that quietly did nothing. Returning
+  // whether the save went through lets fields holding a draft (the tag input) keep it on failure.
+  const save = async (patch: GrowthWorkspaceItemPatch): Promise<boolean> => await (
+    editors ?? throwErr("A Growth workspace row saved a field without an edit provider, but its fields are only editable inside one.")
+  ).saveItem(item, patch);
   // Staff-only: everything this row holds, formatted as a prompt for whichever model the author uses
   // to draft the stage page. Per row as well as per stage, because one finding is often the whole story.
   const prompt = value.category == null ? null : item.kind === "action"
@@ -317,7 +322,7 @@ export function GrowthWorkspaceContent(props: {
           <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
           {editors == null && publishedPage != null && (
             <section className="py-8">
-              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
+              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} projectId={props.projectId} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
                 <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
               </GrowthDocumentActionsProvider>
             </section>

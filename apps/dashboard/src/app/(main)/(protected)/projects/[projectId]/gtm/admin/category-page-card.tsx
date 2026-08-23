@@ -124,6 +124,19 @@ export function isSupersededByStored(args: {
   return args.storedKey != null && args.storedKey !== args.seededKey && args.dirty && !args.mutating;
 }
 
+/**
+ * The draft version a save may replace, as the editor's text sees it — the backend rejects the save
+ * if the stage's draft has moved on from it.
+ *
+ * Branching on the *presence* of the seed rather than on its timestamp matters: a seed whose
+ * `draftUpdatedAtMillis` is null means "this text is based on a stage that had no draft", which is
+ * exactly the case the backend must reject once a colleague has created one — falling through to
+ * whatever draft the last refresh returned would silently overwrite them.
+ */
+export function expectedDraftUpdatedAtMillis(seed: Seed | null, draft: { updatedAtMillis: number } | null): number | null {
+  return seed == null ? draft?.updatedAtMillis ?? null : seed.draftUpdatedAtMillis;
+}
+
 /** The draft the editor starts from: the stage's draft if there is one, else the live page's source. */
 function initialSource(page: GrowthAdminCategoryPage | null): { mdx: string, dataJson: string } {
   const version = page?.draft ?? page?.published ?? null;
@@ -311,7 +324,7 @@ export function GrowthAdminCategoryPageCard(props: {
                   // The draft the editor's text is based on — not merely whatever the last refresh
                   // returned — so the backend rejects the save if someone else has saved the stage
                   // since, instead of overwriting their work.
-                  expectedDraftUpdatedAtMillis: seeded?.draftUpdatedAtMillis ?? page?.draft?.updatedAtMillis ?? null,
+                  expectedDraftUpdatedAtMillis: expectedDraftUpdatedAtMillis(seeded, page?.draft ?? null),
                 });
                 // This save wrote the editor's text, so anything typed while it was in flight is a
                 // delta on top of the version now stored: adopt it as the seed, or the refresh that
@@ -394,7 +407,7 @@ export function GrowthAdminCategoryPageCard(props: {
               ? <p className="mt-2 text-xs text-muted-foreground">Save a draft to preview it exactly as the customer will see it.</p>
               : (
                 <div className="mt-3">
-                  <GrowthDocumentActionsProvider actions={previewActions} demo={false} onChanged={props.onPublishedChanged}>
+                  <GrowthDocumentActionsProvider actions={previewActions} demo={false} projectId={null} onChanged={props.onPublishedChanged}>
                     <GrowthDocumentRenderer document={preview} className="max-w-3xl" />
                   </GrowthDocumentActionsProvider>
                 </div>

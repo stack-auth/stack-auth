@@ -257,7 +257,7 @@ export function GrowthActionStatusPicker(props: { status: GrowthActionStatus, on
   );
 }
 
-export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[]) => Promise<unknown> }) {
+export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[]) => Promise<boolean> }) {
   const editors = useGrowthWorkspaceEditors();
   const onSave = props.onSave;
   const [adding, setAdding] = useState("");
@@ -302,9 +302,18 @@ export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[
               disabled={adding.trim().length === 0}
               onClick={async () => {
                 const tag = adding.trim();
+                if (tag.length === 0 || props.tags.includes(tag)) {
+                  setAdding("");
+                  close();
+                  return;
+                }
+                // The provider reports a rejected save as an alert above the workspace and resolves
+                // false, so clearing the field unconditionally would leave the author with an error
+                // and a tag they have to retype.
+                const saved = await onSave([...props.tags, tag]);
+                if (!saved) return;
                 setAdding("");
                 close();
-                if (tag.length > 0 && !props.tags.includes(tag)) await onSave([...props.tags, tag]);
               }}
             >
               Add tag

@@ -11,6 +11,7 @@ import {
   INTERVIEW_COMPLETE_TOOL_PART_TYPE,
   INTERVIEW_QUESTION_TOOL_PART_TYPE,
   parseInterviewQuestionToolInput,
+  planQuestionForEntry,
   questionCardFromPlanQuestion,
   uiMessageToTranscriptEntries,
   type InterviewQuestionCard,
@@ -328,5 +329,71 @@ describe("questionCardFromPlanQuestion", () => {
       allowFreeText: true,
       allowSkip: false,
     });
+  });
+});
+
+describe("planQuestionForEntry", () => {
+  const answered = makeQuestion({ questionKey: "primary-goal", orderIndex: 0, answerOptionIds: ["signups"], answeredAtMillis: 1_000 });
+  const next = makeQuestion({ questionKey: "biggest-blocker", orderIndex: 1, prompt: "What is blocking growth?" });
+  const questions = [answered, next];
+  const duplicateCard = makeCard({ questionKey: "primary-goal" });
+
+  it("leaves a committed card the plan has no row left for unresolved", () => {
+    // The agent re-presented an answered question, so the second card has no row of its own: showing
+    // it the first row's answer would render a dead read-only duplicate of a question just answered.
+    const entries: InterviewTranscriptEntry[] = [
+      { id: "entry-1", type: "question", card: duplicateCard },
+      { id: "entry-2", type: "question", card: duplicateCard },
+    ];
+    const view = deriveInterviewChatView({ status: "active", questions }, entries);
+
+    expect(view.planQuestionByEntryId.get("entry-2")).toBeUndefined();
+    const resolved = planQuestionForEntry({
+      entryId: "entry-2",
+      card: duplicateCard,
+      streaming: false,
+      activeQuestion: view.activeQuestion,
+      planQuestionByEntryId: view.planQuestionByEntryId,
+      questions,
+    });
+    expect(resolved).toBeNull();
+    expect(planQuestionForEntry({
+      entryId: "entry-1",
+      card: duplicateCard,
+      streaming: false,
+      activeQuestion: view.activeQuestion,
+      planQuestionByEntryId: view.planQuestionByEntryId,
+      questions,
+    })).toEqual(answered);
+  });
+
+  it("resolves a streaming card by key and the active card by the view's decision", () => {
+    const streamingCard = makeCard({ questionKey: next.questionKey, text: next.prompt });
+
+    expect(planQuestionForEntry({
+      entryId: "streaming-1",
+      card: streamingCard,
+      streaming: true,
+      activeQuestion: null,
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toEqual(next);
+    expect(planQuestionForEntry({
+      entryId: "streaming-1",
+      card: streamingCard,
+      streaming: true,
+      activeQuestion: { entryId: "streaming-1", card: streamingCard, planQuestion: next },
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toEqual(next);
+    // A key the plan never had cannot be answered, so it must not fall back to any other row.
+    expect(planQuestionForEntry({
+      entryId: "streaming-2",
+      card: makeCard({ questionKey: "invented-by-the-agent" }),
+      streaming: true,
+      activeQuestion: null,
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toBeNull();
   });
 });

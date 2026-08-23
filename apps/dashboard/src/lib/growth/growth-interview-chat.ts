@@ -265,6 +265,29 @@ export function resolveTranscriptPlanQuestions(
   return resolved;
 }
 
+/**
+ * The plan row a rendered card takes its answer and state from.
+ *
+ * Committed cards go through the positional mapping only: a card the plan has no row left for
+ * (see resolveTranscriptPlanQuestions) resolves to nothing rather than borrowing another row's
+ * answer, which would show the customer an answer they never gave. Cards of a turn that is still
+ * streaming are not in that mapping yet and have no recorded answer to show either way, so there
+ * the key is all there is to go on.
+ */
+export function planQuestionForEntry(args: {
+  entryId: string,
+  card: InterviewQuestionCard,
+  /** True for entries of the in-flight turn, which the committed mapping does not cover yet. */
+  streaming: boolean,
+  activeQuestion: InterviewChatView["activeQuestion"],
+  planQuestionByEntryId: Map<string, GrowthInterviewQuestion>,
+  questions: GrowthInterviewQuestion[],
+}): GrowthInterviewQuestion | null {
+  if (args.activeQuestion != null && args.activeQuestion.entryId === args.entryId) return args.activeQuestion.planQuestion;
+  if (args.streaming) return args.questions.find((question) => question.questionKey === args.card.questionKey) ?? null;
+  return args.planQuestionByEntryId.get(args.entryId) ?? null;
+}
+
 /** Synthetic entry id for the recovery card described in deriveInterviewChatView. */
 export function planFallbackEntryId(question: GrowthInterviewQuestion): string {
   return `plan-fallback:${question.orderIndex}:${question.questionKey}`;

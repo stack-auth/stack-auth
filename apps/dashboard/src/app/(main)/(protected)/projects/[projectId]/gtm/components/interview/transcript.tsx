@@ -1,6 +1,6 @@
 "use client";
 
-import type { InterviewChatView, InterviewTranscriptEntry } from "@/lib/growth/growth-interview-chat";
+import { planQuestionForEntry, type InterviewChatView, type InterviewTranscriptEntry } from "@/lib/growth/growth-interview-chat";
 import type { GrowthInterviewQuestion } from "@/lib/growth/growth-types";
 import { CheckCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, type ComponentPropsWithoutRef } from "react";
@@ -63,6 +63,8 @@ export function InterviewThinkingIndicator() {
 
 function TranscriptEntry(props: {
   entry: InterviewTranscriptEntry,
+  /** Entries of a turn that is still streaming are not in the committed positional mapping yet. */
+  streaming: boolean,
   questions: GrowthInterviewQuestion[],
   planQuestionByEntryId: InterviewChatView["planQuestionByEntryId"],
   activeQuestion: InterviewChatView["activeQuestion"],
@@ -76,12 +78,14 @@ function TranscriptEntry(props: {
     }
     case "question": {
       const isActive = props.activeQuestion != null && props.activeQuestion.entryId === entry.id;
-      const planQuestion = isActive
-        ? props.activeQuestion?.planQuestion ?? null
-        // Committed cards resolve through the view's positional mapping (a key can match several plan
-        // rows — see resolveTranscriptPlanQuestions); entries of a still-streaming turn are not in it
-        // yet, and a card that is being presented right now has no recorded answer to show anyway.
-        : props.planQuestionByEntryId.get(entry.id) ?? props.questions.find((question) => question.questionKey === entry.card.questionKey) ?? null;
+      const planQuestion = planQuestionForEntry({
+        entryId: entry.id,
+        card: entry.card,
+        streaming: props.streaming,
+        activeQuestion: props.activeQuestion,
+        planQuestionByEntryId: props.planQuestionByEntryId,
+        questions: props.questions,
+      });
       return (
         <InterviewQuestionCardView
           card={entry.card}
@@ -128,10 +132,11 @@ export function InterviewTranscript(props: {
 
   return (
     <div className="flex flex-col gap-4">
-      {[...props.entries, ...props.streamingEntries].map((entry) => (
+      {[...props.entries.map((entry) => ({ entry, streaming: false })), ...props.streamingEntries.map((entry) => ({ entry, streaming: true }))].map(({ entry, streaming }) => (
         <TranscriptEntry
           key={entry.id}
           entry={entry}
+          streaming={streaming}
           questions={props.questions}
           planQuestionByEntryId={props.planQuestionByEntryId}
           activeQuestion={props.activeQuestion}

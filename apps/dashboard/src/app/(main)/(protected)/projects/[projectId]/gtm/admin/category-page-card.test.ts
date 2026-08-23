@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { hasUnsavedEdits, isSupersededByStored, seedKeyOf, shouldSeedFromStored, type Seed } from "./category-page-card";
+import { expectedDraftUpdatedAtMillis, hasUnsavedEdits, isSupersededByStored, seedKeyOf, shouldSeedFromStored, type Seed } from "./category-page-card";
 
 function seed(overrides: Partial<Seed> = {}): Seed {
   return {
@@ -70,5 +70,21 @@ describe("isSupersededByStored", () => {
     expect(isSupersededByStored({ storedKey: stored, seededKey: previous, dirty: false, mutating: false })).toBe(false);
     // Typing right after clicking save is not a conflict with anyone.
     expect(isSupersededByStored({ storedKey: previous, seededKey: stored, dirty: true, mutating: true })).toBe(false);
+  });
+});
+
+describe("expectedDraftUpdatedAtMillis", () => {
+  test("keeps a seed's null timestamp instead of the refreshed draft's", () => {
+    // The author started from a stage with no draft, then a colleague saved the first one: the save
+    // has to still claim "there was no draft", or the backend's check would pass and overwrite them.
+    const fromNoDraft = seed({ key: seedKeyOf("conversion", null, null), draftUpdatedAtMillis: null });
+
+    expect(expectedDraftUpdatedAtMillis(fromNoDraft, { updatedAtMillis: 5_000 })).toBe(null);
+    expect(expectedDraftUpdatedAtMillis(seed({ draftUpdatedAtMillis: 1_000 }), { updatedAtMillis: 5_000 })).toBe(1_000);
+  });
+
+  test("falls back to the loaded draft only when nothing has been seeded", () => {
+    expect(expectedDraftUpdatedAtMillis(null, { updatedAtMillis: 5_000 })).toBe(5_000);
+    expect(expectedDraftUpdatedAtMillis(null, null)).toBe(null);
   });
 });

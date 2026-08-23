@@ -9,7 +9,6 @@ import type { GrowthActionItem } from "@/lib/growth/growth-types";
 import { ArrowRightIcon, ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { createContext, useContext, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useProjectId } from "../../use-admin-app";
 import { GROWTH_ACTION_TYPE_META, GrowthActionStatusBadge, GrowthWatchedMetricChips, useGrowthHref } from "./action-card";
 import { GrowthActionMutationControls } from "./action-controls";
 
@@ -145,15 +144,28 @@ const CALLOUT_META = new Map<"Evidence" | "Hypothesis" | "Experiment" | "DataGap
  * them once one is activated or dismissed. Documents rendered without this provider (findings,
  * reports, action narratives) simply have no action buttons in them.
  */
-const GrowthDocumentActionsContext = createContext<{ actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean } | null>(null);
+const GrowthDocumentActionsContext = createContext<{
+  actions: GrowthActionItem[],
+  onChanged: () => Promise<void>,
+  demo: boolean,
+  /**
+   * The project whose workspace the reader is in, or null when the document is rendered outside it.
+   *
+   * Both the activate/dismiss endpoints and an action's own page are addressed by the project in the
+   * URL, and the internal admin page previews a *customer's* page from the internal project's URL —
+   * so there the only correct thing to do is show the card without controls that would act on the
+   * wrong project.
+   */
+  projectId: string | null,
+} | null>(null);
 
 /**
- * `demo` travels with the actions rather than being read from the growth status context, because the
- * internal admin page renders authored pages (as a preview) outside the customer frame that provides
- * that context. Whoever supplies the actions knows whether they are demo fixtures.
+ * `demo` and `projectId` travel with the actions rather than being read from the growth status
+ * context and the URL, because the internal admin page renders authored pages (as a preview) outside
+ * the customer frame both of those describe. Whoever supplies the actions knows where they came from.
  */
-export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean, children: ReactNode }) {
-  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged, demo: props.demo }}>{props.children}</GrowthDocumentActionsContext.Provider>;
+export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean, projectId: string | null, children: ReactNode }) {
+  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged, demo: props.demo, projectId: props.projectId }}>{props.children}</GrowthDocumentActionsContext.Provider>;
 }
 
 /**
@@ -167,7 +179,6 @@ export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem
  */
 function ActionButtonBlock(props: { actionId: string }) {
   const context = useContext(GrowthDocumentActionsContext);
-  const projectId = useProjectId();
   const withQuery = useGrowthHref();
   const action = context?.actions.find((candidate) => candidate.id === props.actionId) ?? null;
 
@@ -191,12 +202,16 @@ function ActionButtonBlock(props: { actionId: string }) {
         <GrowthActionStatusBadge status={action.status} />
       </div>
       <div className="mt-3"><GrowthWatchedMetricChips action={action} /></div>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <GrowthActionMutationControls action={action} onChanged={context.onChanged} demo={context.demo} className="flex flex-wrap items-center gap-2" />
-        <Link href={withQuery(`/projects/${projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
-          Review action<ArrowRightIcon className="size-3.5" />
-        </Link>
-      </div>
+      {context.projectId == null
+        ? <p className="mt-4 text-xs text-muted-foreground">The customer sees activate and dismiss controls here.</p>
+        : (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <GrowthActionMutationControls action={action} onChanged={context.onChanged} demo={context.demo} className="flex flex-wrap items-center gap-2" />
+            <Link href={withQuery(`/projects/${context.projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
+              Review action<ArrowRightIcon className="size-3.5" />
+            </Link>
+          </div>
+        )}
     </div>
   );
 }
