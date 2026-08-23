@@ -1,3 +1,4 @@
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../../backend-helpers";
@@ -16,17 +17,17 @@ function requireItems(body: unknown): unknown[] {
 describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
   it("rejects restarts without admin access and on projects without the app", async ({ expect }) => {
     await Project.createAndSwitch();
-    const disabled = await niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
+    const disabled = await niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
     expect(disabled.status).toBe(400);
 
     await Project.updateConfig({ "apps.installed.gtm.enabled": true });
-    const clientAccess = await niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "client", method: "POST" });
+    const clientAccess = await niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "client", method: "POST" });
     expect(clientAccess.status).toBe(401);
   });
 
   it("refuses to restart a project that never onboarded", async ({ expect }) => {
     await createGrowthProject();
-    const response = await niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
+    const response = await niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
@@ -39,7 +40,7 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
   it("cancels the in-flight run, reopens the form, and lets onboarding be completed again", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
 
-    const onboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+    const onboarding = await niceBackendFetch(urlString`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://wrong-site.example.com", company_summary: "The details the customer regrets." },
@@ -47,18 +48,18 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     expect(onboarding.status).toBe(200);
     const firstRunId = requireRunId(onboarding.body);
 
-    const restart = await niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
+    const restart = await niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
     expect(restart.status).toBe(200);
     expect(restart.body).toMatchObject({ cancelled_run_ids: [firstRunId] });
 
-    const afterRestart = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
+    const afterRestart = await niceBackendFetch(urlString`${BASE_PATH}/status`, { accessType: "admin" });
     expect(afterRestart.status).toBe(200);
     expect(afterRestart.body).toMatchObject({
       onboarding: { completed: false, website_url: null, completed_at_millis: null },
       analysis: { state: "none", run_id: null, trigger: null },
     });
 
-    const second = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+    const second = await niceBackendFetch(urlString`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://plannery.example.com", company_summary: "Project management for small teams." },
@@ -67,7 +68,7 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     const secondRunId = requireRunId(second.body);
     expect(secondRunId).not.toBe(firstRunId);
 
-    const afterSecond = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
+    const afterSecond = await niceBackendFetch(urlString`${BASE_PATH}/status`, { accessType: "admin" });
     expect(afterSecond.body).toMatchObject({
       onboarding: { completed: true, website_url: "https://plannery.example.com/" },
       analysis: { state: "running", run_id: secondRunId, trigger: "initial" },
@@ -76,32 +77,32 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
 
   it("keeps the findings and milestones a restart is not supposed to destroy", { timeout: 300_000 }, async ({ expect }) => {
     await createGrowthProject();
-    await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+    await niceBackendFetch(urlString`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://plannery.example.com" },
     });
 
-    const before = await niceBackendFetch(`${BASE_PATH}/milestones`, { accessType: "admin" });
+    const before = await niceBackendFetch(urlString`${BASE_PATH}/milestones`, { accessType: "admin" });
     expect(before.status).toBe(200);
     expect(requireItems(before.body)).toHaveLength(3);
 
-    await niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
-    const afterRestart = await niceBackendFetch(`${BASE_PATH}/milestones`, { accessType: "admin" });
+    await niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" });
+    const afterRestart = await niceBackendFetch(urlString`${BASE_PATH}/milestones`, { accessType: "admin" });
     expect(requireItems(afterRestart.body)).toHaveLength(3);
 
-    await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+    await niceBackendFetch(urlString`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://plannery.example.com" },
     });
-    const afterSecond = await niceBackendFetch(`${BASE_PATH}/milestones`, { accessType: "admin" });
+    const afterSecond = await niceBackendFetch(urlString`${BASE_PATH}/milestones`, { accessType: "admin" });
     expect(requireItems(afterSecond.body)).toHaveLength(3);
   });
 
   it("rejects a concurrent restart after another restart claims the onboarding generation", async ({ expect }) => {
     await createGrowthProject();
-    const onboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+    const onboarding = await niceBackendFetch(urlString`${BASE_PATH}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://plannery.example.com" },
@@ -109,15 +110,15 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     expect(onboarding.status).toBe(200);
 
     const restarts = await Promise.all([
-      niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
-      niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
+      niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
+      niceBackendFetch(urlString`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
     ]);
     const statuses = restarts.map((response) => response.status);
     expect(statuses.filter((status) => status === 200)).toHaveLength(1);
     // The losing request may read before the winner commits (409) or after it deletes the row (400).
     expect(statuses.filter((status) => status === 400 || status === 409)).toHaveLength(1);
 
-    const afterRestart = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
+    const afterRestart = await niceBackendFetch(urlString`${BASE_PATH}/status`, { accessType: "admin" });
     const statusBody = afterRestart.body;
     if (typeof statusBody !== "object" || statusBody == null || !("onboarding" in statusBody) || !("analysis" in statusBody)) {
       throw new Error("Expected the growth status response to contain onboarding and analysis objects.");

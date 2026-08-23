@@ -1,3 +1,5 @@
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, INTERNAL_PROJECT_OWNER_TEAM_ID, InternalProjectKeys, Team, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
@@ -86,7 +88,7 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
   it("deduplicates concurrent repairs for the same growth run", { timeout: 180_000 }, async ({ expect }) => {
     const keys = await createGrowthProject();
     if (keys === "no-project") throw new Error("Growth admin test requires a fresh project.");
-    const onboarding = await niceBackendFetch(`${GROWTH_BASE}/onboarding`, {
+    const onboarding = await niceBackendFetch(urlString`${GROWTH_BASE}/onboarding`, {
       accessType: "admin",
       method: "POST",
       body: { website_url: "https://admin-recovery-race.example.com", company_summary: "Growth admin recovery race fixture" },
@@ -118,12 +120,12 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     });
 
     const responses = await Promise.all([
-      niceBackendFetch(`${ADMIN_BASE}/run-now`, {
+      niceBackendFetch(urlString`${ADMIN_BASE}/run-now`, {
         accessType: "client",
         method: "POST",
         body: { step: "project_recovery", target_project_id: keys.projectId },
       }),
-      niceBackendFetch(`${ADMIN_BASE}/run-now`, {
+      niceBackendFetch(urlString`${ADMIN_BASE}/run-now`, {
         accessType: "client",
         method: "POST",
         body: { step: "project_recovery", target_project_id: keys.projectId },
@@ -135,12 +137,12 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     ]);
 
     const eventCount = await withInternalDatabase(async (client) => {
-      const result = await client.query(`
+      const result = await client.query<{ count: number }>(`
         SELECT COUNT(*)::int AS count
         FROM "WorkflowEvent"
         WHERE "tenancyId" = $1 AND "type" = $2 AND "payload"->>'growth_run_id' = $3
       `, [fixture.tenancyId, GROWTH_ANALYSIS_ACTIVATED_EVENT_TYPE, fixture.runId]);
-      return result.rows[0].count;
+      return result.rows.at(0)?.count ?? throwErr("Growth admin test did not return an event count.");
     });
     expect(eventCount).toBe(1);
   });
