@@ -60,6 +60,38 @@ export function GrowthAdminCategoryPagesProvider(props: { app: object, projectId
 
 const EMPTY_DATA_JSON = "[]";
 
+/**
+ * What the editor's text is based on: the stored version it was filled from, plus that text, so
+ * unsaved edits can be told apart from a version the author has not seen.
+ */
+export type Seed = {
+  key: string,
+  mdx: string,
+  dataJson: string,
+  /** `updatedAtMillis` of the draft the text derives from, for the save's optimistic check. */
+  draftUpdatedAtMillis: number | null,
+};
+
+/** Identifies the stored state of a stage: which versions occupy its slots, and how recent they are. */
+export function seedKeyOf(
+  category: GrowthCategory,
+  draft: { id: string, updatedAtMillis: number } | null,
+  published: { id: string, updatedAtMillis: number } | null,
+): string {
+  const slot = (version: { id: string, updatedAtMillis: number } | null, empty: string) =>
+    version == null ? empty : `${version.id}:${version.updatedAtMillis}`;
+  return `${category}:${slot(draft, "no-draft")}:${slot(published, "no-live")}`;
+}
+
+/**
+ * Whether the editor holds text that is not in the stage's stored version yet. Typing while a save
+ * is in flight is normal, and the refresh that follows it changes the seed key — so re-seeding on a
+ * changed key alone would silently throw those keystrokes away.
+ */
+export function hasUnsavedEdits(seed: Seed | null, text: { mdx: string, dataJson: string }): boolean {
+  return seed != null && (text.mdx !== seed.mdx || text.dataJson !== seed.dataJson);
+}
+
 /** The draft the editor starts from: the stage's draft if there is one, else the live page's source. */
 function initialSource(page: GrowthAdminCategoryPage | null): { mdx: string, dataJson: string } {
   const version = page?.draft ?? page?.published ?? null;
@@ -108,24 +140,30 @@ export function GrowthAdminCategoryPageCard(props: {
 
   const [mdx, setMdx] = useState("");
   const [dataJson, setDataJson] = useState(EMPTY_DATA_JSON);
-  const [seededFor, setSeededFor] = useState<string | null>(null);
+  const [seeded, setSeeded] = useState<Seed | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Seeded once per (stage, loaded pages) rather than on every render of the parent workspace: a save
-  // elsewhere on the admin page refreshes the overview, and re-seeding there would discard whatever
-  // the author has pasted but not yet saved.
-  // Keyed by last-saved time as well as id, so a draft that was re-saved (here or by a colleague)
-  // re-seeds the editor rather than leaving it showing content the backend has since replaced.
-  const seedKey = context.state.status === "loaded"
-    ? `${category}:${page?.draft?.id ?? "no-draft"}:${page?.draft?.updatedAtMillis ?? 0}:${page?.published?.id ?? "no-live"}:${page?.published?.updatedAtMillis ?? 0}`
-    : null;
-  useEffect(() => {
-    if (seedKey == null || seedKey === seededFor) return;
+  // The editor is filled from the stage's stored version when that version is one it has not seen
+  // yet — keyed by last-saved time as well as id, so content a colleague replaced does not linger —
+  // but never while there are unsaved edits: a save elsewhere on the admin page refreshes this data,
+  // and overwriting then would discard what the author has pasted but not yet saved.
+  const seedKey = context.state.status === "loaded" ? seedKeyOf(category, page?.draft ?? null, page?.published ?? null) : null;
+  const dirty = hasUnsavedEdits(seeded, { mdx, dataJson });
+  const seedFrom = useCallback((key: string, page: GrowthAdminCategoryPage | null) => {
     const source = initialSource(page);
     setMdx(source.mdx);
     setDataJson(source.dataJson);
-    setSeededFor(seedKey);
-  }, [seedKey, seededFor, page]);
+    setSeeded({ key, draftUpdatedAtMillis: page?.draft?.updatedAtMillis ?? null, ...source });
+  }, []);
+  useEffect(() => {
+    if (seedKey == null || seedKey === seeded?.key || dirty) return;
+    seedFrom(seedKey, page);
+  }, [seedKey, seeded?.key, dirty, page, seedFrom]);
+
+  // A stored version this editor is not based on: either a colleague saved the stage, or the author
+  // reverted their own edits to match an older seed. Only worth saying anything about while there
+  // are unsaved edits, since otherwise the effect above just re-seeds.
+  const supersededByStored = seedKey != null && seedKey !== seeded?.key && dirty;
 
   const findings = overview.findings.filter((item) => item.category === category);
   const notes = overview.notes.filter((item) => item.category === category);
@@ -180,6 +218,14 @@ export function GrowthAdminCategoryPageCard(props: {
           {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
           <StaleSourceNotice version={page?.draft ?? null} label="draft" />
           {page?.draft == null && <StaleSourceNotice version={page?.published ?? null} label="live page" />}
+          {supersededByStored && (
+            <DesignAlert variant="warning">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>This stage&apos;s stored version changed after the editor was filled, so your unsaved edits below were kept rather than overwritten. Saving them will be rejected until you load the stored version.</span>
+                <DesignButton size="sm" variant="outline" onClick={() => seedFrom(seedKey, page)}>Load stored version</DesignButton>
+              </div>
+            </DesignAlert>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <CopyPromptButton content={prompt} size="sm" variant="outline">Copy stage prompt</CopyPromptButton>
@@ -215,15 +261,28 @@ export function GrowthAdminCategoryPageCard(props: {
                 // same class of problem to the author and belong in the same alert.
                 const data = JSON.parse(dataJson);
                 if (!Array.isArray(data)) throw new Error("Evidence data must be a JSON array.");
-                await saveGrowthAdminCategoryPageDraft(app, projectId, {
+                const savedMdx = mdx;
+                const savedDataJson = dataJson;
+                const saved = await saveGrowthAdminCategoryPageDraft(app, projectId, {
                   category,
-                  sourceMdx: mdx,
+                  sourceMdx: savedMdx,
                   data,
                   sourceFindingIds: [...findings, ...notes].map((item) => item.id),
                   sourceActionIds: actions.map((action) => action.id),
-                  // The draft this editor was seeded from: the backend rejects the save if someone
-                  // else has saved the stage since, instead of overwriting their work.
-                  expectedDraftUpdatedAtMillis: page?.draft?.updatedAtMillis ?? null,
+                  // The draft the editor's text is based on — not merely whatever the last refresh
+                  // returned — so the backend rejects the save if someone else has saved the stage
+                  // since, instead of overwriting their work.
+                  expectedDraftUpdatedAtMillis: seeded?.draftUpdatedAtMillis ?? page?.draft?.updatedAtMillis ?? null,
+                });
+                // This save wrote the editor's text, so anything typed while it was in flight is a
+                // delta on top of the version now stored: adopt it as the seed, or the refresh that
+                // follows would look like a colleague's edit and warn about a conflict that isn't one.
+                // A draft save never touches the published slot, so that half of the key is unchanged.
+                setSeeded({
+                  key: seedKeyOf(category, saved, page?.published ?? null),
+                  mdx: savedMdx,
+                  dataJson: savedDataJson,
+                  draftUpdatedAtMillis: saved.updatedAtMillis,
                 });
               })}
             >
