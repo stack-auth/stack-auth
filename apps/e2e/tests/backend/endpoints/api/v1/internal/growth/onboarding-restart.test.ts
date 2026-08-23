@@ -99,7 +99,7 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     expect(requireItems(afterSecond.body)).toHaveLength(3);
   });
 
-  it("rejects a concurrent restart after another restart claims the onboarding generation", { timeout: 300_000 }, async ({ expect }) => {
+  it("rejects a concurrent restart after another restart claims the onboarding generation", async ({ expect }) => {
     await createGrowthProject();
     const onboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
       accessType: "admin",
@@ -112,12 +112,34 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
       niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
       niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
     ]);
-    expect(restarts.map((response) => response.status).sort()).toMatchInlineSnapshot(`[200, 409]`);
-    expect(restarts.find((response) => response.status === 409)).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 409,
-        "body": "Growth onboarding restart conflicted with another restart. Try again.",
-        "headers": Headers { <some fields may have been hidden> },
+    const statuses = restarts.map((response) => response.status);
+    expect(statuses.filter((status) => status === 200)).toHaveLength(1);
+    // The losing request may read before the winner commits (409) or after it deletes the row (400).
+    expect(statuses.filter((status) => status === 400 || status === 409)).toHaveLength(1);
+
+    const afterRestart = await niceBackendFetch(`${BASE_PATH}/status`, { accessType: "admin" });
+    const statusBody = afterRestart.body;
+    if (typeof statusBody !== "object" || statusBody == null || !("onboarding" in statusBody) || !("analysis" in statusBody)) {
+      throw new Error("Expected the growth status response to contain onboarding and analysis objects.");
+    }
+    expect({ onboarding: statusBody.onboarding, analysis: statusBody.analysis }).toMatchInlineSnapshot(`
+      {
+        "analysis": {
+          "completed_at_millis": null,
+          "compute_metrics": null,
+          "error_message": null,
+          "integrations": null,
+          "run_id": null,
+          "started_at_millis": null,
+          "state": "none",
+          "steps": null,
+          "trigger": null,
+        },
+        "onboarding": {
+          "completed": false,
+          "completed_at_millis": null,
+          "website_url": null,
+        },
       }
     `);
   });
