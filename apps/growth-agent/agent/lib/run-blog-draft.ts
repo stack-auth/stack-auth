@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth } from "#lib/run-context.ts";
 import { followSessionEvents } from "#lib/session-stream.ts";
 import { PLAIN_LANGUAGE_RULE } from "#lib/writing-style.ts";
@@ -54,16 +54,17 @@ function buildBlogDraftPrompt(input: BlogDraftRequest): string {
   ].join("\n");
 }
 
-export async function executeBlogDraft(input: BlogDraftRequest, helpers: { readonly send: SendFn }): Promise<BlogDraftResult> {
-  const session = await helpers.send(buildBlogDraftPrompt(input), {
+export async function executeBlogDraft(input: BlogDraftRequest, helpers: { readonly from: ChannelFrom }): Promise<BlogDraftResult> {
+  const session = await helpers.from(`blog-draft:${input.action_item_id}`).send(buildBlogDraftPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
       finding_source: "report",
     }),
-    continuationToken: `blog-draft:${input.action_item_id}`,
     mode: "task",
     title: `Growth blog draft (${input.blog_idea.title})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const chunks: string[] = [];

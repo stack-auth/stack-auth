@@ -55,12 +55,16 @@ function createFakeSession(options: {
 
   const session: Session = {
     id: "wrun_test",
-    continuationToken: "growth:test",
+    send: async () => throwErr("fake session does not send"),
+    respond: async () => throwErr("fake session does not respond"),
     cancel: async () => {
       cancelCalls += 1;
       if (options.onCancel !== undefined) await options.onCancel();
       return { sessionId: "wrun_test", status: "accepted" };
     },
+    compact: async () => throwErr("fake session does not compact"),
+    clear: async () => throwErr("fake session does not clear"),
+    reset: async () => throwErr("fake session does not reset"),
     getStreamTailIndex: async () => options.log.length - 1,
     getEventStream: async (streamOptions) => {
       const startIndex = streamOptions?.startIndex ?? 0;

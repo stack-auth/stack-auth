@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth, type GrowthSessionAuthInput } from "#lib/run-context.ts";
 import { followSessionEvents, SessionTimeoutError } from "#lib/session-stream.ts";
 import type { JsonValue } from "#lib/types.ts";
@@ -15,7 +15,7 @@ export type AgentSessionOutcome = {
 };
 
 export async function runAgentSession(options: {
-  readonly send: SendFn,
+  readonly from: ChannelFrom,
   readonly message: string,
   readonly context: GrowthSessionAuthInput,
   readonly continuationToken: string,
@@ -24,13 +24,15 @@ export async function runAgentSession(options: {
   readonly timeoutMessage: string,
   readonly outputSchema?: Readonly<Record<string, JsonValue>>,
 }): Promise<AgentSessionOutcome> {
-  const session = await options.send(
-    options.outputSchema === undefined ? options.message : { message: options.message, outputSchema: options.outputSchema },
+  const session = await options.from(options.continuationToken).send(
+    options.message,
     {
       auth: buildGrowthSessionAuth(options.context),
-      continuationToken: options.continuationToken,
       mode: "task",
       title: options.title,
+      outputSchema: options.outputSchema,
+      // Retries must queue behind an in-flight run instead of steering it away.
+      turnPolicy: "queue",
     },
   );
   let structuredResult: unknown = null;

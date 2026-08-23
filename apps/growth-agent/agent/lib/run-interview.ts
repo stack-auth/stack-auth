@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth, GROWTH_INTERVIEW_PHASE_KEY } from "#lib/run-context.ts";
 import { followSessionEvents } from "#lib/session-stream.ts";
 import type { GrowthAgentTokenRef, GrowthProjectRef } from "#lib/types.ts";
@@ -85,8 +85,8 @@ function buildInterviewTurnPrompt(input: InterviewTurnRequest): string {
 }
 
 
-export async function executeInterviewTurn(input: InterviewTurnRequest, helpers: { readonly send: SendFn }): Promise<InterviewTurnResult> {
-  const session = await helpers.send(buildInterviewTurnPrompt(input), {
+export async function executeInterviewTurn(input: InterviewTurnRequest, helpers: { readonly from: ChannelFrom }): Promise<InterviewTurnResult> {
+  const session = await helpers.from(`interview:${input.run_id}:turn:${input.transcript.length}`).send(buildInterviewTurnPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
@@ -95,9 +95,10 @@ export async function executeInterviewTurn(input: InterviewTurnRequest, helpers:
       finding_source: "chat",
       agent_token: input.agent_token,
     }),
-    continuationToken: `interview:${input.run_id}:turn:${input.transcript.length}`,
     mode: "task",
     title: `Growth interview turn (run ${input.run_id})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const parts: AssistantUiMessage["parts"] = [];

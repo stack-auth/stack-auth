@@ -1,4 +1,4 @@
-import { POST, defineChannel, type SendFn } from "eve/channels";
+import { POST, defineChannel, type ChannelFrom } from "eve/channels";
 import { z } from "zod";
 import { verifyGrowthAgentBearer } from "#lib/auth.ts";
 import { executeAnalysisPhase, executeDailyBrief } from "#lib/run-analysis-phase.ts";
@@ -104,15 +104,15 @@ async function runDetached(label: string, execute: () => Promise<void>): Promise
   }
 }
 
-function createRunRoute<TInput>(path: string, label: (input: TInput) => string, schema: z.ZodType<TInput>, execute: (input: TInput, helpers: { readonly send: SendFn }) => Promise<void>) {
-  return POST(path, async (req, { send, waitUntil }) => {
+function createRunRoute<TInput>(path: string, label: (input: TInput) => string, schema: z.ZodType<TInput>, execute: (input: TInput, helpers: { readonly from: ChannelFrom }) => Promise<void>) {
+  return POST(path, async (req, { from, waitUntil }) => {
     const auth = verifyGrowthAgentBearer(req);
     if (!auth.ok) return auth.response;
     const parsed = schema.safeParse(await req.json());
     if (!parsed.success) {
       return Response.json({ error: "Invalid request body", details: z.treeifyError(parsed.error) }, { status: 400 });
     }
-    waitUntil(runDetached(label(parsed.data), () => execute(parsed.data, { send })));
+    waitUntil(runDetached(label(parsed.data), () => execute(parsed.data, { from })));
     return Response.json({ accepted: true });
   });
 }
@@ -125,7 +125,7 @@ export default defineChannel({
       await settleGrowthPhaseFromTerminalEvent(channel, null);
     },
     "session.failed": async (data, channel) => {
-      console.error(`[growth-agent] session failed: code=${data.code} message=${data.message}`);
+      console.error(`[growth-agent] session failed: session=${data.sessionId} code=${data.code} message=${data.message}`);
       await settleGrowthPhaseFromTerminalEvent(channel, SESSION_FAILED_PHASE_MESSAGE);
     },
   },
@@ -137,7 +137,7 @@ export default defineChannel({
     // chunk stream (v1 non-streamed adaptation — see run-interview.ts / the backend's
     // streamGrowthInterviewTurn). Errors return a generic 500; the backend maps any non-2xx or
     // malformed body to its retryable 502, and the customer's answer was already persisted there.
-    POST("/interview", async (req, { send }) => {
+    POST("/interview", async (req, { from }) => {
       const auth = verifyGrowthAgentBearer(req);
       if (!auth.ok) return auth.response;
       const parsed = interviewTurnRequestSchema.safeParse(await req.json());
@@ -145,7 +145,7 @@ export default defineChannel({
         return Response.json({ error: "Invalid request body", details: z.treeifyError(parsed.error) }, { status: 400 });
       }
       try {
-        return Response.json(await executeInterviewTurn(parsed.data, { send }));
+        return Response.json(await executeInterviewTurn(parsed.data, { from }));
       } catch (error) {
         // Deliberate catch-all at the HTTP boundary: the error must not leak internals to the
         // response, and there is no backend failure endpoint for interview turns — logging plus the
@@ -158,7 +158,7 @@ export default defineChannel({
     // stores the returned markdown itself — so there is no phase row, no polling, and nothing
     // half-written to reconcile when it fails. See run-blog-draft.ts for why the post is written
     // here on demand instead of inside the SEO analysis phase.
-    POST("/blog-draft", async (req, { send }) => {
+    POST("/blog-draft", async (req, { from }) => {
       const auth = verifyGrowthAgentBearer(req);
       if (!auth.ok) return auth.response;
       const parsed = blogDraftRequestSchema.safeParse(await req.json());
@@ -166,7 +166,7 @@ export default defineChannel({
         return Response.json({ error: "Invalid request body", details: z.treeifyError(parsed.error) }, { status: 400 });
       }
       try {
-        return Response.json(await executeBlogDraft(parsed.data, { send }));
+        return Response.json(await executeBlogDraft(parsed.data, { from }));
       } catch (error) {
         // Deliberate catch-all at the HTTP boundary: the error must not leak internals to the
         // response. The backend maps any non-2xx to a customer-visible "try again", and nothing was
@@ -179,7 +179,7 @@ export default defineChannel({
     // the returned wording itself. A failure here is NOT fatal to the round — the backend falls back
     // to its own deterministic question text and records textSource: "template" — so the generic 500
     // below is the whole failure story on this side.
-    POST("/quiz", async (req, { send }) => {
+    POST("/quiz", async (req, { from }) => {
       const auth = verifyGrowthAgentBearer(req);
       if (!auth.ok) return auth.response;
       const parsed = quizAuthoringRequestSchema.safeParse(await req.json());
@@ -187,7 +187,7 @@ export default defineChannel({
         return Response.json({ error: "Invalid request body", details: z.treeifyError(parsed.error) }, { status: 400 });
       }
       try {
-        return Response.json(await executeQuizAuthoring(parsed.data, { send }));
+        return Response.json(await executeQuizAuthoring(parsed.data, { from }));
       } catch (error) {
         // Deliberate catch-all at the HTTP boundary: the error must not leak internals to the
         // response, and the backend treats any non-2xx as "use the template wording".
@@ -200,7 +200,7 @@ export default defineChannel({
     // return a generic 500; the backend maps any non-2xx or malformed body to its retryable 502,
     // and nothing has been persisted on the backend at that point (persist-after-proxy — the
     // opposite of the interview's answer-first rule; see streamGrowthChatTurn).
-    POST("/chat", async (req, { send }) => {
+    POST("/chat", async (req, { from }) => {
       const auth = verifyGrowthAgentBearer(req);
       if (!auth.ok) return auth.response;
       const parsed = chatTurnRequestSchema.safeParse(await req.json());
@@ -208,7 +208,7 @@ export default defineChannel({
         return Response.json({ error: "Invalid request body", details: z.treeifyError(parsed.error) }, { status: 400 });
       }
       try {
-        return Response.json(await executeChatTurn(parsed.data, { send }));
+        return Response.json(await executeChatTurn(parsed.data, { from }));
       } catch (error) {
         // Deliberate catch-all at the HTTP boundary: the error must not leak internals to the
         // response; logging plus the backend's 502 mapping is the whole failure story.

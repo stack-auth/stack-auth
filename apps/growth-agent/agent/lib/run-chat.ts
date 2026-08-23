@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth, GROWTH_CHAT_PHASE_KEY } from "#lib/run-context.ts";
 import { followSessionEvents } from "#lib/session-stream.ts";
 import type { GrowthAgentTokenRef, GrowthProjectRef } from "#lib/types.ts";
@@ -113,8 +113,8 @@ function buildChatTurnPrompt(input: ChatTurnRequest): string {
  * kept local for the same reason its author kept theirs local (each turn kind is self-contained,
  * and a shared helper would couple their evolution).
  */
-export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonly send: SendFn }): Promise<ChatTurnResult> {
-  const session = await helpers.send(buildChatTurnPrompt(input), {
+export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonly from: ChannelFrom }): Promise<ChatTurnResult> {
+  const session = await helpers.from(`chat:${input.turn_id}`).send(buildChatTurnPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
@@ -125,9 +125,10 @@ export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonl
       finding_source: "chat",
       agent_token: input.agent_token,
     }),
-    continuationToken: `chat:${input.turn_id}`,
     mode: "task",
     title: `Growth chat turn (project ${input.project_id})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const parts: AssistantUiMessage["parts"] = [];

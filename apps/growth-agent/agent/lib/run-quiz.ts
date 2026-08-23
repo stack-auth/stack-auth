@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth } from "#lib/run-context.ts";
 import { followSessionEvents } from "#lib/session-stream.ts";
 import { PLAIN_LANGUAGE_RULE } from "#lib/writing-style.ts";
@@ -119,8 +119,8 @@ function toAuthoredQuestions(entries: readonly unknown[]): QuizAuthoringResult["
 }
 
 /** Runs the authoring session and returns the questions it wrote. */
-export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers: { readonly send: SendFn }): Promise<QuizAuthoringResult> {
-  const session = await helpers.send(buildQuizPrompt(input), {
+export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers: { readonly from: ChannelFrom }): Promise<QuizAuthoringResult> {
+  const session = await helpers.from(`quiz:${input.round_id}`).send(buildQuizPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
@@ -129,9 +129,10 @@ export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers:
       finding_source: "report",
     }),
     // One session per round: a repeat request for the same round is a retry of the same work.
-    continuationToken: `quiz:${input.round_id}`,
     mode: "task",
     title: `Growth quiz questions (round ${input.round_id})`,
+    // Retries must queue behind an in-flight run instead of steering it away.
+    turnPolicy: "queue",
   });
 
   const chunks: string[] = [];

@@ -1,4 +1,4 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { runAgentSession, SafeRunError, safeMessageFromError } from "#lib/agent-session.ts";
 import { getProjectContext, phaseFail, phaseStart } from "#lib/hexclave-client.ts";
 import { buildPhaseContinuationToken } from "#lib/phase-continuation.ts";
@@ -131,11 +131,11 @@ function buildPhasePrompt(input: AnalysisPhaseRunRequest, projectContextJson: st
 }
 
 
-export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpers: { readonly send: SendFn }): Promise<void> {
+export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpers: { readonly from: ChannelFrom }): Promise<void> {
   await phaseStart(input);
   try {
     const projectContext = await getProjectContext({ project_id: input.project_id, branch_id: input.branch_id });
-    await helpers.send(buildPhasePrompt(input, formatContextForPrompt(projectContext)), {
+    await helpers.from(buildPhaseContinuationToken(input)).send(buildPhasePrompt(input, formatContextForPrompt(projectContext)), {
       auth: buildGrowthSessionAuth({
         project_id: input.project_id,
         branch_id: input.branch_id,
@@ -144,9 +144,10 @@ export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpe
         finding_source: input.phase_key,
         agent_token: input.agent_token,
       }),
-      continuationToken: buildPhaseContinuationToken(input),
       mode: "task",
       title: `Growth analysis: ${input.phase_key} (run ${input.run_id})`,
+      // Retries must queue behind an in-flight run instead of steering it away.
+      turnPolicy: "queue",
     });
   } catch (error) {
     console.error(`[growth-agent] analysis phase failed to start: run=${input.run_id} phase=${input.phase_key} attempt=${input.attempt}`, error);
@@ -155,7 +156,7 @@ export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpe
 }
 
 
-export async function executeDailyBrief(input: DailyBriefRunRequest, helpers: { readonly send: SendFn }): Promise<void> {
+export async function executeDailyBrief(input: DailyBriefRunRequest, helpers: { readonly from: ChannelFrom }): Promise<void> {
   const message = [
     `Write today's growth brief (date ${input.date}, UTC) for project ${input.project_id} (branch ${input.branch_id}).`,
     "",
@@ -172,7 +173,7 @@ export async function executeDailyBrief(input: DailyBriefRunRequest, helpers: { 
     SHARED_PROMPT_RULES,
   ].join("\n");
   await runAgentSession({
-    send: helpers.send,
+    from: helpers.from,
     maxSessionMs: MAX_AGENT_SESSION_MS,
     timeoutMessage: ANALYSIS_TIMEOUT_MESSAGE,
     message,
