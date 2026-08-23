@@ -4,6 +4,7 @@ import { DesignAlert, DesignButton, DesignCard, DesignSelectorDropdown } from "@
 import { updateGrowthAdminAction, type GrowthAdminFunctionalActionFields } from "@/lib/growth/growth-api";
 import { GROWTH_METRIC_IDS, type GrowthActionItem } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { BracketsCurlyIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
@@ -44,12 +45,19 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
   const [watchedJson, setWatchedJson] = useState("[]");
   const [workflowDraftJson, setWorkflowDraftJson] = useState("null");
   const [error, setError] = useState<string | null>(null);
+  const [draftsFor, setDraftsFor] = useState<string | null>(null);
 
+  // Every workspace save refreshes the overview, which hands this card a new action object for the same
+  // proposal; the drafts are only re-seeded when the admin actually switches to a different proposal, so
+  // unsaved JSON isn't thrown away by an unrelated edit somewhere else on the page.
   useEffect(() => {
+    const selectedId = selected?.id ?? null;
+    if (selectedId === draftsFor) return;
     setPayloadJson(selected?.payload == null ? "null" : JSON.stringify(selected.payload, null, 2));
     setWatchedJson(JSON.stringify(selected?.watchedMetrics ?? [], null, 2));
     setWorkflowDraftJson(selected == null ? "null" : workflowJson(selected));
-  }, [selected]);
+    setDraftsFor(selectedId);
+  }, [draftsFor, selected]);
 
   return (
     <DesignCard title="Proposed action internals" subtitle="Payload, watched metrics and workflow — editable until the proposal is activated" icon={BracketsCurlyIcon} gradient="cyan">
@@ -67,7 +75,9 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
           )}
           <DesignButton disabled={selected.category == null} onClick={async () => {
             setError(null);
-            try {
+            // The three fields are free-form JSON typed by hand, so a rejection here is expected input
+            // error (bad JSON/schema) as much as it is a failed request — both belong in the alert.
+            const result = await Result.fromThrowingAsync(async () => {
               const functionalFields: GrowthAdminFunctionalActionFields = {
                 payload: z.unknown().parse(JSON.parse(payloadJson)),
                 watchedMetrics: watchedMetricsSchema.parse(JSON.parse(watchedJson)),
@@ -75,9 +85,10 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
               };
               await updateGrowthAdminAction(props.app, props.projectId, selected, functionalFields);
               await props.onSaved();
-            } catch (caught) {
-              captureError("growth-admin-action-internals", caught);
-              setError(caught instanceof Error ? caught.message : String(caught));
+            });
+            if (result.status === "error") {
+              captureError("growth-admin-action-internals", result.error);
+              setError(result.error instanceof Error ? result.error.message : String(result.error));
             }
           }}>Save internals</DesignButton>
         </div>

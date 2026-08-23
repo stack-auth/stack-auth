@@ -5,6 +5,7 @@ import { cn, Popover, PopoverContent, PopoverTrigger } from "@/components/ui";
 import { GROWTH_ACTION_STATUSES, GROWTH_CATEGORIES, type GrowthActionItem, type GrowthActionStatus, type GrowthCategory, type GrowthOverviewFinding } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { CheckIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -37,8 +38,8 @@ export type GrowthWorkspaceEditors = {
 };
 
 /**
- * The mutations as the workspace sees them: the provider catches a rejected save and reports it, so the
- * caller gets `false` instead of a rejection. Fields that hold a draft the admin would have to retype
+ * The mutations as the workspace sees them: the provider turns a rejected save into a reported failure,
+ * so the caller gets `false` instead of a rejection. Fields that hold a draft the admin would have to retype
  * (the new-note row) key off that, rather than treating a reported failure as a successful save.
  */
 type GrowthWorkspaceEditActions = {
@@ -68,14 +69,13 @@ export function GrowthWorkspaceEditProvider(props: { editors: GrowthWorkspaceEdi
   const guarded = useMemo<GrowthWorkspaceEditActions>(() => {
     const guard = <TArguments extends unknown[]>(label: string, mutation: (...args: TArguments) => Promise<void>) => async (...args: TArguments) => {
       setError(null);
-      try {
-        await mutation(...args);
-        return true;
-      } catch (caught) {
-        captureError(label, caught);
-        setError(errorMessage(caught));
+      const result = await Result.fromThrowingAsync(async () => await mutation(...args));
+      if (result.status === "error") {
+        captureError(label, result.error);
+        setError(errorMessage(result.error));
         return false;
       }
+      return true;
     };
     return {
       saveCategoryScore: guard("growth-admin-category-score", editors.saveCategoryScore),
