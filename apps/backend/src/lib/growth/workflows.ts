@@ -78,8 +78,8 @@ export function isGrowthWorkflowSourceEdited(workflowId: string, storedSource: s
 /**
  * Creates any missing canonical Growth workflow definitions for this tenancy.
  * Existing definitions — edited or not — are left completely untouched.
- * Concurrent seeding is safe: the loser of the create race sees the
- * already-exists 400 and treats it as success.
+ * Concurrent seeding is safe: the loser of the create race treats the winner's
+ * definition as success (see isGrowthSeedRaceError).
  */
 export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<string, { created: boolean }>> {
   const results = new Map<string, { created: boolean }>();
@@ -96,10 +96,7 @@ export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<strin
       await syncWorkflowSource(tenancy, { workflowId, source: spec.source, displayName: spec.displayName, mustBeNew: true });
       results.set(workflowId, { created: true });
     } catch (error) {
-      // mustBeNew rejects with a 400 when the definition appeared between our
-      // existence check and the sync — a concurrent seeder won the race, which
-      // is exactly the outcome we wanted.
-      if (StatusError.isStatusError(error) && error.statusCode === 400 && error.message.includes("already exists")) {
+      if (isGrowthSeedRaceError(error) && await growthWorkflowExists(tenancy, workflowId)) {
         results.set(workflowId, { created: false });
         continue;
       }
@@ -107,6 +104,29 @@ export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<strin
     }
   }
   return results;
+}
+
+/**
+ * Two seeders racing on the same missing definition can fail in two different ways, depending on
+ * how far the winner got before the loser looked:
+ *   - the winner's definition was already committed, so mustBeNew rejects with an already-exists 400;
+ *   - the winner was still inside its own transaction, so both mint version 1 and the loser loses the
+ *     WorkflowVersion unique constraint, which the workflow API reports as a 409.
+ * Both mean "the definition we wanted now exists", so both are success for seeding — but the caller
+ * only accepts them after re-reading the definition, so an unrelated conflict still propagates.
+ */
+export function isGrowthSeedRaceError(error: unknown): boolean {
+  if (!StatusError.isStatusError(error)) return false;
+  if (error.statusCode === 409) return true;
+  return error.statusCode === 400 && error.message.includes("already exists");
+}
+
+async function growthWorkflowExists(tenancy: Tenancy, workflowId: string): Promise<boolean> {
+  const definition = await globalPrismaClient.workflowDefinition.findUnique({
+    where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
+    select: { workflowId: true },
+  });
+  return definition != null;
 }
 
 export type GrowthWorkflowState = {
