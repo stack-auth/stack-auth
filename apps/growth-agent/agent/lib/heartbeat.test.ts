@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPhaseContinuationToken, type PhaseSessionIdentity } from "#lib/phase-continuation.ts";
+import type { PhaseSettlementContext } from "#lib/phase-settlement.ts";
 
-const phaseHeartbeat = vi.fn<(input: PhaseSessionIdentity) => Promise<unknown>>();
+const phaseHeartbeat = vi.fn<[PhaseSessionIdentity], Promise<unknown>>();
 
 vi.mock("#lib/hexclave-client.ts", () => ({
   phaseHeartbeat: (input: PhaseSessionIdentity) => phaseHeartbeat(input),
@@ -17,8 +18,11 @@ const identity: PhaseSessionIdentity = {
   attempt: 1,
 };
 
-function channelFor(token: string | null) {
-  return token == null ? {} : { continuation: { token } };
+// The heartbeat only reads the continuation token, but the channel type also carries eve's rekey
+// operation, so the fixture supplies an inert one rather than narrowing the production type.
+function channelFor(token: string | null): PhaseSettlementContext {
+  if (token == null) return {};
+  return { continuation: { token, rekey: () => undefined } };
 }
 
 // The heartbeat detaches its backend call, so a beat is observable only after the microtask queue
