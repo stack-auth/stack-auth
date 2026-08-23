@@ -12,6 +12,7 @@ import { useProjectId } from "../../use-admin-app";
 import { GrowthWorkspaceEditProvider, type GrowthWorkspaceEditors } from "../components/workspace-edit";
 import { GrowthWorkspaceContent } from "../components/workspace-overview";
 import { GrowthAdminActionInternalsCard } from "./action-internals-card";
+import { GrowthAdminCategoryPageCard, GrowthAdminCategoryPagesProvider } from "./category-page-card";
 import { GrowthAdminGamesCard } from "./games-card";
 import { GrowthAdminInterviewCard } from "./interview-card";
 import { GrowthAdminReportsCard } from "./reports-card";
@@ -87,7 +88,23 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
   return (
     <div className="space-y-8">
       <GrowthWorkspaceEditProvider editors={editors}>
-        <GrowthWorkspaceContent overview={props.overview} projectId={projectId} projectName={props.project.displayName} />
+        <GrowthAdminCategoryPagesProvider app={app} projectId={projectId}>
+          <GrowthWorkspaceContent
+            overview={props.overview}
+            projectId={projectId}
+            projectName={props.project.displayName}
+            onRefresh={refresh}
+            categoryPageEditor={(category) => (
+              <GrowthAdminCategoryPageCard
+                app={app}
+                projectId={projectId}
+                category={category}
+                overview={props.overview}
+                onPublishedChanged={refresh}
+              />
+            )}
+          />
+        </GrowthAdminCategoryPagesProvider>
       </GrowthWorkspaceEditProvider>
 
       {/* Lifecycle operations, which have no customer-facing surface to edit in place. A held interview

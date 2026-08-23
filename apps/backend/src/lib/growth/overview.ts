@@ -3,6 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { growthActionItemToWire, loadGrowthActionWorkflowRuntimeInfo } from "./actions";
 import { GROWTH_CATEGORIES, GROWTH_NOTE_KIND, isGrowthCategory, normalizeStoredGrowthCategory, type GrowthCategory } from "./categories";
+import { getGrowthPublishedCategoryPages } from "./category-pages";
 
 const DEFAULT_OVERVIEW_LIMIT = 24;
 const MAX_OVERVIEW_LIMIT = 50;
@@ -53,7 +54,7 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
   const branchId = tenancy.branchId;
   const limit = normalizeGrowthOverviewLimit(requestedLimit);
 
-  const [latestReport, latestBrief, findings, notes, activeActions, archivedActions, storedScores, findingCategoryCounts, actionCategoryCounts, unclassifiedFindings, unclassifiedActions] = await Promise.all([
+  const [latestReport, latestBrief, findings, notes, activeActions, archivedActions, storedScores, findingCategoryCounts, actionCategoryCounts, unclassifiedFindings, unclassifiedActions, categoryPages] = await Promise.all([
     globalPrismaClient.growthReport.findFirst({
       where: { projectId, branchId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -103,6 +104,10 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
     }),
     globalPrismaClient.growthFinding.count({ where: { projectId, branchId, category: null } }),
     globalPrismaClient.growthActionItem.count({ where: { projectId, branchId, category: null } }),
+    // Only the LIVE stage pages, for both callers: the internal editor gets drafts
+    // and history from its own endpoint, so this read model has no way to leak an
+    // unpublished page to a customer.
+    getGrowthPublishedCategoryPages(tenancy),
   ]);
 
   const actions = [...activeActions, ...archivedActions];
@@ -150,6 +155,10 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
       count: counts.get(category) ?? 0,
       score: scoreByCategory.get(category) ?? null,
     })),
+    // Where a stage has a live page, the workspace renders it instead of that
+    // stage's raw suggestion/note lanes; stages without one keep the lanes, which is
+    // what makes this a stage-by-stage rollout rather than a switch.
+    category_pages: categoryPages,
     needs_category_count: unclassifiedFindings + unclassifiedActions,
     limit,
   };

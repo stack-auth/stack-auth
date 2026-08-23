@@ -2,10 +2,11 @@
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCategoryTabs } from "@/components/design-components";
 import { Link } from "@/components/link";
-import { cn } from "@/components/ui";
+import { cn, CopyPromptButton } from "@/components/ui";
 import { getGrowthOverview } from "@/lib/growth/growth-api";
 import { getGrowthPublishedQuiz } from "@/lib/growth/games/growth-games-api";
 import type { GrowthPublishedQuiz } from "@/lib/growth/games/growth-games-types";
+import { buildGrowthItemPagePrompt } from "@/lib/growth/growth-page-prompt";
 import { buildGrowthDemoOverview, buildGrowthDemoPublishedQuiz, GROWTH_DEMO_NOW_MILLIS } from "@/lib/growth/growth-demo-data";
 import { useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_CATEGORIES, type GrowthActionItem, type GrowthCategory, type GrowthOverview, type GrowthOverviewFinding, type GrowthStatus } from "@/lib/growth/growth-types";
@@ -15,6 +16,7 @@ import { ArrowRightIcon, /* CaretDownIcon, */ CoinsIcon, CubeIcon, CursorClickIc
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
+import { GrowthDocumentActionsProvider, GrowthDocumentRenderer } from "./growth-document";
 import { QuizBanner } from "./games/quiz-banner";
 import { QuizDialog } from "./games/quiz-dialog";
 import { GrowthActionStatusPicker, GrowthAddNoteRow, GrowthCategoryBadge, GrowthCategoryScoreBadge, GrowthEditableText, GrowthTagBadges, useGrowthWorkspaceEditors, type GrowthWorkspaceItem, type GrowthWorkspaceItemPatch } from "./workspace-edit";
@@ -131,6 +133,11 @@ function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) 
   const body = props.item.kind === "action" ? props.item.value.description : props.item.value.body;
   const item = props.item;
   const save = async (patch: GrowthWorkspaceItemPatch) => await editors?.saveItem(item, patch);
+  // Staff-only: everything this row holds, formatted as a prompt for whichever model the author uses
+  // to draft the stage page. Per row as well as per stage, because one finding is often the whole story.
+  const prompt = value.category == null ? null : item.kind === "action"
+    ? buildGrowthItemPagePrompt({ kind: "action", category: value.category, action: item.value })
+    : buildGrowthItemPagePrompt({ kind: item.value.kind === "note" ? "note" : "finding", category: value.category, finding: item.value });
   const callToAction = <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">{props.item.kind === "action" ? "Review action" : "Read evidence"}<ArrowRightIcon className="size-3.5" /></span>;
   const content = (
     <article className="grid gap-3 border-b border-foreground/[0.08] px-1 py-5 text-left last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
@@ -150,7 +157,12 @@ function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) 
       </div>
       {/* On the admin workspace the row itself is not a link, because its text is editable in place;
         * the call to action keeps the same navigation the customer row has. */}
-      {editors == null ? callToAction : <Link href={withQuery(href)} className="rounded-xl focus-visible:outline-none focus-visible:ring-2">{callToAction}</Link>}
+      {editors == null ? callToAction : (
+        <div className="flex flex-wrap items-center gap-3">
+          {prompt != null && <CopyPromptButton content={prompt} size="sm" variant="outline">Copy prompt</CopyPromptButton>}
+          <Link href={withQuery(href)} className="rounded-xl focus-visible:outline-none focus-visible:ring-2">{callToAction}</Link>
+        </div>
+      )}
     </article>
   );
   if (editors != null) return content;
@@ -207,6 +219,14 @@ export function GrowthWorkspaceContent(props: {
    * nothing.
    */
   quizBanner?: ReactNode,
+  /** Re-reads the overview after an action inside an authored stage page was activated or dismissed. */
+  onRefresh?: () => Promise<void>,
+  /**
+   * The stage-page composer, rendered above the source lanes on the editable workspace only. Passed
+   * in for the same reason `quizBanner` is: the composer is admin-only machinery (draft state,
+   * publish controls) that the customer workspace must not even import a fetch from.
+   */
+  categoryPageEditor?: (category: GrowthCategory) => ReactNode,
 }) {
   const withQuery = useGrowthHref();
   const editors = useGrowthWorkspaceEditors();
@@ -219,6 +239,13 @@ export function GrowthWorkspaceContent(props: {
   for (const value of props.overview.actions.filter((item) => item.category === selected)) suggestions.push({ kind: "action", value });
   suggestions.sort((left, right) => right.value.createdAtMillis - left.value.createdAtMillis);
   const notes = props.overview.notes.filter((item) => item.category === selected);
+  const categoryActions = props.overview.actions.filter((item) => item.category === selected);
+  // Once staff publish a page for a stage, that page IS the stage for a customer: the raw findings,
+  // notes and actions it was written from stop being shown, because the page is our considered
+  // presentation of exactly that material. Unpublishing brings the lanes back. On the editable
+  // workspace the lanes always stay, since they are the material the author works from.
+  const publishedPage = props.overview.categoryPages.find((page) => page.category === selected) ?? null;
+  const showLanes = editors != null || publishedPage == null;
   // Items without a stage are filtered out of every stage lane, so on the editable workspace they get
   // their own list; otherwise the only trace of them would be the count below the journey, and an
   // admin would have no way to give them a stage.
@@ -283,7 +310,15 @@ export function GrowthWorkspaceContent(props: {
         )}
         <div className="mt-4 border-t border-foreground/[0.09] pt-9">
           <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
-          <section className="py-8">
+          {editors == null && publishedPage != null && (
+            <section className="py-8">
+              <GrowthDocumentActionsProvider actions={categoryActions} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
+                <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
+              </GrowthDocumentActionsProvider>
+            </section>
+          )}
+          {props.categoryPageEditor?.(selected)}
+          {showLanes && <section className="py-8">
             <DesignCategoryTabs
               categories={[
                 { id: "suggestions", label: "Suggestions", count: suggestions.length },
@@ -309,7 +344,7 @@ export function GrowthWorkspaceContent(props: {
                   : notes.map((note) => <SuggestionRow key={note.id} item={{ kind: "finding", value: note }} projectId={props.projectId} />)}
               </>}
             </div>
-          </section>
+          </section>}
         </div>
       </section>
     </div>
@@ -348,6 +383,7 @@ export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
       projectId={projectId}
       projectName={project.displayName}
       quizBanner={<GrowthQuizBannerSlot demo={demo} />}
+      onRefresh={refresh}
     />
   );
 }

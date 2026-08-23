@@ -28,7 +28,7 @@ export type GrowthDocumentInline =
   | { type: "break" }
   | { type: "link", url: string, children: GrowthDocumentInline[] };
 
-export type GrowthDocumentComponentName = "Metric" | "TrendChart" | "ComparisonChart" | "BreakdownChart" | "Evidence" | "Hypothesis" | "Experiment" | "DataGap";
+export type GrowthDocumentComponentName = "Metric" | "TrendChart" | "ComparisonChart" | "BreakdownChart" | "Evidence" | "Hypothesis" | "Experiment" | "DataGap" | "ActionButton";
 
 export type GrowthDocumentBlock =
   | { type: "heading", level: 2 | 3, children: GrowthDocumentInline[] }
@@ -37,7 +37,11 @@ export type GrowthDocumentBlock =
   | { type: "table", align: Array<"left" | "center" | "right" | null>, rows: GrowthDocumentInline[][][] }
   | { type: "code", language: string | null, value: string }
   | { type: "rule" }
-  | { type: "component", name: GrowthDocumentComponentName, dataId: string | null, confidence: "low" | "medium" | "high" | null, children: GrowthDocumentBlock[] };
+  // `actionId` is only ever set on ActionButton: a reference to a GrowthActionItem
+  // of this project. It carries no privilege — the dashboard resolves it to its own
+  // action control, which calls the ordinary (authorized) action endpoints — which
+  // is why an authored document may contain one at all.
+  | { type: "component", name: GrowthDocumentComponentName, dataId: string | null, confidence: "low" | "medium" | "high" | null, actionId: string | null, children: GrowthDocumentBlock[] };
 
 export type GrowthEvidencePoint = { label: string, value: number };
 export type GrowthEvidenceSeries = { label: string, points: GrowthEvidencePoint[] };
@@ -229,7 +233,7 @@ function assertOnlyAttributes(name: string, attributes: Map<string, string | nul
 function convertComponent(node: MdxJsxFlowElement): GrowthDocumentBlock {
   const name = node.name;
   if (name !== "Metric" && name !== "TrendChart" && name !== "ComparisonChart" && name !== "BreakdownChart"
-    && name !== "Evidence" && name !== "Hypothesis" && name !== "Experiment" && name !== "DataGap") {
+    && name !== "Evidence" && name !== "Hypothesis" && name !== "Experiment" && name !== "DataGap" && name !== "ActionButton") {
     invalidDocument(`component ${name ?? "fragment"} is not allowed.`);
   }
   const attributes = readAttributes(node);
@@ -238,20 +242,30 @@ function convertComponent(node: MdxJsxFlowElement): GrowthDocumentBlock {
     const dataId = attributes.get("data");
     if (dataId == null || dataId.length === 0) invalidDocument(`${name} requires a data attribute.`);
     if (node.children.length > 0) invalidDocument(`${name} must be self-closing.`);
-    return { type: "component", name, dataId, confidence: null, children: [] };
+    return { type: "component", name, dataId, confidence: null, actionId: null, children: [] };
+  }
+  if (name === "ActionButton") {
+    assertOnlyAttributes(name, attributes, ["action"]);
+    const actionId = attributes.get("action");
+    if (actionId == null || actionId.length === 0) invalidDocument("ActionButton requires an action attribute.");
+    if (actionId.length > 100) invalidDocument("ActionButton action is not an action id.");
+    // Self-closing on purpose: the button's label and state come from the action it
+    // references, so customer-facing copy cannot drift from what the action does.
+    if (node.children.length > 0) invalidDocument("ActionButton must be self-closing.");
+    return { type: "component", name, dataId: null, confidence: null, actionId, children: [] };
   }
   if (name === "Evidence") {
     assertOnlyAttributes(name, attributes, ["data"]);
-    return { type: "component", name, dataId: attributes.get("data") ?? null, confidence: null, children: node.children.map(convertBlock) };
+    return { type: "component", name, dataId: attributes.get("data") ?? null, confidence: null, actionId: null, children: node.children.map(convertBlock) };
   }
   if (name === "Hypothesis") {
     assertOnlyAttributes(name, attributes, ["confidence"]);
     const confidence = attributes.get("confidence") ?? "medium";
     if (confidence !== "low" && confidence !== "medium" && confidence !== "high") invalidDocument("Hypothesis confidence must be low, medium, or high.");
-    return { type: "component", name, dataId: null, confidence, children: node.children.map(convertBlock) };
+    return { type: "component", name, dataId: null, confidence, actionId: null, children: node.children.map(convertBlock) };
   }
   assertOnlyAttributes(name, attributes, []);
-  return { type: "component", name, dataId: null, confidence: null, children: node.children.map(convertBlock) };
+  return { type: "component", name, dataId: null, confidence: null, actionId: null, children: node.children.map(convertBlock) };
 }
 
 function convertBlock(node: RootContent): GrowthDocumentBlock {
@@ -321,6 +335,29 @@ function validateDataReferences(blocks: GrowthDocumentBlock[], data: GrowthEvide
     for (const child of block.children) visit(child);
   };
   for (const block of blocks) visit(block);
+}
+
+/**
+ * Every action an authored document references, in document order and de-duplicated.
+ *
+ * The compiler cannot check that an id exists — it has no database — so the caller
+ * that persists a document (see lib/growth/category-pages.ts) resolves these ids
+ * against its own project/branch and rejects references it does not own. A
+ * dangling reference must fail on write, not render as a dead button.
+ */
+export function collectGrowthDocumentActionIds(blocks: GrowthDocumentBlock[]): string[] {
+  const ids: string[] = [];
+  const visit = (block: GrowthDocumentBlock): void => {
+    if (block.type === "list") {
+      for (const item of block.items) for (const child of item) visit(child);
+      return;
+    }
+    if (block.type !== "component") return;
+    if (block.actionId != null && !ids.includes(block.actionId)) ids.push(block.actionId);
+    for (const child of block.children) visit(child);
+  };
+  for (const block of blocks) visit(block);
+  return ids;
 }
 
 export function compileGrowthDocument(value: unknown): GrowthDocument {

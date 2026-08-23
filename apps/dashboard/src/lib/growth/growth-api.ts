@@ -1,4 +1,5 @@
 import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { GrowthApiError, growthRequestHeaders, requestJson, toGrowthApiError } from "./growth-api-client";
 import { growthDocumentSchema } from "./growth-document";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
@@ -35,9 +36,13 @@ import {
   type GrowthActionItem,
   type GrowthActionMetricSeries,
   type GrowthActionStatus,
+  type GrowthAdminCategoryPage,
   type GrowthAdsBody,
   type GrowthAdsEntity,
   type GrowthBrief,
+  type GrowthCategory,
+  type GrowthCategoryPageVersion,
+  type GrowthCategoryPageVersionSummary,
   type GrowthBriefStatus,
   type GrowthInterview,
   type GrowthInterviewStatus,
@@ -46,6 +51,7 @@ import {
   type GrowthOverview,
   type GrowthMilestone,
   type GrowthPipelineWorkflowId,
+  type GrowthPublishedCategoryPage,
   type GrowthReport,
   type GrowthRun,
   type GrowthStatus,
@@ -599,6 +605,38 @@ const overviewFindingSchema = z.object({
   created_at_millis: z.number(),
 });
 
+const publishedCategoryPageSchema = z.object({
+  category: z.enum(GROWTH_CATEGORIES),
+  version: z.number(),
+  document: growthDocumentSchema,
+  published_at_millis: z.number().nullable(),
+});
+
+/**
+ * Live stage pages, skipping any that don't parse.
+ *
+ * A page is staff-authored content compiled by the backend, so a shape this client can't read means
+ * the two sides drifted — a real bug, but not one worth turning a customer's whole workspace into an
+ * error screen for. The stage falls back to its raw lanes, and the drift is reported to Sentry.
+ */
+function readPublishedCategoryPages(values: unknown[]): GrowthPublishedCategoryPage[] {
+  const pages: GrowthPublishedCategoryPage[] = [];
+  for (const value of values) {
+    const parsed = publishedCategoryPageSchema.safeParse(value);
+    if (!parsed.success) {
+      captureError("growth-overview-category-page-parse", parsed.error);
+      continue;
+    }
+    pages.push({
+      category: parsed.data.category,
+      version: parsed.data.version,
+      document: parsed.data.document,
+      publishedAtMillis: parsed.data.published_at_millis,
+    });
+  }
+  return pages;
+}
+
 const overviewSchema = z.object({
   latest_report: z.object({
     id: z.string(),
@@ -618,6 +656,9 @@ const overviewSchema = z.object({
   actions: z.array(actionItemSchema),
   archive: z.array(actionItemSchema),
   categories: z.array(z.object({ category: z.enum(GROWTH_CATEGORIES), count: z.number(), score: z.number().min(0).max(100).nullable() })),
+  // A page whose document fails to parse would take the whole workspace down with it, so unparseable
+  // pages are dropped below and the stage falls back to its lanes — the same as having no page.
+  category_pages: z.array(z.unknown()),
   needs_category_count: z.number(),
   limit: z.number(),
 });
@@ -658,6 +699,7 @@ export async function getGrowthOverview(app: object): Promise<GrowthOverview> {
     actions: value.actions.map(mapGrowthActionItem),
     archive: value.archive.map(mapGrowthActionItem),
     categories: value.categories,
+    categoryPages: readPublishedCategoryPages(value.category_pages),
     needsCategoryCount: value.needs_category_count,
     limit: value.limit,
   };
@@ -704,8 +746,111 @@ export async function getGrowthAdminOverview(app: object, projectId: string): Pr
     latestReport: value.latest_report == null ? null : { id: value.latest_report.id, title: value.latest_report.title, summary: value.latest_report.summary, createdAtMillis: value.latest_report.created_at_millis },
     latestBrief: value.latest_brief == null ? null : { id: value.latest_brief.id, date: value.latest_brief.date, summary: value.latest_brief.summary, contentMd: value.latest_brief.content_md, createdAtMillis: value.latest_brief.created_at_millis },
     findings: value.findings.map(mapOverviewFinding), notes: value.notes.map(mapOverviewFinding), actions: value.actions.map(mapGrowthActionItem), archive: value.archive.map(mapGrowthActionItem),
-    categories: value.categories, needsCategoryCount: value.needs_category_count, limit: value.limit,
+    categories: value.categories, categoryPages: readPublishedCategoryPages(value.category_pages), needsCategoryCount: value.needs_category_count, limit: value.limit,
   };
+}
+
+const categoryPageVersionSummarySchema = z.object({
+  id: z.string(),
+  version: z.number(),
+  status: z.enum(["draft", "published", "archived"]),
+  published_at_millis: z.number().nullable(),
+  updated_at_millis: z.number(),
+});
+
+const categoryPageVersionSchema = categoryPageVersionSummarySchema.extend({
+  category: z.enum(GROWTH_CATEGORIES),
+  source_json: z.unknown().nullable(),
+  document: z.unknown().nullable(),
+  source_item_ids: z.object({ findings: z.array(z.string()), actions: z.array(z.string()) }),
+  stale_source_ids: z.array(z.string()),
+});
+
+/** The authored payload as it goes over the wire, and as it comes back on a stored version. */
+const categoryPageSourceSchema = z.object({
+  format: z.literal("growth-mdx-v1"),
+  source_mdx: z.string(),
+  data: z.array(z.unknown()),
+});
+
+function mapCategoryPageVersionSummary(value: z.infer<typeof categoryPageVersionSummarySchema>): GrowthCategoryPageVersionSummary {
+  return {
+    id: value.id,
+    version: value.version,
+    status: value.status,
+    publishedAtMillis: value.published_at_millis,
+    updatedAtMillis: value.updated_at_millis,
+  };
+}
+
+function mapCategoryPageVersion(value: z.infer<typeof categoryPageVersionSchema>): GrowthCategoryPageVersion {
+  // A stored version that no longer round-trips (hand-edited row, or a format we have since changed)
+  // must not blank the composer: the editor shows an explicit "source could not be read" state and
+  // the author can still discard or republish, which is why both are nullable rather than throwing.
+  const source = categoryPageSourceSchema.safeParse(value.source_json);
+  const document = growthDocumentSchema.safeParse(value.document);
+  return {
+    ...mapCategoryPageVersionSummary(value),
+    category: value.category,
+    source: source.success ? { sourceMdx: source.data.source_mdx, data: source.data.data } : null,
+    document: document.success ? document.data : null,
+    sourceItemIds: value.source_item_ids,
+    staleSourceIds: value.stale_source_ids,
+  };
+}
+
+const adminCategoryPageSchema = z.object({
+  category: z.enum(GROWTH_CATEGORIES),
+  draft: categoryPageVersionSchema.nullable(),
+  published: categoryPageVersionSchema.nullable(),
+  archived: z.array(categoryPageVersionSummarySchema),
+});
+
+export async function listGrowthAdminCategoryPages(app: object, projectId: string): Promise<GrowthAdminCategoryPage[]> {
+  const rows = z.array(adminCategoryPageSchema).parse(await requestGrowthAdminJson(app, `/category-pages?project_id=${encodeURIComponent(projectId)}`));
+  return rows.map((row) => ({
+    category: row.category,
+    draft: row.draft == null ? null : mapCategoryPageVersion(row.draft),
+    published: row.published == null ? null : mapCategoryPageVersion(row.published),
+    archived: row.archived.map(mapCategoryPageVersionSummary),
+  }));
+}
+
+/**
+ * Saves the stage's draft. The response is the stored draft, compiled — so the composer previews
+ * exactly what the backend accepted rather than a client-side guess at how it would compile.
+ */
+export async function saveGrowthAdminCategoryPageDraft(app: object, projectId: string, input: {
+  category: GrowthCategory,
+  sourceMdx: string,
+  data: unknown[],
+  sourceFindingIds: string[],
+  sourceActionIds: string[],
+}): Promise<GrowthCategoryPageVersion> {
+  const value = categoryPageVersionSchema.parse(await requestGrowthAdminJson(app, "/category-pages", {
+    method: "PUT",
+    body: JSON.stringify({
+      target_project_id: projectId,
+      category: input.category,
+      document: { format: "growth-mdx-v1", source_mdx: input.sourceMdx, data: input.data },
+      source_finding_ids: input.sourceFindingIds,
+      source_action_ids: input.sourceActionIds,
+    }),
+  }));
+  return mapCategoryPageVersion(value);
+}
+
+export async function discardGrowthAdminCategoryPageDraft(app: object, projectId: string, category: GrowthCategory): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages", { method: "DELETE", body: JSON.stringify({ target_project_id: projectId, category }) });
+}
+
+/** Publishing an older version is how rollback works — same endpoint, an archived version number. */
+export async function publishGrowthAdminCategoryPage(app: object, projectId: string, category: GrowthCategory, version: number): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages/publish", { method: "POST", body: JSON.stringify({ target_project_id: projectId, category, version }) });
+}
+
+export async function unpublishGrowthAdminCategoryPage(app: object, projectId: string, category: GrowthCategory): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages/publish", { method: "DELETE", body: JSON.stringify({ target_project_id: projectId, category }) });
 }
 
 export async function createGrowthAdminNote(app: object, projectId: string, input: { category: string, tags: string[], title: string, body: string }): Promise<void> {

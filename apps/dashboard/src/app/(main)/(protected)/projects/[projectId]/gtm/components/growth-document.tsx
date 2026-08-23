@@ -1,12 +1,17 @@
 "use client";
 
 import { DesignAnalyticsCard, DesignAnalyticsCardHeader, DesignBadge } from "@/components/design-components";
+import { Link } from "@/components/link";
 import { cn } from "@/lib/utils";
 import type { GrowthDocument, GrowthDocumentBlock, GrowthDocumentInline, GrowthEvidenceDatum, GrowthEvidencePoint } from "@/lib/growth/growth-document";
 import { formatGrowthAdSpend, formatGrowthMetricValue } from "@/lib/growth/growth-format";
-import { ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { GrowthActionItem } from "@/lib/growth/growth-types";
+import { ArrowRightIcon, ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useProjectId } from "../../use-admin-app";
+import { GROWTH_ACTION_TYPE_META, GrowthActionStatusBadge, GrowthWatchedMetricChips, useGrowthHref } from "./action-card";
+import { GrowthActionMutationControls } from "./action-controls";
 
 const SERIES_COLORS = ["hsl(199 68% 47%)", "hsl(258 54% 58%)", "hsl(153 44% 43%)"] as const;
 
@@ -132,8 +137,72 @@ const CALLOUT_META = new Map<"Evidence" | "Hypothesis" | "Experiment" | "DataGap
   ["DataGap", { label: "Data gap", icon: WarningCircleIcon, className: "bg-orange-500/[0.06] ring-orange-500/15" }],
 ]);
 
+/**
+ * The actions an `<ActionButton>` in the surrounding document may resolve to.
+ *
+ * A document never carries an action's data, only its id, so whoever renders a document that can
+ * contain `<ActionButton>` has to say which actions the reader is allowed to see — and how to reload
+ * them once one is activated or dismissed. Documents rendered without this provider (findings,
+ * reports, action narratives) simply have no action buttons in them.
+ */
+const GrowthDocumentActionsContext = createContext<{ actions: GrowthActionItem[], onChanged: () => Promise<void> } | null>(null);
+
+export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, children: ReactNode }) {
+  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged }}>{props.children}</GrowthDocumentActionsContext.Provider>;
+}
+
+/**
+ * An action referenced from inside an authored page, rendered as the same kind of card the rest of
+ * the workspace uses so a page reads as one page rather than as a page with an embedded widget.
+ *
+ * The reference can dangle: staff wrote the page against an action that has since been deleted, or
+ * the reader's overview no longer includes it (dismissed items drop out of the live lists). That is
+ * a normal state, not an error — the card says so and offers nothing to click, because the
+ * alternative is a button that fails when pressed.
+ */
+function ActionButtonBlock(props: { actionId: string }) {
+  const context = useContext(GrowthDocumentActionsContext);
+  const projectId = useProjectId();
+  const withQuery = useGrowthHref();
+  const action = context?.actions.find((candidate) => candidate.id === props.actionId) ?? null;
+
+  if (context == null || action == null) {
+    return (
+      <div className="my-5 rounded-xl border border-dashed border-foreground/[0.12] bg-foreground/[0.02] px-4 py-3">
+        <p className="text-sm text-muted-foreground">This suggestion is no longer available in your workspace.</p>
+      </div>
+    );
+  }
+
+  const typeMeta = GROWTH_ACTION_TYPE_META.get(action.typeId) ?? { label: action.typeId, icon: LightningIcon };
+  const TypeIcon = typeMeta.icon;
+  return (
+    <div className="my-5 rounded-xl border border-foreground/[0.1] bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-6 tracking-tight text-foreground">{action.title}</p>
+          <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground"><TypeIcon className="size-3.5" />{typeMeta.label}</p>
+        </div>
+        <GrowthActionStatusBadge status={action.status} />
+      </div>
+      <div className="mt-3"><GrowthWatchedMetricChips action={action} /></div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <GrowthActionMutationControls action={action} onChanged={context.onChanged} className="flex flex-wrap items-center gap-2" />
+        <Link href={withQuery(`/projects/${projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
+          Review action<ArrowRightIcon className="size-3.5" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function ComponentBlock(props: { block: Extract<GrowthDocumentBlock, { type: "component" }>, data: Map<string, GrowthEvidenceDatum> }) {
   const datum = props.block.dataId == null ? null : props.data.get(props.block.dataId) ?? null;
+  if (props.block.name === "ActionButton") {
+    // The compiler rejects an ActionButton without an action id, so a null one here can only mean a
+    // document from some other source; rendering nothing is better than an empty card.
+    return props.block.actionId == null ? null : <ActionButtonBlock actionId={props.block.actionId} />;
+  }
   if (props.block.name === "Metric" && datum?.kind === "metric") return <MetricBlock datum={datum} />;
   if (props.block.name === "TrendChart" && datum?.kind === "time_series") return <TrendChartBlock datum={datum} />;
   if ((props.block.name === "ComparisonChart" && datum?.kind === "comparison") || (props.block.name === "BreakdownChart" && datum?.kind === "breakdown")) return <BarChartBlock datum={datum} />;

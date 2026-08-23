@@ -60,6 +60,7 @@ model Project {
   growthChatConversations    GrowthChatConversation[]
   growthActionItems          GrowthActionItem[]
   growthCategoryScores       GrowthCategoryScore[]
+  growthCategoryPages        GrowthCategoryPage[]
   growthDailyMetrics         GrowthDailyMetrics[]
   growthBriefs               GrowthBrief[]
   growthMilestones           GrowthMilestone[]
@@ -528,6 +529,74 @@ model GrowthCategoryScore {
 
   @@unique([projectId, branchId, category])
   @@index([projectId, branchId, updatedAt(sort: Desc)])
+}
+
+// One staff-authored page per growth stage (category), the thing a customer reads
+// instead of the raw findings/notes/actions of that stage.
+//
+// WHY THIS EXISTS: the agent's output is a pile of items; what a customer should
+// see is an argument. Staff read the items on the internal Growth admin page and
+// write the page that presents them, so the customer-facing stage panel is
+// curated rather than a dump. Until a stage has a published page the customer
+// still gets the raw lanes, which is what makes the rollout stage-by-stage.
+//
+// NOT HTML: `document` is a compiled growth-mdx-v1 AST (see
+// lib/growth/content-document.ts), validated on write and rendered by the
+// dashboard's own components. Nothing authored here can execute, and an
+// <ActionButton> in it is a reference to a real GrowthActionItem, resolved and
+// authorized at click time by the ordinary action endpoints — the page never
+// carries privilege of its own.
+model GrowthCategoryPage {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  category  String
+  // Monotonic per (project, branch, category). Publishing never rewrites a
+  // version in place, so "what did the customer see last week" stays answerable
+  // and a rollback is just re-publishing an older row.
+  version   Int
+
+  status String @default("draft") // "draft" | "published" | "archived"
+
+  // The payload exactly as staff submitted it ({ format, source_mdx, data }), kept
+  // so the editor can round-trip it back into the textarea, and `document` is the
+  // compiled AST that is the ONLY thing a customer receives.
+  sourceJson Json
+  document   Json
+
+  // Provenance: { findings: [id…], actions: [id…] } — the items the page was
+  // written from, so the admin page can tell staff when a source has changed
+  // since the page was last saved.
+  sourceItemIds Json
+
+  authoredByUserId  String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Two generated columns backing partial unique indexes, the same technique (and
+  // the same Prisma caveats) as GrowthQuizGame's slot columns: Prisma only applies
+  // dbgenerated() as a DEFAULT, the migration hand-writes the real
+  // GENERATED ALWAYS AS ... STORED columns, and the strings below must match what
+  // Postgres re-deparses rather than what the migration writes.
+  //
+  // TRUE while the row is the stage's editable draft, NULL otherwise — so staff
+  // cannot accumulate two drafts for one stage.
+  isDraft Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'draft'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+  // TRUE while the row is the version customers see, NULL otherwise — so exactly
+  // one version per stage is ever live. Publishing archives the incumbent in the
+  // same transaction; this index is what makes that an invariant, not a habit.
+  isPublished Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'published'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId, category, version])
+  @@unique([projectId, branchId, category, isDraft], map: "GrowthCategoryPage_draft_slot")
+  @@unique([projectId, branchId, category, isPublished], map: "GrowthCategoryPage_published_slot")
+  @@index([projectId, branchId, category, version(sort: Desc)])
 }
 
 model GrowthMetricSnapshot {

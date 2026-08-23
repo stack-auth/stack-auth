@@ -275,6 +275,51 @@ export type GrowthOverviewFinding = {
   createdAtMillis: number,
 };
 
+/**
+ * A stage page the customer can see: only the compiled document of the live version.
+ *
+ * Drafts, version history and the source items a page was written from never reach a customer, so
+ * they are absent from this type by construction rather than filtered out at render time.
+ */
+export type GrowthPublishedCategoryPage = {
+  category: GrowthCategory,
+  version: number,
+  document: GrowthDocument,
+  publishedAtMillis: number | null,
+};
+
+export type GrowthCategoryPageStatus = "draft" | "published" | "archived";
+
+export type GrowthCategoryPageVersionSummary = {
+  id: string,
+  version: number,
+  status: GrowthCategoryPageStatus,
+  publishedAtMillis: number | null,
+  updatedAtMillis: number,
+};
+
+/** A draft or live version as staff see it: the authored source, the compiled document, and provenance. */
+export type GrowthCategoryPageVersion = GrowthCategoryPageVersionSummary & {
+  category: GrowthCategory,
+  /**
+   * What the page was authored from, and what the editor round-trips: the `growth-mdx-v1` body plus
+   * the evidence data its `<Metric>`/chart components reference. `data` stays opaque here because
+   * the compiler — not the dashboard — owns its shape; the editor only moves it back and forth.
+   */
+  source: { sourceMdx: string, data: unknown[] } | null,
+  document: GrowthDocument | null,
+  sourceItemIds: { findings: string[], actions: string[] },
+  /** Source items that changed (or were deleted) after this version was last saved. */
+  staleSourceIds: string[],
+};
+
+export type GrowthAdminCategoryPage = {
+  category: GrowthCategory,
+  draft: GrowthCategoryPageVersion | null,
+  published: GrowthCategoryPageVersion | null,
+  archived: GrowthCategoryPageVersionSummary[],
+};
+
 export type GrowthOverview = {
   latestReport: { id: string, title: string, summary: string, createdAtMillis: number } | null,
   latestBrief: { id: string, date: string, summary: string, contentMd: string, createdAtMillis: number } | null,
@@ -283,6 +328,8 @@ export type GrowthOverview = {
   actions: GrowthActionItem[],
   archive: GrowthActionItem[],
   categories: { category: GrowthCategory, count: number, score: number | null }[],
+  /** Live stage pages, one per stage that has one. A stage without one keeps the raw item lanes. */
+  categoryPages: GrowthPublishedCategoryPage[],
   needsCategoryCount: number,
   limit: number,
 };

@@ -10,7 +10,7 @@ export type GrowthDocumentInline =
   | { type: "break" }
   | { type: "link", url: string, children: GrowthDocumentInline[] };
 
-export type GrowthDocumentComponentName = "Metric" | "TrendChart" | "ComparisonChart" | "BreakdownChart" | "Evidence" | "Hypothesis" | "Experiment" | "DataGap";
+export type GrowthDocumentComponentName = "Metric" | "TrendChart" | "ComparisonChart" | "BreakdownChart" | "Evidence" | "Hypothesis" | "Experiment" | "DataGap" | "ActionButton";
 
 export type GrowthDocumentBlock =
   | { type: "heading", level: 2 | 3, children: GrowthDocumentInline[] }
@@ -19,7 +19,16 @@ export type GrowthDocumentBlock =
   | { type: "table", align: Array<"left" | "center" | "right" | null>, rows: GrowthDocumentInline[][][] }
   | { type: "code", language: string | null, value: string }
   | { type: "rule" }
-  | { type: "component", name: GrowthDocumentComponentName, dataId: string | null, confidence: "low" | "medium" | "high" | null, children: GrowthDocumentBlock[] };
+  | {
+    type: "component",
+    name: GrowthDocumentComponentName,
+    dataId: string | null,
+    confidence: "low" | "medium" | "high" | null,
+    // Only ever set on ActionButton, and only ever an id: the document references an
+    // action, it never carries the action's data (let alone its workflow payload).
+    actionId: string | null,
+    children: GrowthDocumentBlock[],
+  };
 
 export type GrowthEvidencePoint = { label: string, value: number };
 export type GrowthEvidenceSeries = { label: string, points: GrowthEvidencePoint[] };
@@ -56,7 +65,7 @@ const inlineSchema: z.ZodType<GrowthDocumentInline> = z.lazy(() => z.discriminat
   z.object({ type: z.literal("link"), url: z.string(), children: z.array(inlineSchema) }),
 ]));
 
-const componentNameSchema = z.enum(["Metric", "TrendChart", "ComparisonChart", "BreakdownChart", "Evidence", "Hypothesis", "Experiment", "DataGap"]);
+const componentNameSchema = z.enum(["Metric", "TrendChart", "ComparisonChart", "BreakdownChart", "Evidence", "Hypothesis", "Experiment", "DataGap", "ActionButton"]);
 const blockSchema: z.ZodType<GrowthDocumentBlock> = z.lazy(() => z.discriminatedUnion("type", [
   z.object({ type: z.literal("heading"), level: z.union([z.literal(2), z.literal(3)]), children: z.array(inlineSchema) }),
   z.object({ type: z.literal("paragraph"), children: z.array(inlineSchema) }),
@@ -69,6 +78,9 @@ const blockSchema: z.ZodType<GrowthDocumentBlock> = z.lazy(() => z.discriminated
     name: componentNameSchema,
     dataId: z.string().nullable(),
     confidence: z.enum(["low", "medium", "high"]).nullable(),
+    // Defaulted rather than required: documents compiled before ActionButton existed
+    // are still stored on findings/actions, and they have no `actionId` key at all.
+    actionId: z.string().nullable().default(null),
     children: z.array(blockSchema),
   }),
 ]));
