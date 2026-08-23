@@ -13,17 +13,6 @@ function requireItems(body: unknown): unknown[] {
   return body.items;
 }
 
-function requireAnalysisSummary(body: unknown): { run_id: unknown, state: unknown } {
-  if (typeof body !== "object" || body == null || !("analysis" in body)) {
-    throw new Error("Expected the growth response to contain an analysis object.");
-  }
-  const analysis = body.analysis;
-  if (typeof analysis !== "object" || analysis == null || !("run_id" in analysis) || !("state" in analysis)) {
-    throw new Error("Expected the growth response analysis to contain state and run_id.");
-  }
-  return { run_id: analysis.run_id, state: analysis.state };
-}
-
 describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
   it("rejects restarts without admin access and on projects without the app", async ({ expect }) => {
     await Project.createAndSwitch();
@@ -68,12 +57,6 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
       onboarding: { completed: false, website_url: null, completed_at_millis: null },
       analysis: { state: "none", run_id: null, trigger: null },
     });
-    expect(requireAnalysisSummary(afterRestart.body)).toMatchInlineSnapshot(`
-      {
-        "run_id": null,
-        "state": "none",
-      }
-    `);
 
     const second = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
       accessType: "admin",
@@ -114,5 +97,28 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     });
     const afterSecond = await niceBackendFetch(`${BASE_PATH}/milestones`, { accessType: "admin" });
     expect(requireItems(afterSecond.body)).toHaveLength(3);
+  });
+
+  it("rejects a concurrent restart after another restart claims the onboarding generation", { timeout: 300_000 }, async ({ expect }) => {
+    await createGrowthProject();
+    const onboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, {
+      accessType: "admin",
+      method: "POST",
+      body: { website_url: "https://plannery.example.com" },
+    });
+    expect(onboarding.status).toBe(200);
+
+    const restarts = await Promise.all([
+      niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
+      niceBackendFetch(`${BASE_PATH}/onboarding/restart`, { accessType: "admin", method: "POST" }),
+    ]);
+    expect(restarts.map((response) => response.status).sort()).toMatchInlineSnapshot(`[200, 409]`);
+    expect(restarts.find((response) => response.status === 409)).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 409,
+        "body": "Growth onboarding restart conflicted with another restart. Try again.",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
   });
 });

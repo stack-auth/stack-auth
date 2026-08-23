@@ -11,6 +11,9 @@ export type PhaseSessionIdentity = {
 const PHASE_TOKEN_MARKER = "phase1:";
 
 export function buildPhaseContinuationToken(identity: PhaseSessionIdentity): string {
+  if (identity.project_id.includes(":") || identity.branch_id.includes(":") || identity.run_id.includes(":")) {
+    throw new Error("Phase continuation project, branch, and run IDs must not contain ':'");
+  }
   return `${PHASE_TOKEN_MARKER}${identity.project_id}:${identity.branch_id}:${identity.run_id}:${identity.phase_key}:${identity.attempt}`;
 }
 

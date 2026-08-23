@@ -368,6 +368,14 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
   }
 
   const cancelledRunIds = await retryTransaction(globalPrismaClient, async (tx) => {
+    const claim = await tx.growthOnboarding.updateMany({
+      where: { id: onboarding.id },
+      data: { updatedAt: new Date() },
+    });
+    if (claim.count !== 1) {
+      throw new StatusError(409, "Growth onboarding restart conflicted with another restart. Try again.");
+    }
+
     // This selection must happen inside the read-committed transaction: a pre-transaction read
     // could miss a run created between that read and the onboarding delete.
     const cancelledRuns = await tx.growthAnalysisRun.updateManyAndReturn({
@@ -388,7 +396,7 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
         });
       }
     }
-    await tx.growthOnboarding.deleteMany({ where: { projectId, branchId } });
+    await tx.growthOnboarding.deleteMany({ where: { id: onboarding.id } });
     return cancelledRuns.map((run) => run.id);
   });
   for (const runId of cancelledRunIds) {

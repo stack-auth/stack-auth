@@ -108,11 +108,12 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepai
 
   const eventType = leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished;
   if (!await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType })) {
-    await enqueueWorkflowEvent(globalPrismaClient, {
+    const enqueued = await enqueueWorkflowEvent(globalPrismaClient, {
       tenancy,
       type: eventType,
       payload: leg === "activation" ? { growth_run_id: run.id, trigger: run.trigger } : { growth_run_id: run.id },
     });
+    didWork = enqueued != null || didWork;
   }
 
   const legStarted = await driveGrowthLegUntilActive(tenancy, run.id);

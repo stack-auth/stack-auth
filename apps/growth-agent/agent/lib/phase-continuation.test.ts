@@ -20,6 +20,12 @@ describe("phase continuation tokens", () => {
     expect(parsePhaseContinuationToken(buildPhaseContinuationToken(topic))).toEqual(topic);
   });
 
+  it("rejects colon-bearing project, branch, and run IDs", () => {
+    expect(() => buildPhaseContinuationToken({ ...identity, project_id: "proj:1" })).toThrow("must not contain ':'");
+    expect(() => buildPhaseContinuationToken({ ...identity, branch_id: "main:1" })).toThrow("must not contain ':'");
+    expect(() => buildPhaseContinuationToken({ ...identity, run_id: "run:1" })).toThrow("must not contain ':'");
+  });
+
   it("reads a token eve has namespaced with the channel name", () => {
     expect(parsePhaseContinuationToken(`growth:${buildPhaseContinuationToken(identity)}`)).toEqual(identity);
   });
