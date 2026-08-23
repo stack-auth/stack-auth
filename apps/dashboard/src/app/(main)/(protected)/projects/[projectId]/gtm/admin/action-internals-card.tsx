@@ -2,13 +2,13 @@
 
 import { DesignAlert, DesignButton, DesignCard, DesignSelectorDropdown } from "@/components/design-components";
 import { updateGrowthAdminAction, type GrowthAdminFunctionalActionFields } from "@/lib/growth/growth-api";
-import type { GrowthActionItem } from "@/lib/growth/growth-types";
+import { GROWTH_METRIC_IDS, type GrowthActionItem } from "@/lib/growth/growth-types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { BracketsCurlyIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-const watchedMetricsSchema = z.array(z.object({ metricId: z.enum(["new_signups", "returning_users", "transactions", "emails_sent", "total_users", "revenue"]), windowDays: z.number().int().min(1).max(90) })).max(10);
+const watchedMetricsSchema = z.array(z.object({ metricId: z.enum(GROWTH_METRIC_IDS), windowDays: z.number().int().min(1).max(90) })).max(10);
 const workflowSchema = z.object({ workflowId: z.string().min(1).max(64), source: z.string().min(1), explanation: z.string().min(1).max(5000), rollbackNote: z.string().min(1).max(5000) }).nullable();
 
 function workflowJson(action: GrowthActionItem): string {
@@ -35,8 +35,11 @@ function JsonField(props: { label: string, value: string, onChange: (value: stri
  */
 export function GrowthAdminActionInternalsCard(props: { app: object, projectId: string, actions: GrowthActionItem[], onSaved: () => Promise<void> }) {
   const proposed = props.actions.filter((action) => action.status === "proposed");
-  const [selectedId, setSelectedId] = useState(proposed.at(0)?.id ?? "");
-  const selected = proposed.find((action) => action.id === selectedId) ?? null;
+  const [requestedId, setRequestedId] = useState<string | null>(null);
+  // Activating a proposal elsewhere on the page refreshes this list without it, so the stored choice is
+  // reconciled against the current proposals rather than trusted — otherwise the card would claim there
+  // are no proposals left while others are still waiting.
+  const selected = proposed.find((action) => action.id === requestedId) ?? proposed.at(0) ?? null;
   const [payloadJson, setPayloadJson] = useState("null");
   const [watchedJson, setWatchedJson] = useState("[]");
   const [workflowDraftJson, setWorkflowDraftJson] = useState("null");
@@ -51,15 +54,18 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
   return (
     <DesignCard title="Proposed action internals" subtitle="Payload, watched metrics and workflow — editable until the proposal is activated" icon={BracketsCurlyIcon} gradient="cyan">
       {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
-      {proposed.length === 0 || selected == null ? <p className="text-sm text-muted-foreground">No proposed actions.</p> : (
+      {selected == null ? <p className="text-sm text-muted-foreground">No proposed actions.</p> : (
         <div className="space-y-3">
-          <DesignSelectorDropdown value={selectedId} onValueChange={setSelectedId} options={proposed.map((action) => ({ value: action.id, label: action.title }))} />
+          <DesignSelectorDropdown value={selected.id} onValueChange={setRequestedId} options={proposed.map((action) => ({ value: action.id, label: action.title }))} />
           <div className="grid gap-3 sm:grid-cols-3">
             <JsonField label="Payload JSON" value={payloadJson} onChange={setPayloadJson} />
             <JsonField label="Watched metrics JSON" value={watchedJson} onChange={setWatchedJson} />
             <JsonField label="Workflow JSON" value={workflowDraftJson} onChange={setWorkflowDraftJson} />
           </div>
-          <DesignButton onClick={async () => {
+          {selected.category == null && (
+            <p className="text-xs text-muted-foreground">Give this action a stage on the workspace above first — the Growth API stores actions per stage and rejects a write without one.</p>
+          )}
+          <DesignButton disabled={selected.category == null} onClick={async () => {
             setError(null);
             try {
               const functionalFields: GrowthAdminFunctionalActionFields = {

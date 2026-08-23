@@ -36,10 +36,19 @@ export type GrowthWorkspaceEditors = {
   createNote: (input: { category: GrowthCategory, title: string, body: string }) => Promise<void>,
 };
 
-const GrowthWorkspaceEditContext = createContext<GrowthWorkspaceEditors | null>(null);
+/**
+ * The mutations as the workspace sees them: the provider catches a rejected save and reports it, so the
+ * caller gets `false` instead of a rejection. Fields that hold a draft the admin would have to retype
+ * (the new-note row) key off that, rather than treating a reported failure as a successful save.
+ */
+type GrowthWorkspaceEditActions = {
+  [Key in keyof GrowthWorkspaceEditors]: (...args: Parameters<GrowthWorkspaceEditors[Key]>) => Promise<boolean>
+};
+
+const GrowthWorkspaceEditContext = createContext<GrowthWorkspaceEditActions | null>(null);
 
 /** Null on the customer workspace, which is exactly what makes every field below read-only there. */
-export function useGrowthWorkspaceEditors(): GrowthWorkspaceEditors | null {
+export function useGrowthWorkspaceEditors(): GrowthWorkspaceEditActions | null {
   return useContext(GrowthWorkspaceEditContext);
 }
 
@@ -56,14 +65,16 @@ function errorMessage(caught: unknown): string {
 export function GrowthWorkspaceEditProvider(props: { editors: GrowthWorkspaceEditors, children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const editors = props.editors;
-  const guarded = useMemo<GrowthWorkspaceEditors>(() => {
+  const guarded = useMemo<GrowthWorkspaceEditActions>(() => {
     const guard = <TArguments extends unknown[]>(label: string, mutation: (...args: TArguments) => Promise<void>) => async (...args: TArguments) => {
       setError(null);
       try {
         await mutation(...args);
+        return true;
       } catch (caught) {
         captureError(label, caught);
         setError(errorMessage(caught));
+        return false;
       }
     };
     return {
@@ -91,7 +102,7 @@ const editableFieldClassName = "-mx-1 w-full rounded-md bg-transparent px-1 ring
 export function GrowthEditableText(props: {
   value: string,
   label: string,
-  onSave: (value: string) => Promise<void>,
+  onSave: (value: string) => Promise<unknown>,
   multiline?: boolean,
 }) {
   const editors = useGrowthWorkspaceEditors();
@@ -99,7 +110,7 @@ export function GrowthEditableText(props: {
   return <GrowthEditableTextField {...props} />;
 }
 
-function GrowthEditableTextField(props: { value: string, label: string, onSave: (value: string) => Promise<void>, multiline?: boolean }) {
+function GrowthEditableTextField(props: { value: string, label: string, onSave: (value: string) => Promise<unknown>, multiline?: boolean }) {
   const [draft, setDraft] = useState(props.value);
   const [saving, setSaving] = useState(false);
   useEffect(() => setDraft(props.value), [props.value]);
@@ -187,7 +198,7 @@ function PickerOption(props: { label: string, selected: boolean, onSelect: () =>
   );
 }
 
-export function GrowthCategoryBadge(props: { category: GrowthCategory | null, label: string, onSave?: (category: GrowthCategory) => Promise<void> }) {
+export function GrowthCategoryBadge(props: { category: GrowthCategory | null, label: string, onSave?: (category: GrowthCategory) => Promise<unknown> }) {
   const editors = useGrowthWorkspaceEditors();
   const badge = <DesignBadge label={props.label} color={props.category == null ? "orange" : "cyan"} size="sm" />;
   const onSave = props.onSave;
@@ -224,7 +235,7 @@ export function editableActionStatuses(current: GrowthActionStatus): GrowthActio
  * Action status, shown only on the editable workspace: the customer's row conveys status through the
  * action's own page, and there is nothing for them to change here.
  */
-export function GrowthActionStatusPicker(props: { status: GrowthActionStatus, onSave: (status: GrowthActionStatus) => Promise<void> }) {
+export function GrowthActionStatusPicker(props: { status: GrowthActionStatus, onSave: (status: GrowthActionStatus) => Promise<unknown> }) {
   const editors = useGrowthWorkspaceEditors();
   if (editors == null) return null;
   const statuses = editableActionStatuses(props.status);
@@ -246,7 +257,7 @@ export function GrowthActionStatusPicker(props: { status: GrowthActionStatus, on
   );
 }
 
-export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[]) => Promise<void> }) {
+export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[]) => Promise<unknown> }) {
   const editors = useGrowthWorkspaceEditors();
   const onSave = props.onSave;
   const [adding, setAdding] = useState("");
@@ -305,6 +316,18 @@ export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[
   );
 }
 
+/**
+ * `min`/`max` on a number input are only enforced on form submission, which the score picker never
+ * does, so the range the Growth API accepts (assertGrowthCategoryScore: a whole number from 0 to 100)
+ * is checked here rather than letting a known-invalid score become a server error.
+ */
+export function isSubmittableCategoryScore(draft: string): boolean {
+  // `Number("")` and `Number(" ")` are both 0, so the emptiness check has to come first or a blank
+  // field would look like a valid score of zero.
+  const score = Number(draft);
+  return draft.trim() !== "" && Number.isInteger(score) && score >= 0 && score <= 100;
+}
+
 export function GrowthCategoryScoreBadge(props: { category: GrowthCategory, score: number | null }) {
   const editors = useGrowthWorkspaceEditors();
   const [draft, setDraft] = useState(props.score == null ? "" : String(props.score));
@@ -312,18 +335,19 @@ export function GrowthCategoryScoreBadge(props: { category: GrowthCategory, scor
   if (editors == null) {
     return props.score == null ? null : <DesignBadge label={`${props.score} / 100`} color="purple" size="md" />;
   }
+  const score = Number(draft);
   return (
     <GrowthBadgePicker badge={<DesignBadge label={props.score == null ? "Not scored" : `${props.score} / 100`} color="purple" size="md" />} label="Change stage score">
       {(close) => (
         <div className="space-y-2">
-          <DesignInput autoFocus type="number" min={0} max={100} value={draft} onChange={(event) => setDraft(event.target.value)} />
+          <DesignInput autoFocus type="number" min={0} max={100} step={1} value={draft} onChange={(event) => setDraft(event.target.value)} />
           <DesignButton
             size="sm"
             className="w-full"
-            disabled={draft === "" || Number.isNaN(Number(draft))}
+            disabled={!isSubmittableCategoryScore(draft)}
             onClick={async () => {
               close();
-              await editors.saveCategoryScore(props.category, Number(draft));
+              await editors.saveCategoryScore(props.category, score);
             }}
           >
             Save score
@@ -357,7 +381,8 @@ export function GrowthAddNoteRow(props: { category: GrowthCategory }) {
         variant="outline"
         disabled={title.trim().length === 0 || body.trim().length === 0}
         onClick={async () => {
-          await editors.createNote({ category: props.category, title: title.trim(), body: body.trim() });
+          const saved = await editors.createNote({ category: props.category, title: title.trim(), body: body.trim() });
+          if (!saved) return;
           setTitle("");
           setBody("");
         }}
