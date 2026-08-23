@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { GrowthDocument, GrowthDocumentBlock, GrowthDocumentInline, GrowthEvidenceDatum, GrowthEvidencePoint } from "@/lib/growth/growth-document";
 import { formatGrowthAdSpend, formatGrowthMetricValue } from "@/lib/growth/growth-format";
 import type { GrowthActionItem } from "@/lib/growth/growth-types";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { ArrowRightIcon, ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { createContext, useContext, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -207,7 +208,7 @@ function ActionButtonBlock(props: { actionId: string }) {
         : (
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <GrowthActionMutationControls action={action} onChanged={context.onChanged} demo={context.demo} className="flex flex-wrap items-center gap-2" />
-            <Link href={withQuery(`/projects/${context.projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
+            <Link href={withQuery(urlString`/projects/${context.projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
               Review action<ArrowRightIcon className="size-3.5" />
             </Link>
           </div>
