@@ -8,7 +8,7 @@ const GROWTH_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
 // Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
-// full-suite load, so default-timeout tests need 90s of headroom.
+// full-suite load, so default-timeout tests need generous headroom.
 
 /** A project with a released workspace and one conversion action a stage page can link to. */
 async function createFixture() {
@@ -53,7 +53,7 @@ function customerCategoryPages(body: unknown) {
   return (body as { category_pages: { category: string, version: number, actions: { id: string }[] }[] }).category_pages;
 }
 
-describe("internal Growth stage pages", { timeout: 90_000 }, () => {
+describe("internal Growth stage pages", { timeout: 180_000 }, () => {
   it("publishes a stage page to the customer workspace and takes it back down", async ({ expect }) => {
     const { projectId, conversionActionId } = await createFixture();
 
