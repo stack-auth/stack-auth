@@ -245,8 +245,13 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
       if (input.expectedDraftUpdatedAtMillis !== existingDraft.updatedAt.getTime()) {
         throw new StatusError(409, "Someone else saved this stage's draft after you opened it. Reload the page to pick up their version before saving.");
       }
-      return await tx.growthCategoryPage.update({
-        where: { id: existingDraft.id },
+      // The timestamp goes into the WHERE clause rather than only the check above, because the read
+      // and the write are not one atomic step even inside a transaction: under READ COMMITTED two
+      // overlapping saves can both read the same `updatedAt`, both pass the check, and the later one
+      // silently replace the earlier author's text. As a predicate, the second writer blocks on the
+      // first's row lock, re-evaluates against the now-bumped `updatedAt`, and matches nothing.
+      const updated = await tx.growthCategoryPage.updateMany({
+        where: { id: existingDraft.id, updatedAt: existingDraft.updatedAt },
         data: {
           sourceJson: toJsonInput(input.document),
           document: toJsonInput(compiled),
@@ -254,6 +259,10 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
           authoredByUserId: input.authoredByUserId,
         },
       });
+      if (updated.count === 0) {
+        throw new StatusError(409, "Someone else saved this stage's draft after you opened it. Reload the page to pick up their version before saving.");
+      }
+      return await tx.growthCategoryPage.findUniqueOrThrow({ where: { id: existingDraft.id } });
     }
     // A new draft always takes the next version number, so version numbers are
     // never reused even after a rollback republished an older one.
