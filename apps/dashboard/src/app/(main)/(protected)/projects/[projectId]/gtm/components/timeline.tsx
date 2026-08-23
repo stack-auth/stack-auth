@@ -68,6 +68,12 @@ export function GrowthTimelineStep(props: {
   summary?: ReactNode,
   /** Rendered next to the title, e.g. a status badge. */
   badge?: ReactNode,
+  /**
+   * Pushed to the right edge of the title row. For controls that act on the step as a whole rather
+   * than being part of its content — below the row they read as the step's next action, which is
+   * wrong for something like restarting a step that is already done.
+   */
+  trailing?: ReactNode,
   isLast?: boolean,
   children?: ReactNode,
 }) {
@@ -95,6 +101,7 @@ export function GrowthTimelineStep(props: {
           </span>
           {props.badge}
           {props.summary != null && <span className="min-w-0 text-sm text-muted-foreground">{props.summary}</span>}
+          {props.trailing != null && <div className="ml-auto shrink-0">{props.trailing}</div>}
         </div>
         {props.subtitle != null && (
           <p className={cn("mt-0.5 text-sm", state === "upcoming" ? "text-muted-foreground/50" : "text-muted-foreground")}>

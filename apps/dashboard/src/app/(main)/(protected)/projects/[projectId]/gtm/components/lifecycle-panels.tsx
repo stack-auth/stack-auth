@@ -205,9 +205,8 @@ function SetUpStep(props: { status: GrowthStatus, state: GrowthTimelineStepState
         state="done"
         title="Set up"
         summary={props.status.onboarding.websiteUrl ?? undefined}
-      >
-        <RestartOnboardingButton />
-      </GrowthTimelineStep>
+        trailing={<RestartOnboardingButton />}
+      />
     );
   }
   // "Set up" is the first step and is never phase-backed, so the derivation can only ever give it
