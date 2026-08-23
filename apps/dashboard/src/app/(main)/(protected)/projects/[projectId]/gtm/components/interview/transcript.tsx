@@ -64,6 +64,7 @@ export function InterviewThinkingIndicator() {
 function TranscriptEntry(props: {
   entry: InterviewTranscriptEntry,
   questions: GrowthInterviewQuestion[],
+  planQuestionByEntryId: InterviewChatView["planQuestionByEntryId"],
   activeQuestion: InterviewChatView["activeQuestion"],
   disabled: boolean,
   onSubmitAnswer: (planQuestion: GrowthInterviewQuestion, draft: InterviewAnswerDraft) => Promise<void>,
@@ -77,7 +78,10 @@ function TranscriptEntry(props: {
       const isActive = props.activeQuestion != null && props.activeQuestion.entryId === entry.id;
       const planQuestion = isActive
         ? props.activeQuestion?.planQuestion ?? null
-        : props.questions.find((question) => question.questionKey === entry.card.questionKey) ?? null;
+        // Committed cards resolve through the view's positional mapping (a key can match several plan
+        // rows — see resolveTranscriptPlanQuestions); entries of a still-streaming turn are not in it
+        // yet, and a card that is being presented right now has no recorded answer to show anyway.
+        : props.planQuestionByEntryId.get(entry.id) ?? props.questions.find((question) => question.questionKey === entry.card.questionKey) ?? null;
       return (
         <InterviewQuestionCardView
           card={entry.card}
@@ -105,6 +109,7 @@ export function InterviewTranscript(props: {
   streamingEntries: InterviewTranscriptEntry[],
   thinking: boolean,
   questions: GrowthInterviewQuestion[],
+  planQuestionByEntryId: InterviewChatView["planQuestionByEntryId"],
   activeQuestion: InterviewChatView["activeQuestion"],
   disabled: boolean,
   onSubmitAnswer: (planQuestion: GrowthInterviewQuestion, draft: InterviewAnswerDraft) => Promise<void>,
@@ -128,6 +133,7 @@ export function InterviewTranscript(props: {
           key={entry.id}
           entry={entry}
           questions={props.questions}
+          planQuestionByEntryId={props.planQuestionByEntryId}
           activeQuestion={props.activeQuestion}
           disabled={props.disabled}
           onSubmitAnswer={props.onSubmitAnswer}

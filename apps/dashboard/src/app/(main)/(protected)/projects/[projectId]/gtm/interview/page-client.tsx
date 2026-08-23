@@ -269,6 +269,7 @@ function InterviewPageBody(props: { chat: UseGrowthInterviewChatResult }) {
         streamingEntries={chat.turn.status === "streaming" ? chat.turn.entries : []}
         thinking={streaming}
         questions={questions}
+        planQuestionByEntryId={view.planQuestionByEntryId}
         activeQuestion={streaming ? null : view.activeQuestion}
         disabled={streaming}
         onSubmitAnswer={submitAnswer}

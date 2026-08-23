@@ -437,6 +437,13 @@ export async function replaceGrowthInterviewQuestions(options: {
     if (interview.status !== "pending" || interview.questions.some((question) => question.answeredAt != null)) {
       throw new StatusError(409, "The interview has already started; the question plan can no longer be replaced.");
     }
+    // Keys must be unique within a plan for the same reason appendGrowthInterviewQuestion rejects a
+    // collision: the dashboard pairs a presented card with a plan row by key, so duplicates make the
+    // card ambiguous and can render an unanswered question as an answered one.
+    const keys = new Set(options.questions.map((question) => question.questionKey));
+    if (keys.size !== options.questions.length) {
+      throw new StatusError(400, "Every question_key in the plan must be unique.");
+    }
     await tx.growthInterviewQuestion.deleteMany({ where: { interviewId: interview.id } });
     await tx.growthInterviewQuestion.createMany({
       data: options.questions.map((question, orderIndex) => ({
@@ -472,7 +479,7 @@ export async function appendGrowthInterviewQuestion(options: {
     await requireRunInTenancy(tx, options.tenancy, options.runId);
     const interview = await tx.growthInterview.findUnique({
       where: { runId: options.runId },
-      include: { questions: { select: { orderIndex: true } } },
+      include: { questions: { select: { orderIndex: true, questionKey: true } } },
     });
     if (interview == null) {
       // Append cannot bootstrap an interview: adaptive questions only make sense once a plan exists,
@@ -481,6 +488,14 @@ export async function appendGrowthInterviewQuestion(options: {
     }
     if (interview.status !== "pending" && interview.status !== "active") {
       throw new StatusError(409, `The interview is ${interview.status}; adaptive questions can no longer be added.`);
+    }
+    // The question key is what the dashboard's transcript uses to pair a presented card with the
+    // plan row its answer lands on, so two rows sharing a key make a presented card ambiguous — the
+    // customer then sees the repeated question rendered read-only against the already-answered row.
+    // The agent chooses the key, and a follow-up that restates an earlier question is exactly when
+    // it reuses one, so reject it here and let the agent retry with a distinct key.
+    if (interview.questions.some((question) => question.questionKey === options.question.questionKey)) {
+      throw new StatusError(409, "A question with this question_key already exists in this interview; adaptive follow-ups need a new key.");
     }
     // max+1 rather than count: a retried append that already landed must not collide with the
     // (interviewId, orderIndex) unique in a way that corrupts ordering.

@@ -73,6 +73,7 @@ function buildInterviewTurnPrompt(input: InterviewTurnRequest): string {
     "",
     "Rules:",
     "- Present at most one question per turn, then stop. Never answer questions yourself.",
+    "- Never present a question whose `answered_at_millis` is set, and never reuse a `question_key` that already exists in the plan: the founder's UI pairs the card you present with the plan row by `question_key`, so a repeat renders as an unanswerable card and strands the interview.",
     "- Never explain or lengthen the stored question. Apart from shortening a legacy prompt to the limit above, preserve its evidence anchor, focused question, and meaning exactly.",
     "- The founder answers through the interview UI, not in this session — never wait for a reply.",
     "- Do not call any tools other than the three interview tools named above.",
