@@ -286,6 +286,12 @@ export type GrowthPublishedCategoryPage = {
   version: number,
   document: GrowthDocument,
   publishedAtMillis: number | null,
+  /**
+   * The actions this page's buttons reference, carried with the page: the overview's action lanes are
+   * capped and active-only, so resolving a button against them would show "no longer available" for a
+   * completed action, or for one that simply fell outside the cap.
+   */
+  actions: GrowthActionItem[],
 };
 
 export type GrowthCategoryPageStatus = "draft" | "published" | "archived";

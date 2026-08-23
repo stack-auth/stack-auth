@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { growthAdminActionRequestBody, growthRequestHeaders, parseGrowthAdsBody } from "./growth-api";
+import { growthAdminActionRequestBody, growthRequestHeaders, parseGrowthAdminCategoryPagesBody, parseGrowthAdsBody } from "./growth-api";
+import { readGrowthErrorMessage } from "./growth-api-client";
 import type { GrowthActionItem } from "./growth-types";
 
 // Regression coverage for a bug that silently broke every bodyless growth mutation — retry, skip,
@@ -170,5 +171,74 @@ describe("growthAdminActionRequestBody", () => {
         "type_id",
       ]
     `);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// parseGrowthAdminCategoryPagesBody
+// ---------------------------------------------------------------------------------------------
+
+// Regression coverage for a wire-contract mismatch: the admin route returns the stage pages inside a
+// `{ pages: [...] }` envelope, but the dashboard parsed the response as a bare array, so the stage-page
+// composer never loaded ("expected array, received object") for every stage of every project.
+describe("parseGrowthAdminCategoryPagesBody", () => {
+  function versionWire(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "page-1",
+      version: 3,
+      status: "published",
+      published_at_millis: 1_700_000_000_000,
+      updated_at_millis: 1_700_000_000_000,
+      category: "conversion",
+      source_json: { format: "growth-mdx-v1", source_mdx: "## Where signups are lost", data: [] },
+      document: null,
+      source_item_ids: { findings: ["f1"], actions: ["a1"] },
+      stale_source_ids: ["f1"],
+      ...overrides,
+    };
+  }
+
+  test("reads the pages out of the response envelope the route sends", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{ category: "conversion", draft: null, published: versionWire(), archived: [] }],
+    });
+    expect(pages.length).toBe(1);
+    expect(pages[0]?.category).toBe("conversion");
+    expect(pages[0]?.published?.source?.sourceMdx).toBe("## Where signups are lost");
+    expect(pages[0]?.published?.staleSourceIds).toEqual(["f1"]);
+  });
+
+  test("rejects a bare array, so a future contract change fails loudly instead of rendering an empty composer", () => {
+    expect(() => parseGrowthAdminCategoryPagesBody([{ category: "conversion", draft: null, published: null, archived: [] }])).toThrow();
+  });
+
+  test("keeps a version whose stored source no longer round-trips loadable, with a null source", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{ category: "reach", draft: versionWire({ category: "reach", status: "draft", published_at_millis: null, source_json: { format: "some-older-format" } }), published: null, archived: [] }],
+    });
+    expect(pages[0]?.draft?.source).toBe(null);
+    expect(pages[0]?.draft?.status).toBe("draft");
+  });
+});
+
+// A route that rejects with `new StatusError(400, "…")` answers in text/plain whose whole body is
+// the message, so reading only the `{ error }` shape turned every such rejection — including the
+// actionable "this page references an action from another stage" — into a bare status number.
+describe("readGrowthErrorMessage", () => {
+  test("reads a plain-text StatusError body", () => {
+    expect(readGrowthErrorMessage("This page references an action from another stage: abc", "fallback")).toBe("This page references an action from another stage: abc");
+  });
+
+  test("reads the error field of the route handler's JSON body", () => {
+    expect(readGrowthErrorMessage("{\"code\":\"X\",\"error\":\"Something specific\"}", "fallback")).toBe("Something specific");
+  });
+
+  test.each([
+    ["an empty body", ""],
+    ["an HTML error page from a proxy", "<html><body>502 Bad Gateway</body></html>"],
+    ["JSON without an error field", "{\"code\":\"X\"}"],
+    ["a body too long to be a message for a human", "x".repeat(401)],
+  ])("falls back for %s", (_label, body) => {
+    expect(readGrowthErrorMessage(body, "fallback")).toBe("fallback");
   });
 });

@@ -620,10 +620,13 @@ function demoTrendDocument(): GrowthDocument {
  * makes the "page instead of raw lanes" behaviour visible without a seeded project — and the reason
  * the conversion stage in the demo shows a page while every other stage still shows its lanes.
  */
-function demoConversionStagePage(): GrowthPublishedCategoryPage {
+function demoConversionStagePage(actions: GrowthActionItem[]): GrowthPublishedCategoryPage {
   const actionId = demoId(6, 3);
+  const referenced = actions.find((item) => item.id === actionId);
+  if (referenced == null) throw new Error("The Growth stage page demo references an action that no longer exists in the fixtures.");
   return {
     category: "conversion",
+    actions: [referenced],
     version: 3,
     publishedAtMillis: GROWTH_DEMO_NOW_MILLIS - 2 * DAY,
     document: {
@@ -904,7 +907,7 @@ export function buildGrowthDemoOverview(nowMillis: number): GrowthOverview {
       { category: "retention", count: 2, score: 55 },
       { category: "revenue", count: 1, score: 68 },
     ],
-    categoryPages: [demoConversionStagePage()],
+    categoryPages: [demoConversionStagePage(actions)],
     needsCategoryCount: 0,
     limit: 24,
   };

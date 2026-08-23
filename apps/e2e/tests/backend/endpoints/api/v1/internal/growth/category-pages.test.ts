@@ -50,7 +50,7 @@ function documentWith(actionId: string) {
 }
 
 function customerCategoryPages(body: unknown) {
-  return (body as { category_pages: { category: string, version: number }[] }).category_pages;
+  return (body as { category_pages: { category: string, version: number, actions: { id: string }[] }[] }).category_pages;
 }
 
 describe("internal Growth stage pages", { timeout: 90_000 }, () => {
@@ -99,6 +99,15 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
       })],
     });
 
+    // The page carries the actions its buttons reference. Without that, a button would only render
+    // while its action happened to be inside the overview's capped suggestion/archive lanes — so a
+    // dismissed one, or the 21st action in the stage, would silently become "no longer available".
+    expect(pages[0]?.actions).toMatchObject([{ id: conversionActionId, title: "Trim the signup form" }]);
+    const dismissed = await niceBackendFetch(`${GROWTH_BASE}/actions/${conversionActionId}/dismiss`, { accessType: "admin", method: "POST" });
+    expect(dismissed.status).toBe(200);
+    const afterDismiss = await niceBackendFetch(`${GROWTH_BASE}/overview`, { accessType: "admin" });
+    expect(customerCategoryPages(afterDismiss.body)[0]?.actions).toMatchObject([{ id: conversionActionId, status: "dismissed" }]);
+
     const takenDown = await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages/publish`, {
       accessType: "client",
       method: "DELETE",
@@ -136,6 +145,31 @@ describe("internal Growth stage pages", { timeout: 90_000 }, () => {
       body: { target_project_id: projectId, category: "conversion" },
     }));
     expect(discarded.status).toBe(404);
+  });
+
+  it("refuses a draft save that was written against an older version of the draft", async ({ expect }) => {
+    const { projectId, conversionActionId } = await createFixture();
+    const save = async (body: { source_mdx: string, expected: number | null }) => await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
+      accessType: "client",
+      method: "PUT",
+      body: {
+        target_project_id: projectId,
+        category: "conversion",
+        document: { format: "growth-mdx-v1", source_mdx: body.source_mdx, data: [] },
+        source_action_ids: [conversionActionId],
+        expected_draft_updated_at_millis: body.expected,
+      },
+    }));
+
+    const first = await save({ source_mdx: "## First author", expected: null });
+    expect(first.status).toBe(200);
+    const firstUpdatedAt = (first.body as { updated_at_millis: number }).updated_at_millis;
+
+    // A second author who loaded the page before the first save holds a stale timestamp (or, having
+    // seen no draft at all, none) and must not overwrite work they never saw.
+    expect((await save({ source_mdx: "## Second author", expected: null })).status).toBe(409);
+    expect((await save({ source_mdx: "## Second author", expected: firstUpdatedAt - 1000 })).status).toBe(409);
+    expect((await save({ source_mdx: "## Second author", expected: firstUpdatedAt })).status).toBe(200);
   });
 
   it("keeps the version history and rolls back to an earlier version", async ({ expect }) => {

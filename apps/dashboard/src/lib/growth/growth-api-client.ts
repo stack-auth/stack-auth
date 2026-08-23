@@ -27,6 +27,37 @@ export class GrowthApiError extends Error {
 // <body>", { cause: response })`). Without this conversion, GrowthApiError-based handling (e.g. the
 // settings page's friendly 409 "already running" alert) never triggers, and the raw message —
 // including the internal URL — leaks into user-facing alerts.
+/** Longer than any message a route writes for a human; past this we are looking at a page, not a message. */
+const MAX_ERROR_MESSAGE_LENGTH = 400;
+
+/**
+ * The user-safe message inside an error response body, in either shape the backend produces.
+ *
+ * Routes that reject with `new StatusError(400, "…")` — which is most of Growth's validation —
+ * answer with `text/plain` whose entire body IS the message (StatusError.getBody), while the
+ * route-handler layer's own errors answer with `{ code, error }`. Reading only the latter is why an
+ * actionable message like "This page references an action from another stage" used to reach the
+ * author as a bare "failed with status 400".
+ *
+ * Exported for the regression test.
+ */
+export function readGrowthErrorMessage(bodyText: string, fallback: string): string {
+  const text = bodyText.trim();
+  if (text.length === 0 || text.length > MAX_ERROR_MESSAGE_LENGTH) return fallback;
+  if (text.startsWith("{")) {
+    try {
+      const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(text));
+      return body.error ?? fallback;
+    } catch {
+      // Malformed JSON has no field we can trust to be user-safe; keep the status fallback.
+      return fallback;
+    }
+  }
+  // An HTML error page from a proxy: not written for this reader, and not worth showing them.
+  if (text.startsWith("<")) return fallback;
+  return text;
+}
+
 export function toGrowthApiError(error: unknown): GrowthApiError | null {
   if (!(error instanceof Error)) {
     return null;
@@ -39,18 +70,10 @@ export function toGrowthApiError(error: unknown): GrowthApiError | null {
   if (cause instanceof Response && cause.status >= 400 && cause.status < 500) {
     // The response body was already consumed by the SDK, but it embedded the text into the message
     // after the `: <status> ` token — recover the route's safe `{ error }` string from there.
-    let message = `Growth request failed with status ${cause.status}`;
+    const fallback = `Growth request failed with status ${cause.status}`;
     const marker = `: ${cause.status} `;
     const markerIndex = error.message.indexOf(marker);
-    if (markerIndex >= 0) {
-      try {
-        const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(error.message.slice(markerIndex + marker.length)));
-        message = body.error ?? message;
-      } catch {
-        // A non-JSON body has no safe message to expose; keep the status fallback.
-      }
-    }
-    return new GrowthApiError(cause.status, message);
+    return new GrowthApiError(cause.status, markerIndex < 0 ? fallback : readGrowthErrorMessage(error.message.slice(markerIndex + marker.length), fallback));
   }
   return null;
 }
@@ -83,14 +106,7 @@ export async function requestJson(app: object, path: string, init: RequestInit =
   if (!response.ok) {
     // Defensive: with the current SDK, 4xx never reaches here (it throws above) — but 5xx and any
     // future SDK behavior change land in this branch.
-    let message = `Growth request failed with status ${response.status}`;
-    try {
-      const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(text));
-      message = body.error ?? message;
-    } catch {
-      // A non-JSON proxy response has no safe message to expose; keep the status fallback.
-    }
-    throw new GrowthApiError(response.status, message);
+    throw new GrowthApiError(response.status, readGrowthErrorMessage(text, `Growth request failed with status ${response.status}`));
   }
   return text.length === 0 ? {} : JSON.parse(text);
 }

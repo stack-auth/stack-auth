@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectGrowthDocumentActionIds, compileGrowthDocument } from "./content-document";
+import { collectGrowthDocumentActionIds, collectStoredGrowthDocumentActionIds, compileGrowthDocument } from "./content-document";
 
 const trendData = {
   id: "signup-trend",
@@ -156,6 +156,18 @@ describe("compileGrowthDocument", () => {
       data: [],
     });
     expect(collectGrowthDocumentActionIds(compiled.blocks)).toEqual(["first", "second"]);
+  });
+
+  it("collects the same references off a stored document, which is plain JSON", () => {
+    const compiled = compileGrowthDocument({
+      format: "growth-mdx-v1",
+      source_mdx: "<ActionButton action=\"first\" />\n\n<Experiment>\n\n<ActionButton action=\"second\" />\n\n</Experiment>",
+      data: [],
+    });
+    // A stored row has been through JSON, so it is structurally identical but no longer typed.
+    expect(collectStoredGrowthDocumentActionIds(JSON.parse(JSON.stringify(compiled)))).toEqual(["first", "second"]);
+    expect(collectStoredGrowthDocumentActionIds(null)).toEqual([]);
+    expect(collectStoredGrowthDocumentActionIds({ blocks: [{ type: "paragraph", children: [] }] })).toEqual([]);
   });
 
   it("requires a currency before rendering monetary minor units", () => {

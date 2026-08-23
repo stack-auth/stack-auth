@@ -1,6 +1,6 @@
 import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { GrowthApiError, growthRequestHeaders, requestJson, toGrowthApiError } from "./growth-api-client";
+import { GrowthApiError, growthRequestHeaders, readGrowthErrorMessage, requestJson, toGrowthApiError } from "./growth-api-client";
 import { growthDocumentSchema } from "./growth-document";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { z } from "zod";
@@ -610,6 +610,7 @@ const publishedCategoryPageSchema = z.object({
   version: z.number(),
   document: growthDocumentSchema,
   published_at_millis: z.number().nullable(),
+  actions: z.array(actionItemSchema),
 });
 
 /**
@@ -632,6 +633,7 @@ function readPublishedCategoryPages(values: unknown[]): GrowthPublishedCategoryP
       version: parsed.data.version,
       document: parsed.data.document,
       publishedAtMillis: parsed.data.published_at_millis,
+      actions: parsed.data.actions.map(mapGrowthActionItem),
     });
   }
   return pages;
@@ -721,14 +723,7 @@ export async function requestGrowthAdminJson(app: object, path: string, init: Re
   }
   const responseText = await response.text();
   if (!response.ok) {
-    let message = `Growth admin request failed with status ${response.status}`;
-    try {
-      const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(responseText));
-      message = body.error ?? message;
-    } catch {
-      // Non-JSON proxy errors have no safe detail to expose.
-    }
-    throw new GrowthApiError(response.status, message);
+    throw new GrowthApiError(response.status, readGrowthErrorMessage(responseText, `Growth admin request failed with status ${response.status}`));
   }
   return responseText.length === 0 ? {} : JSON.parse(responseText);
 }
@@ -806,14 +801,23 @@ const adminCategoryPageSchema = z.object({
   archived: z.array(categoryPageVersionSummarySchema),
 });
 
-export async function listGrowthAdminCategoryPages(app: object, projectId: string): Promise<GrowthAdminCategoryPage[]> {
-  const rows = z.array(adminCategoryPageSchema).parse(await requestGrowthAdminJson(app, `/category-pages?project_id=${encodeURIComponent(projectId)}`));
-  return rows.map((row) => ({
+// The route wraps the list in an envelope so it can grow extra top-level fields without a breaking change.
+const adminCategoryPagesResponseSchema = z.object({
+  pages: z.array(adminCategoryPageSchema),
+});
+
+/** Exported separately from the fetch so the wire contract itself is unit-testable. */
+export function parseGrowthAdminCategoryPagesBody(value: unknown): GrowthAdminCategoryPage[] {
+  return adminCategoryPagesResponseSchema.parse(value).pages.map((row) => ({
     category: row.category,
     draft: row.draft == null ? null : mapCategoryPageVersion(row.draft),
     published: row.published == null ? null : mapCategoryPageVersion(row.published),
     archived: row.archived.map(mapCategoryPageVersionSummary),
   }));
+}
+
+export async function listGrowthAdminCategoryPages(app: object, projectId: string): Promise<GrowthAdminCategoryPage[]> {
+  return parseGrowthAdminCategoryPagesBody(await requestGrowthAdminJson(app, `/category-pages?project_id=${encodeURIComponent(projectId)}`));
 }
 
 /**
@@ -826,6 +830,8 @@ export async function saveGrowthAdminCategoryPageDraft(app: object, projectId: s
   data: unknown[],
   sourceFindingIds: string[],
   sourceActionIds: string[],
+  /** `updatedAtMillis` of the draft the composer loaded, or null if the stage had no draft. */
+  expectedDraftUpdatedAtMillis: number | null,
 }): Promise<GrowthCategoryPageVersion> {
   const value = categoryPageVersionSchema.parse(await requestGrowthAdminJson(app, "/category-pages", {
     method: "PUT",
@@ -835,6 +841,7 @@ export async function saveGrowthAdminCategoryPageDraft(app: object, projectId: s
       document: { format: "growth-mdx-v1", source_mdx: input.sourceMdx, data: input.data },
       source_finding_ids: input.sourceFindingIds,
       source_action_ids: input.sourceActionIds,
+      expected_draft_updated_at_millis: input.expectedDraftUpdatedAtMillis,
     }),
   }));
   return mapCategoryPageVersion(value);

@@ -239,7 +239,6 @@ export function GrowthWorkspaceContent(props: {
   for (const value of props.overview.actions.filter((item) => item.category === selected)) suggestions.push({ kind: "action", value });
   suggestions.sort((left, right) => right.value.createdAtMillis - left.value.createdAtMillis);
   const notes = props.overview.notes.filter((item) => item.category === selected);
-  const categoryActions = props.overview.actions.filter((item) => item.category === selected);
   // Once staff publish a page for a stage, that page IS the stage for a customer: the raw findings,
   // notes and actions it was written from stop being shown, because the page is our considered
   // presentation of exactly that material. Unpublishing brings the lanes back. On the editable
@@ -312,7 +311,7 @@ export function GrowthWorkspaceContent(props: {
           <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
           {editors == null && publishedPage != null && (
             <section className="py-8">
-              <GrowthDocumentActionsProvider actions={categoryActions} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
+              <GrowthDocumentActionsProvider actions={publishedPage.actions} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
                 <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
               </GrowthDocumentActionsProvider>
             </section>

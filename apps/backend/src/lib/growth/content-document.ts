@@ -360,6 +360,28 @@ export function collectGrowthDocumentActionIds(blocks: GrowthDocumentBlock[]): s
   return ids;
 }
 
+/**
+ * The same reference list, read off a STORED document.
+ *
+ * A stored row is JSON that was a valid AST when it was written, so this walks it structurally
+ * rather than re-typing it: callers only need the ids (to resolve the actions a live page links to),
+ * and a row written by an older shape of the compiler must still yield its references.
+ */
+export function collectStoredGrowthDocumentActionIds(value: unknown): string[] {
+  const ids: string[] = [];
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    if ("actionId" in node && typeof node.actionId === "string" && node.actionId.length > 0 && !ids.includes(node.actionId)) ids.push(node.actionId);
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(value);
+  return ids;
+}
+
 export function compileGrowthDocument(value: unknown): GrowthDocument {
   if (typeof value !== "object" || value === null || Array.isArray(value)) invalidDocument("document must be an object.");
   if (!("format" in value) || value.format !== GROWTH_DOCUMENT_FORMAT) invalidDocument(`format must be ${GROWTH_DOCUMENT_FORMAT}.`);

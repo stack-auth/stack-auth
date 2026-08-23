@@ -110,8 +110,18 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
     getGrowthPublishedCategoryPages(tenancy),
   ]);
 
-  const actions = [...activeActions, ...archivedActions];
+  // A live page's <ActionButton> must resolve even when the action it points at falls outside the
+  // capped, status-filtered lanes above (completed, dismissed, or simply older than the cap):
+  // otherwise the customer reads a page whose own buttons claim to no longer exist.
+  const loadedActionIds = new Set([...activeActions, ...archivedActions].map((item) => item.id));
+  const missingReferencedIds = [...new Set(categoryPages.flatMap((page) => page.referenced_action_ids))].filter((id) => !loadedActionIds.has(id));
+  const referencedActions = missingReferencedIds.length === 0 ? [] : await globalPrismaClient.growthActionItem.findMany({
+    where: { projectId, branchId, id: { in: missingReferencedIds } },
+  });
+
+  const actions = [...activeActions, ...archivedActions, ...referencedActions];
   const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, actions);
+  const actionById = new Map(actions.map((item) => [item.id, item]));
   const counts = new Map<GrowthCategory, number>(GROWTH_CATEGORIES.map((category) => [category, 0]));
   for (const row of [...findingCategoryCounts, ...actionCategoryCounts]) {
     const category = assertStoredCategory(row.category);
@@ -158,7 +168,18 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
     // Where a stage has a live page, the workspace renders it instead of that
     // stage's raw suggestion/note lanes; stages without one keep the lanes, which is
     // what makes this a stage-by-stage rollout rather than a switch.
-    category_pages: categoryPages,
+    category_pages: categoryPages.map((page) => ({
+      category: page.category,
+      version: page.version,
+      document: page.document,
+      published_at_millis: page.published_at_millis,
+      // The page carries its own referenced actions, so the renderer resolves a button from the page
+      // it belongs to rather than from whatever happened to fit in the capped lanes.
+      actions: page.referenced_action_ids.flatMap((id) => {
+        const item = actionById.get(id);
+        return item == null ? [] : [growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)];
+      }),
+    })),
     needs_category_count: unclassifiedFindings + unclassifiedActions,
     limit,
   };

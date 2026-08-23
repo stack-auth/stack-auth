@@ -46,6 +46,9 @@ export const PUT = createSmartRouteHandler({
       document: yupMixed().defined(),
       source_finding_ids: yupArray(yupString().uuid().defined()).max(100).default([]),
       source_action_ids: yupArray(yupString().uuid().defined()).max(100).default([]),
+      // The draft the author started from, so a save that would silently clobber a colleague's
+      // newer draft is rejected instead. null = they started from a stage with no draft.
+      expected_draft_updated_at_millis: yupNumber().nullable().defined(),
     }).defined(),
     method: yupString().oneOf(["PUT"]).defined(),
   }),
@@ -61,6 +64,7 @@ export const PUT = createSmartRouteHandler({
         document: body.document,
         sourceItemIds: { findings: body.source_finding_ids, actions: body.source_action_ids },
         authoredByUserId,
+        expectedDraftUpdatedAtMillis: body.expected_draft_updated_at_millis,
       }),
     };
   },

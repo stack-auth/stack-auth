@@ -114,7 +114,11 @@ export function GrowthAdminCategoryPageCard(props: {
   // Seeded once per (stage, loaded pages) rather than on every render of the parent workspace: a save
   // elsewhere on the admin page refreshes the overview, and re-seeding there would discard whatever
   // the author has pasted but not yet saved.
-  const seedKey = context.state.status === "loaded" ? `${category}:${page?.draft?.id ?? "no-draft"}:${page?.published?.id ?? "no-live"}` : null;
+  // Keyed by last-saved time as well as id, so a draft that was re-saved (here or by a colleague)
+  // re-seeds the editor rather than leaving it showing content the backend has since replaced.
+  const seedKey = context.state.status === "loaded"
+    ? `${category}:${page?.draft?.id ?? "no-draft"}:${page?.draft?.updatedAtMillis ?? 0}:${page?.published?.id ?? "no-live"}:${page?.published?.updatedAtMillis ?? 0}`
+    : null;
   useEffect(() => {
     if (seedKey == null || seedKey === seededFor) return;
     const source = initialSource(page);
@@ -126,6 +130,10 @@ export function GrowthAdminCategoryPageCard(props: {
   const findings = overview.findings.filter((item) => item.category === category);
   const notes = overview.notes.filter((item) => item.category === category);
   const actions = overview.actions.filter((item) => item.category === category);
+  // The preview must resolve the same references the customer's copy does, and a live page may point
+  // at an action the overview's capped lanes left out — so it contributes the actions it carries.
+  const livePageActions = overview.categoryPages.find((item) => item.category === category)?.actions ?? [];
+  const previewActions = [...actions, ...livePageActions.filter((item) => !actions.some((known) => known.id === item.id))];
   const score = overview.categories.find((item) => item.category === category)?.score ?? null;
   const prompt = buildGrowthCategoryPagePrompt({ category, score, findings, notes, actions });
 
@@ -212,6 +220,9 @@ export function GrowthAdminCategoryPageCard(props: {
                   data,
                   sourceFindingIds: [...findings, ...notes].map((item) => item.id),
                   sourceActionIds: actions.map((action) => action.id),
+                  // The draft this editor was seeded from: the backend rejects the save if someone
+                  // else has saved the stage since, instead of overwriting their work.
+                  expectedDraftUpdatedAtMillis: page?.draft?.updatedAtMillis ?? null,
                 });
               })}
             >
@@ -284,7 +295,7 @@ export function GrowthAdminCategoryPageCard(props: {
               ? <p className="mt-2 text-xs text-muted-foreground">Save a draft to preview it exactly as the customer will see it.</p>
               : (
                 <div className="mt-3">
-                  <GrowthDocumentActionsProvider actions={actions} onChanged={props.onPublishedChanged}>
+                  <GrowthDocumentActionsProvider actions={previewActions} onChanged={props.onPublishedChanged}>
                     <GrowthDocumentRenderer document={preview} className="max-w-3xl" />
                   </GrowthDocumentActionsProvider>
                 </div>

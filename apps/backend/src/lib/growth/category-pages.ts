@@ -1,10 +1,11 @@
+import { Prisma } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
 import type { PrismaTransaction } from "@/lib/types";
-import { globalPrismaClient } from "@/prisma-client";
+import { PRISMA_ERROR_CODES, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { toJsonInput } from "./agent-writes";
 import { assertGrowthCategory, type GrowthCategory } from "./categories";
-import { collectGrowthDocumentActionIds, compileGrowthDocument, type GrowthDocument } from "./content-document";
+import { collectGrowthDocumentActionIds, collectStoredGrowthDocumentActionIds, compileGrowthDocument, type GrowthDocument } from "./content-document";
 
 /**
  * Stage pages: the staff-authored page a customer reads under a hexagon stage,
@@ -90,6 +91,10 @@ export async function getGrowthPublishedCategoryPages(tenancy: Tenancy) {
     version: row.version,
     document: row.document ?? null,
     published_at_millis: row.publishedAt == null ? null : row.publishedAt.getTime(),
+    // The actions this page's <ActionButton>s point at. The overview's action lanes are capped and
+    // active-only, so a page linking a completed action — or an older one past the cap — would
+    // otherwise render as "no longer available" even though the action is right there in the project.
+    referenced_action_ids: collectStoredGrowthDocumentActionIds(row.document),
   }));
 }
 
@@ -110,21 +115,27 @@ async function loadStaleSourceIds(
   const [findings, actions] = await Promise.all([
     findingIds.length === 0
       ? Promise.resolve([])
-      : globalPrismaClient.growthFinding.findMany({ where: { ...where, id: { in: findingIds } }, select: { id: true, updatedAt: true } }),
+      // GrowthFinding has no update timestamp (findings and notes are written once by the agent),
+      // so for those the only detectable change is disappearing — hence createdAt, which for a source
+      // the page already cites is always older than the page and therefore never flags on its own.
+      : globalPrismaClient.growthFinding.findMany({ where: { ...where, id: { in: findingIds } }, select: { id: true, createdAt: true } }),
     actionIds.length === 0
       ? Promise.resolve([])
       : globalPrismaClient.growthActionItem.findMany({ where: { ...where, id: { in: actionIds } }, select: { id: true, updatedAt: true } }),
   ]);
-  const updatedAtById = new Map<string, Date>([...findings, ...actions].map((row) => [row.id, row.updatedAt]));
+  const changedAtById = new Map<string, Date>([
+    ...findings.map((row): [string, Date] => [row.id, row.createdAt]),
+    ...actions.map((row): [string, Date] => [row.id, row.updatedAt]),
+  ]);
 
   const staleByPageId = new Map<string, string[]>();
   for (const entry of pages) {
     const stale: string[] = [];
     for (const id of [...entry.sources.findings, ...entry.sources.actions]) {
-      const updatedAt = updatedAtById.get(id);
+      const changedAt = changedAtById.get(id);
       // A deleted source counts as stale too: the page is quoting something that no
       // longer exists, which is exactly when staff need to look at it.
-      if (updatedAt == null || updatedAt.getTime() > entry.page.updatedAt.getTime()) stale.push(id);
+      if (changedAt == null || changedAt.getTime() > entry.page.updatedAt.getTime()) stale.push(id);
     }
     staleByPageId.set(entry.page.id, stale);
   }
@@ -209,6 +220,13 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
   document: unknown,
   sourceItemIds: GrowthCategoryPageSourceItemIds,
   authoredByUserId: string,
+  /**
+   * `updated_at_millis` of the draft the author started from, or null if they started from no
+   * draft at all. There is only one draft slot per stage, so without this a second author editing
+   * the same stage would silently overwrite a colleague's saved work; comparing it lets us reject
+   * the save instead and let them reload.
+   */
+  expectedDraftUpdatedAtMillis: number | null,
 }) {
   const category = assertGrowthCategory(input.category);
   const compiled = compileGrowthDocument(input.document);
@@ -217,13 +235,16 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
   const branchId = tenancy.branchId;
   const sourceItemIds = { findings: [...new Set(input.sourceItemIds.findings)], actions: [...new Set(input.sourceItemIds.actions)] };
 
-  const row = await globalPrismaClient.$transaction(async (tx) => {
+  const saveDraft = () => retryTransaction(globalPrismaClient, async (tx) => {
     // Inside the transaction so a concurrent recategorization/deletion of a
     // referenced action can't slip between the check and the write.
     await assertActionReferences(tx, tenancy, category, compiled);
 
     const existingDraft = await tx.growthCategoryPage.findFirst({ where: { projectId, branchId, category, status: "draft" } });
     if (existingDraft != null) {
+      if (input.expectedDraftUpdatedAtMillis !== existingDraft.updatedAt.getTime()) {
+        throw new StatusError(409, "Someone else saved this stage's draft after you opened it. Reload the page to pick up their version before saving.");
+      }
       return await tx.growthCategoryPage.update({
         where: { id: existingDraft.id },
         data: {
@@ -252,6 +273,19 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
     });
   });
 
+  let row;
+  try {
+    row = await saveDraft();
+  } catch (error) {
+    // Two authors creating the stage's first draft at the same time compute the same next version
+    // number (or both aim for the single draft slot); the loser gets the same reload-and-retry
+    // answer as the stale-overwrite case above rather than an opaque 500.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES.UNIQUE_CONSTRAINT_VIOLATION) {
+      throw new StatusError(409, "Someone else saved this stage's draft at the same time. Reload the page and try again.");
+    }
+    throw error;
+  }
+
   return { ...versionToWire(row), stale_source_ids: [] };
 }
 
@@ -277,7 +311,7 @@ export async function publishGrowthAdminCategoryPage(tenancy: Tenancy, input: { 
   const projectId = tenancy.project.id;
   const branchId = tenancy.branchId;
 
-  const published = await globalPrismaClient.$transaction(async (tx) => {
+  const published = await retryTransaction(globalPrismaClient, async (tx) => {
     const target = await tx.growthCategoryPage.findFirst({ where: { projectId, branchId, category, version: input.version } });
     if (target == null) throw new StatusError(404, "This version of the stage page no longer exists.");
     if (target.status === "published") throw new StatusError(400, "This version is already live.");
