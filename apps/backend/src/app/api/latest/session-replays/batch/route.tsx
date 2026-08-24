@@ -5,7 +5,7 @@ import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { rollbackPlanItemDebits, tryDecreasePlanItemQuantities, type PlanItemDebit } from "@/lib/plan-metering";
 import { MAX_JAVASCRIPT_TIMESTAMP_MILLIS, telemetryMeteredAt } from "@/lib/telemetry-metering-time";
-import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
+import { aggregateSessionReplaySegmentBounds, findRecentSessionReplay } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
@@ -291,31 +291,35 @@ export const POST = createSmartRouteHandler({
       deduped = !insertedChunk.inserted;
     }
 
-    const [replayRows, segmentBounds] = await Promise.all([
-      prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
-        UPDATE "SessionReplay"
-        SET
-          "startedAt" = LEAST("startedAt", ${chunk.firstEventAt}),
-          "lastEventAt" = GREATEST("lastEventAt", ${chunk.lastEventAt}),
-          "shouldUpdateSequenceId" = TRUE,
-          "updatedAt" = NOW()
-        WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
-        RETURNING "startedAt", "lastEventAt"
-      `,
-      upsertSessionReplaySegmentBounds(prisma, {
-        tenancyId,
-        sessionReplayId: replayId,
-        sessionReplaySegmentId: chunk.sessionReplaySegmentId,
-        batchFirstEventAt: chunk.firstEventAt,
-        batchLastEventAt: chunk.lastEventAt,
-      }),
-    ]);
-    if (replayRows.length !== 1) {
-      throw new HexclaveAssertionError("Session replay bounds update did not return exactly one replay row");
-    }
-    const replay = replayRows[0];
+    const replayRowsPromise = prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
+      UPDATE "SessionReplay"
+      SET
+        "startedAt" = LEAST("startedAt", ${chunk.firstEventAt}),
+        "lastEventAt" = GREATEST("lastEventAt", ${chunk.lastEventAt}),
+        "shouldUpdateSequenceId" = TRUE,
+        "updatedAt" = NOW()
+      WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
+      RETURNING "startedAt", "lastEventAt"
+    `;
 
-    if (resource !== null) {
+    if (resource === null) {
+      const replayRows = await replayRowsPromise;
+      if (replayRows.length !== 1) {
+        throw new HexclaveAssertionError("Session replay bounds update did not return exactly one replay row");
+      }
+    } else {
+      const [replayRows, segmentBounds] = await Promise.all([
+        replayRowsPromise,
+        aggregateSessionReplaySegmentBounds(prisma, {
+          tenancyId,
+          sessionReplayId: replayId,
+          sessionReplaySegmentId: chunk.sessionReplaySegmentId,
+        }),
+      ]);
+      if (replayRows.length !== 1) {
+        throw new HexclaveAssertionError("Session replay bounds update did not return exactly one replay row");
+      }
+      const replay = replayRows[0];
       await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
         projectId,
         branchId,

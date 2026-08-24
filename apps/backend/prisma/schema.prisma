@@ -853,7 +853,6 @@ model Tenancy {
   emailOutboxes       EmailOutbox[]
   sessionReplays        SessionReplay[]
   sessionReplayChunks   SessionReplayChunk[]
-  sessionReplaySegments SessionReplaySegment[]
   managedEmailDomains ManagedEmailDomain[]
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
@@ -1240,8 +1239,7 @@ model SessionReplay {
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  chunks   SessionReplayChunk[]
-  segments SessionReplaySegment[]
+  chunks SessionReplayChunk[]
 
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId, startedAt])
@@ -1284,25 +1282,6 @@ model SessionReplayChunk {
   @@unique([tenancyId, sessionReplayId, batchId])
   @@index([tenancyId, sessionReplayId, createdAt])
   @@map("SessionReplayChunk")
-}
-
-model SessionReplaySegment {
-  id String
-
-  tenancyId       String @db.Uuid
-  sessionReplayId String @db.Uuid
-
-  firstEventAt DateTime
-  lastEventAt  DateTime
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  sessionReplay SessionReplay @relation(fields: [tenancyId, sessionReplayId], references: [tenancyId, id], onDelete: Cascade)
-  tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-
-  @@id([tenancyId, sessionReplayId, id])
-  @@map("SessionReplaySegment")
 }
 
 enum ContactChannelType {
@@ -3726,7 +3705,7 @@ model IssueSubscription {
   tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade, map: "IssueSubscription_tenancy_scope_fkey")
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "IssueSubscription_project_fkey")
   issue Issue @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade, map: "IssueSubscription_issue_fkey")
-  user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Restrict, map: "IssueSubscription_user_fkey")
+  user ProjectUser? @relation("IssueSubscriptionUser", fields: [tenancyId, subjectUserId], references: [tenancyId, projectUserId], onDelete: Cascade, map: "IssueSubscription_user_fkey")
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectId, branchId, issueId, subjectType, subjectUserId, subjectTeamId], map: "IssueSubscription_scope_natural_key")

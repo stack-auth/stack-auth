@@ -25,49 +25,22 @@ export async function findRecentSessionReplay(prisma: PrismaClientWithReplica<Pr
   });
 }
 
-export async function upsertSessionReplaySegmentBounds(prisma: PrismaClientWithReplica<PrismaClient>, options: {
+export async function aggregateSessionReplaySegmentBounds(prisma: PrismaClientWithReplica<PrismaClient>, options: {
   tenancyId: string,
   sessionReplayId: string,
   sessionReplaySegmentId: string,
-  batchFirstEventAt: Date,
-  batchLastEventAt: Date,
 }): Promise<{ firstEventAt: Date, lastEventAt: Date }> {
-  const existing = await prisma.sessionReplaySegment.findUnique({
+  // Callers must pass the primary client that just wrote the chunk. A replica can miss it under replication lag.
+  const aggregated = await prisma.sessionReplayChunk.aggregate({
     where: {
-      tenancyId_sessionReplayId_id: {
-        tenancyId: options.tenancyId,
-        sessionReplayId: options.sessionReplayId,
-        id: options.sessionReplaySegmentId,
-      },
+      tenancyId: options.tenancyId,
+      sessionReplayId: options.sessionReplayId,
+      sessionReplaySegmentId: options.sessionReplaySegmentId,
     },
-    select: { id: true },
+    _min: { firstEventAt: true },
+    _max: { lastEventAt: true },
   });
-
-  let firstEventAt = options.batchFirstEventAt;
-  let lastEventAt = options.batchLastEventAt;
-  if (existing == null) {
-    const seed = await prisma.sessionReplayChunk.aggregate({
-      where: {
-        tenancyId: options.tenancyId,
-        sessionReplayId: options.sessionReplayId,
-        sessionReplaySegmentId: options.sessionReplaySegmentId,
-      },
-      _min: { firstEventAt: true },
-      _max: { lastEventAt: true },
-    });
-    firstEventAt = new Date(Math.min(firstEventAt.getTime(), seed._min.firstEventAt?.getTime() ?? Infinity));
-    lastEventAt = new Date(Math.max(lastEventAt.getTime(), seed._max.lastEventAt?.getTime() ?? -Infinity));
-  }
-
-  const rows = await prisma.$queryRaw<Array<{ firstEventAt: Date, lastEventAt: Date }>>`
-    INSERT INTO "SessionReplaySegment" ("tenancyId", "sessionReplayId", "id", "firstEventAt", "lastEventAt", "createdAt", "updatedAt")
-    VALUES (${options.tenancyId}::uuid, ${options.sessionReplayId}::uuid, ${options.sessionReplaySegmentId}, ${firstEventAt}, ${lastEventAt}, NOW(), NOW())
-    ON CONFLICT ("tenancyId", "sessionReplayId", "id") DO UPDATE SET
-      "firstEventAt" = LEAST("SessionReplaySegment"."firstEventAt", EXCLUDED."firstEventAt"),
-      "lastEventAt" = GREATEST("SessionReplaySegment"."lastEventAt", EXCLUDED."lastEventAt"),
-      "updatedAt" = NOW()
-    RETURNING "firstEventAt", "lastEventAt"
-  `;
-  const row = rows[0] ?? throwErr("upsertSessionReplaySegmentBounds: upsert returned no row — INSERT ... ON CONFLICT DO UPDATE should always return the affected row");
-  return { firstEventAt: row.firstEventAt, lastEventAt: row.lastEventAt };
+  const firstEventAt = aggregated._min.firstEventAt ?? throwErr("aggregateSessionReplaySegmentBounds: missing firstEventAt after writing a SessionReplayChunk for this segment");
+  const lastEventAt = aggregated._max.lastEventAt ?? throwErr("aggregateSessionReplaySegmentBounds: missing lastEventAt after writing a SessionReplayChunk for this segment");
+  return { firstEventAt, lastEventAt };
 }

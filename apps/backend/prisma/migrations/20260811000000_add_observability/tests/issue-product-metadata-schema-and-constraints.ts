@@ -39,6 +39,15 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   await sql`INSERT INTO "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "isActive") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, 'USER', ${userId}::uuid, true)`;
   await expect(sql`INSERT INTO "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "subjectTeamId", "isActive") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, 'USER', ${userId}::uuid, ${teamId}::uuid, true)`).rejects.toThrow(/IssueSubscription_subject_check/);
   await expect(sql`INSERT INTO "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "isActive") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, 'USER', ${userId}::uuid, false)`).rejects.toThrow(/IssueSubscription_scope_natural_key/);
+
+  const deletableUserId = randomUUID();
+  await sql`INSERT INTO "ProjectUser" ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "createdAt", "updatedAt", "lastActiveAt", "signedUpAt") VALUES (${ctx.primary.tenancyId}::uuid, ${deletableUserId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, NOW(), NOW(), NOW(), NOW())`;
+  await sql`INSERT INTO "IssueSubscription" ("tenancyId", "projectId", "branchId", "issueId", "subjectType", "subjectUserId", "isActive") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, 'USER', ${deletableUserId}::uuid, true)`;
+  await sql`DELETE FROM "ProjectUser" WHERE "tenancyId" = ${ctx.primary.tenancyId}::uuid AND "projectUserId" = ${deletableUserId}::uuid`;
+  const subscriptionsAfterUserDelete = await sql<{ subjectUserId: string | null }[]>`
+    SELECT "subjectUserId"::text AS "subjectUserId" FROM "IssueSubscription" WHERE "tenancyId" = ${ctx.primary.tenancyId}::uuid ORDER BY "subjectUserId"
+  `;
+  expect(subscriptionsAfterUserDelete).toEqual([{ subjectUserId: userId }]);
   await sql`INSERT INTO "IssueBookmark" ("tenancyId", "projectId", "branchId", "issueId", "userId") VALUES (${ctx.primary.tenancyId}::uuid, ${ctx.primary.projectId}, ${ctx.primary.branchId}, ${issueId}::uuid, ${userId}::uuid)`;
   await expect(sql`INSERT INTO "IssueBookmark" ("tenancyId", "projectId", "branchId", "issueId", "userId") VALUES (${ctx.other.tenancyId}::uuid, ${ctx.other.projectId}, ${ctx.other.branchId}, ${issueId}::uuid, ${userId}::uuid)`).rejects.toThrow(/IssueBookmark_issue_fkey|IssueBookmark_user_fkey|IssueBookmark_tenancy_scope_fkey/);
 

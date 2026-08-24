@@ -198,13 +198,6 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     throw new HexclaveAssertionError("Successful session replay upload did not return a replay id");
   }
 
-  await withInternalDatabase(async (client) => {
-    await client.query(
-      `DELETE FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
-      [recordingId, sessionReplaySegmentId],
-    );
-  });
-
   const second = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
     accessType: "client",
@@ -237,23 +230,14 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
   expect(second.body?.session_replay_id).toBe(recordingId);
 
   await withInternalDatabase(async (client) => {
-    const repairedReplays = await client.query<{ startedAtMs: string, lastEventAtMs: string }>(
+    const replayBounds = await client.query<{ startedAtMs: string, lastEventAtMs: string }>(
       `SELECT EXTRACT(EPOCH FROM "startedAt") * 1000 AS "startedAtMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastEventAtMs" FROM "SessionReplay" WHERE "id" = $1::uuid`,
       [recordingId],
     );
-    expect(repairedReplays.rows.map((row) => ({
+    expect(replayBounds.rows.map((row) => ({
       startedAtMs: Number(row.startedAtMs),
       lastEventAtMs: Number(row.lastEventAtMs),
     }))).toEqual([{ startedAtMs: now + 100, lastEventAtMs: now + 200 }]);
-
-    const repairedSegments = await client.query<{ firstEventAtMs: string, lastEventAtMs: string }>(
-      `SELECT EXTRACT(EPOCH FROM "firstEventAt") * 1000 AS "firstEventAtMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastEventAtMs" FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
-      [recordingId, sessionReplaySegmentId],
-    );
-    expect(repairedSegments.rows.map((row) => ({
-      firstEventAtMs: Number(row.firstEventAtMs),
-      lastEventAtMs: Number(row.lastEventAtMs),
-    }))).toEqual([{ firstEventAtMs: now + 100, lastEventAtMs: now + 200 }]);
   });
 
   const concurrentBatchId = randomUUID();

@@ -254,12 +254,18 @@ export async function resolveOccurrenceReplayIds(
   if (missingSegmentIds.length === 0) return [...rows];
 
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const segments = await prisma.$replica().sessionReplaySegment.findMany({
+  const chunks = await prisma.$replica().sessionReplayChunk.findMany({
     where: {
       tenancyId: tenancy.id,
-      id: { in: missingSegmentIds },
+      sessionReplaySegmentId: { in: missingSegmentIds },
     },
-    select: { id: true, sessionReplayId: true },
+    select: { sessionReplaySegmentId: true, sessionReplayId: true },
   });
-  return projectResolvedOccurrenceReplayIds(rows, segments);
+  return projectResolvedOccurrenceReplayIds(
+    rows,
+    chunks.map((chunk) => ({
+      id: chunk.sessionReplaySegmentId,
+      sessionReplayId: chunk.sessionReplayId,
+    })),
+  );
 }

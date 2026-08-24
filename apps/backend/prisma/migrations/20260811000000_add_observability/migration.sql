@@ -39,24 +39,12 @@ CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "Tenancy_id_projectId_branchId_ke
 -- SPLIT_STATEMENT_SENTINEL
 
 -- The FK adds below take brief SHARE ROW EXCLUSIVE locks on hot referenced
--- tables (Tenancy, Project, ProjectUser, SessionReplay). Fail fast instead of
+-- tables (Tenancy, Project, ProjectUser). Fail fast instead of
 -- queueing an exclusive lock request behind long-running production queries
 -- for the lifetime of the deploy transaction. SET LOCAL is transaction-scoped,
 -- so this covers the rest of this file.
 SET LOCAL lock_timeout = '2s';
 SET LOCAL statement_timeout = '5min';
-
-CREATE TABLE "SessionReplaySegment" (
-    "id" TEXT NOT NULL,
-    "tenancyId" UUID NOT NULL,
-    "sessionReplayId" UUID NOT NULL,
-    "firstEventAt" TIMESTAMP(3) NOT NULL,
-    "lastEventAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "SessionReplaySegment_pkey" PRIMARY KEY ("tenancyId","sessionReplayId","id")
-);
 
 CREATE TYPE "ReleaseStatus" AS ENUM ('OPEN', 'ARCHIVED');
 CREATE TYPE "ReleaseArtifactStatus" AS ENUM ('REGISTERED', 'FINALIZED');
@@ -557,11 +545,6 @@ CREATE UNIQUE INDEX "ErrorIngestClientReport_scope_idempotency_key"
 CREATE INDEX "ErrorIngestClientReport_scope_reportedAt_idx"
   ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "reportedAt" DESC, "id" DESC);
 
-ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_sessionReplayId_fkey"
-  FOREIGN KEY ("tenancyId", "sessionReplayId") REFERENCES "SessionReplay"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "SessionReplaySegment" ADD CONSTRAINT "SessionReplaySegment_tenancyId_fkey"
-  FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
 ALTER TABLE "Release" ADD CONSTRAINT "Release_tenancy_scope_fkey"
   FOREIGN KEY ("tenancyId", "projectId", "branchId")
   REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -657,7 +640,10 @@ ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_tenancy_scope_
   REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_project_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_issue_fkey" FOREIGN KEY ("tenancyId", "issueId") REFERENCES "Issue"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_user_fkey" FOREIGN KEY ("tenancyId", "subjectUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- CASCADE, not RESTRICT: DELETE ProjectUser is the account-delete path and has
+-- no sibling cascade the way DELETE Project does. RESTRICT would 500 that path
+-- as soon as the user has an issue subscription. Matches IssueOwner/Comment/Bookmark.
+ALTER TABLE "IssueSubscription" ADD CONSTRAINT "IssueSubscription_user_fkey" FOREIGN KEY ("tenancyId", "subjectUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "IssueBookmark" ADD CONSTRAINT "IssueBookmark_tenancy_scope_fkey" FOREIGN KEY ("tenancyId", "projectId", "branchId")
   REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
