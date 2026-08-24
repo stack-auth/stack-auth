@@ -21,20 +21,21 @@ import { InternalSession } from "@hexclave/shared/dist/sessions";
 import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@hexclave/shared/dist/utils/compile-time";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, HexclaveSetupError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { parseJson } from "@hexclave/shared/dist/utils/json";
 import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
-import { suspend, suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { suspend, use } from "@hexclave/shared/dist/utils/react";
 import { getTrustedParentDomain, validateRedirectUrl } from "@hexclave/shared/dist/utils/redirect-urls";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { Store, storeLock } from "@hexclave/shared/dist/utils/stores";
+import { Store } from "@hexclave/shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -44,6 +45,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
+import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM react-like
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -57,8 +59,9 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
-import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
+import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -69,6 +72,22 @@ import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, 
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
 
+export function stripBrowserActionQueryParam() {
+  let stripAttemptsRemaining = 20;
+  const stripActionId = () => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has(BROWSER_ACTION_QUERY_PARAM)) {
+      currentUrl.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
+      window.history.replaceState(window.history.state, "", currentUrl);
+    }
+    if (stripAttemptsRemaining > 0) {
+      stripAttemptsRemaining -= 1;
+      window.setTimeout(stripActionId, 0);
+    }
+  };
+  stripActionId();
+}
+
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
@@ -76,6 +95,7 @@ import { useAsyncCache } from "./common";
 import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 import { mountPushedConfigErrorOverlay } from "../../../../pushed-config-error-overlay";
+import { showSetupErrorOverlay } from "../../../../setup-error-overlay";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -89,6 +109,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
+const oauthAfterCallbackRedirectUrlQueryParam = "after_callback_redirect_url";
 
 const nestedCrossDomainAuthQueryParams = {
   refreshTokenId: "stack_nested_cross_domain_auth_refresh_token_id",
@@ -97,8 +118,83 @@ const nestedCrossDomainAuthQueryParams = {
   state: "state",
   codeChallenge: "code_challenge",
   codeChallengeMethod: "code_challenge_method",
-  afterCallbackRedirectUrl: "after_callback_redirect_url",
+  afterCallbackRedirectUrl: oauthAfterCallbackRedirectUrlQueryParam,
 } as const;
+
+/**
+ * An auth flow can only ever send the user to a URL that the project trusts, so an untrusted one means the flow is dead
+ * until someone changes the project's configuration. Describe the problem in terms of that configuration rather than in
+ * terms of the flow's internals, which nobody outside this file knows about.
+ */
+function createUntrustedUrlError(options: {
+  /** Kept verbatim from the throw site, so the message stays greppable for whoever already has it in their logs. */
+  message: string,
+  url: string,
+  projectId: string,
+  cause?: unknown,
+}): HexclaveSetupError {
+  const origin = createUrlIfValid(options.url)?.origin ?? options.url;
+  return new HexclaveSetupError({
+    title: "A domain in your authentication flow is not one of your project's trusted domains",
+    message: options.message,
+    howToFix: [
+      `If ${origin} is yours, add it to your project's trusted domains in the Hexclave dashboard, under Domains.`,
+      "Protocol, domain and port must all match a trusted domain exactly; a wildcard like https://*.example.com matches only one subdomain level.",
+      `If ${origin} is not yours, do not add it \u2014 somebody may be trying to redirect your users' credentials to it.`,
+    ],
+    extraData: {
+      url: options.url,
+      projectId: options.projectId,
+      ...options.cause === undefined ? {} : { cause: options.cause },
+    },
+  });
+}
+
+function createUntrustedNestedCrossDomainUrlError(options: {
+  urlDescription: string,
+  url: string,
+  projectId: string,
+}): HexclaveSetupError {
+  return createUntrustedUrlError({
+    message: `Nested cross-domain auth ${options.urlDescription} ${options.url} is not trusted.`,
+    url: options.url,
+    projectId: options.projectId,
+  });
+}
+
+/**
+ * A URL that the auth flow cannot even parse is just as fatal as an untrusted one, and just as much a configuration
+ * problem: something in the developer's setup put a relative or malformed value where an absolute URL belongs.
+ */
+function createMalformedNestedCrossDomainUrlError(options: {
+  urlDescription: string,
+  url: string,
+}): HexclaveSetupError {
+  return new HexclaveSetupError({
+    title: "A URL in your authentication flow is not a valid absolute URL",
+    message: `Nested cross-domain auth ${options.urlDescription} ${options.url} is not a valid absolute URL.`,
+    howToFix: [
+      "Handler URLs and after-auth redirect URLs must be absolute, including their protocol, like https://example.com/handler/oauth-callback.",
+      "Check the handler URLs configured for your project and the redirect URLs you pass to Hexclave's sign-in and sign-up methods.",
+      "If none of those look wrong, check whether a proxy or rewrite in front of your app is rewriting the authentication flow's query parameters.",
+    ],
+    extraData: {
+      url: options.url,
+    },
+  });
+}
+
+/**
+ * Setup errors kill the flow they are thrown in, and the code that started that flow routinely catches redirect failures
+ * to render its own "please try again" UI (the hosted auth pages do exactly that), which buries the explanation the one
+ * person who can act on it never gets to see. Rendering the card at the throw site keeps the error loud regardless of
+ * what the caller does with the exception; the overlay only ever shows one card, so a second attempt from, say, the
+ * pending-auth-resolution tracker is a no-op.
+ */
+function throwSetupError(error: HexclaveSetupError): never {
+  showSetupErrorOverlay(error); // THIS_LINE_PLATFORM js-like
+  throw error;
+}
 
 function getRedirectHelperInstruction(handlerName: string): string {
   if (handlerName === "handler") {
@@ -261,6 +357,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
+  private _pendingSignOut: Promise<void> | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -697,17 +794,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._analyticsOptions = resolvedOptions.analytics;
+
+    if (extraOptions?.uniqueIdentifier !== undefined) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    }
+
+    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, analytics, and
+    // development overlays cannot affect the containing page. Explicit SDK calls remain functional and retain their
+    // documented side effects.
+    if (resolvedOptions.automaticSideEffects === false) {
+      return;
+    }
+
+    this._initializeAutomaticSideEffects(resolvedOptions);
+  }
+
+  private _initializeAutomaticSideEffects(resolvedOptions: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>) {
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();
     }
 
-    if (extraOptions && extraOptions.uniqueIdentifier) {
-      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    if (this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
-
-    this._analyticsOptions = resolvedOptions.analytics;
 
     const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
@@ -759,6 +870,30 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // from the URL before its token exchange, so the nested handler must decide based on the
       // URL the page was loaded with, not whatever is in the address bar when it runs.
       const urlAtConstructionTime = new URL(window.location.href);
+      const actionId = urlAtConstructionTime.searchParams.get(BROWSER_ACTION_QUERY_PARAM);
+      if (actionId != null) {
+        // App Router implementations can restore the URL from their pre-rendered state after
+        // this constructor runs. Repeat the synchronous strip for a few event-loop turns so the
+        // action ID does not remain reloadable after the router finishes hydrating.
+        stripBrowserActionQueryParam();
+        runAsynchronously(async () => {
+          try {
+            const result = await this._interface.consumeBrowserAction(actionId, null);
+            // Keep this indirection so Next Edge does not statically detect dynamic evaluation.
+            Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
+          } catch (error) {
+            // A reload can legitimately retry an already-consumed or expired one-time action.
+            // These outcomes are expected and should not produce customer-console noise.
+            if (
+              KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)
+              || KnownErrors.VerificationCodeExpired.isInstance(error)
+            ) {
+              return;
+            }
+            throw error;
+          }
+        });
+      }
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
@@ -802,6 +937,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         // Startup auth transitions gate session finality, but malformed nested-auth URLs should
         // not make every app-level session consumer fail while the tracker is cleaning up.
         captureError("pending-auth-resolution-failed", error);
+        // Swallowing the error here means the flow just stops, with no sign of it on the page; setup errors
+        // (untrusted domains, most commonly) would otherwise be invisible to whoever has to fix them.
+        showSetupErrorOverlay(error); // THIS_LINE_PLATFORM js-like
       }
     })();
     this._pendingAuthResolutionPromises.push(promise);
@@ -918,9 +1056,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected async _redirectToOAuthCallbackError(error: KnownError): Promise<void> {
     const errorUrl = new URL(this._getUrls().error, window.location.href);
+    const callbackUrl = augmentUrlWithPersistedRedirectBackState({
+      currentUrl: new URL(window.location.href),
+      projectId: this.projectId,
+    });
     errorUrl.searchParams.set("errorCode", error.errorCode);
     errorUrl.searchParams.set("message", error.message);
     errorUrl.searchParams.set("details", JSON.stringify(error.details ?? {}));
+    for (const paramName of [
+      "after_auth_return_to",
+      crossDomainAuthQueryParams.state,
+      crossDomainAuthQueryParams.codeChallenge,
+      crossDomainAuthQueryParams.afterCallbackRedirectUrl,
+    ]) {
+      const value = callbackUrl.searchParams.get(paramName);
+      if (value != null) {
+        errorUrl.searchParams.set(paramName, value);
+      }
+    }
+    const afterCallbackRedirectUrl = callbackUrl.searchParams.get(oauthAfterCallbackRedirectUrlQueryParam);
+    if (afterCallbackRedirectUrl != null) {
+      // Account-link callbacks need to finish consuming the OAuth response before returning to
+      // their invoking page. Carry the already server-validated continuation through the
+      // configured error handler, which validates it again before navigation.
+      errorUrl.searchParams.set(oauthAfterCallbackRedirectUrlQueryParam, afterCallbackRedirectUrl);
+    }
     await this._redirectIfTrusted(errorUrl.toString(), { replace: true });
   }
 
@@ -1008,24 +1168,52 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
         throw new HexclaveAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
-      if (isRelative(redirectUri)) {
-        throw new Error("Nested cross-domain auth redirect URI must be absolute.");
+      const validateHandoffOwnership = async (): Promise<void> => {
+        const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+        if (currentRefreshTokenId !== refreshTokenId) {
+          throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
+        }
+      };
+      // Everything derived from these query params is attacker-controllable, and setup errors are rendered as a card on
+      // the page, so a failure may only become a displayable setup error once the handoff is known to belong to this
+      // session. The check runs on the failure paths rather than up front so the happy path keeps making exactly the
+      // requests it made before, and so an unowned handoff never costs the session lookup twice.
+      const setupErrorIfHandoffIsOwned = async (setupError: HexclaveSetupError): Promise<HexclaveSetupError> => {
+        await validateHandoffOwnership();
+        return setupError;
+      };
+      const redirectUriUrl = isRelative(redirectUri) ? null : createUrlIfValid(redirectUri);
+      if (redirectUriUrl == null) {
+        throw await setupErrorIfHandoffIsOwned(createMalformedNestedCrossDomainUrlError({
+          urlDescription: "redirect URI",
+          url: redirectUri,
+        }));
       }
-      const redirectUriUrl = new URL(redirectUri);
       if (!await this._isTrusted(redirectUriUrl.toString())) {
-        throw new Error(`Nested cross-domain auth redirect URI ${redirectUri} is not trusted.`);
+        throw await setupErrorIfHandoffIsOwned(createUntrustedNestedCrossDomainUrlError({
+          urlDescription: "redirect URI",
+          url: redirectUri,
+          projectId: this.projectId,
+        }));
       }
       const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
       const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
         ? redirectUriUrl
-        : new URL(afterCallbackRedirectUrlString, redirectUriUrl);
+        : createUrlIfValid(afterCallbackRedirectUrlString, redirectUriUrl);
+      if (afterCallbackRedirectUrl == null) {
+        throw await setupErrorIfHandoffIsOwned(createMalformedNestedCrossDomainUrlError({
+          urlDescription: "after-callback redirect URL",
+          url: afterCallbackRedirectUrlString ?? "",
+        }));
+      }
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
-        throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
+        throw await setupErrorIfHandoffIsOwned(createUntrustedNestedCrossDomainUrlError({
+          urlDescription: "after-callback redirect URL",
+          url: afterCallbackRedirectUrlString ?? afterCallbackRedirectUrl.toString(),
+          projectId: this.projectId,
+        }));
       }
-      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
-      if (currentRefreshTokenId !== refreshTokenId) {
-        throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
-      }
+      await validateHandoffOwnership();
       await this._redirectTo({
         url: await this._createCrossDomainAuthRedirectUrl({
           redirectUri: redirectUriUrl.toString(),
@@ -1051,13 +1239,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (callbackUrlString == null) {
       throw new HexclaveAssertionError("Nested cross-domain auth URL is missing callback URL");
     }
-    if (isRelative(callbackUrlString)) {
-      throw new Error("Nested cross-domain auth callback URL must be absolute.");
+    const callbackUrl = isRelative(callbackUrlString) ? null : createUrlIfValid(callbackUrlString);
+    if (callbackUrl == null) {
+      throw createMalformedNestedCrossDomainUrlError({
+        urlDescription: "callback URL",
+        url: callbackUrlString,
+      });
     }
-    const callbackUrl = new URL(callbackUrlString);
     const isTrusted = await this._isTrusted(callbackUrl.toString());
     if (!isTrusted) {
-      throw new Error(`Nested cross-domain auth callback URL ${callbackUrlString} is not trusted.`);
+      throw createUntrustedNestedCrossDomainUrlError({
+        urlDescription: "callback URL",
+        url: callbackUrlString,
+        projectId: this.projectId,
+      });
     }
 
     const afterCallbackRedirectUrl = new URL(currentUrl);
@@ -1391,7 +1586,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._storedBrowserCookieTokenStore = new Store<TokenObject>(this._getCurrentBrowserCookieTokenStoreValue(null));
       let hasSucceededInWriting = true;
 
-      setInterval(() => {
+      // Tests and server-side lifecycles can outlive browser globals, so stop polling when cookie reads no longer apply.
+      const pollInterval = setInterval(() => {
+        if (!isBrowserLike()) {
+          clearInterval(pollInterval);
+          return;
+        }
         if (hasSucceededInWriting) {
           const oldValue = this._storedBrowserCookieTokenStore!.get();
           const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
@@ -1400,6 +1600,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           }
         }
       }, 100);
+      if (typeof pollInterval === "object") pollInterval.unref();
       this._storedBrowserCookieTokenStore.onChange((value) => {
         try {
           const refreshToken = value.refreshToken;
@@ -2538,12 +2739,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
+        // Passkeys intentionally stay scoped to the hostname where they were
+        // registered. In particular, passkeys created on the legacy hosted
+        // components domain continue to work there but are not carried over to
+        // a replacement hosted domain.
+        scopePasskeyRegistrationToHostname(options_json, hostname);
 
         let attResp;
         try {
@@ -2781,6 +2981,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
+        automaticSideEffects: false,
       }));
     }
     return this._ownedAdminApps.get([session, forProjectId])!;
@@ -2996,23 +3197,47 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // be minted from the refresh token we are about to send, instead of reusing
     // a still-valid cached token from a pre-handoff session snapshot.
     await session.fetchNewTokens();
-    const response = await this._interface.sendClientRequest(
-      "/auth/oauth/cross-domain/authorize",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+    let response;
+    try {
+      response = await this._interface.sendClientRequest(
+        "/auth/oauth/cross-domain/authorize",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            redirect_uri: options.redirectUri,
+            state: options.state,
+            code_challenge: options.codeChallenge,
+            code_challenge_method: "S256",
+            after_callback_redirect_url: options.afterCallbackRedirectUrl,
+          }),
         },
-        body: JSON.stringify({
-          redirect_uri: options.redirectUri,
-          state: options.state,
-          code_challenge: options.codeChallenge,
-          code_challenge_method: "S256",
-          after_callback_redirect_url: options.afterCallbackRedirectUrl,
-        }),
-      },
-      session,
-    );
+        session,
+      );
+    } catch (error) {
+      // The server runs the trusted-domain check again on both URLs, and for a cross-domain handoff it is usually the
+      // first place the check happens at all (the SDK only sees that the target is on another domain, which is the
+      // entire point of the flow). Its rejection is the same developer-owned problem as a client-side trust failure, so
+      // it gets the same card instead of a bare known error that whoever started the redirect turns into "please try
+      // again" — the domain is untrusted, and retrying will fail forever.
+      if (KnownErrors.RedirectUrlNotWhitelisted.isInstance(error)) {
+        const untrustedUrl = error.constructorArgs[0] ?? options.redirectUri;
+        // The URL the server rejected carries the entire handoff (state, code challenge, return URL) in its query, none
+        // of which has anything to do with why it was rejected, so the message shows only the part that is checked. The
+        // full URL still goes to the error tracker through `extraData`.
+        const untrustedUrlObject = createUrlIfValid(untrustedUrl);
+        const displayedUrl = untrustedUrlObject == null ? untrustedUrl : `${untrustedUrlObject.origin}${untrustedUrlObject.pathname}`;
+        throwSetupError(createUntrustedUrlError({
+          message: `Cross-domain auth redirect URL ${displayedUrl} is not trusted.`,
+          url: untrustedUrl,
+          projectId: this.projectId,
+          cause: error,
+        }));
+      }
+      throw error;
+    }
     if (!response.ok) {
       const responseBody = await response.text();
       throw new HexclaveAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
@@ -3100,7 +3325,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
   protected async _redirectIfTrusted(url: string, options?: RedirectToOptions) {
     if (!await this._isTrusted(url)) {
-      throw new Error(`Redirect URL ${url} is not trusted; should be relative.`);
+      throwSetupError(createUntrustedUrlError({
+        message: `Redirect URL ${url} is not trusted; should be relative.`,
+        url,
+        projectId: this.projectId,
+      }));
     }
     return await this._redirectTo({ url, ...options });
   }
@@ -3136,16 +3365,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
-    if (
-      currentUrl != null
-      && options?.noRedirectBack !== true
-      && (handlerName === "afterSignIn" || handlerName === "afterSignUp")
-    ) {
+    const shouldRestorePersistedRedirectBackState = (
+      (options?.noRedirectBack !== true && (handlerName === "afterSignIn" || handlerName === "afterSignUp"))
+      || handlerName === "forgotPassword"
+      || handlerName === "passwordReset"
+      || (handlerName === "signIn" && options?.noRedirectBack === true)
+    );
+    if (currentUrl != null && shouldRestorePersistedRedirectBackState) {
       // If intermediate hops dropped the redirect-back query params, restore them from the
-      // sessionStorage mirror so the user still returns to where they came from instead of
-      // stranding on the default post-auth page (on hosted components, that would be the hosted
-      // welcome page). The restored URL goes through the same _isTrusted / cross-domain-authorize
-      // validation below as one read from query params.
+      // sessionStorage mirror. Password-flow continuation pages only carry this inherited state;
+      // redirect planning never turns forgot/reset pages themselves into return targets. The
+      // restored URL still goes through the same _isTrusted / cross-domain-authorize validation
+      // below as one read from query params.
       currentUrl = augmentUrlWithPersistedRedirectBackState({ currentUrl, projectId: this.projectId });
     }
     const plan = await planRedirectToHandler({
@@ -3154,6 +3385,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       noRedirectBack: options?.noRedirectBack === true,
       currentUrl,
       localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      rawHomeUrl: rawUrls.home,
       getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
     });
 
@@ -3178,7 +3410,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       })
       : plan.url;
     if (!await this._isTrusted(redirectUrl)) {
-      throw new Error(`Redirect URL ${redirectUrl} is not trusted; should be relative.`);
+      throwSetupError(createUntrustedUrlError({
+        message: `Redirect URL ${redirectUrl} is not trusted; should be relative.`,
+        url: redirectUrl,
+        projectId: this.projectId,
+      }));
     }
     return redirectUrl;
   }
@@ -3299,6 +3535,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
     }
 
+    // A session becomes invalid before its post-sign-out redirect is dispatched. Publishing the signed-out user state
+    // before that redirect can make `or: "redirect"` race it with a redirect to sign-in.
+    const pendingSignOut = this._pendingSignOut;
+    if (pendingSignOut != null) {
+      await pendingSignOut;
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
@@ -3351,6 +3594,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
     const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
     const includeRestricted = options?.includeRestricted === true || includeAnonymous;
+
+    // Keep the hook suspended while sign-out owns navigation. This is scoped to this app's current-user reads instead
+    // of blocking every AsyncStore in the process, including unrelated requests and other app instances.
+    const pendingSignOut = this._pendingSignOut;
+    if (pendingSignOut != null) {
+      use(pendingSignOut);
+    }
 
     if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
@@ -3907,11 +4157,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
-        }
-        options_json.rpId = window.location.hostname;
+        // Keep authentication scoped to the current hostname. This deliberately
+        // does not add cross-domain compatibility for passkeys created on a
+        // previous hosted components domain.
+        scopePasskeyAuthenticationToHostname(options_json, window.location.hostname);
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
         return await this._interface.signInWithPasskey({ authentication_response, code }, session);
@@ -4001,14 +4250,29 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._eventTracker?.clearBuffer();
     this._sessionRecorder?.clearBuffer();
 
-    await storeLock.withWriteLock(async () => {
+    const previousSignOut = this._pendingSignOut;
+    const signOutOperation = (async () => {
+      // Preserve the old behavior of serializing concurrent sign-outs without coupling them to unrelated stores.
+      await previousSignOut;
       await this._interface.signOut(session);
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {
         await this._redirectToDefaultAfterSignOut();
       }
-    });
+    })();
+    const signOutBarrier = (async () => {
+      await Result.fromPromise(signOutOperation);
+    })();
+    this._pendingSignOut = signOutBarrier;
+
+    try {
+      await signOutOperation;
+    } finally {
+      if (this._pendingSignOut === signOutBarrier) {
+        this._pendingSignOut = null;
+      }
+    }
   }
 
   protected async _redirectToDefaultAfterSignOut(): Promise<void> {
@@ -4199,13 +4463,19 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
 
         const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
-        return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
+        const app = new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
+        // Inert construction does not register itself, so register only after it has completed to preserve stable
+        // identity across repeated client-side deserialization.
+        if (json.automaticSideEffects === false) {
+          app._initUniqueIdentifier();
+        }
+        return app;
       }
     };
   }
@@ -4232,6 +4502,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           devTool: this._options.devTool,
+          automaticSideEffects: this._options.automaticSideEffects,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
@@ -4267,6 +4538,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
         await this._redirectToHandler(handlerName, options);
+      },
+      getRawAfterAuthReturnTo: () => {
+        if (isReactServer || typeof window === "undefined") {
+          return null;
+        }
+        return getRawAfterAuthReturnTo({
+          currentUrl: new URL(window.location.href),
+          projectId: this.projectId,
+        });
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());

@@ -1,3 +1,4 @@
+import type { AskHexclaveRequestMetadata } from "@/lib/ai/ask-hexclave-history";
 import type { selectModel } from "@/lib/ai/models";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import type { LanguageModelUsage, ModelMessage, StepResult, ToolSet } from "ai";
@@ -18,6 +19,10 @@ export type McpCallMetadata = {
   reason: string,
   userPrompt: string,
   conversationId?: string | null,
+  context?: string | null,
+  user?: string | null,
+  project?: string | null,
+  requestMetadata: AskHexclaveRequestMetadata,
 };
 
 export type MessageLike = { role: string, content: unknown };

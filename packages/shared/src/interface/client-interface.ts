@@ -33,6 +33,33 @@ import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
+export type ApiUrlFailure = {
+  url: string,
+  error: Error,
+};
+
+export class ApiUrlsFailedError extends AggregateError {
+  readonly urlFailures: readonly ApiUrlFailure[];
+  readonly digest?: unknown;
+
+  constructor(urlFailures: readonly ApiUrlFailure[]) {
+    const primaryFailure = urlFailures[0] ?? throwErr("ApiUrlsFailedError requires at least one URL failure");
+    super(
+      urlFailures.map(({ error }) => error),
+      `All API URLs failed; primary URL ${primaryFailure.url} failed: ${primaryFailure.error.message}`,
+      { cause: primaryFailure.error },
+    );
+    this.name = "ApiUrlsFailedError";
+    this.urlFailures = urlFailures;
+    if ("digest" in primaryFailure.error) {
+      Object.defineProperty(this, "digest", {
+        value: primaryFailure.error.digest,
+        enumerable: true,
+      });
+    }
+  }
+}
+
 export type RequestLogEntry = {
   path: string,
   method: string,
@@ -303,7 +330,7 @@ export class HexclaveClientInterface {
     apiUrls: string[],
     cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
   ): Promise<T> {
-    let lastError: Error | undefined;
+    const errorsByUrl = new Map<number, Error>();
 
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < apiUrls.length; i++) {
@@ -315,12 +342,15 @@ export class HexclaveClientInterface {
           return result;
         } catch (e) {
           if (this._shouldSkipFallback(e)) throw e;
-          lastError = e instanceof Error ? e : new Error(String(e));
+          errorsByUrl.set(i, e instanceof Error ? e : new Error(String(e)));
         }
       }
     }
 
-    throw lastError!;
+    throw new ApiUrlsFailedError(apiUrls.map((url, i) => ({
+      url,
+      error: errorsByUrl.get(i) ?? throwErr(`Missing failure for API URL ${url}`),
+    })));
   }
 
   getAnalyticsApiUrl() {
@@ -855,6 +885,36 @@ export class HexclaveClientInterface {
     }, null);
 
     throw new HexclaveAssertionError(await res.text());
+  }
+
+  public async consumeBrowserAction(
+    actionId: string,
+    session: InternalSession | null = null,
+  ): Promise<{ javascript: string }> {
+    const response = await this.sendClientRequest(
+      "/browser-actions/consume",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action_id: actionId,
+        }),
+      },
+      session,
+      "client",
+    );
+    const body: unknown = await response.json();
+    if (
+      typeof body !== "object"
+      || body === null
+      || !("javascript" in body)
+      || typeof body.javascript !== "string"
+    ) {
+      throw new HexclaveAssertionError("Browser action endpoint returned an invalid response");
+    }
+    return { javascript: body.javascript };
   }
 
   async sendForgotPasswordEmail(

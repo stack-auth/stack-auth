@@ -145,6 +145,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createWorkflow(options: { id: string, displayName?: string, source: string }): Promise<AdminWorkflowSyncResult>,
     updateWorkflowSource(workflowId: string, source: string): Promise<AdminWorkflowSyncResult>,
     deleteWorkflow(workflowId: string): Promise<void>,
+    /** Pauses/resumes run creation. In-flight runs are unaffected. */
+    setWorkflowPaused(workflowId: string, isPaused: boolean): Promise<void>,
     listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]>,
     listWorkflowRuns: {
       (workflowId: string, filter: AdminWorkflowRunsFilter & { includeState: true }): Promise<{ runs: AdminWorkflowRunDetails[], nextCursor: string | null }>,

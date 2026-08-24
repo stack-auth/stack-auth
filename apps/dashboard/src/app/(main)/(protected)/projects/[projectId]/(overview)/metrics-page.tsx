@@ -41,6 +41,7 @@ import {
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@hexclave/next";
 import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -480,17 +481,32 @@ function FilterMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <FilterMenuButton active={active} />
-      <Suspense fallback={null}>
-        <FilterMenuContent
-          filters={filters}
-          onSelect={(dimension, value) => {
-            onToggle(dimension, value);
-            setOpen(false);
-          }}
-        />
-      </Suspense>
+      {/* The menu contents read metrics, but they render in the page header, which
+          sits outside the overview's metrics error boundary. Without a boundary of
+          its own, a failed metrics request thrown here escapes the route and lands
+          in global-error.tsx, which navigates to "/" after three seconds — so a
+          broken analytics query would kick the user off the project entirely.
+          The overview below reports the failure, so the menu degrades to nothing. */}
+      <ErrorBoundary errorComponent={FilterMenuErrorComponent}>
+        <Suspense fallback={null}>
+          <FilterMenuContent
+            filters={filters}
+            onSelect={(dimension, value) => {
+              onToggle(dimension, value);
+              setOpen(false);
+            }}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </DropdownMenu>
   );
+}
+
+function FilterMenuErrorComponent({ error }: { error: unknown }) {
+  useEffect(() => {
+    captureError("metrics-page-filter-menu", error);
+  }, [error]);
+  return null;
 }
 
 function FilterMenuContent({
@@ -662,14 +678,14 @@ function OverviewHeaderChrome({
         transition={layoutTransition}
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
+          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] [transition-duration:520ms] [transition-timing-function:cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
           layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
         )}
       />
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
+          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity [transition-duration:520ms] motion-reduce:transition-none dark:via-white/20",
           layoutCompacted && "opacity-100",
         )}
       />
@@ -683,7 +699,7 @@ function OverviewHeaderChrome({
         {renderTitle && (
           <div
             className={cn(
-              "min-w-0 transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
+              "min-w-0 transition-[opacity,transform,filter] duration-150 ease-out motion-reduce:transition-none sm:flex-1",
               compacted && "pointer-events-none opacity-0 blur-[1px]",
             )}
           >
@@ -700,7 +716,7 @@ function OverviewHeaderChrome({
           transition={layoutTransition}
           className={cn(
             "relative z-10 min-w-0 max-w-full flex-shrink-0 overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "transition-opacity duration-[520ms] motion-reduce:transition-none",
+            "transition-opacity [transition-duration:520ms] motion-reduce:transition-none",
             layoutCompacted && "opacity-95",
           )}
         >

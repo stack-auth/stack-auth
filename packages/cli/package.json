@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/cli",
-  "version": "1.0.71",
+  "version": "1.0.103",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "The CLI for Hexclave. https://hexclave.com",
   "main": "dist/index.js",
@@ -34,11 +34,13 @@
     "@hexclave/js": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "commander": "^13.1.0",
+    "cross-spawn": "^7.0.6",
     "extract-zip": "^2.0.1",
     "jiti": "^2.4.2",
     "tar": "^7.4.3"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "22.15.21",
     "rimraf": "^6.0.1",
     "tsdown": "^0.22.3",

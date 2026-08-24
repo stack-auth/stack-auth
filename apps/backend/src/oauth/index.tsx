@@ -144,8 +144,19 @@ export async function getProvider(
       });
     }
   } else {
+    const clientId = provider.clientId || throwErr("Client ID is required for standard providers");
+    if (providerType === "apple") {
+      return await AppleProvider.create({
+        clientId,
+        clientSecret: provider.clientSecret,
+        teamId: provider.appleTeamId,
+        keyId: provider.appleKeyId,
+        privateKey: provider.applePrivateKey,
+        redirectUri,
+      });
+    }
     return await _providers[providerType].create({
-      clientId: provider.clientId || throwErr("Client ID is required for standard providers"),
+      clientId,
       clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,

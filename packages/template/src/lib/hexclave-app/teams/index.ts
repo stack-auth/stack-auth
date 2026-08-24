@@ -129,6 +129,9 @@ export type ServerTeam = {
 
 type ServerListUsersOptionsBase = {
   cursor?: string,
+  /**
+   * Maximum number of users to return per page. Must be at most 1000.
+   */
   limit?: number,
   orderBy?: 'signedUpAt' | 'lastActiveAt',
   desc?: boolean,

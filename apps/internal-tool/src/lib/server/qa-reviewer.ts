@@ -16,7 +16,7 @@ Your tasks:
 1. RELEVANCE: Does the response actually answer the question? Does the stated reason align with what was asked?
 2. CORRECTNESS: Verify factual claims about Hexclave. Use human-verified Q&A (appended below, if any) as the highest-priority source of truth — these are always correct. Then use the available tools to look up additional information from the Hexclave codebase. If the AI response contradicts a human-verified answer, flag it as incorrect.
 
-The repo name for all tool calls is "stack-auth/stack-auth". Only use the repository documentation tools (read_wiki_structure, read_wiki_contents, ask_question) — do not create sessions or modify any other resources.
+The repo name for all tool calls is "hexclave/hexclave". Only use the repository documentation tools (read_wiki_structure, read_wiki_contents, ask_question) — do not create sessions or modify any other resources.
 
 Produce a structured review. For each issue you find, add an entry to "flags" with a type, severity (one of "low", "medium", "high", "critical"), and explanation.
 

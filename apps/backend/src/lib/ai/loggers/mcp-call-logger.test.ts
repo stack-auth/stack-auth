@@ -16,8 +16,18 @@ vi.mock("../internal-tool-client", () => ({
   callInternalTool: vi.fn(async () => ({ success: true })),
 }));
 
+import type { AskHexclaveRequestMetadata } from "@/lib/ai/ask-hexclave-history";
 import { callInternalTool } from "../internal-tool-client";
 import { logIfMcpToolCall } from "./mcp-call-logger";
+
+const REQUEST_METADATA: AskHexclaveRequestMetadata = {
+  transport: "mcp-ask-hexclave",
+  requestIp: null,
+  requestIpSource: null,
+  userAgent: null,
+  requestHost: null,
+  mcpProtocolVersion: null,
+};
 
 describe("logIfMcpToolCall", () => {
   beforeEach(() => {
@@ -53,6 +63,7 @@ describe("logIfMcpToolCall", () => {
         toolName: "queryAnalytics",
         reason: "review",
         userPrompt: "show usage",
+        requestMetadata: REQUEST_METADATA,
       },
       conversationIdForLog: "conversation-1",
       correlationId: "correlation-1",
@@ -103,6 +114,7 @@ describe("logIfMcpToolCall", () => {
         toolName: "queryAnalytics",
         reason: "review",
         userPrompt: "show usage",
+        requestMetadata: REQUEST_METADATA,
       },
       conversationIdForLog: "conversation-1",
       correlationId: "correlation-1",

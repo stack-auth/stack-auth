@@ -9,12 +9,27 @@ packages:
 
 minimumReleaseAge: 10080
 
+# Next.js 16.3.1 carries vercel/next.js#96653, the backport of #96599,
+# which fixes the intermittent production TypeError:
+# __turbopack_context__.a is not a function in dashboard builds.
+# Keep this version-pinned so future releases still go through minimumReleaseAge.
+minimumReleaseAgeExclude:
+  - next@16.3.1
+  - '@next/env@16.3.1'
+  - '@next/swc-darwin-arm64@16.3.1'
+  - '@next/swc-darwin-x64@16.3.1'
+  - '@next/swc-linux-arm64-gnu@16.3.1'
+  - '@next/swc-linux-arm64-musl@16.3.1'
+  - '@next/swc-linux-x64-gnu@16.3.1'
+  - '@next/swc-linux-x64-musl@16.3.1'
+  - '@next/swc-win32-arm64-msvc@16.3.1'
+  - '@next/swc-win32-x64-msvc@16.3.1'
+
 blockExoticSubdeps: true
 
 overrides:
   '@types/react': 19.2.7
   '@types/react-dom': 19.2.3
-  sharp: ^0.34.5
   # Pin rolldown to 1.1.2 until 1.1.3 passes the 7-day minimumReleaseAge policy (after Jul 1 2026).
   # tsdown ~1.1.1 resolves to 1.1.3 by default, which was published Jun 24.
   rolldown: 1.1.2

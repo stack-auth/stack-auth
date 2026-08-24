@@ -190,7 +190,19 @@ describe("handleStreamMode terminal callback logging", () => {
 
   const mcpCtx = () => ({
     ...makeCtx(),
-    mcpCallMetadata: { toolName: "ask_hexclave", reason: "test", userPrompt: "prompt" },
+    mcpCallMetadata: {
+      toolName: "ask_hexclave",
+      reason: "test",
+      userPrompt: "prompt",
+      requestMetadata: {
+        transport: "mcp-ask-hexclave" as const,
+        requestIp: null,
+        requestIpSource: null,
+        userAgent: null,
+        requestHost: null,
+        mcpProtocolVersion: null,
+      },
+    },
     conversationIdForLog: "conversation-1",
   });
 

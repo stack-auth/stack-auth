@@ -1,3 +1,5 @@
+import { sendAskHexclaveDiscordNotification } from "@/lib/ai/ask-hexclave-discord";
+import { logAskHexclaveCall } from "@/lib/ai/ask-hexclave-history";
 import type { McpCallMetadata, McpLogEntry, MessageLike } from "@/lib/ai/types";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -9,7 +11,7 @@ export async function logMcpCall(entry: McpLogEntry): Promise<void> {
   await callInternalTool("/api/backend/log-mcp-call", { body: entry });
 }
 
-function buildInnerToolCallsJson(steps: ReadonlyArray<StepResult<ToolSet>>): string {
+function buildInnerToolCalls(steps: ReadonlyArray<StepResult<ToolSet>>): { items: Json[], json: string } {
   try {
     const items: Json[] = [];
     for (const step of steps) {
@@ -25,17 +27,18 @@ function buildInnerToolCallsJson(steps: ReadonlyArray<StepResult<ToolSet>>): str
         });
       }
     }
-    return JSON.stringify(items);
+    return { items, json: JSON.stringify(items) };
   } catch (e) {
     captureError("mcp-call-serialize", e);
-    return JSON.stringify([{
+    const fallback: Json[] = [{
       type: "tool-call",
       toolName: "_serializationFailed",
       toolCallId: "_serializationFailed",
       args: { stepCount: steps.length },
       argsText: JSON.stringify({ stepCount: steps.length }),
       result: null,
-    }]);
+    }];
+    return { items: fallback, json: JSON.stringify(fallback) };
   }
 }
 
@@ -57,8 +60,6 @@ export function logIfMcpToolCall(args: {
   text: string,
   startedAt: number,
   modelId: string,
-  // Set on the failure path so an MCP-backed question that errored still lands
-  // in the MCP Review workflow (with its error) instead of vanishing.
   errorMessage?: string,
 }): void {
   const { mcpCallMetadata, conversationIdForLog, correlationId, messages, steps, text, startedAt, modelId, errorMessage } = args;
@@ -67,7 +68,8 @@ export function logIfMcpToolCall(args: {
   const question = typeof lastUserMessage?.content === "string"
     ? lastUserMessage.content
     : safeStringify(lastUserMessage?.content ?? "");
-  const innerToolCallsJson = buildInnerToolCallsJson(steps);
+  const { items: innerToolCalls, json: innerToolCallsJson } = buildInnerToolCalls(steps);
+  const durationMs = Math.round(performance.now() - startedAt);
   const logPromise = logMcpCall({
     correlationId,
     toolName: mcpCallMetadata.toolName,
@@ -78,14 +80,36 @@ export function logIfMcpToolCall(args: {
     response: text,
     stepCount: steps.length,
     innerToolCallsJson,
-    durationMs: Math.round(performance.now() - startedAt),
+    durationMs,
     modelId,
     errorMessage,
   });
   runAsynchronouslyAndWaitUntil(logPromise);
-  // An errored call has no meaningful response to review — log it, but don't
-  // spend an LLM QA run on it.
   if (errorMessage != null) return;
+
+  if (mcpCallMetadata.toolName === "ask_hexclave") {
+    const firstUserMessage = messages.find(m => m.role === "user");
+    const askQuestion = typeof firstUserMessage?.content === "string"
+      ? firstUserMessage.content
+      : safeStringify(firstUserMessage?.content ?? "");
+    const askCall = {
+      conversationId: conversationIdForLog,
+      question: askQuestion,
+      response: text,
+      reason: mcpCallMetadata.reason,
+      userPrompt: mcpCallMetadata.userPrompt,
+      context: mcpCallMetadata.context ?? null,
+      user: mcpCallMetadata.user ?? null,
+      project: mcpCallMetadata.project ?? null,
+      requestMetadata: mcpCallMetadata.requestMetadata,
+      modelId,
+      stepCount: steps.length,
+      durationMs,
+    };
+    runAsynchronouslyAndWaitUntil(logAskHexclaveCall({ id: correlationId, ...askCall, innerToolCalls }));
+    runAsynchronouslyAndWaitUntil(sendAskHexclaveDiscordNotification(askCall));
+  }
+
   // The automated LLM QA review runs in the internal tool and updates the
   // freshly logged row, so it must only fire after the log write lands.
   runAsynchronouslyAndWaitUntil((async () => {

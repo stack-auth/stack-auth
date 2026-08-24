@@ -10,6 +10,8 @@
 .env.*
 **/.env
 **/.env.*
+# Prune no longer honors .gitignore; keep local private keys out of the build context.
+**/*.pem
 **/.next
 
 **/dist
@@ -100,18 +102,12 @@ playwright/.cache
 # Turborepo
 .turbo
 
-# docusaurus
-docs/.docusaurus
-docs/manifest.mjs
-
 # Core
 packages/core/src/providers/oauth-types.ts
 packages/core/lib
 packages/core/providers
-docs/docs/reference/core
 
 # Next.js
-docs/docs/reference/nextjs
 next-env.d.ts
 
 # SvelteKit
@@ -121,16 +117,6 @@ packages/frameworks-sveltekit/.svelte-kit
 packages/frameworks-sveltekit/package
 packages/frameworks-sveltekit/vite.config.js.timestamp-*
 packages/frameworks-sveltekit/vite.config.ts.timestamp-*
-docs/docs/reference/sveltekit
-
-# SolidStart
-docs/docs/reference/solidstart
-
-# Express
-docs/docs/reference/express
-
-# Adapters
-docs/docs/reference/adapter
 
 ## Drizzle migration folder
 .drizzle

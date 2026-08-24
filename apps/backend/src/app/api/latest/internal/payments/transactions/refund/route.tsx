@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
-import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription, persistRefundManualTransaction } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/transaction-entry-indexes";
 import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriod, isStripeSubscriptionAlreadyTerminalError } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -290,37 +290,6 @@ async function resolveInvoicePaymentIntentId(stripe: Stripe, stripeInvoiceId: st
   return paymentIntentId;
 }
 
-/**
- * True when an error from a Stripe subscription lifecycle write
- * (`subscriptions.cancel` / `subscriptions.update`) means the subscription is
- * already terminal, so our write is a moot no-op and can be swallowed.
- *
- * Error shapes determined empirically against Stripe API `2025-06-30.basil`
- * (stripe-node 18.3.0):
- *   - `cancel()` on an already-canceled or never-existed sub
- *       → 404, `code: "resource_missing"`.
- *   - `update()` on a canceled sub (e.g. `cancel_at_period_end`)
- *       → 400, `rawType: "invalid_request_error"`, message "A canceled
- *         subscription can only update its cancellation_details and
- *         metadata.", and crucially **no `code`** — so it can only be matched
- *         on the message.
- *
- * Note `subscription_already_canceled` is intentionally absent: re-cancelling
- * a canceled sub returns `resource_missing`, not that code — it is never
- * actually emitted on this path.
- */
-function isStripeSubscriptionAlreadyTerminalError(e: unknown): boolean {
-  const code = (e as { code?: unknown }).code;
-  if (code === "resource_missing") {
-    return true;
-  }
-  const rawType = (e as { rawType?: unknown }).rawType;
-  const message = (e as { message?: unknown }).message;
-  return rawType === "invalid_request_error"
-    && typeof message === "string"
-    && /canceled subscription can only update/i.test(message);
-}
-
 // ── Route ─────────────────────────────────────────────────────────────────
 
 export const POST = createSmartRouteHandler({
@@ -415,9 +384,9 @@ export const POST = createSmartRouteHandler({
 // 1. **Race on cap check.** Two concurrent refund requests for the same
 //    source can both call `readPriorRefundSummary` before either commits its
 //    refund row, so both pass the cap check and over-refund. Wrapping this
-//    flow in a Prisma `$transaction` does NOT fix it — `bulldozerWriteManualTransaction`
-//    embeds its own `BEGIN; ... COMMIT;` (see `lib/bulldozer/db/index.ts:162`),
-//    so its writes commit independently of any outer Prisma tx. A real fix
+//    flow in a Prisma `$transaction` does NOT fix it — the Bulldozer
+//    manual-transaction write embeds its own `BEGIN; ... COMMIT;` (see
+//    `lib/bulldozer/db/index.ts:162`), so its writes commit independently of any outer Prisma tx. A real fix
 //    needs either a bulldozer-aware mutex (writes-table sentinel row, advisory
 //    lock taken on a long-lived dedicated connection, etc.) or a "pending
 //    refund intent" pattern that participates in the cap calc before Stripe is
@@ -686,6 +655,7 @@ async function handleSubscriptionRefund(options: {
   } else if (endAtPeriodEnd) {
     // End at period end. Items follow natural lifecycle when sub-end fires
     // at period boundary.
+    let stripePeriod: { start: Date, end: Date } | null = null;
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent guard, mirroring the endNow branch. The end-at-period-end
@@ -693,13 +663,16 @@ async function handleSubscriptionRefund(options: {
       // ending/ended, so this catch is defence-in-depth: it only fires if the
       // sub became terminal between that check and here (e.g. a concurrent
       // cancel). The Stripe money refund has already been issued at this
-      // point, so an unhandled error would propagate before
-      // `bulldozerWriteManualTransaction` commits the ledger row, leaving the
+      // point, so an unhandled error would propagate before the Prisma +
+      // Bulldozer dual-write commits the ledger row, leaving the
       // customer refunded with no record.
       try {
-        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        const updated = await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
           cancel_at_period_end: true,
         });
+        // Same as the cancel route: Stripe's response is the authority on
+        // the boundary; the local row can be stale around a renewal
+        stripePeriod = getStripeSubscriptionPeriod(updated, { tenancyId: tenancy.id });
       } catch (e: unknown) {
         if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
@@ -711,7 +684,14 @@ async function handleSubscriptionRefund(options: {
       data: {
         cancelAtPeriodEnd: true,
         canceledAt: subscription.canceledAt ?? now,
-        endedAt: subscription.endedAt ?? subscription.currentPeriodEnd,
+        endedAt: subscription.endedAt ?? stripePeriod?.end ?? subscription.currentPeriodEnd,
+        // Mirror the cancel route: the displayed period must track the
+        // entitlement boundary, otherwise "Ends on" keeps showing a stale
+        // local period after a missed renewal sync.
+        ...(stripePeriod ? {
+          currentPeriodStart: stripePeriod.start,
+          currentPeriodEnd: stripePeriod.end,
+        } : {}),
       },
     });
   }
@@ -809,7 +789,8 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
+  // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
+  await persistRefundManualTransaction(prisma, refundRow);
 
   return {
     statusCode: 200 as const,
@@ -967,7 +948,8 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
+  // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
+  await persistRefundManualTransaction(prisma, refundRow);
 
   return {
     statusCode: 200 as const,

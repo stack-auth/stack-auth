@@ -2,6 +2,38 @@
 
 ---
 
+## 8/14/26
+
+![Onboarding welcome step](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-onboarding-welcome.webp)
+
+- Revamped onboarding with a welcome step to set up a new project, deploy an existing config, or just look around.
+- The CLI docs page is now an install guide plus a full command reference.
+- Fixed self-hosted deployments breaking after a container restart because the internal project keys were rotated.
+- Unrecoverable dashboard render errors now show a retryable error screen instead of reloading forever.
+
+## 8/7/26
+
+- Apple sign-in now supports key-based credentials (Team ID, Key ID, and private key), with short-lived client secrets generated automatically.
+- The Next.js SDK now supports Next.js 16.3.
+- Impersonating a user from the dashboard now works with a single click — no more copy-pasting a script into the browser console.
+- New `automaticSideEffects` constructor option in the JS SDK that makes app construction fully inert — no prefetching, query-parameter processing, storage access, or other automatic side effects until you explicitly call a method.
+- Emails for low-volume tenancies are now sent immediately via a bounded burst allowance, instead of waiting in the send queue.
+- Session replays now show a user overview in the header.
+- Adding a trusted domain now offers a scope dropdown instead of an "add www." switch, making it clearer which subdomains are covered.
+- Fixed a bug where hosted components would sometimes redirect already signed-in users to the "Welcome back" screen instead of the page they requested.
+- Fixed a bug where free trials configured in Payments were not correctly synchronized to the payments layer.
+- Fixed a bug where signing out would sometimes take a long time.
+
+## 7/31/26
+
+![Sign-in is not available message](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-no-auth-methods.png)
+
+- Sign-in and sign-up pages now show a helpful message instead of an empty form when a project has no authentication methods enabled, pointing developers to the config snippet or dashboard setting that fixes it.
+- Users restricted by an administrator now see the public reason they were given on the onboarding screen, instead of a generic message.
+- New `hexclave team` CLI commands to list, create, update, invite to, and leave teams, plus team selection when creating a project.
+- Signing up with an email that another account already uses for authentication now shows an inline error on the form.
+- Auth pages no longer flash a loading placeholder over already-visible content when a session is swapped in.
+
 ## 7/24/26
 
 ![Analytics table search bar](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-analytics-search.webp)

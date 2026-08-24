@@ -515,6 +515,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           projectOwnerSession: async () => {
             return await requestAccessToken();
           },
+          automaticSideEffects: false,
           analytics: { enabled: false },
         });
 

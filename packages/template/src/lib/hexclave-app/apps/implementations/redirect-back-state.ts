@@ -108,6 +108,23 @@ export function readRedirectBackState(options: { projectId: string }): Persisted
 }
 
 /**
+ * Returns the raw return target carried by the current auth flow. The value is intentionally not
+ * described as trusted: callers must still pass it through the normal redirect validation before
+ * navigating to it.
+ *
+ * An explicit query parameter wins even when it is empty. This prevents a malformed URL from
+ * silently reviving an older flow from sessionStorage.
+ */
+export function getRawAfterAuthReturnTo(options: { currentUrl: URL, projectId: string }): string | null {
+  const explicitReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
+  if (explicitReturnTo != null) {
+    return explicitReturnTo.trim().length > 0 ? explicitReturnTo : null;
+  }
+  const persistedReturnTo = readRedirectBackState({ projectId: options.projectId })?.afterAuthReturnTo;
+  return persistedReturnTo != null && persistedReturnTo.trim().length > 0 ? persistedReturnTo : null;
+}
+
+/**
  * Returns a copy of `currentUrl` with any redirect-back query params that were dropped along the
  * way restored from the sessionStorage mirror. If `currentUrl` already carries
  * `after_auth_return_to`, it is returned unchanged — explicit query params always win.

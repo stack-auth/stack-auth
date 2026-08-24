@@ -1,15 +1,16 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { signJWT } from "@hexclave/shared/dist/utils/jwt";
 import { describe, expect, it } from "vitest";
-import { normalizeAnalyticsClickmapOrigin, verifyAnalyticsClickmapToken } from "./analytics-clickmap-tokens";
+import { verifyAnalyticsClickmapToken } from "./analytics-clickmap-tokens";
+import { normalizeTrustedOrigin } from "./trusted-origins";
 
 describe("analytics clickmap token helpers", () => {
   it("normalizes a trusted-domain URL to its origin", () => {
-    expect(normalizeAnalyticsClickmapOrigin("https://example.com/dashboard?x=1")).toMatchInlineSnapshot(`"https://example.com"`);
+    expect(normalizeTrustedOrigin("https://example.com/dashboard?x=1")).toMatchInlineSnapshot(`"https://example.com"`);
   });
 
   it("rejects non-HTTP origins", () => {
-    expect(() => normalizeAnalyticsClickmapOrigin("javascript:alert(1)")).toThrow(StatusError);
+    expect(() => normalizeTrustedOrigin("javascript:alert(1)")).toThrow(StatusError);
   });
 
   it("returns the project encoded in a valid clickmap token", async () => {

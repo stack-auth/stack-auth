@@ -22,11 +22,13 @@ import { WORKFLOWS_ENTRY_JS, WORKFLOWS_RUNTIME_PACKAGE_SOURCE } from "./runtime-
  */
 const IMPORT_ALLOWLIST_EXACT = ["@hexclave/workflows"];
 const STDLIB_PACKAGES = ["date-fns"];
-// The workflow runtime itself needs the real Admin SDK, while user source
+// The workflow runtime itself needs the real Server SDK, while user source
 // must not import it. Bundle the trusted runtime through a private external
 // sentinel and rewrite that one canonical import afterward; a user-authored
 // "@hexclave/js" import is therefore rejected by esbuild resolution.
-const WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL = "@hexclave/workflows-internal-admin-runtime";
+// (The sentinel never survives compilation — it is rewritten before the bundle
+// is stored — so renaming it does not affect already-synced versions.)
+const WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL = "@hexclave/workflows-internal-server-runtime";
 
 // Written for module specifiers in static imports, re-exports, dynamic
 // imports, and requires. Comments/strings can theoretically fool a regex
@@ -69,8 +71,8 @@ export function validateWorkflowSource(source: string): Result<null, string> {
   if (sizeBytes > WORKFLOW_SOURCE_MAX_BYTES) {
     return Result.error(`Workflow source is ${sizeBytes} bytes, exceeding the ${WORKFLOW_SOURCE_MAX_BYTES}-byte (128 KiB) limit`);
   }
-  if (source.includes(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)) {
-    return Result.error(`Workflow source contains the reserved internal module marker ${JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)}`);
+  if (source.includes(WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL)) {
+    return Result.error(`Workflow source contains the reserved internal module marker ${JSON.stringify(WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL)}`);
   }
   // Non-literal imports can evade an allowlist scanner and resolve arbitrary
   // packages or Node built-ins at runtime. Workflows do not need dynamic
@@ -102,10 +104,10 @@ export async function compileWorkflowBundle(source: string): Promise<Result<{ co
 
   const runtimePackageSource = WORKFLOWS_RUNTIME_PACKAGE_SOURCE.replace(
     '"@hexclave/js"',
-    JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL),
+    JSON.stringify(WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL),
   );
   if (runtimePackageSource === WORKFLOWS_RUNTIME_PACKAGE_SOURCE) {
-    throw new HexclaveAssertionError("Workflow runtime no longer contains the expected Admin SDK import");
+    throw new HexclaveAssertionError("Workflow runtime no longer contains the expected Server SDK import");
   }
   const bundleResult = await bundleJavaScript({
     "/workflow.ts": source,
@@ -116,19 +118,19 @@ export async function compileWorkflowBundle(source: string): Promise<Result<{ co
     },
     // The stdlib stays a real import, resolved against the sandbox's
     // nodeModules at the exact pinned version.
-    keepAsImports: [...STDLIB_PACKAGES, WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL],
+    keepAsImports: [...STDLIB_PACKAGES, WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL],
     format: "esm",
     sourcemap: false,
   });
   if (bundleResult.status === "error") {
     return Result.error(`Workflow source failed to compile: ${bundleResult.error}`);
   }
-  if (!bundleResult.data.includes(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)) {
-    throw new HexclaveAssertionError("Workflow bundle omitted the trusted runtime Admin SDK import");
+  if (!bundleResult.data.includes(WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL)) {
+    throw new HexclaveAssertionError("Workflow bundle omitted the trusted runtime Server SDK import");
   }
-  const sentinelSpecifier = JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL);
+  const sentinelSpecifier = JSON.stringify(WORKFLOW_RUNTIME_SDK_IMPORT_SENTINEL);
   if (bundleResult.data.split(sentinelSpecifier).length !== 2) {
-    throw new HexclaveAssertionError("Workflow bundle contains an unexpected number of trusted runtime Admin SDK imports");
+    throw new HexclaveAssertionError("Workflow bundle contains an unexpected number of trusted runtime Server SDK imports");
   }
   // Replace only the canonical module specifier. The marker is rejected
   // from author source above, so user strings can never be rewritten.

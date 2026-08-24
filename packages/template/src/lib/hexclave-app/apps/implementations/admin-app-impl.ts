@@ -229,9 +229,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
           id: p.id,
           type: 'standard',
           clientId: p.client_id ?? throwErr("Client ID is missing"),
-          clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
+          clientSecret: p.id === "apple" ? p.client_secret : p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleTeamId: p.apple_team_id,
+          appleKeyId: p.apple_key_id,
+          applePrivateKey: p.apple_private_key,
           appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
@@ -291,25 +294,23 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       async listDeploymentServices() {
         return await app._interface.listDeploymentServices();
       },
-      async createDeploymentService(id, build) {
-        const created = await app._interface.createDeploymentService(id, build);
-        await app._refreshProjectConfig();
-        return created;
+      async listProjectSecrets() {
+        return await app._interface.listProjectSecrets();
       },
-      async updateDeploymentService(serviceId, update) {
-        const updated = await app._interface.updateDeploymentService(serviceId, update);
-        await app._refreshProjectConfig();
-        return updated;
+      async setProjectSecret(key, value) {
+        await app._interface.setProjectSecret(key, value);
       },
-      async deleteDeploymentService(serviceId) {
-        await app._interface.deleteDeploymentService(serviceId);
-        await app._refreshProjectConfig();
+      async deleteProjectSecret(key) {
+        await app._interface.deleteProjectSecret(key);
       },
-      async listDeploymentRuns(serviceId, options) {
-        return await app._interface.listDeploymentRuns(serviceId, options);
+      async listDeployments(options) {
+        return await app._interface.listDeployments(options);
       },
-      async getDeploymentRunLogs(runId, options) {
-        return await app._interface.getDeploymentRunLogs(runId, options);
+      async getDeployment(deploymentId) {
+        return await app._interface.getDeployment(deploymentId);
+      },
+      async getDeploymentBuildLogs(deploymentId, options) {
+        return await app._interface.getDeploymentBuildLogs(deploymentId, options);
       },
       async addDeploymentServiceDomain(serviceId, hostname, options) {
         await app._interface.addDeploymentServiceDomain(serviceId, hostname, options);
@@ -576,6 +577,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async deleteWorkflow(workflowId: string): Promise<void> {
     await this._interface.deleteWorkflow(workflowId);
+    await this._adminWorkflowsCache.refresh([]);
+  }
+
+  async setWorkflowPaused(workflowId: string, isPaused: boolean): Promise<void> {
+    await this._interface.setWorkflowPaused(workflowId, isPaused);
     await this._adminWorkflowsCache.refresh([]);
   }
 
@@ -1427,6 +1433,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({
       id: r.id,
+      refreshTokenId: r.refresh_token_id,
       projectUser: {
         id: r.project_user.id,
         displayName: r.project_user.display_name,
@@ -1448,6 +1455,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     const response = await this._interface.getSessionReplay(sessionReplayId);
     return {
       id: response.id,
+      refreshTokenId: response.refresh_token_id,
       projectUser: {
         id: response.project_user.id,
         displayName: response.project_user.display_name,

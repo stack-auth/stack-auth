@@ -1,9 +1,9 @@
 import { defineWorkspace } from 'vitest/config';
 
 export default defineWorkspace([
+  'configs',
   'packages/*',
   'apps/*',
-  '!apps/hosted-components',
   'docs',
   'examples/*',
 ]);

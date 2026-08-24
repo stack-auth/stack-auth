@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignDialog } from "@/components/design-components";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
@@ -11,12 +12,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   Label,
   Spinner,
   Typography,
@@ -27,18 +22,29 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject } from "@hexclave/next";
 import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { type FormEvent, type KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  parseOnboardingAppSearchParam,
+} from "./components";
+import {
+  CloudProjectOnboarding,
+  createInitialCloudOnboardingState,
+  type CloudProjectOnboardingState,
+} from "./cloud-project-onboarding";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
   isProjectOnboardingState,
-  type OnboardingProgressUpdate,
-  type ProjectOnboardingState,
   type ProjectOnboardingStatus,
 } from "./shared";
+
+type PersistedOnboardingUpdate = {
+  status?: ProjectOnboardingStatus,
+  onboardingState?: unknown,
+};
 
 export default function PageClient() {
   return (
@@ -68,37 +74,19 @@ function PageClientInner() {
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
   const redirectToConfirmWith = searchParams.get("redirect_to_confirm_with");
   const mode = searchParams.get("mode");
+  const primaryAppFromSearch = parseOnboardingAppSearchParam(searchParams.get("app"));
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
-  const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
+  const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, unknown>>(new Map());
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const hasProjectName = projectName.trim().length > 0;
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(() => user.selectedTeam?.id ?? teams.at(0)?.id ?? null);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const creatingTeamRef = useRef(false);
   const creatingProjectRef = useRef(false);
-  // Users without a project have nowhere to go: the projects page immediately sends them back
-  // here, so dismissing the creation dialog must be a no-op for them.
-  const canLeaveProjectCreation = projects.length > 0;
-
-  useEffect(() => {
-    if (selectedTeamId != null) {
-      return;
-    }
-
-    if (user.selectedTeam != null) {
-      setSelectedTeamId(user.selectedTeam.id);
-      return;
-    }
-
-    const firstTeam = teams.at(0);
-    if (firstTeam !== undefined) {
-      setSelectedTeamId(firstTeam.id);
-    }
-  }, [selectedTeamId, teams, user.selectedTeam]);
 
   const updateSearchParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -125,7 +113,6 @@ function PageClientInner() {
       if (trimmedProjectName.length === 0) {
         throw new Error("Project name is required.");
       }
-
       const firstTeam = teams.at(0);
       const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
       if (teamId === undefined) {
@@ -137,6 +124,25 @@ function PageClientInner() {
         teamId,
         onboardingStatus: "config_choice",
       });
+      const initialOnboardingState = createInitialCloudOnboardingState();
+      const projectInternals = getStackAppInternals(newProject.app);
+      const onboardingResponse = await projectInternals.sendRequest(
+        "/internal/projects/current",
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            onboarding_status: "config_choice",
+            onboarding_state: initialOnboardingState,
+          }),
+        },
+        "admin",
+      );
+      if (!onboardingResponse.ok) {
+        throw new Error(`Failed to initialize onboarding: ${onboardingResponse.status} ${await onboardingResponse.text()}`);
+      }
 
       setProjectStatuses((previous) => {
         const next = new Map(previous);
@@ -145,7 +151,7 @@ function PageClientInner() {
       });
       setProjectOnboardingStates((previous) => {
         const next = new Map(previous);
-        next.set(newProject.id, null);
+        next.set(newProject.id, initialOnboardingState);
         return next;
       });
 
@@ -165,29 +171,17 @@ function PageClientInner() {
         return;
       }
 
-      updateSearchParams({
-        project_id: newProject.id,
-        mode: null,
-      });
+      const nextSearchParams = new URLSearchParams({ project_id: newProject.id });
+      if (primaryAppFromSearch != null) {
+        nextSearchParams.set("app", primaryAppFromSearch);
+      }
+      router.replace(`/new-project?${nextSearchParams.toString()}`);
     } finally {
       endPendingAction(creatingProjectRef, setCreatingProject);
     }
-  }, [projectName, redirectToConfirmWith, redirectToNeonConfirmWith, router, selectedTeamId, teams, updateSearchParams, user]);
+  }, [primaryAppFromSearch, projectName, redirectToConfirmWith, redirectToNeonConfirmWith, router, selectedTeamId, teams, user]);
 
   const handleCreateProjectSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!hasProjectName || creatingProject) {
-      return;
-    }
-
-    runAsynchronouslyWithAlert(createProject());
-  }, [createProject, creatingProject, hasProjectName]);
-
-  const handleProjectNameKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-      return;
-    }
-
     event.preventDefault();
     if (!hasProjectName || creatingProject) {
       return;
@@ -217,30 +211,29 @@ function PageClientInner() {
     if (projectOnboardingStates.has(selectedProjectId)) {
       return projectOnboardingStates.get(selectedProjectId) ?? null;
     }
-    const onboardingState = selectedProject.onboardingState;
-    if (onboardingState == null) {
-      return null;
-    }
-    if (!isProjectOnboardingState(onboardingState)) {
-      throw new Error(`Project ${selectedProject.id} returned an invalid onboarding state.`);
-    }
-    return onboardingState;
+    return selectedProject.onboardingState ?? null;
   }, [projectOnboardingStates, selectedProject, selectedProjectId]);
+
+  const isCompletedProjectRelinking = selectedProjectStatus === "completed" && (
+    mode === "link-existing"
+    || mode === "deploy-local"
+    || mode === "deploy-github"
+  );
 
   useEffect(() => {
     if (selectedProject == null || selectedProjectStatus !== "completed") {
       return;
     }
-    // Already-onboarded projects can re-enter the link-existing flow from the
-    // project settings page, so don't bounce them back to the project.
-    if (mode === "link-existing") {
+    // Re-linking starts in link-existing mode, then switches to a deployment-
+    // specific mode. Keep every stage on this page for completed projects.
+    if (isCompletedProjectRelinking) {
       return;
     }
 
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
-  }, [mode, router, selectedProject, selectedProjectStatus]);
+  }, [isCompletedProjectRelinking, router, selectedProject, selectedProjectStatus]);
 
-  const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
+  const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: PersistedOnboardingUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
     const body: Record<string, unknown> = {};
     if (update.status !== undefined) {
@@ -323,7 +316,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && selectedProjectStatus === "completed" && mode !== "link-existing") {
+  if (selectedProject != null && selectedProjectStatus === "completed" && !isCompletedProjectRelinking) {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
         <Spinner size={24} />
@@ -337,132 +330,95 @@ function PageClientInner() {
 
   if (selectedProject == null) {
     return (
-      <div className="flex w-full flex-grow items-center justify-center">
-        {/*
-          The dialog is the entire page, so its open state is derived from the route rather than
-          from component state: dismissing it navigates away instead of closing it in place. Keeping
-          a local `open` state here used to leave the page blank, because the projects page bounces
-          users without projects straight back to /new-project without remounting this component,
-          so the closed state survived the round trip.
-        */}
-        <Dialog
+      <div className="flex w-full flex-grow justify-center">
+        <DesignDialog
           open
           onOpenChange={(open) => {
-            // Navigating away mid-creation would hide the result (or error) of the request.
-            if (open || creatingProjectRef.current || !canLeaveProjectCreation) {
+            if (open || creatingProjectRef.current) {
               return;
             }
-            router.push("/projects");
+            if (projects.length > 0) {
+              router.push("/projects");
+            }
           }}
-        >
-          <DialogContent
-            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[720px] sm:rounded-3xl"
-            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
-            noCloseButton
-          >
-            <DialogHeader className="border-b border-black/[0.08] px-6 py-6 text-left dark:border-white/[0.08]">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
-                  <PlusCircleIcon className="h-5 w-5" />
-                </div>
-                <div className="space-y-1">
-                  <DialogTitle className="text-xl font-semibold tracking-tight">Create a new project</DialogTitle>
-                </div>
-              </div>
-              <DialogDescription>
-                Start by naming your project and choosing the team that will own it.
-              </DialogDescription>
-            </DialogHeader>
-
-            <form onSubmit={handleCreateProjectSubmit}>
-              <div className="space-y-5 px-6 py-6">
-                <div className="space-y-2">
-                  <Label htmlFor="project-name">Project name</Label>
-                  <DesignInput
-                    id="project-name"
-                    value={projectName}
-                    onChange={(event) => setProjectName(event.target.value)}
-                    onKeyDown={handleProjectNameKeyDown}
-                    placeholder="My Project"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="team-id">Team</Label>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <DesignSelectorDropdown
-                      value={selectedTeamId ?? ""}
-                      onValueChange={setSelectedTeamId}
-                      placeholder="Select a team"
-                      size="md"
-                      className="w-full"
-                      options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
-                    />
-                    <DesignButton type="button" variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
-                      <PlusCircleIcon className="mr-2 h-4 w-4" />
-                      Create Team
-                    </DesignButton>
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
-                {canLeaveProjectCreation && (
-                  <DesignButton type="button" variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
-                    Cancel
-                  </DesignButton>
-                )}
+          size="lg"
+          icon={PlusCircleIcon}
+          title="Name your project"
+          description="Choose a name and the team that will own this Hexclave project."
+          hideTopCloseButton={creatingProject || projects.length === 0}
+          footer={(
+            <>
+              {projects.length > 0 && (
                 <DesignButton
-                  type="submit"
-                  className="rounded-xl"
-                  disabled={!hasProjectName || creatingProject}
-                  loading={creatingProject}
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/projects")}
+                  disabled={creatingProject}
                 >
-                  Create Project
+                  Back
                 </DesignButton>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-          <DialogContent
-            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[640px] sm:rounded-3xl"
-            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
-            noCloseButton
-          >
-            <DialogHeader className="px-6 pb-0 pt-6 text-left">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
-                  <PlusCircleIcon className="h-5 w-5" />
-                </div>
-                <div className="space-y-1">
-                  <DialogTitle className="text-xl font-semibold tracking-tight">Create Team</DialogTitle>
-                </div>
-              </div>
-              <DialogDescription>
-                This team will be available immediately for project ownership.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-5 px-6 py-6">
-              <div className="space-y-2">
-                <Label htmlFor="new-team-name">Team name</Label>
-                <DesignInput
-                  id="new-team-name"
-                  value={newTeamName}
-                  onChange={(event) => setNewTeamName(event.target.value)}
-                  placeholder="Acme Team"
-                />
-              </div>
+              )}
+              <DesignButton
+                type="submit"
+                form="create-project-form"
+                disabled={!hasProjectName || selectedTeamId == null || creatingProject}
+                loading={creatingProject}
+              >
+                Continue
+              </DesignButton>
+            </>
+          )}
+        >
+          <form id="create-project-form" onSubmit={handleCreateProjectSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="project-name">Project name</Label>
+              <DesignInput
+                id="project-name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+                placeholder="My Project"
+                autoFocus
+              />
             </div>
 
-            <DialogFooter className="px-6 pb-6 pt-0 sm:justify-end sm:space-x-2">
-              <DesignButton variant="outline" className="rounded-xl" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
+            <div className="space-y-2">
+              <Label htmlFor="team-id">Team</Label>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <DesignSelectorDropdown
+                  value={selectedTeamId ?? ""}
+                  onValueChange={setSelectedTeamId}
+                  placeholder="Select a team"
+                  size="md"
+                  className="w-full"
+                  options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+                />
+                <DesignButton type="button" variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="sm:min-w-[140px]">
+                  <PlusCircleIcon className="mr-2 h-4 w-4" />
+                  New team
+                </DesignButton>
+              </div>
+            </div>
+          </form>
+        </DesignDialog>
+
+        <DesignDialog
+          open={isCreateTeamOpen}
+          onOpenChange={(open) => {
+            if (!creatingTeam) {
+              setIsCreateTeamOpen(open);
+            }
+          }}
+          size="md"
+          icon={PlusCircleIcon}
+          title="Create a team"
+          description="The new team will be selected as this project's owner."
+          hideTopCloseButton={creatingTeam}
+          footer={(
+            <>
+              <DesignButton variant="outline" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
                 Cancel
               </DesignButton>
               <DesignButton
-                className="rounded-xl"
                 loading={creatingTeam}
                 onClick={() => {
                   if (!beginPendingAction(creatingTeamRef, setCreatingTeam)) {
@@ -491,11 +447,47 @@ function PageClientInner() {
               >
                 Create Team
               </DesignButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </>
+          )}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="new-team-name">Team name</Label>
+            <DesignInput
+              id="new-team-name"
+              value={newTeamName}
+              onChange={(event) => setNewTeamName(event.target.value)}
+              placeholder="Acme Team"
+              autoFocus
+            />
+          </div>
+        </DesignDialog>
       </div>
     );
+  }
+
+  if (!isDevelopmentEnvironment && !isCompletedProjectRelinking) {
+    return (
+      <div className="flex w-full flex-grow justify-center">
+        <CloudProjectOnboarding
+          project={selectedProject}
+          status={selectedProjectStatus ?? "config_choice"}
+          onboardingState={selectedProjectOnboardingState}
+          primaryAppFromQuery={primaryAppFromSearch}
+          saveProgress={(update: {
+            status?: ProjectOnboardingStatus,
+            onboardingState: CloudProjectOnboardingState,
+          }) => saveSelectedProjectOnboardingProgress(selectedProject, update)}
+          onComplete={() => router.push(`/projects/${encodeURIComponent(selectedProject.id)}`)}
+        />
+      </div>
+    );
+  }
+
+  // Completed-project relinking is independent from first-time onboarding and
+  // does not need the retained cloud completion state.
+  const legacyOnboardingState = isCompletedProjectRelinking ? null : selectedProjectOnboardingState;
+  if (legacyOnboardingState != null && !isProjectOnboardingState(legacyOnboardingState)) {
+    throw new Error(`Project ${selectedProject.id} returned an invalid development-environment onboarding state.`);
   }
 
   return (
@@ -503,13 +495,13 @@ function PageClientInner() {
       <ProjectOnboardingWizard
         project={selectedProject}
         status={selectedProjectStatus ?? "config_choice"}
-        onboardingState={selectedProjectOnboardingState}
+        onboardingState={legacyOnboardingState}
         mode={mode}
         setMode={(nextMode) => updateSearchParams({ mode: nextMode })}
         saveOnboardingProgress={(update) => saveSelectedProjectOnboardingProgress(selectedProject, update)}
         onComplete={() => {
           const projectUrl = `/projects/${encodeURIComponent(selectedProject.id)}`;
-          if (mode === "link-existing") {
+          if (mode === "deploy-local" || mode === "deploy-github") {
             window.location.href = projectUrl;
             return;
           }
