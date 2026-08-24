@@ -234,22 +234,26 @@ function coerceBigInt(raw: unknown): bigint | undefined {
 export type CleanupScope = {
   trackMcpQuestion: (question: string) => void,
   trackAiQueryCorrelationId: (correlationId: string) => void,
+  trackFeedbackCorrelationId: (correlationId: string) => void,
   cleanup: () => Promise<void>,
 };
 
 export function createCleanupScope(getCleanupToken: () => Promise<string> = signMemberToken): CleanupScope {
   const questions = new Set<string>();
   const aiQueryCorrelationIds = new Set<string>();
+  const feedbackCorrelationIds = new Set<string>();
 
   return {
     trackMcpQuestion: (question) => { questions.add(question); },
     trackAiQueryCorrelationId: (correlationId) => { aiQueryCorrelationIds.add(correlationId); },
+    trackFeedbackCorrelationId: (correlationId) => { feedbackCorrelationIds.add(correlationId); },
     async cleanup() {
-      if (questions.size === 0 && aiQueryCorrelationIds.size === 0) return;
+      if (questions.size === 0 && aiQueryCorrelationIds.size === 0 && feedbackCorrelationIds.size === 0) return;
       const token = await getCleanupToken().catch(() => null);
       if (token == null) {
         questions.clear();
         aiQueryCorrelationIds.clear();
+        feedbackCorrelationIds.clear();
         return;
       }
 
@@ -274,9 +278,14 @@ export function createCleanupScope(getCleanupToken: () => Promise<string> = sign
         for (const correlationId of aiQueryCorrelationIds) {
           await callReducer(token, "delete_ai_query_log", [correlationId]).catch(() => undefined);
         }
+
+        for (const correlationId of feedbackCorrelationIds) {
+          await callReducer(token, "delete_feedback", [correlationId]).catch(() => undefined);
+        }
       } finally {
         questions.clear();
         aiQueryCorrelationIds.clear();
+        feedbackCorrelationIds.clear();
       }
     },
   };

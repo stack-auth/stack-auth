@@ -190,13 +190,25 @@ const aiQueryLog = table(
   }
 );
 
-// Session cache derived from validated JWTs at connect time. Views cannot
-// read JWT claims (their ctx only has `sender`), so `clientConnected` maps
-// each connecting identity to the grants its token carried. Self-enrolled
-// only — there is no reducer that can write to this table on behalf of
-// someone else. Rows expire with the token's `exp` and are garbage-collected
-// opportunistically on subsequent connects, plus periodically by the
-// scheduled `session_gc` reducer so expired rows can't outlive their token
+const feedbackLog = table(
+  { name: 'feedback_log', public: false },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    shard: t.u8().index('btree'),
+    correlationId: t.string().unique(),
+    createdAt: t.timestamp(),
+    conversationId: t.string().optional(),
+    category: t.string(),
+    message: t.string(),
+    transport: t.string(),
+    requestIp: t.string().optional(),
+    requestIpSource: t.string().optional(),
+    userAgent: t.string().optional(),
+    requestHost: t.string().optional(),
+    mcpProtocolVersion: t.string().optional(),
+  }
+);
+
 // just because nobody reconnects.
 const sessions = table(
   { name: 'sessions', public: false },
@@ -208,13 +220,7 @@ const sessions = table(
   }
 );
 
-// Drives the periodic `session_gc` sweep (see SESSION_GC_INTERVAL_MICROS).
-// Holds exactly one repeating-interval row, inserted by
-// `ensureSessionGcScheduled`. The thunk's `any` return type breaks a type
-// cycle the SDK can't express: the table references the reducer via
-// `scheduled`, while the reducer's arg type references this table's rowType.
-// A wrong reference would still fail loudly at publish time — the SDK
-// validates that `scheduled` resolves to an exported reducer.
+
 const sessionGcSchedule = table(
   { name: 'session_gc_schedule', public: false, scheduled: (): any => session_gc },
   {
@@ -242,7 +248,7 @@ const qaEntries = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog, aiQueryLog, sessions, sessionGcSchedule, qaEntries });
+const spacetimedb = schema({ mcpCallLog, aiQueryLog, sessions, sessionGcSchedule, qaEntries, feedbackLog });
 export default spacetimedb;
 
 type SessionRow = typeof sessions.rowType.type;
@@ -257,11 +263,6 @@ type SessionGcScheduleCtx = {
   },
 };
 
-// Idempotently arms the repeating GC schedule. Called from `init` (fresh
-// databases) AND from `upsertSessionFromJwt` (every connect/`touch_session`):
-// `init` does not re-run when an existing database gets a module update, so
-// already-deployed databases only pick up the schedule row through the
-// connect path.
 function ensureSessionGcScheduled(ctx: SessionGcScheduleCtx): void {
   for (const _row of ctx.db.sessionGcSchedule.iter()) return;
   ctx.db.sessionGcSchedule.insert({
@@ -291,13 +292,7 @@ function upsertSessionFromJwt(ctx: SessionCtx): void {
   ensureSessionGcScheduled(ctx);
   removeExpiredSessions(ctx);
   const jwt = ctx.senderAuth.jwt;
-  // Tokenless clients may connect — they can only see `published_qa`.
   if (jwt == null) return;
-  // A JWT from a foreign issuer/audience gets no session (and no grants) but
-  // may stay connected as an anonymous client. Notably, SpacetimeDB's own
-  // server-issued tokens (handed to tokenless clients and replayed by the SDK
-  // on reconnect) fall in this bucket — throwing here would break anonymous
-  // `published_qa` subscribers on reconnect.
   if (!ALLOWED_ISSUERS.includes(jwt.issuer)) return;
   if (!jwt.audience.includes(EXPECTED_AUDIENCE)) return;
   const exp = jwt.fullPayload['exp'];
@@ -321,20 +316,10 @@ export const onConnect = spacetimedb.clientConnected((ctx) => {
   upsertSessionFromJwt(ctx);
 });
 
-// HTTP API callers never run `clientConnected` (it fires for WebSocket
-// connections), so they call this no-arg reducer to establish their session
-// row before querying the `my_visible_*` views over /sql. Self-enrollment
-// only: everything is derived from the caller's own validated JWT.
 export const touch_session = spacetimedb.reducer({}, (ctx, _args) => {
   upsertSessionFromJwt(ctx);
 });
 
-// Scheduled sweep of expired session rows (see sessionGcSchedule). Without it,
-// a long-lived WebSocket subscriber whose token expired would keep passing
-// `hasMemberSession` indefinitely, since the opportunistic GC in
-// `upsertSessionFromJwt` only runs when someone (re)connects. Scheduled
-// reducers are private in SpacetimeDB v2 (only the scheduler and the database
-// owner can invoke them), and the sweep is idempotent anyway.
 export const session_gc = spacetimedb.reducer(
   { row: sessionGcSchedule.rowType },
   (ctx, _args) => {
@@ -366,12 +351,15 @@ export const myVisibleQaEntries = spacetimedb.view(
     return Array.from(ctx.db.qaEntries.shard.filter(0));
   }
 );
+export const myVisibleFeedbackLog = spacetimedb.view(
+  { name: 'my_visible_feedback_log', public: true },
+  t.array(feedbackLog.rowType),
+  (ctx) => {
+    if (!hasMemberSession(ctx)) return [];
+    return newestById(ctx.db.feedbackLog.shard.filter(0));
+  }
+);
 
-// Public view for the /questions page — returns rows reviewers have explicitly
-// published. Uses `anonymousView` so SpacetimeDB materializes once and shares
-// the result across all subscribers. Projected to only fields the public page
-// needs; everything else (reviewer attribution, QA internals, raw prompt,
-// tool-call metadata) stays private.
 const publishedQaRow = t.object('PublishedQaRow', {
   id: t.u64(),
   question: t.string(),
@@ -437,6 +425,39 @@ export const log_mcp_call = spacetimedb.reducer(
       publishedToQa: false,
       qaReviewRequestedAt: ctx.timestamp,
     } as Parameters<typeof ctx.db.mcpCallLog.insert>[0]);
+  }
+);
+
+export const log_feedback = spacetimedb.reducer(
+  {
+    correlationId: t.string(),
+    conversationId: t.string().optional(),
+    category: t.string(),
+    message: t.string(),
+    transport: t.string(),
+    requestIp: t.string().optional(),
+    requestIpSource: t.string().optional(),
+    userAgent: t.string().optional(),
+    requestHost: t.string().optional(),
+    mcpProtocolVersion: t.string().optional(),
+  },
+  (ctx, args) => {
+    requireProjectMember(ctx.senderAuth);
+    ctx.db.feedbackLog.insert({
+      id: 0n,
+      shard: 0,
+      correlationId: args.correlationId,
+      createdAt: ctx.timestamp,
+      conversationId: args.conversationId,
+      category: args.category,
+      message: args.message,
+      transport: args.transport,
+      requestIp: args.requestIp,
+      requestIpSource: args.requestIpSource,
+      userAgent: args.userAgent,
+      requestHost: args.requestHost,
+      mcpProtocolVersion: args.mcpProtocolVersion,
+    } as Parameters<typeof ctx.db.feedbackLog.insert>[0]);
   }
 );
 
@@ -772,6 +793,20 @@ export const update_ai_query_usage = spacetimedb.reducer(
       costUsd: args.costUsd ?? row.costUsd,
       cacheDiscountUsd: args.cacheDiscountUsd ?? row.cacheDiscountUsd,
     });
+  }
+);
+
+export const delete_feedback = spacetimedb.reducer(
+  {
+    correlationId: t.string(),
+  },
+  (ctx, args) => {
+    requireProjectMember(ctx.senderAuth);
+    const row = ctx.db.feedbackLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Feedback not found for correlationId: ' + args.correlationId);
+    }
+    ctx.db.feedbackLog.id.delete(row.id);
   }
 );
 

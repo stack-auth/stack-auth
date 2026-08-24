@@ -164,7 +164,7 @@ type BusyAction = "save-draft" | "save-publish" | "publish" | "unpublish" | "del
 
 const BUSY_ACTION_LABELS: ReadonlyMap<BusyAction, string> = new Map([
   ["save-draft", "save draft"],
-  ["save-publish", "save & publish"],
+  ["save-publish", "publish"],
   ["publish", "publish"],
   ["unpublish", "unpublish"],
   ["delete", "delete"],
@@ -203,6 +203,11 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
   const cardBorder = row.published ? "border-green-200" : "border-amber-200";
   const cardBg = row.published ? "bg-green-50/30" : "bg-amber-50/30";
 
+  const hasUnsavedChanges = editQuestion !== row.question || editAnswer !== row.answer;
+  const saveAction = hasUnsavedChanges
+    ? { label: "Save Draft", publish: false, isDraft: true }
+    : { label: row.published ? "Update" : "Publish", publish: true, isDraft: false };
+
   const errorBanner = actionError && (
     <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
       {actionError}
@@ -239,18 +244,19 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
             Cancel
           </button>
           <button
-            onClick={() => runAsynchronously(runAction("save-draft", () => onSave(editQuestion, editAnswer, false)))}
+            onClick={() => runAsynchronously(runAction(
+              saveAction.publish ? "save-publish" : "save-draft",
+              () => onSave(editQuestion, editAnswer, saveAction.publish),
+            ))}
             disabled={busy != null}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:text-gray-400 disabled:bg-gray-50"
+            className={clsx(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors hover:transition-none",
+              saveAction.isDraft
+                ? "text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:text-gray-400 disabled:bg-gray-50"
+                : "text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300",
+            )}
           >
-            {busy === "save-draft" ? "Saving…" : "Save Draft"}
-          </button>
-          <button
-            onClick={() => runAsynchronously(runAction("save-publish", () => onSave(editQuestion, editAnswer, true)))}
-            disabled={busy != null}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300"
-          >
-            {busy === "save-publish" ? "Saving…" : row.published ? "Update & Publish" : "Save & Publish"}
+            {busy != null ? "Saving…" : saveAction.label}
           </button>
         </div>
       </div>

@@ -5,16 +5,18 @@ import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
 import { CallLogList } from "../components/CallLogList";
+import { FeedbackDetail } from "../components/FeedbackDetail";
+import { FeedbackList } from "../components/FeedbackList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
-import { type GetSpacetimeToken, useAiQueryLogs, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
+import { type GetSpacetimeToken, useAiQueryLogs, useFeedbackLog, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
 import { retryReview } from "../lib/mcp-review-api";
-import type { AiQueryLogRow, McpCallLogRow } from "../types";
+import type { AiQueryLogRow, FeedbackLogRow, McpCallLogRow } from "../types";
 
-type Tab = "calls" | "knowledge" | "usage";
+type Tab = "calls" | "knowledge" | "usage" | "feedback";
 const TAB_STORAGE_KEY = "internal-tool-active-tab";
-const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "usage"];
+const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "usage", "feedback"];
 
 function readInitialTab(): Tab {
   // sessionStorage is per-tab: reload preserves the active tab, but a brand-new
@@ -31,6 +33,7 @@ export default function App() {
   const user = useUser({ or: "redirect" });
   const [selectedRow, setSelectedRow] = useState<McpCallLogRow | null>(null);
   const [selectedUsageRow, setSelectedUsageRow] = useState<AiQueryLogRow | null>(null);
+  const [selectedFeedbackRow, setSelectedFeedbackRow] = useState<FeedbackLogRow | null>(null);
   const [showAddQa, setShowAddQa] = useState(false);
   const [tab, setTab] = useState<Tab>(readInitialTab);
 
@@ -70,9 +73,23 @@ export default function App() {
     callReducer: callQaReducer,
   } = useQaEntries(getSpacetimeToken);
 
+  const {
+    rows: feedbackRows,
+    connectionState: feedbackConnectionState,
+    connectionErrorMessage: feedbackConnectionErrorMessage,
+  } = useFeedbackLog(getSpacetimeToken);
+
   const currentSelectedRow = selectedRow
     ? rows.find(r => r.id === selectedRow.id) ?? selectedRow
     : null;
+
+  const currentSelectedFeedbackRow = selectedFeedbackRow
+    ? feedbackRows.find(r => r.id === selectedFeedbackRow.id) ?? selectedFeedbackRow
+    : null;
+
+  const relatedCallForFeedback = currentSelectedFeedbackRow?.conversationId == null
+    ? null
+    : rows.find(r => r.conversationId === currentSelectedFeedbackRow.conversationId) ?? null;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -118,6 +135,18 @@ export default function App() {
               )}
             >
               Unified AI Endpoint Analytics
+            </button>
+            <button
+              onClick={() => {
+                setTab("feedback");
+                setSelectedRow(null);
+              }}
+              className={clsx(
+                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                tab === "feedback" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              Feedback
             </button>
           </div>
         </div>
@@ -233,6 +262,36 @@ export default function App() {
                 <UsageDetail
                   row={usageRows.find(r => r.id === selectedUsageRow.id) ?? selectedUsageRow}
                   onClose={() => setSelectedUsageRow(null)}
+                />
+              </aside>
+            )}
+          </>
+        )}
+
+        {tab === "feedback" && (
+          <>
+            <main className="flex-1 overflow-y-auto">
+              <div className="p-6 max-w-4xl mx-auto">
+                <FeedbackList
+                  rows={feedbackRows}
+                  connectionState={feedbackConnectionState}
+                  connectionErrorMessage={feedbackConnectionErrorMessage}
+                  onSelect={setSelectedFeedbackRow}
+                  selectedId={currentSelectedFeedbackRow?.id}
+                />
+              </div>
+            </main>
+            {currentSelectedFeedbackRow && (
+              <aside className="w-[480px] shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+                <FeedbackDetail
+                  key={String(currentSelectedFeedbackRow.id)}
+                  row={currentSelectedFeedbackRow}
+                  relatedCall={relatedCallForFeedback}
+                  onClose={() => setSelectedFeedbackRow(null)}
+                  onOpenRelatedCall={(call) => {
+                    setSelectedRow(call);
+                    setTab("calls");
+                  }}
                 />
               </aside>
             )}

@@ -41,6 +41,23 @@ export const AiQueryLog = __t.object("AiQueryLog", {
 });
 export type AiQueryLog = __Infer<typeof AiQueryLog>;
 
+export const FeedbackLog = __t.object("FeedbackLog", {
+  id: __t.u64(),
+  shard: __t.u8(),
+  correlationId: __t.string(),
+  createdAt: __t.timestamp(),
+  conversationId: __t.option(__t.string()),
+  category: __t.string(),
+  message: __t.string(),
+  transport: __t.string(),
+  requestIp: __t.option(__t.string()),
+  requestIpSource: __t.option(__t.string()),
+  userAgent: __t.option(__t.string()),
+  requestHost: __t.option(__t.string()),
+  mcpProtocolVersion: __t.option(__t.string()),
+});
+export type FeedbackLog = __Infer<typeof FeedbackLog>;
+
 export const McpCallLog = __t.object("McpCallLog", {
   id: __t.u64(),
   shard: __t.u8(),
@@ -79,6 +96,9 @@ export type McpCallLog = __Infer<typeof McpCallLog>;
 
 export const MyVisibleAiQueryLog = __t.object("MyVisibleAiQueryLog", {});
 export type MyVisibleAiQueryLog = __Infer<typeof MyVisibleAiQueryLog>;
+
+export const MyVisibleFeedbackLog = __t.object("MyVisibleFeedbackLog", {});
+export type MyVisibleFeedbackLog = __Infer<typeof MyVisibleFeedbackLog>;
 
 export const MyVisibleMcpCallLog = __t.object("MyVisibleMcpCallLog", {});
 export type MyVisibleMcpCallLog = __Infer<typeof MyVisibleMcpCallLog>;

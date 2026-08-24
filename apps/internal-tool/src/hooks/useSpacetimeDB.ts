@@ -4,14 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { createPendingCallRegistry } from "../lib/pending-call-registry";
 import { spacetimeDbName } from "../lib/spacetimedb-constants";
 import { DbConnection, type ErrorContext, type EventContext } from "../module_bindings";
-import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
+import type { AiQueryLogRow, FeedbackLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
-/**
- * Returns a fresh SpacetimeDB token (minted under the internal tool's own OIDC
- * issuer) for the signed-in user. SpacetimeDB validates it via OIDC discovery;
- * the module authorizes on issuer + audience only, so any valid member token
- * grants full read/write.
- */
 export type GetSpacetimeToken = () => Promise<string>;
 
 const PLACEHOLDER_ENV_VALUE = "REPLACE_ME";
@@ -34,22 +28,9 @@ function getConfig() {
   return cachedConfig;
 }
 
-// After this many consecutive failures the error banner is shown (and the
-// error captured once), but reconnection attempts continue forever with capped
-// exponential backoff: this is a long-lived dashboard, and a transient outage
-// (dev-server rebuild, server restart, laptop sleep, network blip) must not
-// permanently kill the page until someone manually reloads it.
 const RETRIES_BEFORE_ERROR_STATE = 5;
 const RETRY_DELAY_MS = 2000;
 const MAX_RETRY_DELAY_MS = 30_000;
-// Reconnect with a fresh token well before the current one expires
-// (`withToken` is fixed at build() time, so reconnecting is the only way to
-// rotate it). The token TTL (30min, see lib/server/spacetimedb-token.ts) is
-// deliberately much longer than this interval: browsers throttle timers in
-// backgrounded tabs, so this can fire late — the wide margin keeps the
-// server-side session row valid (and the my_visible_* views non-empty, which
-// would otherwise delete every row out from under the subscription) even when
-// several refresh cycles are delayed.
 const TOKEN_RECONNECT_INTERVAL_MS = 8 * 60 * 1000;
 
 type ConnectionState = "connecting" | "connected" | "error";
@@ -247,24 +228,8 @@ function useTableSubscription<Row extends { id: bigint }>(
           };
 
           const resyncFromCache = () => {
-            // The connRef guard freezes rows sourced from a superseded
-            // connection: once a replacement has been built, only ITS cache
-            // may drive the UI, so a dying connection's teardown events can't
-            // blank the table.
             if (cancelled || connRef.current !== connInstance) return;
             const all = snapshotFromCache();
-            // A non-empty view collapsing to empty mid-connection is (almost
-            // always) NOT real data loss: it's the server-side session row
-            // expiring under a still-open WebSocket — the module's
-            // my_visible_* views return [] for sessionless subscribers and
-            // SpacetimeDB then deletes every row under the subscription, and
-            // no further events ever arrive on that connection. (Verified
-            // against a local instance by subscribing with a short-exp token:
-            // the session_gc sweep produced a delete-all, then silence.)
-            // Keep showing the last-known rows and reconnect with a fresh
-            // token instead; the new subscription's onApplied below is
-            // authoritative and will set the true state — including a
-            // genuinely emptied table, which costs one spurious reconnect.
             if (all.length === 0 && lastRenderedRowCount > 0) {
               if (!sessionRefreshInFlight) {
                 sessionRefreshInFlight = true;
@@ -313,13 +278,8 @@ function useTableSubscription<Row extends { id: bigint }>(
 
           startSubscription();
 
-          // Callbacks within one transaction batch fire after the cache has
-          // fully absorbed the batch, so each resync sees a consistent
-          // snapshot; redundant resyncs collapse in React's render batching.
           binding.onInsert(connInstance, resyncFromCache);
           binding.onDelete(connInstance, resyncFromCache);
-          // Never fires for PK-less view tables today (see above), but kept so
-          // rows stay correct if a view ever regains primary-key metadata.
           binding.onUpdate?.(connInstance, resyncFromCache);
         })
         .onConnectError((_ctx: unknown, err: unknown) => {
@@ -332,11 +292,6 @@ function useTableSubscription<Row extends { id: bigint }>(
           retry();
         })
         .onDisconnect(() => {
-          // Fires when an ESTABLISHED connection ends. Intentional teardowns
-          // (superseded generation, unmount) are filtered by the guards below;
-          // what remains is the active connection dying unexpectedly (server
-          // restart, network drop, laptop wake) — reconnect right away so the
-          // dashboard self-heals instead of sitting dead until a reload.
           if (thisConn != null) liveConns.delete(thisConn);
           if (cancelled || connRef.current !== thisConn) return;
           pendingCalls.rejectAll(closedConnError());
@@ -349,9 +304,6 @@ function useTableSubscription<Row extends { id: bigint }>(
       const newConn = builder.build();
       thisConn = newConn;
       liveConns.add(newConn);
-      // Assigned at build time (not connect time) so that from this moment on,
-      // the previous connection's events are frozen out of the UI and the
-      // handlers above can tell whether they belong to the newest generation.
       connRef.current = newConn;
     }
 
@@ -440,8 +392,30 @@ const qaEntriesBinding: TableBinding<QaEntriesRow> = {
   },
 };
 
+const feedbackBinding: TableBinding<FeedbackLogRow> = {
+  tableName: "my_visible_feedback_log",
+  iter: (conn) => conn.db.myVisibleFeedbackLog.iter(),
+  onInsert: (conn, cb) => {
+    conn.db.myVisibleFeedbackLog.onInsert((_ctx: EventContext, _row: FeedbackLogRow) => cb());
+  },
+  onDelete: (conn, cb) => {
+    conn.db.myVisibleFeedbackLog.onDelete((_ctx: EventContext, _row: FeedbackLogRow) => cb());
+  },
+  onUpdate: (conn, cb) => {
+    conn.db.myVisibleFeedbackLog.onUpdate((_ctx: EventContext, _old: FeedbackLogRow, _row: FeedbackLogRow) => cb());
+  },
+};
+
 export function useMcpCallLogs(getToken?: GetSpacetimeToken) {
   return useTableSubscription(mcpBinding, getToken, true);
+}
+
+/**
+ * Reviewer-only. Feedback volunteered through the MCP `give_feedback` tool.
+ * Read-only surface — nothing in the UI writes to `feedback_log`.
+ */
+export function useFeedbackLog(getToken?: GetSpacetimeToken) {
+  return useTableSubscription(feedbackBinding, getToken, true);
 }
 
 export function useAiQueryLogs(getToken?: GetSpacetimeToken) {

@@ -521,6 +521,13 @@ function HumanCorrectionCard({ row, qa, onSave }: {
     question !== persistedQuestion ||
     answer !== persistedAnswer;
 
+  const saveAction = (() => {
+    if (isSaving) return { label: "Saving…", isDraft: !isPublished, disabled: true };
+    if (hasUnsavedChanges) return { label: "Save Draft", isDraft: true, disabled: false };
+    if (!hasDraft) return { label: "Save Draft", isDraft: true, disabled: true };
+    return { label: isPublished ? "Update" : "Publish", isDraft: false, disabled: false };
+  })();
+
   const cardStyle = isPublished
     ? "bg-green-50/50 border-green-200"
     : hasDraft
@@ -609,7 +616,7 @@ function HumanCorrectionCard({ row, qa, onSave }: {
             }}
             className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded bg-white"
           >
-            Pre-fill from AI
+            Pre-fill from call
           </button>
           <button
             disabled={deepWikiLoading}
@@ -638,16 +645,18 @@ function HumanCorrectionCard({ row, qa, onSave }: {
           )}
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => void handleSave(false)}
-              className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              onClick={() => void handleSave(!hasUnsavedChanges)}
+              disabled={saveAction.disabled}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors hover:transition-none",
+                saveAction.disabled
+                  ? "text-gray-400 bg-gray-50 cursor-not-allowed"
+                  : saveAction.isDraft
+                    ? "text-gray-700 bg-gray-100 hover:bg-gray-200"
+                    : "text-white bg-blue-600 hover:bg-blue-700",
+              )}
             >
-              Save Draft
-            </button>
-            <button
-              onClick={() => void handleSave(true)}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-            >
-              {isPublished ? "Update & Publish" : "Save & Publish"}
+              {saveAction.label}
             </button>
           </div>
         </div>

@@ -150,6 +150,27 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
     expect(clientFields).toEqual(serverFields);
   });
 
+  it("feedback_log server columns match my_visible_feedback_log client row binding", () => {
+    const serverFields = extractServerFields(serverSchema, /name:\s*'feedback_log',\s*public:\s*false\s*\},\s*/);
+    const clientSource = read("apps/internal-tool/src/module_bindings/my_visible_feedback_log_table.ts");
+    const clientFields = extractClientFields(clientSource, /__t\.row\(/);
+    expect(clientFields).toEqual(serverFields);
+  });
+
+  it("feedback_log server columns match FeedbackLog algebraic type in types.ts", () => {
+    const serverFields = extractServerFields(serverSchema, /name:\s*'feedback_log',\s*public:\s*false\s*\},\s*/);
+    const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
+    const clientFields = extractClientFields(typesSource, /export const FeedbackLog = __t\.object\("FeedbackLog",\s*/);
+    expect(clientFields).toEqual(serverFields);
+  });
+
+  it("log_feedback server reducer args match client reducer binding", () => {
+    const serverFields = extractServerFields(serverSchema, /export const log_feedback = spacetimedb\.reducer\(\s*/);
+    const clientSource = read("apps/internal-tool/src/module_bindings/log_feedback_reducer.ts");
+    const clientFields = extractClientFields(clientSource, /export default\s*/);
+    expect(clientFields).toEqual(serverFields);
+  });
+
   it("update_ai_query_usage server reducer args match client reducer binding", () => {
     const serverFields = extractServerFields(serverSchema, /export const update_ai_query_usage = spacetimedb\.reducer\(\s*/);
     const clientSource = read("apps/internal-tool/src/module_bindings/update_ai_query_usage_reducer.ts");

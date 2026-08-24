@@ -37,9 +37,11 @@ import {
 import AddManualQaReducer from "./add_manual_qa_reducer";
 import ClearMcpQaReviewReducer from "./clear_mcp_qa_review_reducer";
 import DeleteAiQueryLogReducer from "./delete_ai_query_log_reducer";
+import DeleteFeedbackReducer from "./delete_feedback_reducer";
 import DeleteMcpCallLogReducer from "./delete_mcp_call_log_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
 import LogAiQueryReducer from "./log_ai_query_reducer";
+import LogFeedbackReducer from "./log_feedback_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import SetHumanReviewedReducer from "./set_human_reviewed_reducer";
 import TouchSessionReducer from "./touch_session_reducer";
@@ -52,6 +54,7 @@ import UpsertQaFromCallAndMarkReviewedReducer from "./upsert_qa_from_call_and_ma
 
 // Import all table schema definitions
 import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
+import MyVisibleFeedbackLogRow from "./my_visible_feedback_log_table";
 import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
 import MyVisibleQaEntriesRow from "./my_visible_qa_entries_table";
 import PublishedQaRow from "./published_qa_table";
@@ -67,6 +70,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyVisibleAiQueryLogRow),
+  myVisibleFeedbackLog: __table({
+    name: 'my_visible_feedback_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleFeedbackLogRow),
   myVisibleMcpCallLog: __table({
     name: 'my_visible_mcp_call_log',
     indexes: [
@@ -95,9 +105,11 @@ const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
   __reducerSchema("clear_mcp_qa_review", ClearMcpQaReviewReducer),
   __reducerSchema("delete_ai_query_log", DeleteAiQueryLogReducer),
+  __reducerSchema("delete_feedback", DeleteFeedbackReducer),
   __reducerSchema("delete_mcp_call_log", DeleteMcpCallLogReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
   __reducerSchema("log_ai_query", LogAiQueryReducer),
+  __reducerSchema("log_feedback", LogFeedbackReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("set_human_reviewed", SetHumanReviewedReducer),
   __reducerSchema("touch_session", TouchSessionReducer),

@@ -44,8 +44,8 @@ export function handleApiError(scope: string, err: unknown): Response {
   });
 }
 
-export function successResponse(): Response {
-  return Response.json({ success: true });
+export function successResponse(extra?: Record<string, unknown>): Response {
+  return Response.json({ success: true, ...extra });
 }
 
 export const zJsonArrayString = z.string().superRefine((value, ctx) => {

@@ -120,6 +120,43 @@ function validAiQueryBody(correlationId: string) {
   };
 }
 
+// Matches the committed dev value in apps/internal-tool/.env.development, the
+// same way this file already reuses the committed dev STACK_SERVER_SECRET.
+const FEEDBACK_INGEST_SECRET =
+  process.env.HEXCLAVE_FEEDBACK_INGEST_SECRET
+  ?? "this-feedback-ingest-secret-is-for-local-development-only";
+
+function validFeedbackBody() {
+  return {
+    category: "bug",
+    message: "e2e ingest feedback",
+    requestMetadata: {
+      transport: "mcp-ask-hexclave",
+      requestIp: null,
+      requestIpSource: null,
+      userAgent: null,
+      requestHost: null,
+      mcpProtocolVersion: null,
+    },
+  };
+}
+
+async function postFeedback(
+  body: unknown,
+  options?: { secret?: string | null },
+): Promise<{ status: number, body: string }> {
+  const secret = options === undefined ? FEEDBACK_INGEST_SECRET : options.secret;
+  const res = await fetch(`${internalToolBase()}/api/public/feedback`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...secret == null ? {} : { "Authorization": `Bearer ${secret}` },
+    },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.text() };
+}
+
 const canRun = await isInternalToolReachable() && await isBackendJwksReachable() && await isSpacetimedbReachable();
 
 describe.skipIf(!canRun)("internal tool ingest validation", () => {
@@ -208,5 +245,54 @@ describe.skipIf(!canRun)("internal tool ingest validation", () => {
     const res = await postIngest("/api/backend/log-ai-query", validAiQueryBody(correlationId));
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchInlineSnapshot(`{ "success": true }`);
+  });
+
+  // Feedback ingest is a separate route with its own credential: the MCP server
+  // calls it directly and cannot mint a backend assertion.
+  it("public feedback accepts a well-formed payload and mints its own correlationId", async ({ expect }) => {
+    const res = await postFeedback(validFeedbackBody());
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as { success: boolean, correlationId: string };
+    expect(body.success).toBe(true);
+    // Server-minted, not client-supplied — it's the row's primary key, so a
+    // caller that could choose it could collide with someone else's feedback.
+    expect(body.correlationId).toMatch(/^[0-9a-f-]{36}$/);
+    scope.trackFeedbackCorrelationId(body.correlationId);
+  });
+
+  it("public feedback rejects a request with no credential", async ({ expect }) => {
+    const res = await postFeedback(validFeedbackBody(), { secret: null });
+    expect(res.status).toBe(401);
+  });
+
+  it("public feedback rejects a request with the wrong credential", async ({ expect }) => {
+    const res = await postFeedback(validFeedbackBody(), { secret: "not-the-secret" });
+    expect(res.status).toBe(401);
+  });
+
+  it("public feedback rejects a message over the length cap", async ({ expect }) => {
+    const res = await postFeedback({ ...validFeedbackBody(), message: "x".repeat(10_001) });
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toMatchInlineSnapshot(`
+      {
+        "error": "Invalid request body.",
+        "issues": [
+          {
+            "message": "Too big: expected string to have <=10000 characters",
+            "path": "message",
+          },
+        ],
+      }
+    `);
+  });
+
+  it("public feedback rejects an unknown category", async ({ expect }) => {
+    const res = await postFeedback({ ...validFeedbackBody(), category: "not-a-category" });
+    expect(res.status).toBe(400);
+  });
+
+  it("public feedback rejects a payload missing required fields", async ({ expect }) => {
+    const res = await postFeedback({ message: "no category, no requestMetadata" });
+    expect(res.status).toBe(400);
   });
 });
