@@ -32,8 +32,6 @@ type AssistantChatProps = {
   runningStatusMessages?: string[],
   /** Enable image attachment UI (subject to shared MAX_IMAGES_PER_MESSAGE/MAX_IMAGE_BYTES_PER_FILE). */
   composerAttachments?: boolean,
-  /** Content rendered inside the composer box, above the textarea. Used for widget chips. */
-  composerTopContent?: React.ReactNode,
   /**
    * Called once the composer runtime is mounted. Parent stores the handle in a ref
    * and can then call `setText(...)` imperatively. Fires inside the runtime provider
@@ -66,7 +64,6 @@ export default function AssistantChat({
   hideMessageActions = false,
   runningStatusMessages,
   composerAttachments = false,
-  composerTopContent,
   onComposerReady,
 }: AssistantChatProps) {
   const attachmentAdapter = useMemo(
@@ -95,7 +92,6 @@ export default function AssistantChat({
             runningStatusMessages={runningStatusMessages}
             composerAttachments={composerAttachments}
             attachmentAdapter={attachmentAdapter}
-            composerTopContent={composerTopContent}
           />
         </TooltipProvider>
         {toolComponents}
