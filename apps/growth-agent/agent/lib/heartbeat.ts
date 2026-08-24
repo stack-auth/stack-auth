@@ -2,12 +2,8 @@ import { phaseHeartbeat } from "#lib/hexclave-client.ts";
 import { parsePhaseContinuationToken, type PhaseSessionIdentity } from "#lib/phase-continuation.ts";
 import type { PhaseSettlementContext } from "#lib/phase-settlement.ts";
 
-/**
- */
 const HEARTBEAT_INTERVAL_MS = 60_000;
 
-/**
- */
 const KEEPALIVE_MAX_MS = 6 * 60 * 60_000;
 
 type PhaseKeepalive = {
@@ -28,8 +24,6 @@ export function hasKeepaliveExpired(startedAt: number, now: number): boolean {
   return now - startedAt >= KEEPALIVE_MAX_MS;
 }
 
-/**
- */
 function runDetached(label: string, fn: () => Promise<void>): void {
   fn().then(
     () => undefined,
