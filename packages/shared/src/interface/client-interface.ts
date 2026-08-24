@@ -222,6 +222,13 @@ export class HexclaveClientInterface {
   }
 
   /**
+   * @deprecated Use {@link getCurrentTargetApiUrl} instead.
+   */
+  getBestApiUrl(): string {
+    return this.getCurrentTargetApiUrl();
+  }
+
+  /**
    * Routes a request through an ordered URL ring with automatic failover.
    *
    * Starts at `_currentTargetApiUrl` (or primary if unset). On an outage-like
