@@ -1,6 +1,7 @@
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { Client } from "pg";
 import { it } from "../../../../helpers";
 import { Project, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
@@ -152,6 +153,28 @@ async function getCdcInfrastructureCounts(database: string): Promise<{ slots: nu
     );
     return { slots: slots.rows[0].count, publications: publications.rows[0].count };
   });
+}
+
+async function waitForBlockedDataSourceSync(database: string): Promise<void> {
+  const deadline = performance.now() + 10_000;
+  while (performance.now() < deadline) {
+    const blocked = await onSource(database, async client => {
+      const result = await client.query<{ exists: boolean }>(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_stat_activity
+          WHERE datname = current_database()
+            AND application_name = 'hexclave_data_source_sync'
+            AND state = 'active'
+            AND wait_event_type = 'Lock'
+        ) AS exists
+      `);
+      return result.rows[0].exists;
+    });
+    if (blocked) return;
+    await wait(25);
+  }
+  throw new HexclaveAssertionError("Timed out waiting for the data source sync to block on the test table lock");
 }
 
 function getDestinationTable(
@@ -357,6 +380,36 @@ it("replaces the stream list wholesale and reports it back", async ({ expect }) 
     const fetched = await getSource(data_source.id);
     expect(fetched.status).toBe(200);
     expect(fetched.body.data_source.streams.map((s: any) => s.table_name)).toEqual(["plans"]);
+  });
+});
+
+it("refuses stream changes while a sync is using the previous configuration", async ({ expect }) => {
+  await createProjectWithWarehouse();
+  await withSourceDatabase(SIMPLE_SCHEMA, async source => {
+    const { body: { data_source } } = await connectSource(source.database);
+    await setStreams(data_source.id, [
+      { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "created_at" },
+    ]);
+
+    await onSource(source.database, async lockClient => {
+      await lockClient.query("BEGIN");
+      await lockClient.query("LOCK TABLE events IN ACCESS EXCLUSIVE MODE");
+      const syncing = syncSource(data_source.id);
+      try {
+        await waitForBlockedDataSourceSync(source.database);
+        const reconfigured = await setStreams(data_source.id, [
+          { schema_name: "public", table_name: "events", mode: "cursor", cursor_column: "id" },
+        ]);
+        expect(reconfigured.status).toBe(409);
+        expect(String(reconfigured.body)).toContain("Wait for the running sync to finish");
+      } finally {
+        await lockClient.query("ROLLBACK");
+        expect((await syncing).status).toBe(200);
+      }
+    });
+
+    const fetched = await getSource(data_source.id);
+    expect(fetched.body.data_source.streams[0].cursor_column).toBe("created_at");
   });
 });
 

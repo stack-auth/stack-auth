@@ -30,6 +30,20 @@ export function coerceTextValue(text: string | null, postgresType: string): unkn
   return text;
 }
 
+/**
+ * Rebuilds a pg array-mode result as a prototype-safe object. pg's default row
+ * parser assigns by property name on `{}`, so a legitimate PostgreSQL column
+ * named `__proto__` mutates the object's prototype instead of becoming an own
+ * field. Array mode preserves every value; Object.fromEntries defines even
+ * prototype-sensitive names as ordinary data properties.
+ */
+export function buildSourceRow(columnNames: readonly string[], values: readonly unknown[]): Record<string, unknown> {
+  if (columnNames.length !== values.length) {
+    throw new HexclaveAssertionError(`Source row has ${values.length} values for ${columnNames.length} columns`);
+  }
+  return Object.fromEntries(columnNames.map((name, index) => [name, values[index]]));
+}
+
 export function buildDestinationRow(options: {
   values: Record<string, unknown>,
   columns: DataSourceColumn[],
@@ -37,20 +51,20 @@ export function buildDestinationRow(options: {
   deleted: boolean,
   extractedAt: Date,
 }): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
+  const row = new Map<string, unknown>();
   for (const column of options.columns) {
     // `undefined` means the WAL withheld an unchanged TOAST value. Writing null
     // would erase it, so those columns are simply omitted and ClickHouse's
     // default applies — the previous version of the row stays queryable.
-    if (!(column.name in options.values)) continue;
+    if (!Object.hasOwn(options.values, column.name)) continue;
     const value = options.values[column.name];
     if (value === undefined) continue;
-    row[column.name] = normalizeValueForClickhouse(value);
+    row.set(column.name, normalizeValueForClickhouse(value));
   }
-  row[EXTRACTED_AT_COLUMN] = options.extractedAt.toISOString();
-  row[VERSION_COLUMN] = options.version.toString();
-  row[DELETED_COLUMN] = options.deleted ? 1 : 0;
-  return row;
+  row.set(EXTRACTED_AT_COLUMN, options.extractedAt.toISOString());
+  row.set(VERSION_COLUMN, options.version.toString());
+  row.set(DELETED_COLUMN, options.deleted ? 1 : 0);
+  return Object.fromEntries(row);
 }
 
 /**

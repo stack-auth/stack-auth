@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignButton } from "@/components/design-components";
+import { DesignAlert, DesignButton } from "@/components/design-components";
 import { ActionDialog, Card, Typography, useToast } from "@/components/ui";
 import type { DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig, DataSourceStreamJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { useRouter } from "@/components/router";
@@ -33,6 +33,7 @@ function DataSourcePage() {
   const [editing, setEditing] = useState<DataSourceCatalogJson | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const sourcesHref = `/projects/${encodeURIComponent(adminApp.projectId)}/data-warehouse/sources`;
 
@@ -150,18 +151,30 @@ function DataSourcePage() {
 
       <ActionDialog
         open={confirmingDelete}
-        onOpenChange={setConfirmingDelete}
+        onOpenChange={(open) => {
+          setConfirmingDelete(open);
+          if (!open) setDisconnectError(null);
+        }}
         title="Disconnect this source?"
         danger
         okButton={{
           label: "Disconnect",
           onClick: async () => {
-            await adminApp.deleteDataSource(dataSource.id);
-            router.push(sourcesHref);
+            setDisconnectError(null);
+            try {
+              await adminApp.deleteDataSource(dataSource.id);
+              router.push(sourcesHref);
+            } catch (error) {
+              setDisconnectError(error instanceof Error ? error.message : "The source could not be disconnected. Please try again.");
+              return "prevent-close";
+            }
           },
         }}
         cancelButton
       >
+        {disconnectError != null && (
+          <DesignAlert variant="error" title="Could not disconnect" description={disconnectError} />
+        )}
         <Typography type="p" variant="secondary">
           We stop syncing and drop the replication slot on your database. Tables already synced into
           your warehouse are left where they are — delete them yourself if you no longer want them.

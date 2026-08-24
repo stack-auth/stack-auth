@@ -9,7 +9,7 @@ import {
 import { decodePgoutputMessage, formatLsn, parseLsn, type PgoutputRelation, type PgoutputTuple } from "./pgoutput";
 import { quotePgIdentifier, quotePgQualifiedName, withDataSourceClient, type DataSourceCredentials } from "./postgres";
 import type { DataSourceColumn, ProbedTable } from "./probe";
-import { buildDestinationRow, coerceTextValue, versionFromCursorValue } from "./rows";
+import { buildDestinationRow, buildSourceRow, coerceTextValue, versionFromCursorValue } from "./rows";
 
 /** Rows per round trip. Large enough to amortise latency, small enough to bound memory. */
 const READ_BATCH_SIZE = 10_000;
@@ -120,9 +120,15 @@ async function forEachBatch(
   try {
     await client.query(`DECLARE ${quotePgIdentifier(cursorName)} NO SCROLL CURSOR FOR ${query}`, params);
     for (let batch = 0; options.maxBatches == null || batch < options.maxBatches; batch++) {
-      const result = await client.query(`FETCH ${READ_BATCH_SIZE} FROM ${quotePgIdentifier(cursorName)}`);
+      // Array mode is required for prototype-sensitive PostgreSQL column names.
+      // pg's default object parser cannot represent `__proto__` as an own field.
+      const result = await client.query<unknown[]>({
+        text: `FETCH ${READ_BATCH_SIZE} FROM ${quotePgIdentifier(cursorName)}`,
+        rowMode: "array",
+      });
       if (result.rows.length === 0) break;
-      await onBatch(result.rows as Record<string, unknown>[]);
+      const columnNames = result.fields.map(field => field.name);
+      await onBatch(result.rows.map(values => buildSourceRow(columnNames, values)));
       total += result.rows.length;
       if (result.rows.length < READ_BATCH_SIZE) break;
     }

@@ -245,25 +245,24 @@ export async function setDataSourceStreams(
     }
   }
 
-  // Removing the final CDC stream destroys infrastructure used by an in-flight
-  // sync, so take the same lease as a sync before touching either side. Teardown
-  // happens before the local transaction: if that transaction fails, the still-
-  // configured CDC stream will detect the missing slot and resnapshot next time.
-  const configurationClaimStartedAt = removesLastCdcStream ? new Date() : null;
-  if (configurationClaimStartedAt != null) {
-    const claimed = await prisma.$executeRaw`
-      UPDATE "DataSource"
-      SET "lastSyncStartedAt" = ${configurationClaimStartedAt}
-      WHERE "id" = ${source.id}::uuid
-        AND (
-          "lastSyncStartedAt" IS NULL
-          OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
-          OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
-        )
-    `;
-    if (claimed === 0) {
-      throw new StatusError(StatusError.Conflict, "Wait for the running sync to finish before removing the last CDC stream.");
-    }
+  // Every stream change takes the sync lease. Otherwise a worker using the old
+  // configuration can finish after this transaction and overwrite its PENDING
+  // rebuild marker, old cursor, or even a newly selected mode. If the worker's
+  // lease has expired, this claim also changes its fence token so its completion
+  // transaction rolls back instead of publishing stale stream state.
+  const configurationClaimStartedAt = new Date();
+  const claimed = await prisma.$executeRaw`
+    UPDATE "DataSource"
+    SET "lastSyncStartedAt" = ${configurationClaimStartedAt}
+    WHERE "id" = ${source.id}::uuid
+      AND (
+        "lastSyncStartedAt" IS NULL
+        OR "lastSyncStartedAt" <= "lastSyncFinishedAt"
+        OR "lastSyncStartedAt" < NOW() - make_interval(secs => ${SYNC_CLAIM_LEASE_SECONDS})
+      )
+  `;
+  if (claimed === 0) {
+    throw new StatusError(StatusError.Conflict, "Wait for the running sync to finish before changing the stream configuration.");
   }
 
   try {
@@ -322,14 +321,16 @@ export async function setDataSourceStreams(
       });
     });
   } finally {
-    if (configurationClaimStartedAt != null) {
-      // Never restore the previous start token: a worker whose old lease expired
-      // could otherwise finish later and regain permission to overwrite state.
-      await prisma.dataSource.updateMany({
-        where: { id: source.id, lastSyncStartedAt: configurationClaimStartedAt },
-        data: { lastSyncStartedAt: source.lastSyncFinishedAt },
-      });
-    }
+    // Never restore the previous start token: a worker whose old lease expired
+    // could otherwise finish later and regain permission to overwrite state.
+    // Referencing the current finish column also avoids regressing this marker if
+    // a sync completed while the fresh capability probe above was still running.
+    await prisma.$executeRaw`
+      UPDATE "DataSource"
+      SET "lastSyncStartedAt" = "lastSyncFinishedAt"
+      WHERE "id" = ${source.id}::uuid
+        AND "lastSyncStartedAt" = ${configurationClaimStartedAt}
+    `;
   }
 
   return await getDataSourceOrThrow(tenancy, dataSourceId);
