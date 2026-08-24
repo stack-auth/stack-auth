@@ -1,0 +1,19 @@
+apps/backend/scripts/clickhouse-migrations.ts
+  s_25082632dc2ce6::t_86c1b43ead9986 86-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "1fa4590f2dd4aa9686b107c96547e62c5e5d1383",
+  "prompts": {},
+  "sessions": {
+    "s_25082632dc2ce6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "08c70e6e-7a2a-4b97-a09b-389f51c51e51",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
