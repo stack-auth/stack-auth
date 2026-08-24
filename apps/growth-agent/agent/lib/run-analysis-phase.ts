@@ -8,7 +8,6 @@ import type { AnalysisPhaseRunRequest, DailyBriefRunRequest } from "#lib/types.t
 import { WRITING_STYLE_RULES } from "#lib/writing-style.ts";
 import { FOUNDER_INTERVIEW_PROMPT_GUIDANCE, FOUNDER_INTERVIEW_PROMPT_MAX_LENGTH } from "#lib/interview-question.ts";
 
-
 const MAX_AGENT_SESSION_MS = 45 * 60 * 1000;
 
 const ANALYSIS_TIMEOUT_MESSAGE = "The analysis agent did not finish within the allowed time.";
@@ -20,7 +19,6 @@ function genericPhaseFailureMessage(phaseKey: string): string {
 function formatContextForPrompt(context: unknown): string {
   return JSON.stringify(context, null, 2);
 }
-
 
 export const SHARED_PROMPT_RULES = [
   "Rules:",
@@ -130,7 +128,6 @@ function buildPhasePrompt(input: AnalysisPhaseRunRequest, projectContextJson: st
   }
 }
 
-
 export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpers: { readonly from: ChannelFrom }): Promise<void> {
   await phaseStart(input);
   try {
@@ -146,7 +143,6 @@ export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpe
       }),
       mode: "task",
       title: `Growth analysis: ${input.phase_key} (run ${input.run_id})`,
-      // Retries must queue behind an in-flight run instead of steering it away.
       turnPolicy: "queue",
     });
   } catch (error) {
@@ -154,7 +150,6 @@ export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpe
     await phaseFail({ ...input, error_message: safeMessageFromError(error, genericPhaseFailureMessage(input.phase_key)) });
   }
 }
-
 
 export async function executeDailyBrief(input: DailyBriefRunRequest, helpers: { readonly from: ChannelFrom }): Promise<void> {
   const message = [

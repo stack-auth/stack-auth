@@ -9,22 +9,12 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { CheckIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-/**
- * The one thing that differs between the customer Growth workspace and the admin one: the admin
- * renders the exact same components, wrapped in this provider, and every field the Growth admin API
- * can change becomes editable in place. Nothing about the layout changes — the read-only rendering
- * of every value stays byte-for-byte what the customer sees, and edit affordances only appear on
- * hover/click — so there is a single implementation of the workspace UI rather than an admin copy of
- * it that drifts.
- */
 export type GrowthWorkspaceItem =
   | { kind: "finding", value: GrowthOverviewFinding }
   | { kind: "action", value: GrowthActionItem };
 
-/** Fields the workspace shows for a finding/note/action, in the shape the workspace renders them. */
 export type GrowthWorkspaceItemPatch = {
   title?: string,
-  /** A finding's `body` and an action's `description` occupy the same slot in the UI. */
   body?: string,
   category?: GrowthCategory,
   tags?: string[],
@@ -37,18 +27,12 @@ export type GrowthWorkspaceEditors = {
   createNote: (input: { category: GrowthCategory, title: string, body: string }) => Promise<void>,
 };
 
-/**
- * The mutations as the workspace sees them: the provider turns a rejected save into a reported failure,
- * so the caller gets `false` instead of a rejection. Fields that hold a draft the admin would have to retype
- * (the new-note row) key off that, rather than treating a reported failure as a successful save.
- */
 type GrowthWorkspaceEditActions = {
   [Key in keyof GrowthWorkspaceEditors]: (...args: Parameters<GrowthWorkspaceEditors[Key]>) => Promise<boolean>
 };
 
 const GrowthWorkspaceEditContext = createContext<GrowthWorkspaceEditActions | null>(null);
 
-/** Null on the customer workspace, which is exactly what makes every field below read-only there. */
 export function useGrowthWorkspaceEditors(): GrowthWorkspaceEditActions | null {
   return useContext(GrowthWorkspaceEditContext);
 }
@@ -57,12 +41,6 @@ function errorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
 }
 
-/**
- * Wraps the caller's mutations so a rejected save surfaces as an alert above the workspace instead
- * of an unhandled rejection: these are inline edits with no submit button of their own, so there is
- * no per-field place to put an error, and a toast would be too easy to miss on a page whose entire
- * purpose is editing customer data.
- */
 export function GrowthWorkspaceEditProvider(props: { editors: GrowthWorkspaceEditors, children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const editors = props.editors;
@@ -94,11 +72,6 @@ export function GrowthWorkspaceEditProvider(props: { editors: GrowthWorkspaceEdi
 
 const editableFieldClassName = "-mx-1 w-full rounded-md bg-transparent px-1 ring-1 ring-transparent transition-shadow hover:transition-none hover:ring-foreground/20 focus:outline-none focus:ring-foreground/40";
 
-/**
- * Inline-editable text that inherits its typography from the element it is placed in, so the same
- * heading/paragraph markup renders the customer's text and the admin's editor. Saves on blur (and on
- * Enter for single-line fields); Escape restores the stored value.
- */
 export function GrowthEditableText(props: {
   value: string,
   label: string,
@@ -141,8 +114,6 @@ function GrowthEditableTextField(props: { value: string, label: string, onSave: 
       <textarea
         {...shared}
         rows={Math.min(10, Math.max(2, draft.split("\n").length))}
-        // The row grows with the text instead, so a drag handle would be the one visible difference
-        // between the customer's paragraph and the admin's editor at rest.
         className={cn(className, "resize-none")}
         onKeyDown={(event) => {
           if (event.key === "Escape") setDraft(props.value);
@@ -162,10 +133,6 @@ function GrowthEditableTextField(props: { value: string, label: string, onSave: 
   );
 }
 
-/**
- * A badge that opens a picker when the workspace is editable. The badge itself is the customer's
- * badge, unchanged, so the resting state of the row is identical on both surfaces.
- */
 function GrowthBadgePicker(props: { badge: ReactNode, label: string, children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
@@ -220,21 +187,12 @@ export function GrowthCategoryBadge(props: { category: GrowthCategory | null, la
   );
 }
 
-/**
- * Mirrors the transitions the Growth admin API accepts: a proposal can be activated or dismissed, an
- * active action can only be dismissed, and terminal states are final. Offering the rest would just
- * turn a known-invalid click into a server error.
- */
 export function editableActionStatuses(current: GrowthActionStatus): GrowthActionStatus[] {
   if (current === "proposed") return GROWTH_ACTION_STATUSES.filter((status) => status !== "completed");
   if (current === "active") return ["active", "dismissed"];
   return [current];
 }
 
-/**
- * Action status, shown only on the editable workspace: the customer's row conveys status through the
- * action's own page, and there is nothing for them to change here.
- */
 export function GrowthActionStatusPicker(props: { status: GrowthActionStatus, onSave: (status: GrowthActionStatus) => Promise<unknown> }) {
   const editors = useGrowthWorkspaceEditors();
   if (editors == null) return null;
@@ -307,9 +265,6 @@ export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[
                   close();
                   return;
                 }
-                // The provider reports a rejected save as an alert above the workspace and resolves
-                // false, so clearing the field unconditionally would leave the author with an error
-                // and a tag they have to retype.
                 const saved = await onSave([...props.tags, tag]);
                 if (!saved) return;
                 setAdding("");
@@ -325,14 +280,7 @@ export function GrowthTagBadges(props: { tags: string[], onSave?: (tags: string[
   );
 }
 
-/**
- * `min`/`max` on a number input are only enforced on form submission, which the score picker never
- * does, so the range the Growth API accepts (assertGrowthCategoryScore: a whole number from 0 to 100)
- * is checked here rather than letting a known-invalid score become a server error.
- */
 export function isSubmittableCategoryScore(draft: string): boolean {
-  // `Number("")` and `Number(" ")` are both 0, so the emptiness check has to come first or a blank
-  // field would look like a valid score of zero.
   const score = Number(draft);
   return draft.trim() !== "" && Number.isInteger(score) && score >= 0 && score <= 100;
 }
@@ -367,7 +315,6 @@ export function GrowthCategoryScoreBadge(props: { category: GrowthCategory, scor
   );
 }
 
-/** Creates a note in the category the workspace is currently focused on. Admin surfaces only. */
 export function GrowthAddNoteRow(props: { category: GrowthCategory }) {
   const editors = useGrowthWorkspaceEditors();
   const [title, setTitle] = useState("");

@@ -376,8 +376,6 @@ export async function restartGrowthOnboarding(options: { tenancy: Tenancy }): Pr
       throw new StatusError(409, "Growth onboarding restart conflicted with another restart. Try again.");
     }
 
-    // This selection must happen inside the read-committed transaction: a pre-transaction read
-    // could miss a run created between that read and the onboarding delete.
     const cancelledRuns = await tx.growthAnalysisRun.updateManyAndReturn({
       where: { projectId, branchId, status: { in: [...GROWTH_ACTIVE_RUN_STATUSES] } },
       data: { status: GrowthRunStatus.CANCELLED, completedAt: new Date() },

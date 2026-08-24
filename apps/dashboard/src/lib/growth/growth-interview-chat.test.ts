@@ -228,7 +228,6 @@ describe("deriveInterviewChatView", () => {
 
   it("falls back to the next unanswered plan question when the last card's key is missing from the plan", () => {
     const view = deriveInterviewChatView({ status: "active", questions: [makeQuestion()] }, [questionEntry(makeCard({ questionKey: "unplanned" }))]);
-    // The unplanned card itself stays unanswerable, but the interview must not strand the founder.
     expect(view.planQuestionByEntryId.get("e-q")).toBeUndefined();
     expect(view.entries).toHaveLength(2);
     expect(view.activeQuestion).toMatchObject({ planQuestion: { questionKey: "primary-goal", orderIndex: 0 } });
@@ -237,9 +236,6 @@ describe("deriveInterviewChatView", () => {
   });
 
   it("keeps the interview answerable when the agent re-presents an already-answered question", () => {
-    // The reported bug: the agent repeated question 1 instead of moving on, so every card on screen
-    // mapped to an answered row, all options rendered disabled, and the only affordance left was
-    // "Continue the interview".
     const plan = [
       makeQuestion({ answerOptionIds: ["signups"], answeredAtMillis: 1 }),
       makeQuestion({ questionKey: "pricing-model", orderIndex: 1, prompt: "How do you price?" }),
@@ -263,7 +259,6 @@ describe("deriveInterviewChatView", () => {
     const view = deriveInterviewChatView({ status: "active", questions: plan }, entries);
     expect(view.planQuestionByEntryId.get("e-q1")).toMatchObject({ orderIndex: 0 });
     expect(view.planQuestionByEntryId.get("e-q2")).toMatchObject({ orderIndex: 1 });
-    // The trailing card is answerable itself, so no recovery card is appended.
     expect(view.entries).toHaveLength(2);
     expect(view.activeQuestion).toMatchObject({ entryId: "e-q2", planQuestion: { orderIndex: 1 } });
   });
@@ -339,8 +334,6 @@ describe("planQuestionForEntry", () => {
   const duplicateCard = makeCard({ questionKey: "primary-goal" });
 
   it("leaves a committed card the plan has no row left for unresolved", () => {
-    // The agent re-presented an answered question, so the second card has no row of its own: showing
-    // it the first row's answer would render a dead read-only duplicate of a question just answered.
     const entries: InterviewTranscriptEntry[] = [
       { id: "entry-1", type: "question", card: duplicateCard },
       { id: "entry-2", type: "question", card: duplicateCard },
@@ -386,7 +379,6 @@ describe("planQuestionForEntry", () => {
       planQuestionByEntryId: new Map(),
       questions,
     })).toEqual(next);
-    // A key the plan never had cannot be answered, so it must not fall back to any other row.
     expect(planQuestionForEntry({
       entryId: "streaming-2",
       card: makeCard({ questionKey: "invented-by-the-agent" }),

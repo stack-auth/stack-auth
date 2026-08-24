@@ -24,8 +24,6 @@ export type GrowthDocumentBlock =
     name: GrowthDocumentComponentName,
     dataId: string | null,
     confidence: "low" | "medium" | "high" | null,
-    // Only ever set on ActionButton, and only ever an id: the document references an
-    // action, it never carries the action's data (let alone its workflow payload).
     actionId: string | null,
     children: GrowthDocumentBlock[],
   };
@@ -78,8 +76,6 @@ const blockSchema: z.ZodType<GrowthDocumentBlock> = z.lazy(() => z.discriminated
     name: componentNameSchema,
     dataId: z.string().nullable(),
     confidence: z.enum(["low", "medium", "high"]).nullable(),
-    // Defaulted rather than required: documents compiled before ActionButton existed
-    // are still stored on findings/actions, and they have no `actionId` key at all.
     actionId: z.string().nullable().default(null),
     children: z.array(blockSchema),
   }),

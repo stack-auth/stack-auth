@@ -132,14 +132,9 @@ function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) 
     : `/projects/${props.projectId}/gtm/findings/${value.id}`;
   const body = props.item.kind === "action" ? props.item.value.description : props.item.value.body;
   const item = props.item;
-  // Reached only from the row's edit affordances, which do not exist without the provider — so a
-  // missing one is a broken assumption rather than a save that quietly did nothing. Returning
-  // whether the save went through lets fields holding a draft (the tag input) keep it on failure.
   const save = async (patch: GrowthWorkspaceItemPatch): Promise<boolean> => await (
     editors ?? throwErr("A Growth workspace row saved a field without an edit provider, but its fields are only editable inside one.")
   ).saveItem(item, patch);
-  // Staff-only: everything this row holds, formatted as a prompt for whichever model the author uses
-  // to draft the stage page. Per row as well as per stage, because one finding is often the whole story.
   const prompt = value.category == null ? null : item.kind === "action"
     ? buildGrowthItemPagePrompt({ kind: "action", category: value.category, action: item.value })
     : buildGrowthItemPagePrompt({ kind: item.value.kind === "note" ? "note" : "finding", category: value.category, finding: item.value });
@@ -160,8 +155,6 @@ function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) 
           {item.kind === "action" && <GrowthActionStatusPicker status={item.value.status} onSave={async (status) => await editors?.saveActionStatus(item.value, status)} />}
         </div>
       </div>
-      {/* On the admin workspace the row itself is not a link, because its text is editable in place;
-        * the call to action keeps the same navigation the customer row has. */}
       {editors == null ? callToAction : (
         <div className="flex flex-wrap items-center gap-3">
           {prompt != null && <CopyPromptButton content={prompt} size="sm" variant="outline">Copy prompt</CopyPromptButton>}
@@ -217,26 +210,12 @@ export function GrowthWorkspaceContent(props: {
   status?: GrowthStatus,
   projectId: string,
   projectName: string,
-  /**
-   * Whether the overview is the demo fixture rather than the project's real records. Passed down
-   * instead of read from the growth status context, because the internal admin page renders this
-   * component outside the customer frame that provides that context.
-   */
   demo: boolean,
   /**
    * Rendered directly above the stage/insights section. Passed in rather than fetched here because
-   * this component is ALSO what the admin page renders, and that page has no business firing the
-   * customer's own quiz request. The customer wrapper below passes the live banner; admin passes
-   * nothing.
    */
   quizBanner?: ReactNode,
-  /** Re-reads the overview after an action inside an authored stage page was activated or dismissed. */
   onRefresh?: () => Promise<void>,
-  /**
-   * The stage-page composer, rendered above the source lanes on the editable workspace only. Passed
-   * in for the same reason `quizBanner` is: the composer is admin-only machinery (draft state,
-   * publish controls) that the customer workspace must not even import a fetch from.
-   */
   categoryPageEditor?: (category: GrowthCategory) => ReactNode,
 }) {
   const withQuery = useGrowthHref();
@@ -250,15 +229,8 @@ export function GrowthWorkspaceContent(props: {
   for (const value of props.overview.actions.filter((item) => item.category === selected)) suggestions.push({ kind: "action", value });
   suggestions.sort((left, right) => right.value.createdAtMillis - left.value.createdAtMillis);
   const notes = props.overview.notes.filter((item) => item.category === selected);
-  // Once staff publish a page for a stage, that page IS the stage for a customer: the raw findings,
-  // notes and actions it was written from stop being shown, because the page is our considered
-  // presentation of exactly that material. Unpublishing brings the lanes back. On the editable
-  // workspace the lanes always stay, since they are the material the author works from.
   const publishedPage = props.overview.categoryPages.find((page) => page.category === selected) ?? null;
   const showLanes = editors != null || publishedPage == null;
-  // Items without a stage are filtered out of every stage lane, so on the editable workspace they get
-  // their own list; otherwise the only trace of them would be the count below the journey, and an
-  // admin would have no way to give them a stage.
   const awaitingStage: GrowthWorkspaceItem[] = editors == null ? [] : [
     ...[...props.overview.findings, ...props.overview.notes].filter((item) => item.category == null).map((value) => ({ kind: "finding" as const, value })),
     ...[...props.overview.actions, ...props.overview.archive].filter((item) => item.category == null).map((value) => ({ kind: "action" as const, value })),
@@ -322,7 +294,7 @@ export function GrowthWorkspaceContent(props: {
           <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
           {editors == null && publishedPage != null && (
             <section className="py-8">
-              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} projectId={props.projectId} onChanged={props.onRefresh ?? (async () => { /* demo data is static, so there is nothing to re-read */ })}>
+              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} projectId={props.projectId} onChanged={props.onRefresh ?? (async () => {})}>
                 <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
               </GrowthDocumentActionsProvider>
             </section>

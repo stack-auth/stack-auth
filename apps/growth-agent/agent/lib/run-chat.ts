@@ -4,14 +4,12 @@ import { followSessionEvents } from "#lib/session-stream.ts";
 import type { GrowthAgentTokenRef, GrowthProjectRef } from "#lib/types.ts";
 import { WRITING_STYLE_RULES } from "#lib/writing-style.ts";
 
-
 /** Inbound body of POST /chat (backend -> agent). */
 export type ChatTurnRequest = GrowthProjectRef & GrowthAgentTokenRef & {
   readonly turn_id: string,
   /** AI SDK UIMessages (ending with the latest user message), opaque prompt context here. */
   readonly transcript: readonly unknown[],
 };
-
 
 type AssistantTextPart = {
   readonly type: "text",
@@ -127,7 +125,6 @@ export async function executeChatTurn(input: ChatTurnRequest, helpers: { readonl
     }),
     mode: "task",
     title: `Growth chat turn (project ${input.project_id})`,
-    // Retries must queue behind an in-flight run instead of steering it away.
     turnPolicy: "queue",
   });
 

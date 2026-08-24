@@ -17,16 +17,6 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { GrowthDocumentActionsProvider, GrowthDocumentRenderer } from "../components/growth-document";
 
-/**
- * The staff side of stage pages: read the stage's material below, copy the prompt into a model, paste
- * the result back here, save, preview, publish.
- *
- * Everything the customer will see goes through the backend compiler on save, and the preview renders
- * the compiled draft with the customer's own renderer — so "what I previewed" and "what publishing
- * shows" cannot drift apart. This card is deliberately plain: it is an internal tool, and the page
- * being composed is the thing that needs to look designed.
- */
-
 type PagesState =
   | { status: "loading" }
   | { status: "error", message: string }
@@ -34,11 +24,6 @@ type PagesState =
 
 const GrowthAdminCategoryPagesContext = createContext<{ state: PagesState, refresh: () => Promise<void> } | null>(null);
 
-/**
- * Loads every stage's pages once for the selected project, rather than per stage: the card is
- * remounted whenever staff click a different corner of the hexagon, and refetching there would make
- * switching stages feel like navigation.
- */
 export function GrowthAdminCategoryPagesProvider(props: { app: object, projectId: string, children: ReactNode }) {
   const { app, projectId } = props;
   const [state, setState] = useState<PagesState>({ status: "loading" });
@@ -60,19 +45,13 @@ export function GrowthAdminCategoryPagesProvider(props: { app: object, projectId
 
 const EMPTY_DATA_JSON = "[]";
 
-/**
- * What the editor's text is based on: the stored version it was filled from, plus that text, so
- * unsaved edits can be told apart from a version the author has not seen.
- */
 export type Seed = {
   key: string,
   mdx: string,
   dataJson: string,
-  /** `updatedAtMillis` of the draft the text derives from, for the save's optimistic check. */
   draftUpdatedAtMillis: number | null,
 };
 
-/** Identifies the stored state of a stage: which versions occupy its slots, and how recent they are. */
 export function seedKeyOf(
   category: GrowthCategory,
   draft: { id: string, updatedAtMillis: number } | null,
@@ -83,24 +62,10 @@ export function seedKeyOf(
   return `${category}:${slot(draft, "no-draft")}:${slot(published, "no-live")}`;
 }
 
-/**
- * Whether the editor holds text that is not in the stage's stored version yet. Typing while a save
- * is in flight is normal, and the refresh that follows it changes the seed key — so re-seeding on a
- * changed key alone would silently throw those keystrokes away.
- */
 export function hasUnsavedEdits(seed: Seed | null, text: { mdx: string, dataJson: string }): boolean {
   return seed != null && (text.mdx !== seed.mdx || text.dataJson !== seed.dataJson);
 }
 
-/**
- * Whether the editor should be filled from the stage's stored version.
- *
- * Only when that version is one the editor is not based on, and neither of the two things that make
- * the loaded version untrustworthy is true: unsaved edits (which re-seeding would discard), and a
- * mutation of this stage still in flight (whose refresh has not landed, so what is loaded is the
- * stage as it was *before* the mutation — including before the save whose text the editor just
- * adopted).
- */
 export function shouldSeedFromStored(args: {
   storedKey: string | null,
   seededKey: string | null,
@@ -110,11 +75,6 @@ export function shouldSeedFromStored(args: {
   return args.storedKey != null && args.storedKey !== args.seededKey && !args.dirty && !args.mutating;
 }
 
-/**
- * Whether to tell the author their edits are based on a version that is no longer the stored one —
- * true only for a stored version that really is someone else's, which is why an in-flight mutation
- * of this stage rules it out.
- */
 export function isSupersededByStored(args: {
   storedKey: string | null,
   seededKey: string | null,
@@ -124,20 +84,10 @@ export function isSupersededByStored(args: {
   return args.storedKey != null && args.storedKey !== args.seededKey && args.dirty && !args.mutating;
 }
 
-/**
- * The draft version a save may replace, as the editor's text sees it — the backend rejects the save
- * if the stage's draft has moved on from it.
- *
- * Branching on the *presence* of the seed rather than on its timestamp matters: a seed whose
- * `draftUpdatedAtMillis` is null means "this text is based on a stage that had no draft", which is
- * exactly the case the backend must reject once a colleague has created one — falling through to
- * whatever draft the last refresh returned would silently overwrite them.
- */
 export function expectedDraftUpdatedAtMillis(seed: Seed | null, draft: { updatedAtMillis: number } | null): number | null {
   return seed == null ? draft?.updatedAtMillis ?? null : seed.draftUpdatedAtMillis;
 }
 
-/** The draft the editor starts from: the stage's draft if there is one, else the live page's source. */
 function initialSource(page: GrowthAdminCategoryPage | null): { mdx: string, dataJson: string } {
   const version = page?.draft ?? page?.published ?? null;
   if (version?.source == null) return { mdx: "", dataJson: EMPTY_DATA_JSON };
@@ -157,7 +107,6 @@ function StatusBadges(props: { page: GrowthAdminCategoryPage | null }) {
   );
 }
 
-/** Sources that changed after the version was written — the signal that a page needs a rewrite. */
 function StaleSourceNotice(props: { version: GrowthCategoryPageVersion | null, label: string }) {
   const stale = props.version?.staleSourceIds ?? [];
   if (stale.length === 0) return null;
@@ -173,7 +122,6 @@ export function GrowthAdminCategoryPageCard(props: {
   projectId: string,
   category: GrowthCategory,
   overview: GrowthOverview,
-  /** Re-reads the overview, so a stage page published here shows up in the workspace around it. */
   onPublishedChanged: () => Promise<void>,
 }) {
   const context = useContext(GrowthAdminCategoryPagesContext)
@@ -187,15 +135,8 @@ export function GrowthAdminCategoryPageCard(props: {
   const [dataJson, setDataJson] = useState(EMPTY_DATA_JSON);
   const [seeded, setSeeded] = useState<Seed | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // True from the start of a save/publish/discard until the refresh that follows it has landed. In
-  // that window the loaded pages still describe the stage as it was before the mutation, so they are
-  // not evidence of anything and must not drive seeding: a save adopts its own text as the seed, and
-  // re-seeding from the pre-save version here would undo it (and leave the next save carrying an
-  // outdated timestamp, which the backend would then reject as a conflict that never happened).
   const [mutating, setMutating] = useState(false);
 
-  // The editor is filled from the stage's stored version when that version is one it has not seen
-  // yet — keyed by last-saved time as well as id, so content a colleague replaced does not linger.
   const seedKey = context.state.status === "loaded" ? seedKeyOf(category, page?.draft ?? null, page?.published ?? null) : null;
   const dirty = hasUnsavedEdits(seeded, { mdx, dataJson });
   const seedFrom = useCallback((key: string, page: GrowthAdminCategoryPage | null) => {
@@ -210,8 +151,6 @@ export function GrowthAdminCategoryPageCard(props: {
     seedFrom(seedKey, page);
   }, [seedKey, seededKey, dirty, mutating, page, seedFrom]);
 
-  // A stored version this editor is not based on: a colleague saved the stage, or the author reverted
-  // their own edits to match an older seed.
   const supersededByStored = isSupersededByStored({ storedKey: seedKey, seededKey, dirty, mutating });
 
   const findings = overview.findings.filter((item) => item.category === category);
@@ -234,9 +173,6 @@ export function GrowthAdminCategoryPageCard(props: {
     setMutating(false);
   };
 
-  // The version being previewed carries the actions its own buttons reference, so the preview
-  // resolves them exactly like the customer's copy would — rather than against the overview's
-  // capped, active-only lanes, which would report a valid reference as unavailable.
   const previewVersion = page?.draft ?? page?.published ?? null;
   const preview = previewVersion?.document ?? null;
   const previewActions = previewVersion?.actions ?? [];
@@ -309,8 +245,6 @@ export function GrowthAdminCategoryPageCard(props: {
               size="sm"
               disabled={mdx.trim().length === 0}
               onClick={async () => await run("growth-admin-category-page-save", async () => {
-                // The data field is hand-pasted JSON, so a bad paste and a rejected compile are the
-                // same class of problem to the author and belong in the same alert.
                 const data = JSON.parse(dataJson);
                 if (!Array.isArray(data)) throw new Error("Evidence data must be a JSON array.");
                 const savedMdx = mdx;
@@ -321,15 +255,8 @@ export function GrowthAdminCategoryPageCard(props: {
                   data,
                   sourceFindingIds: [...findings, ...notes].map((item) => item.id),
                   sourceActionIds: actions.map((action) => action.id),
-                  // The draft the editor's text is based on — not merely whatever the last refresh
-                  // returned — so the backend rejects the save if someone else has saved the stage
-                  // since, instead of overwriting their work.
                   expectedDraftUpdatedAtMillis: expectedDraftUpdatedAtMillis(seeded, page?.draft ?? null),
                 });
-                // This save wrote the editor's text, so anything typed while it was in flight is a
-                // delta on top of the version now stored: adopt it as the seed, or the refresh that
-                // follows would look like a colleague's edit and warn about a conflict that isn't one.
-                // A draft save never touches the published slot, so that half of the key is unchanged.
                 setSeeded({
                   key: seedKeyOf(category, saved, page?.published ?? null),
                   mdx: savedMdx,

@@ -78,10 +78,6 @@ export type InterviewChatView = {
    * still unanswered. All earlier cards render read-only with the recorded answer.
    */
   activeQuestion: { entryId: string, card: InterviewQuestionCard, planQuestion: GrowthInterviewQuestion } | null,
-  /**
-   * The plan row each question card's answer belongs on, keyed by entry id. Cards cannot be resolved
-   * by question key alone — see resolveTranscriptPlanQuestions.
-   */
   planQuestionByEntryId: Map<string, GrowthInterviewQuestion>,
   /**
    * True when the interview is open but no unanswered card is on screen — either the customer never
@@ -233,19 +229,6 @@ export function applyAnswerToQuestions(questions: GrowthInterviewQuestion[], ans
   });
 }
 
-/**
- * Maps every question card in the transcript to the plan row its answer belongs on.
- *
- * A card carries only a question key, and a key does NOT identify a plan row: the agent picks the
- * key for an adaptive follow-up (`record-adaptive-question`), so it can reuse the key of a question
- * that was already asked and answered. Resolving by key alone then hands the trailing card the
- * earlier, already-answered row, which makes the card render as a dead read-only duplicate — the
- * customer sees the same question twice with the options disabled and no way to answer it.
- *
- * Cards and rows therefore pair up positionally per key, in transcript order: the n-th card with
- * key K answers the n-th plan row with key K (rows in plan order). Extra cards beyond the rows that
- * share their key resolve to nothing, which is the honest answer — there is no row to write to.
- */
 export function resolveTranscriptPlanQuestions(
   questions: GrowthInterviewQuestion[],
   entries: InterviewTranscriptEntry[],
@@ -265,19 +248,9 @@ export function resolveTranscriptPlanQuestions(
   return resolved;
 }
 
-/**
- * The plan row a rendered card takes its answer and state from.
- *
- * Committed cards go through the positional mapping only: a card the plan has no row left for
- * (see resolveTranscriptPlanQuestions) resolves to nothing rather than borrowing another row's
- * answer, which would show the customer an answer they never gave. Cards of a turn that is still
- * streaming are not in that mapping yet and have no recorded answer to show either way, so there
- * the key is all there is to go on.
- */
 export function planQuestionForEntry(args: {
   entryId: string,
   card: InterviewQuestionCard,
-  /** True for entries of the in-flight turn, which the committed mapping does not cover yet. */
   streaming: boolean,
   activeQuestion: InterviewChatView["activeQuestion"],
   planQuestionByEntryId: Map<string, GrowthInterviewQuestion>,
@@ -288,7 +261,6 @@ export function planQuestionForEntry(args: {
   return args.planQuestionByEntryId.get(args.entryId) ?? null;
 }
 
-/** Synthetic entry id for the recovery card described in deriveInterviewChatView. */
 export function planFallbackEntryId(question: GrowthInterviewQuestion): string {
   return `plan-fallback:${question.orderIndex}:${question.questionKey}`;
 }
@@ -308,7 +280,6 @@ export function deriveInterviewChatView(
       if (entry.type !== "question") continue;
       const planQuestion = planQuestionByEntryId.get(entry.id);
       // A card whose key is missing from the plan cannot be answered (the answer endpoint is keyed
-      // by the plan's order_index) — fall through to the recovery card below instead of rendering a
       // dead interactive card. The hook reports this loudly when it happens.
       if (planQuestion != null && planQuestion.answeredAtMillis == null) {
         activeQuestion = { entryId: entry.id, card: entry.card, planQuestion };
@@ -316,13 +287,6 @@ export function deriveInterviewChatView(
       break;
     }
   }
-  // Recovery card: the interview is underway, the trailing card cannot be answered (it repeats an
-  // answered question, or its key is not in the plan at all) and yet the plan still has unanswered
-  // rows. Without this the customer is stranded — every card on screen is read-only and the only
-  // affordance left is "Continue the interview", which asks the agent for another turn that can
-  // repeat the same mistake. Appending the next unanswered plan question as a bare card keeps the
-  // interview answerable without waiting on the agent. The opening turn is deliberately excluded
-  // (no question card yet): there the assistant's introduction is the point.
   if (!completed && activeQuestion == null && entries.some((entry) => entry.type === "question")) {
     const next = findNextUnansweredQuestion(interview.questions);
     if (next != null) {
@@ -342,12 +306,6 @@ export function deriveInterviewChatView(
   };
 }
 
-/**
- * Builds a card straight from a plan row, used where no agent-authored card exists: the demo
- * transcript and the recovery card in deriveInterviewChatView. Plan rows don't carry
- * allow_free_text (only the agent's tool input does), and free text is the permissive choice — a
- * founder with something to say must not be blocked by a card we synthesized ourselves.
- */
 export function questionCardFromPlanQuestion(question: GrowthInterviewQuestion): InterviewQuestionCard {
   return {
     questionKey: question.questionKey,
@@ -635,10 +593,6 @@ export function useGrowthInterviewChat(options: { app: object, demo: boolean, de
       : [...base.loadedEntries, ...base.localEntries];
     const derived = deriveInterviewChatView(interview, entries);
     if (!demo && !derived.completed) {
-      // The trailing card being unanswerable means the agent presented a question that has no
-      // unanswered plan row — either it repeated one already answered, or it presented a key that
-      // was never persisted. The view recovers (recovery card / continue affordance), but the agent
-      // behaviour behind it is a defect we want to see.
       const lastCard = [...entries].reverse().find((entry) => entry.type === "question");
       if (lastCard != null && derived.activeQuestion?.entryId !== lastCard.id) {
         captureError("growth-interview-unanswerable-question", {

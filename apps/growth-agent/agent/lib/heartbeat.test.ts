@@ -18,15 +18,11 @@ const identity: PhaseSessionIdentity = {
   attempt: 1,
 };
 
-// The heartbeat only reads the continuation token, but the channel type also carries eve's rekey
-// operation, so the fixture supplies an inert one rather than narrowing the production type.
 function channelFor(token: string | null): PhaseSettlementContext {
   if (token == null) return {};
   return { continuation: { token, rekey: () => undefined } };
 }
 
-// The heartbeat detaches its backend call, so a beat is observable only after the microtask queue
-// drains; awaiting a resolved promise is enough since the mock never suspends.
 async function settleDetachedBeats(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -85,7 +81,6 @@ describe("phase heartbeat from session events", () => {
     await settleDetachedBeats();
     expect(phaseHeartbeat).toHaveBeenCalledTimes(1);
 
-    // Ten silent minutes: without the timer the backend would be about to reap this phase.
     for (let minute = 0; minute < 10; minute++) {
       await vi.advanceTimersByTimeAsync(60_000);
     }

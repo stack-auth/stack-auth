@@ -79,8 +79,6 @@ export function isGrowthWorkflowSourceEdited(workflowId: string, storedSource: s
 /**
  * Creates any missing canonical Growth workflow definitions for this tenancy.
  * Existing definitions — edited or not — are left completely untouched.
- * Concurrent seeding is safe: the loser of the create race treats the winner's
- * definition as success (see isGrowthSeedRaceError).
  */
 export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<string, { created: boolean }>> {
   const results = new Map<string, { created: boolean }>();
@@ -92,16 +90,6 @@ export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<strin
 
 const GROWTH_SEED_ATTEMPTS = 3;
 
-/**
- * Attempts a seed for one workflow, re-reading and re-seeding while we keep losing a seed race.
- *
- * Retrying (rather than adopting the winner's definition after a single re-read) is load-bearing:
- * losing the race does not prove the winner will commit — a seeder that fails after we collided with
- * its uncommitted version row leaves the definition missing, and a single re-read would then
- * propagate a 409 for a workflow nobody ended up creating. Each iteration re-reads first, so the
- * common case adopts the winner, and the attempt budget keeps a genuinely conflicting definition
- * from looping forever.
- */
 async function ensureGrowthWorkflow(tenancy: Tenancy, workflowId: string, spec: GrowthWorkflowDefinitionSpec): Promise<{ created: boolean }> {
   for (let attempt = 1; ; attempt++) {
     if (await growthWorkflowExists(tenancy, workflowId)) return { created: false };
@@ -110,22 +98,11 @@ async function ensureGrowthWorkflow(tenancy: Tenancy, workflowId: string, spec: 
       return { created: true };
     } catch (error) {
       if (!isGrowthSeedRaceError(error) || attempt >= GROWTH_SEED_ATTEMPTS) throw error;
-      // Give the winner's transaction a moment to settle before re-reading, so the next attempt
-      // sees its definition instead of colliding with it again.
       await wait(100 * attempt);
     }
   }
 }
 
-/**
- * Two seeders racing on the same missing definition can fail in two different ways, depending on
- * how far the winner got before the loser looked:
- *   - the winner's definition was already committed, so mustBeNew rejects with an already-exists 400;
- *   - the winner was still inside its own transaction, so both mint version 1 and the loser loses the
- *     WorkflowVersion unique constraint, which the workflow API reports as a 409.
- * Both mean "another seeder is creating this definition", which the caller resolves by re-reading
- * and, if it is still missing, seeding again — so an unrelated conflict still propagates.
- */
 export function isGrowthSeedRaceError(error: unknown): boolean {
   if (!StatusError.isStatusError(error)) return false;
   if (error.statusCode === 409) return true;

@@ -85,9 +85,6 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
     expect(response.status).toBe(400);
   });
 
-  // The fixture onboards a fresh project and both racers then run a full repair pass (a phase
-  // dispatch per analysis phase, against an Eve that isn't running in tests), so this test needs
-  // more headroom than the default when the CI worker pool is saturated by the other growth suites.
   it("deduplicates concurrent repairs for the same growth run", { timeout: 180_000 }, async ({ expect }) => {
     const keys = await createGrowthProject();
     if (keys === "no-project") throw new Error("Growth admin test requires a fresh project.");

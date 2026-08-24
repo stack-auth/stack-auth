@@ -9,14 +9,12 @@ import { executeQuizAuthoring } from "#lib/run-quiz.ts";
 import { settleGrowthPhaseFromTerminalEvent } from "#lib/phase-settlement.ts";
 import { noteGrowthPhaseProgress, stopGrowthPhaseHeartbeat } from "#lib/heartbeat.ts";
 
-
 const projectRefSchema = z.object({
   project_id: z.string().min(1),
   branch_id: z.string().min(1),
 
   agent_token: z.string().min(1).optional(),
 });
-
 
 const analysisPhaseRunRequestSchema = projectRefSchema.extend({
   run_id: z.string().min(1),
@@ -28,7 +26,6 @@ const dailyBriefRunRequestSchema = projectRefSchema.extend({
   brief_id: z.string().min(1),
   date: z.string().min(1),
 });
-
 
 // Mirrors the body the backend's streamGrowthChatTurn proxy sends
 // (apps/backend/src/lib/growth/chat.ts). The transcript is opaque prompt
@@ -122,9 +119,6 @@ const SESSION_FAILED_PHASE_MESSAGE = "The analysis step failed unexpectedly. It 
 
 export default defineChannel({
   events: {
-    // A phase's liveness is anchored on its own session events (see lib/heartbeat.ts): the request
-    // that dispatched the phase only starts a background session and returns, so nothing is left
-    // holding a timer that could beat on the phase's behalf.
     "turn.started": (_data, channel) => {
       noteGrowthPhaseProgress(channel);
     },

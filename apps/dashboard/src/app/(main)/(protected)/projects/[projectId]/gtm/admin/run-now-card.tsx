@@ -26,9 +26,6 @@ export function GrowthAdminRunNowCard(props: { app: object, projectId: string, p
     <DesignCard title={`Manual scheduler · ${props.projectName}`} subtitle="Run one scheduler pass for this project when no Cron invocation is driving the engine" icon={GearSixIcon} gradient="cyan">
       <div className="space-y-3">
         {state.status === "error" && <DesignAlert variant="error">{state.message}</DesignAlert>}
-        {/* Three outcomes, not two. `legStarted === false` is the one that used to be reported as
-          * success: the boundary event is durably queued but no workflow leg was created inside the
-          * request's budget, so the run has NOT started and pressing again is the right move. */}
         {state.status === "success" && (
           state.result.legStarted === false
             ? <DesignAlert variant="warning">Work is queued, but no analysis leg was created within the time limit. Nothing is lost — run it again.</DesignAlert>

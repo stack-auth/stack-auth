@@ -63,7 +63,6 @@ export async function executeBlogDraft(input: BlogDraftRequest, helpers: { reado
     }),
     mode: "task",
     title: `Growth blog draft (${input.blog_idea.title})`,
-    // Retries must queue behind an in-flight run instead of steering it away.
     turnPolicy: "queue",
   });
 

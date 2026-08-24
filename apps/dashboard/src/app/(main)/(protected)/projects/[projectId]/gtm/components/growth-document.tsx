@@ -137,47 +137,17 @@ const CALLOUT_META = new Map<"Evidence" | "Hypothesis" | "Experiment" | "DataGap
   ["DataGap", { label: "Data gap", icon: WarningCircleIcon, className: "bg-orange-500/[0.06] ring-orange-500/15" }],
 ]);
 
-/**
- * The actions an `<ActionButton>` in the surrounding document may resolve to.
- *
- * A document never carries an action's data, only its id, so whoever renders a document that can
- * contain `<ActionButton>` has to say which actions the reader is allowed to see — and how to reload
- * them once one is activated or dismissed. Documents rendered without this provider (findings,
- * reports, action narratives) simply have no action buttons in them.
- */
 const GrowthDocumentActionsContext = createContext<{
   actions: GrowthActionItem[],
   onChanged: () => Promise<void>,
   demo: boolean,
-  /**
-   * The project whose workspace the reader is in, or null when the document is rendered outside it.
-   *
-   * Both the activate/dismiss endpoints and an action's own page are addressed by the project in the
-   * URL, and the internal admin page previews a *customer's* page from the internal project's URL —
-   * so there the only correct thing to do is show the card without controls that would act on the
-   * wrong project.
-   */
   projectId: string | null,
 } | null>(null);
 
-/**
- * `demo` and `projectId` travel with the actions rather than being read from the growth status
- * context and the URL, because the internal admin page renders authored pages (as a preview) outside
- * the customer frame both of those describe. Whoever supplies the actions knows where they came from.
- */
 export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean, projectId: string | null, children: ReactNode }) {
   return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged, demo: props.demo, projectId: props.projectId }}>{props.children}</GrowthDocumentActionsContext.Provider>;
 }
 
-/**
- * An action referenced from inside an authored page, rendered as the same kind of card the rest of
- * the workspace uses so a page reads as one page rather than as a page with an embedded widget.
- *
- * The reference can dangle: staff wrote the page against an action that has since been deleted, or
- * the reader's overview no longer includes it (dismissed items drop out of the live lists). That is
- * a normal state, not an error — the card says so and offers nothing to click, because the
- * alternative is a button that fails when pressed.
- */
 function ActionButtonBlock(props: { actionId: string }) {
   const context = useContext(GrowthDocumentActionsContext);
   const withQuery = useGrowthHref();
@@ -220,8 +190,6 @@ function ActionButtonBlock(props: { actionId: string }) {
 function ComponentBlock(props: { block: Extract<GrowthDocumentBlock, { type: "component" }>, data: Map<string, GrowthEvidenceDatum> }) {
   const datum = props.block.dataId == null ? null : props.data.get(props.block.dataId) ?? null;
   if (props.block.name === "ActionButton") {
-    // The compiler rejects an ActionButton without an action id, so a null one here can only mean a
-    // document from some other source; rendering nothing is better than an empty card.
     return props.block.actionId == null ? null : <ActionButtonBlock actionId={props.block.actionId} />;
   }
   if (props.block.name === "Metric" && datum?.kind === "metric") return <MetricBlock datum={datum} />;

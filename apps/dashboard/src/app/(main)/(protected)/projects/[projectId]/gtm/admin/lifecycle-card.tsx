@@ -10,19 +10,6 @@ import type { GrowthStatus } from "@/lib/growth/growth-types";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { CheckCircleIcon, CircleIcon, CircleNotchIcon, PulseIcon, WarningCircleIcon } from "@phosphor-icons/react";
 
-/**
- * Where the selected customer is in their Growth lifecycle, at the top of the admin workspace.
- *
- * The point is to answer "is there anything here worth editing yet?" before staff start editing:
- * the workspace below renders the customer's findings, notes and actions, all of which only exist
- * once deep research has run and the interview has been answered. Step states come from
- * `getGrowthTimelineStepStates` — the same derivation the customer's own timeline uses — so the two
- * surfaces can never disagree about which phase a project is in. Presentation differs on purpose:
- * this is one dense row for a pro user, not the customer's expanded, navigable timeline. It is also
- * deliberately read-only; the customer timeline's controls (onboarding form, restart, retry) act on
- * the app the page is mounted in, which here is the internal project, not the customer's.
- */
-
 const PHASE_LABELS = new Map<GrowthPhase, string>([
   ["not-onboarded", "Not onboarded"],
   ["analyzing", "Deep research running"],
@@ -51,7 +38,6 @@ const STEP_LABELS = new Map<GrowthTimelineStepId, string>([
   ["ongoing", "Ongoing"],
 ]);
 
-/** Named from staff's point of view: what the interview's wire state means for whoever is looking at it. */
 const INTERVIEW_LABELS = new Map<GrowthStatus["interview"]["state"], string>([
   ["not_ready", "not generated yet"],
   ["preparing", "held for staff review"],
@@ -75,7 +61,6 @@ function StepChip(props: { label: string, state: GrowthTimelineStepState }) {
   );
 }
 
-/** The one or two facts that explain the phase, so staff don't have to open the ops cards to learn them. */
 function detailLines(status: GrowthStatus, nowMillis: number): string[] {
   const lines: string[] = [];
   if (status.onboarding.completed && status.onboarding.completedAtMillis != null) {
@@ -108,8 +93,6 @@ export function GrowthAdminLifecycleCard(props: { status: GrowthStatus, gate: Gr
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {GROWTH_TIMELINE_STEP_IDS.map((stepId) => {
             const state = steps.get(stepId) ?? throwErr(`getGrowthTimelineStepStates returned no state for step ${stepId}`);
-            // "hidden" is how the derivation says a run predates a phase; the customer's timeline
-            // omits those rows, and so does this one.
             if (state === "hidden") return null;
             return <StepChip key={stepId} label={STEP_LABELS.get(stepId) ?? throwErr(`STEP_LABELS is missing an entry for timeline step ${stepId}`)} state={state} />;
           })}

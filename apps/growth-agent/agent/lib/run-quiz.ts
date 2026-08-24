@@ -131,7 +131,6 @@ export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers:
     // One session per round: a repeat request for the same round is a retry of the same work.
     mode: "task",
     title: `Growth quiz questions (round ${input.round_id})`,
-    // Retries must queue behind an in-flight run instead of steering it away.
     turnPolicy: "queue",
   });
 

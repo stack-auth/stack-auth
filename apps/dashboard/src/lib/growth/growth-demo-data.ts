@@ -612,14 +612,6 @@ function demoTrendDocument(): GrowthDocument {
   };
 }
 
-/**
- * A staff-authored stage page, as a customer sees it: the conversion stage argues its case in prose
- * and evidence, and ends in a button that starts the action the page is about.
- *
- * Demo mode has no backend, so the compiled form is written out by hand here. It is the fixture that
- * makes the "page instead of raw lanes" behaviour visible without a seeded project — and the reason
- * the conversion stage in the demo shows a page while every other stage still shows its lanes.
- */
 function demoConversionStagePage(actions: GrowthActionItem[]): GrowthPublishedCategoryPage {
   const actionId = demoId(6, 3);
   const referenced = actions.find((item) => item.id === actionId);

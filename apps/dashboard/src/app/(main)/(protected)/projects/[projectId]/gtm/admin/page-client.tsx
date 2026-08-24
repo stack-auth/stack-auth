@@ -25,11 +25,6 @@ type Loadable =
   | { status: "error", message: string }
   | { status: "loaded", projects: GrowthAdminProject[], selected: GrowthAdminProject | null, overview: GrowthOverview | null, lifecycle: GrowthStatus | null };
 
-/**
- * Functional fields are immutable once an action leaves the proposal stage — the backend rejects them —
- * so they are only ever sent for proposals, and then unchanged: the workspace edits the customer-facing
- * fields, and resending the current values keeps the PATCH from being read as "clear these".
- */
 function functionalFieldsOf(action: GrowthActionItem): GrowthAdminFunctionalActionFields | undefined {
   if (action.status !== "proposed") return undefined;
   const workflow = action.workflow;
@@ -40,11 +35,6 @@ function functionalFieldsOf(action: GrowthActionItem): GrowthAdminFunctionalActi
   };
 }
 
-/**
- * The customer's own Growth workspace, wired to the admin API. Rendering the same component the
- * customer gets — rather than an admin-shaped mirror of it — is the point: an admin sees precisely
- * what the customer sees, and edits it where it sits.
- */
 function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject, overview: GrowthOverview, lifecycle: GrowthStatus, refresh: () => Promise<void> }) {
   const { app, refresh } = props;
   const [nowMillis] = useState(() => Date.now());
@@ -91,11 +81,6 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
     },
   }), [app, projectId, refresh]);
 
-  // Until the interview is answered, the customer-facing content either doesn't exist yet (deep
-  // research hasn't produced it) or is still being reshaped by the run, so the workspace renders
-  // WITHOUT the edit provider — which is precisely what makes every field read-only, exactly as the
-  // customer sees it. The interview review below stays live either way: it is the human gate that
-  // unblocks everything downstream, and therefore the one thing staff should be acting on first.
   const gate = getGrowthAdminEditGate(props.lifecycle);
 
   const workspace = (
@@ -105,11 +90,8 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
         status={props.lifecycle}
         projectId={projectId}
         projectName={props.project.displayName}
-        // The admin page always edits a real project's records; there is no demo fixture mode here.
         demo={false}
         onRefresh={refresh}
-        // Authoring a stage page out of research that doesn't exist yet would be writing fiction, so
-        // the composer appears with the rest of the editing affordances.
         categoryPageEditor={gate.contentEditable
           ? (category) => (
             <GrowthAdminCategoryPageCard
@@ -125,9 +107,6 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
     </GrowthAdminCategoryPagesProvider>
   );
 
-  // Lifecycle operations, which have no customer-facing surface to edit in place. A held interview
-  // comes first: until it is released the customer cannot answer, and nothing downstream (report,
-  // actions, briefs) can happen — it is the last human gate in the lifecycle.
   const operations = (
     <div className="space-y-4">
       <h2 className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">Lifecycle operations</h2>
@@ -142,8 +121,6 @@ function GrowthAdminWorkspace(props: { app: object, project: GrowthAdminProject,
   return (
     <div className="space-y-8">
       <GrowthAdminLifecycleCard status={props.lifecycle} gate={gate} nowMillis={nowMillis} />
-      {/* While the content is read-only, the operations are the only thing worth acting on, so they
-        * come first rather than below a workspace nobody can edit yet. */}
       {gate.contentEditable ? (
         <>
           <GrowthWorkspaceEditProvider editors={editors}>{workspace}</GrowthWorkspaceEditProvider>

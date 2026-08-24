@@ -620,13 +620,6 @@ const publishedCategoryPageSchema = z.object({
   actions: z.array(actionItemSchema),
 });
 
-/**
- * Live stage pages, skipping any that don't parse.
- *
- * A page is staff-authored content compiled by the backend, so a shape this client can't read means
- * the two sides drifted — a real bug, but not one worth turning a customer's whole workspace into an
- * error screen for. The stage falls back to its raw lanes, and the drift is reported to Sentry.
- */
 function readPublishedCategoryPages(values: unknown[]): GrowthPublishedCategoryPage[] {
   const pages: GrowthPublishedCategoryPage[] = [];
   for (const value of values) {
@@ -665,8 +658,6 @@ const overviewSchema = z.object({
   actions: z.array(actionItemSchema),
   archive: z.array(actionItemSchema),
   categories: z.array(z.object({ category: z.enum(GROWTH_CATEGORIES), count: z.number(), score: z.number().min(0).max(100).nullable() })),
-  // A page whose document fails to parse would take the whole workspace down with it, so unparseable
-  // pages are dropped below and the stage falls back to its lanes — the same as having no page.
   category_pages: z.array(z.unknown()),
   needs_category_count: z.number(),
   limit: z.number(),
@@ -742,10 +733,6 @@ export async function listGrowthAdminProjects(app: object): Promise<GrowthAdminP
   return rows.map((row) => ({ id: row.id, displayName: row.display_name, websiteUrl: row.website_url, completedAtMillis: row.completed_at_millis }));
 }
 
-/**
- * The selected project's lifecycle status. Parsed with the customer status schema on purpose — the
- * admin page renders the same lifecycle view the customer gets, so the two must not drift.
- */
 export async function getGrowthAdminStatus(app: object, projectId: string): Promise<GrowthStatus> {
   return mapGrowthStatus(statusSchema.parse(await requestGrowthAdminJson(app, urlString`/status?project_id=${projectId}`)));
 }
@@ -777,7 +764,6 @@ const categoryPageVersionSchema = categoryPageVersionSummarySchema.extend({
   actions: z.array(actionItemSchema),
 });
 
-/** The authored payload as it goes over the wire, and as it comes back on a stored version. */
 const categoryPageSourceSchema = z.object({
   format: z.literal("growth-mdx-v1"),
   source_mdx: z.string(),
@@ -795,9 +781,6 @@ function mapCategoryPageVersionSummary(value: z.infer<typeof categoryPageVersion
 }
 
 function mapCategoryPageVersion(value: z.infer<typeof categoryPageVersionSchema>): GrowthCategoryPageVersion {
-  // A stored version that no longer round-trips (hand-edited row, or a format we have since changed)
-  // must not blank the composer: the editor shows an explicit "source could not be read" state and
-  // the author can still discard or republish, which is why both are nullable rather than throwing.
   const source = categoryPageSourceSchema.safeParse(value.source_json);
   const document = growthDocumentSchema.safeParse(value.document);
   return {
@@ -818,12 +801,10 @@ const adminCategoryPageSchema = z.object({
   archived: z.array(categoryPageVersionSummarySchema),
 });
 
-// The route wraps the list in an envelope so it can grow extra top-level fields without a breaking change.
 const adminCategoryPagesResponseSchema = z.object({
   pages: z.array(adminCategoryPageSchema),
 });
 
-/** Exported separately from the fetch so the wire contract itself is unit-testable. */
 export function parseGrowthAdminCategoryPagesBody(value: unknown): GrowthAdminCategoryPage[] {
   return adminCategoryPagesResponseSchema.parse(value).pages.map((row) => ({
     category: row.category,
@@ -837,17 +818,12 @@ export async function listGrowthAdminCategoryPages(app: object, projectId: strin
   return parseGrowthAdminCategoryPagesBody(await requestGrowthAdminJson(app, `/category-pages?project_id=${encodeURIComponent(projectId)}`));
 }
 
-/**
- * Saves the stage's draft. The response is the stored draft, compiled — so the composer previews
- * exactly what the backend accepted rather than a client-side guess at how it would compile.
- */
 export async function saveGrowthAdminCategoryPageDraft(app: object, projectId: string, input: {
   category: GrowthCategory,
   sourceMdx: string,
   data: unknown[],
   sourceFindingIds: string[],
   sourceActionIds: string[],
-  /** `updatedAtMillis` of the draft the composer loaded, or null if the stage had no draft. */
   expectedDraftUpdatedAtMillis: number | null,
 }): Promise<GrowthCategoryPageVersion> {
   const value = categoryPageVersionSchema.parse(await requestGrowthAdminJson(app, "/category-pages", {
@@ -868,7 +844,6 @@ export async function discardGrowthAdminCategoryPageDraft(app: object, projectId
   await requestGrowthAdminJson(app, "/category-pages", { method: "DELETE", body: JSON.stringify({ target_project_id: projectId, category }) });
 }
 
-/** Publishing an older version is how rollback works — same endpoint, an archived version number. */
 export async function publishGrowthAdminCategoryPage(app: object, projectId: string, category: GrowthCategory, version: number): Promise<void> {
   await requestGrowthAdminJson(app, "/category-pages/publish", { method: "POST", body: JSON.stringify({ target_project_id: projectId, category, version }) });
 }
@@ -912,20 +887,11 @@ export type GrowthAdminFunctionalActionFields = {
   workflow: null | Pick<NonNullable<GrowthActionItem["workflow"]>, "workflowId" | "source" | "explanation" | "rollbackNote">,
 };
 
-/**
- * The admin action endpoint replaces every field it receives, so an edit to one field has to resend the
- * others; the functional fields are only included when the caller may change them (while the action is
- * still a proposal).
- */
 export function growthAdminActionRequestBody(projectId: string, action: GrowthActionItem, functionalFields?: GrowthAdminFunctionalActionFields): Record<string, unknown> {
   return {
     target_project_id: projectId, type_id: action.typeId, category: action.category, tags: action.tags, title: action.title, description: action.description,
     status: action.status,
     ...functionalFields === undefined ? {} : {
-      // The endpoint takes `payload` as optional-but-not-nullable, and an action's payload column is
-      // nullable (that is its default until the agent fills it in), so a null payload has to be left
-      // out of the body entirely — sending `null` is rejected and would make an otherwise unrelated
-      // edit, such as flipping a proposal to active, impossible for those actions.
       ...functionalFields.payload == null ? {} : { payload: functionalFields.payload },
       watched_metrics: functionalFields.watchedMetrics.map((metric) => ({ metric_id: metric.metricId, window_days: metric.windowDays })),
       workflow: functionalFields.workflow == null ? null : { workflow_id: functionalFields.workflow.workflowId, source: functionalFields.workflow.source, explanation: functionalFields.workflow.explanation, rollback_note: functionalFields.workflow.rollbackNote },

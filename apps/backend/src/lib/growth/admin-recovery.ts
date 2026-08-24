@@ -51,17 +51,8 @@ export async function runGrowthProjectAnalysisStep(tenancy: Tenancy): Promise<{ 
   return { didWork: before?.fingerprint !== after?.fingerprint };
 }
 
-/**
- * Wall-clock budget for a whole repair pass. The pass runs inside an admin HTTP request and every
- * step it performs is idempotent, so work the budget doesn't cover is better left to the next repair
- * than to a request that outlives its client.
- */
 const REPAIR_BUDGET_MS = 60_000;
 
-/**
- * Share of {@link REPAIR_BUDGET_MS} the engine drive may spend, so a leg that never gets queued
- * still leaves room for the closing tick — the step that actually moves phases out of PENDING.
- */
 const REPAIR_LEG_DRIVE_BUDGET_MS = REPAIR_BUDGET_MS / 2;
 
 async function findActiveGrowthLeg(tenancy: Tenancy, growthRunId: string) {
@@ -76,15 +67,6 @@ async function findActiveGrowthLeg(tenancy: Tenancy, growthRunId: string) {
   });
 }
 
-/**
- * Turns the boundary event we just enqueued into a QUEUED leg run, without executing it.
- *
- * Executing is deliberately left to the engine tick: a growth leg's first step long-polls for
- * analysis progress for minutes, so an engine step that executes runs cannot be bounded by a budget
- * (the deadline is only honoured between steps). Driving execution from here used to keep the admin
- * request open for the entire poll and read as a hang. Queuing the leg is the part a repair actually
- * owns — it is what the missing event lost.
- */
 async function driveGrowthLegUntilQueued(tenancy: Tenancy, growthRunId: string, budgetMs: number): Promise<boolean> {
   const startedAt = performance.now();
   const engineDeadlineMs = Date.now() + budgetMs;
@@ -128,8 +110,6 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepai
   }
 
   const eventType = leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished;
-  // Keep the pending check and insert together: concurrent repairs must serialize before either
-  // can decide that this run needs a new boundary event.
   const enqueued = await retryTransaction(globalPrismaClient, async (tx) => {
     if (await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType }, tx)) return null;
     return await enqueueWorkflowEvent(tx, {

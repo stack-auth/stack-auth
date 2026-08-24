@@ -275,22 +275,11 @@ export type GrowthOverviewFinding = {
   createdAtMillis: number,
 };
 
-/**
- * A stage page the customer can see: only the compiled document of the live version.
- *
- * Drafts, version history and the source items a page was written from never reach a customer, so
- * they are absent from this type by construction rather than filtered out at render time.
- */
 export type GrowthPublishedCategoryPage = {
   category: GrowthCategory,
   version: number,
   document: GrowthDocument,
   publishedAtMillis: number | null,
-  /**
-   * The actions this page's buttons reference, carried with the page: the overview's action lanes are
-   * capped and active-only, so resolving a button against them would show "no longer available" for a
-   * completed action, or for one that simply fell outside the cap.
-   */
   actions: GrowthActionItem[],
 };
 
@@ -304,24 +293,12 @@ export type GrowthCategoryPageVersionSummary = {
   updatedAtMillis: number,
 };
 
-/** A draft or live version as staff see it: the authored source, the compiled document, and provenance. */
 export type GrowthCategoryPageVersion = GrowthCategoryPageVersionSummary & {
   category: GrowthCategory,
-  /**
-   * What the page was authored from, and what the editor round-trips: the `growth-mdx-v1` body plus
-   * the evidence data its `<Metric>`/chart components reference. `data` stays opaque here because
-   * the compiler — not the dashboard — owns its shape; the editor only moves it back and forth.
-   */
   source: { sourceMdx: string, data: unknown[] } | null,
   document: GrowthDocument | null,
   sourceItemIds: { findings: string[], actions: string[] },
-  /** Source items that changed (or were deleted) after this version was last saved. */
   staleSourceIds: string[],
-  /**
-   * The actions this version's buttons reference, carried with it for the same reason a live page
-   * carries its own: the overview's lanes are capped and active-only, so a preview resolving a
-   * reference against them would call a perfectly valid draft's button unavailable.
-   */
   actions: GrowthActionItem[],
 };
 
@@ -340,7 +317,6 @@ export type GrowthOverview = {
   actions: GrowthActionItem[],
   archive: GrowthActionItem[],
   categories: { category: GrowthCategory, count: number, score: number | null }[],
-  /** Live stage pages, one per stage that has one. A stage without one keeps the raw item lanes. */
   categoryPages: GrowthPublishedCategoryPage[],
   needsCategoryCount: number,
   limit: number,

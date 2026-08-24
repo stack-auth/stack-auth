@@ -37,10 +37,6 @@ export type GrowthDocumentBlock =
   | { type: "table", align: Array<"left" | "center" | "right" | null>, rows: GrowthDocumentInline[][][] }
   | { type: "code", language: string | null, value: string }
   | { type: "rule" }
-  // `actionId` is only ever set on ActionButton: a reference to a GrowthActionItem
-  // of this project. It carries no privilege — the dashboard resolves it to its own
-  // action control, which calls the ordinary (authorized) action endpoints — which
-  // is why an authored document may contain one at all.
   | { type: "component", name: GrowthDocumentComponentName, dataId: string | null, confidence: "low" | "medium" | "high" | null, actionId: string | null, children: GrowthDocumentBlock[] };
 
 export type GrowthEvidencePoint = { label: string, value: number };
@@ -249,8 +245,6 @@ function convertComponent(node: MdxJsxFlowElement): GrowthDocumentBlock {
     const actionId = attributes.get("action");
     if (actionId == null || actionId.length === 0) invalidDocument("ActionButton requires an action attribute.");
     if (actionId.length > 100) invalidDocument("ActionButton action is not an action id.");
-    // Self-closing on purpose: the button's label and state come from the action it
-    // references, so customer-facing copy cannot drift from what the action does.
     if (node.children.length > 0) invalidDocument("ActionButton must be self-closing.");
     return { type: "component", name, dataId: null, confidence: null, actionId, children: [] };
   }
@@ -337,14 +331,6 @@ function validateDataReferences(blocks: GrowthDocumentBlock[], data: GrowthEvide
   for (const block of blocks) visit(block);
 }
 
-/**
- * Every action an authored document references, in document order and de-duplicated.
- *
- * The compiler cannot check that an id exists — it has no database — so the caller
- * that persists a document (see lib/growth/category-pages.ts) resolves these ids
- * against its own project/branch and rejects references it does not own. A
- * dangling reference must fail on write, not render as a dead button.
- */
 export function collectGrowthDocumentActionIds(blocks: GrowthDocumentBlock[]): string[] {
   const ids: string[] = [];
   const visit = (block: GrowthDocumentBlock): void => {
@@ -360,13 +346,6 @@ export function collectGrowthDocumentActionIds(blocks: GrowthDocumentBlock[]): s
   return ids;
 }
 
-/**
- * The same reference list, read off a STORED document.
- *
- * A stored row is JSON that was a valid AST when it was written, so this walks it structurally
- * rather than re-typing it: callers only need the ids (to resolve the actions a live page links to),
- * and a row written by an older shape of the compiler must still yield its references.
- */
 export function collectStoredGrowthDocumentActionIds(value: unknown): string[] {
   const ids: string[] = [];
   const visit = (node: unknown): void => {

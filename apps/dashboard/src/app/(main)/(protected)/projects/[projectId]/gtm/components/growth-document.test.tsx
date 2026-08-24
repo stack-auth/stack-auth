@@ -5,8 +5,6 @@ import type { GrowthDocument } from "@/lib/growth/growth-document";
 import type { GrowthActionItem } from "@/lib/growth/growth-types";
 import { GrowthDocumentActionsProvider, GrowthDocumentRenderer } from "./growth-document";
 
-// An <ActionButton> links to the action's detail page, so the renderer reads the project from the
-// route; server-rendering it in a test means standing in for the router.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/projects/00000000-0000-4000-8000-000000000000/gtm",
   useSearchParams: () => new URLSearchParams(),
@@ -16,8 +14,6 @@ vi.mock("@/components/link", () => ({
   Link: ({ href, children }: { href: string, children?: ReactNode }) => <a href={href}>{children}</a>,
 }));
 
-// The activate/dismiss controls talk to the API through the dashboard app context; this suite is about
-// which action a page's reference resolves to, so they stand in as a marker.
 vi.mock("./action-controls", () => ({
   GrowthActionMutationControls: () => <div>action controls</div>,
 }));
@@ -83,8 +79,6 @@ describe("GrowthDocumentRenderer", () => {
       </GrowthDocumentActionsProvider>,
     );
     expect(html).toContain("Trim the signup form");
-    // The page carries a reference, not the action: nothing type-specific about the action leaks into
-    // the rendered page beyond what the customer already sees on the action itself.
     expect(html).not.toContain("Three fields instead of seven.");
   });
 

@@ -119,11 +119,6 @@ describe("compileGrowthDocument", () => {
     expect(() => compileGrowthDocument({ format: "growth-mdx-v1", source_mdx: "a".repeat(361), data: [] })).toThrow(/at most 360 characters/);
   });
 
-  // <ActionButton> is the one authored component that does something rather than
-  // says something, so what it may and may not carry is worth pinning down: an
-  // action id and nothing else. Whether that id exists is checked where the
-  // document is persisted (lib/growth/category-pages.ts) — the compiler has no
-  // database.
   it("compiles an action reference and nothing else about the action", () => {
     const compiled = compileGrowthDocument({
       format: "growth-mdx-v1",
@@ -164,7 +159,6 @@ describe("compileGrowthDocument", () => {
       source_mdx: "<ActionButton action=\"first\" />\n\n<Experiment>\n\n<ActionButton action=\"second\" />\n\n</Experiment>",
       data: [],
     });
-    // A stored row has been through JSON, so it is structurally identical but no longer typed.
     expect(collectStoredGrowthDocumentActionIds(JSON.parse(JSON.stringify(compiled)))).toEqual(["first", "second"]);
     expect(collectStoredGrowthDocumentActionIds(null)).toEqual([]);
     expect(collectStoredGrowthDocumentActionIds({ blocks: [{ type: "paragraph", children: [] }] })).toEqual([]);

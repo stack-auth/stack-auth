@@ -112,7 +112,6 @@ describe("internal growth onboarding restart", { timeout: 90_000 }, () => {
     ]);
     const statuses = restarts.map((response) => response.status);
     expect(statuses.filter((status) => status === 200)).toHaveLength(1);
-    // The losing request may read before the winner commits (409) or after it deletes the row (400).
     expect(statuses.filter((status) => status === 400 || status === 409)).toHaveLength(1);
 
     const afterRestart = await niceBackendFetch(urlString`/api/latest/internal/growth/status`, { accessType: "admin" });

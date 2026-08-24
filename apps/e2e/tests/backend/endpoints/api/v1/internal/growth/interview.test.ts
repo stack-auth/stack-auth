@@ -375,9 +375,6 @@ describe("internal growth interview (no mock Eve)", { timeout: 90_000 }, () => {
     });
     expect(appendTwo.status).toBe(400);
 
-    // A key that already exists is refused: the dashboard pairs a presented card with its plan row
-    // by question_key, so a duplicate makes the founder's card resolve to the wrong (often already
-    // answered) row and renders it unanswerable.
     const appendDuplicateKey = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,

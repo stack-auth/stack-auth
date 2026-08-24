@@ -30,8 +30,6 @@ describe("getGrowthAdminEditGate", () => {
     expect(getGrowthAdminEditGate(status).contentEditable).toBe(false);
   });
 
-  // The user-facing rule this pins: until the interview is answered, the interview is the only thing
-  // staff should be touching — the run is still reshaping the findings and actions behind it.
   it("blocks editing while the customer still owes interview answers", () => {
     const status = baseStatus();
     status.interview = { state: "in_progress", answeredCount: 3, estimatedTotal: 8 };
@@ -48,8 +46,6 @@ describe("getGrowthAdminEditGate", () => {
     expect(getGrowthAdminEditGate(baseStatus())).toEqual({ phase: "steady-state", contentEditable: true, blockedReason: null });
   });
 
-  // A phase added later must not silently fall through to "editable, no explanation": either it gets
-  // a reason (blocked) or it is deliberately editable. This asserts the two stay in lockstep.
   it("gives every blocked phase a reason, and every editable phase none", () => {
     const gates = GROWTH_PHASES.map((phase) => {
       const status = baseStatus();

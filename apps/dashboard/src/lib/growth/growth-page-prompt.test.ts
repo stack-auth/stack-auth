@@ -24,7 +24,6 @@ const action: GrowthActionItem = {
   description: "Show a four-step checklist until the first useful loop completes.",
   document: null,
   status: "proposed",
-  // The two fields a prompt must never carry: a type-specific payload and a workflow's source.
   payload: { secret_api_key: "sk-should-never-be-pasted" },
   watchedMetrics: [{ metricId: "new_signups", windowDays: 14 }],
   reportId: null,

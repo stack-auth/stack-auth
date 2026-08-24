@@ -68,11 +68,6 @@ export function GrowthTimelineStep(props: {
   summary?: ReactNode,
   /** Rendered next to the title, e.g. a status badge. */
   badge?: ReactNode,
-  /**
-   * Pushed to the right edge of the title row. For controls that act on the step as a whole rather
-   * than being part of its content — below the row they read as the step's next action, which is
-   * wrong for something like restarting a step that is already done.
-   */
   trailing?: ReactNode,
   isLast?: boolean,
   children?: ReactNode,

@@ -27,19 +27,9 @@ function JsonField(props: { label: string, value: string, onChange: (value: stri
   );
 }
 
-/**
- * The parts of an action that have no customer-facing representation: the machine payload the action
- * executes with, the metrics its outcome is judged by, and its workflow record. Everything a customer
- * can see is edited in place on the workspace itself; these fields live here because they are only
- * mutable while the action is still a proposal (the backend rejects them afterwards, since an active
- * action has already been executed against them).
- */
 export function GrowthAdminActionInternalsCard(props: { app: object, projectId: string, actions: GrowthActionItem[], onSaved: () => Promise<void> }) {
   const proposed = props.actions.filter((action) => action.status === "proposed");
   const [requestedId, setRequestedId] = useState<string | null>(null);
-  // Activating a proposal elsewhere on the page refreshes this list without it, so the stored choice is
-  // reconciled against the current proposals rather than trusted — otherwise the card would claim there
-  // are no proposals left while others are still waiting.
   const selected = proposed.find((action) => action.id === requestedId) ?? proposed.at(0) ?? null;
   const [payloadJson, setPayloadJson] = useState("null");
   const [watchedJson, setWatchedJson] = useState("[]");
@@ -47,9 +37,6 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
   const [error, setError] = useState<string | null>(null);
   const [draftsFor, setDraftsFor] = useState<string | null>(null);
 
-  // Every workspace save refreshes the overview, which hands this card a new action object for the same
-  // proposal; the drafts are only re-seeded when the admin actually switches to a different proposal, so
-  // unsaved JSON isn't thrown away by an unrelated edit somewhere else on the page.
   useEffect(() => {
     const selectedId = selected?.id ?? null;
     if (selectedId === draftsFor) return;
@@ -75,8 +62,6 @@ export function GrowthAdminActionInternalsCard(props: { app: object, projectId: 
           )}
           <DesignButton disabled={selected.category == null} onClick={async () => {
             setError(null);
-            // The three fields are free-form JSON typed by hand, so a rejection here is expected input
-            // error (bad JSON/schema) as much as it is a failed request — both belong in the alert.
             const result = await Result.fromThrowingAsync(async () => {
               const functionalFields: GrowthAdminFunctionalActionFields = {
                 payload: z.unknown().parse(JSON.parse(payloadJson)),

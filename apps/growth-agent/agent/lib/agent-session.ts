@@ -31,7 +31,6 @@ export async function runAgentSession(options: {
       mode: "task",
       title: options.title,
       outputSchema: options.outputSchema,
-      // Retries must queue behind an in-flight run instead of steering it away.
       turnPolicy: "queue",
     },
   );

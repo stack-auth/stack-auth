@@ -56,8 +56,6 @@ describe("GROWTH_EVENT_TYPES", () => {
 describe("isGrowthSeedRaceError", () => {
   test("accepts both shapes a lost seed race can take", () => {
     expect(isGrowthSeedRaceError(new StatusError(400, 'A workflow with id "growth-daily-brief" already exists'))).toBe(true);
-    // The winner was still mid-transaction, so both seeders minted version 1 and we lost the
-    // WorkflowVersion unique constraint.
     expect(isGrowthSeedRaceError(new StatusError(409, "Another save happened concurrently — reload and try again"))).toBe(true);
   });
 

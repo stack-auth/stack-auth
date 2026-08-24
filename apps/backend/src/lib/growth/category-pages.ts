@@ -8,21 +8,6 @@ import { toJsonInput } from "./agent-writes";
 import { assertGrowthCategory, type GrowthCategory } from "./categories";
 import { collectGrowthDocumentActionIds, collectStoredGrowthDocumentActionIds, compileGrowthDocument, type GrowthDocument } from "./content-document";
 
-/**
- * Stage pages: the staff-authored page a customer reads under a hexagon stage,
- * instead of that stage's raw findings/notes/actions.
- *
- * Two invariants shape everything here:
- *
- *   1. A customer only ever receives a PUBLISHED version's compiled document.
- *      Drafts, version history and the ids a page was written from are internal.
- *   2. An <ActionButton> in a page is a reference, resolved on write against the
- *      referencing project/branch/stage. The page carries no privilege: clicking
- *      the button goes through the ordinary action endpoints, which authorize the
- *      customer as they always did.
- */
-
-/** Archived versions kept in the admin response — enough to roll back, bounded for the wire. */
 const MAX_ARCHIVED_VERSIONS = 10;
 
 type GrowthCategoryPageRow = {
@@ -65,7 +50,6 @@ function versionToWire(row: GrowthCategoryPageRow) {
   };
 }
 
-/** A version stripped down to what a version list needs — no document payloads. */
 function versionSummaryToWire(row: GrowthCategoryPageRow) {
   return {
     id: row.id,
@@ -76,12 +60,6 @@ function versionSummaryToWire(row: GrowthCategoryPageRow) {
   };
 }
 
-/**
- * The customer-facing read model: for each stage that has a live page, only its
- * compiled document. Deliberately NOT the draft, the version history, or the
- * source item ids — a customer has no business seeing an unfinished page or
- * learning which findings staff chose to leave out.
- */
 export async function getGrowthPublishedCategoryPages(tenancy: Tenancy) {
   const rows = await globalPrismaClient.growthCategoryPage.findMany({
     where: { projectId: tenancy.project.id, branchId: tenancy.branchId, status: "published" },
@@ -92,20 +70,10 @@ export async function getGrowthPublishedCategoryPages(tenancy: Tenancy) {
     version: row.version,
     document: row.document ?? null,
     published_at_millis: row.publishedAt == null ? null : row.publishedAt.getTime(),
-    // The actions this page's <ActionButton>s point at. The overview's action lanes are capped and
-    // active-only, so a page linking a completed action — or an older one past the cap — would
-    // otherwise render as "no longer available" even though the action is right there in the project.
     referenced_action_ids: collectStoredGrowthDocumentActionIds(row.document),
   }));
 }
 
-/**
- * Which of a page's sources changed after the page was last saved.
- *
- * This is the whole reason `sourceItemIds` is stored: without it a page silently
- * ages out of date as the agent keeps writing, and staff have no way to know which
- * stage needs rewriting. Two queries total, regardless of how many stages have pages.
- */
 async function loadStaleSourceIds(
   tenancy: Tenancy,
   pages: { page: GrowthCategoryPageRow, sources: GrowthCategoryPageSourceItemIds }[],
@@ -116,9 +84,6 @@ async function loadStaleSourceIds(
   const [findings, actions] = await Promise.all([
     findingIds.length === 0
       ? Promise.resolve([])
-      // GrowthFinding has no update timestamp (findings and notes are written once by the agent),
-      // so for those the only detectable change is disappearing — hence createdAt, which for a source
-      // the page already cites is always older than the page and therefore never flags on its own.
       : globalPrismaClient.growthFinding.findMany({ where: { ...where, id: { in: findingIds } }, select: { id: true, createdAt: true } }),
     actionIds.length === 0
       ? Promise.resolve([])
@@ -134,8 +99,6 @@ async function loadStaleSourceIds(
     const stale: string[] = [];
     for (const id of [...entry.sources.findings, ...entry.sources.actions]) {
       const changedAt = changedAtById.get(id);
-      // A deleted source counts as stale too: the page is quoting something that no
-      // longer exists, which is exactly when staff need to look at it.
       if (changedAt == null || changedAt.getTime() > entry.page.updatedAt.getTime()) stale.push(id);
     }
     staleByPageId.set(entry.page.id, stale);
@@ -143,10 +106,6 @@ async function loadStaleSourceIds(
   return staleByPageId;
 }
 
-/**
- * The admin read model: per stage, the editable draft, the live version, and a
- * bounded slice of the version history to roll back to.
- */
 export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
   const rows = await globalPrismaClient.growthCategoryPage.findMany({
     where: { projectId: tenancy.project.id, branchId: tenancy.branchId },
@@ -171,9 +130,6 @@ export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
   const withStaleness = (row: GrowthCategoryPageRow | null) => row == null ? null : {
     ...versionToWire(row),
     stale_source_ids: staleByPageId.get(row.id) ?? [],
-    // The version carries the actions its own <ActionButton>s point at, so the staff preview of a
-    // draft resolves them exactly like the customer's copy of a live page would — including actions
-    // the overview's capped, active-only lanes leave out.
     actions: collectStoredGrowthDocumentActionIds(row.document).flatMap((id) => {
       const action = referencedActionsById.get(id);
       return action == null ? [] : [action];
@@ -188,13 +144,6 @@ export async function listGrowthAdminCategoryPages(tenancy: Tenancy) {
   }));
 }
 
-/**
- * The action records the given versions' <ActionButton>s point at, for the staff preview.
- *
- * A page can reference an action the overview's capped lanes omit (completed, dismissed, or past
- * the cap), so resolving references against the overview alone would tell staff a perfectly valid
- * draft points at a suggestion that no longer exists.
- */
 async function loadReferencedActions(tenancy: Tenancy, rows: GrowthCategoryPageRow[]) {
   const actionIds = [...new Set(rows.flatMap((row) => collectStoredGrowthDocumentActionIds(row.document)))];
   if (actionIds.length === 0) return new Map<string, ReturnType<typeof growthActionItemToWire>>();
@@ -205,15 +154,6 @@ async function loadReferencedActions(tenancy: Tenancy, rows: GrowthCategoryPageR
   return new Map(actions.map((item) => [item.id, growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)]));
 }
 
-/**
- * Resolves the actions a document references, refusing anything the page has no
- * business linking to.
- *
- * Same-stage only: a stage page argues about one stage, and a button that fires an
- * action belonging to a different part of the funnel is either a mistake or a way
- * to smuggle an unrelated action into a page a customer reads as being about
- * something else.
- */
 async function assertActionReferences(
   tx: PrismaTransaction,
   tenancy: Tenancy,
@@ -229,31 +169,16 @@ async function assertActionReferences(
   const byId = new Map(actions.map((action) => [action.id, action]));
   for (const actionId of actionIds) {
     const action = byId.get(actionId);
-    // The id is the staff-supplied part of the message, so it is safe to echo; it is
-    // also the only way the author can tell which <ActionButton> to fix.
     if (action == null) throw new StatusError(400, `This page references an action that does not exist in this project: ${actionId}`);
     if (action.category !== category) throw new StatusError(400, `This page references an action from another stage: ${actionId}`);
   }
 }
 
-/**
- * Saves the stage's draft, compiling and validating the submitted payload first.
- *
- * Saving is also how previewing works: the admin page renders the stored draft
- * through the very component a customer would get, so a preview cannot diverge
- * from what publishing would show.
- */
 export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: {
   category: GrowthCategory,
   document: unknown,
   sourceItemIds: GrowthCategoryPageSourceItemIds,
   authoredByUserId: string,
-  /**
-   * `updated_at_millis` of the draft the author started from, or null if they started from no
-   * draft at all. There is only one draft slot per stage, so without this a second author editing
-   * the same stage would silently overwrite a colleague's saved work; comparing it lets us reject
-   * the save instead and let them reload.
-   */
   expectedDraftUpdatedAtMillis: number | null,
 }) {
   const category = assertGrowthCategory(input.category);
@@ -264,8 +189,6 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
   const sourceItemIds = { findings: [...new Set(input.sourceItemIds.findings)], actions: [...new Set(input.sourceItemIds.actions)] };
 
   const saveDraft = () => retryTransaction(globalPrismaClient, async (tx) => {
-    // Inside the transaction so a concurrent recategorization/deletion of a
-    // referenced action can't slip between the check and the write.
     await assertActionReferences(tx, tenancy, category, compiled);
 
     const existingDraft = await tx.growthCategoryPage.findFirst({ where: { projectId, branchId, category, status: "draft" } });
@@ -273,11 +196,6 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
       if (input.expectedDraftUpdatedAtMillis !== existingDraft.updatedAt.getTime()) {
         throw new StatusError(409, "Someone else saved this stage's draft after you opened it. Reload the page to pick up their version before saving.");
       }
-      // The timestamp goes into the WHERE clause rather than only the check above, because the read
-      // and the write are not one atomic step even inside a transaction: under READ COMMITTED two
-      // overlapping saves can both read the same `updatedAt`, both pass the check, and the later one
-      // silently replace the earlier author's text. As a predicate, the second writer blocks on the
-      // first's row lock, re-evaluates against the now-bumped `updatedAt`, and matches nothing.
       const updated = await tx.growthCategoryPage.updateMany({
         where: { id: existingDraft.id, updatedAt: existingDraft.updatedAt },
         data: {
@@ -292,8 +210,6 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
       }
       return await tx.growthCategoryPage.findUniqueOrThrow({ where: { id: existingDraft.id } });
     }
-    // A new draft always takes the next version number, so version numbers are
-    // never reused even after a rollback republished an older one.
     const latest = await tx.growthCategoryPage.findFirst({ where: { projectId, branchId, category }, orderBy: { version: "desc" }, select: { version: true } });
     return await tx.growthCategoryPage.create({
       data: {
@@ -314,9 +230,6 @@ export async function saveGrowthAdminCategoryPageDraft(tenancy: Tenancy, input: 
   try {
     row = await saveDraft();
   } catch (error) {
-    // Two authors creating the stage's first draft at the same time compute the same next version
-    // number (or both aim for the single draft slot); the loser gets the same reload-and-retry
-    // answer as the stale-overwrite case above rather than an opaque 500.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES.UNIQUE_CONSTRAINT_VIOLATION) {
       throw new StatusError(409, "Someone else saved this stage's draft at the same time. Reload the page and try again.");
     }
@@ -338,15 +251,6 @@ export async function deleteGrowthAdminCategoryPageDraft(tenancy: Tenancy, categ
   return { status: "deleted" };
 }
 
-/**
- * Publishes a version: it becomes the one a customer sees, and whatever was live
- * is archived — in one transaction, because the database allows only one live
- * version per stage (GrowthCategoryPage_published_slot) and a half-done handover
- * would leave the stage either blank or showing two pages.
- *
- * Publishing an archived version is how rollback works; no new content is written,
- * so "roll back and then keep editing" leaves the draft untouched.
- */
 export async function publishGrowthAdminCategoryPage(tenancy: Tenancy, input: { category: GrowthCategory, version: number, publishedByUserId: string }) {
   const category = assertGrowthCategory(input.category);
   const projectId = tenancy.project.id;
@@ -357,9 +261,6 @@ export async function publishGrowthAdminCategoryPage(tenancy: Tenancy, input: { 
     if (target == null) throw new StatusError(404, "This version of the stage page no longer exists.");
     if (target.status === "published") throw new StatusError(400, "This version is already live.");
 
-    // Re-validate on the way out: the actions this page links to may have been
-    // recategorized or deleted since the draft was written, and publishing is the
-    // moment the references become customer-visible.
     await assertActionReferences(tx, tenancy, category, compileGrowthDocument(target.sourceJson));
 
     const live = await tx.growthCategoryPage.findFirst({ where: { projectId, branchId, category, status: "published" } });
@@ -374,11 +275,6 @@ export async function publishGrowthAdminCategoryPage(tenancy: Tenancy, input: { 
   return versionToWire(published);
 }
 
-/**
- * Takes the stage's live page down. The stage falls back to the raw
- * findings/notes/actions lanes, which is also what a stage that never had a page
- * shows — so unpublishing is a safe undo rather than a hole in the workspace.
- */
 export async function unpublishGrowthAdminCategoryPage(tenancy: Tenancy, category: GrowthCategory) {
   const result = await globalPrismaClient.growthCategoryPage.updateMany({
     where: { projectId: tenancy.project.id, branchId: tenancy.branchId, category: assertGrowthCategory(category), status: "published" },

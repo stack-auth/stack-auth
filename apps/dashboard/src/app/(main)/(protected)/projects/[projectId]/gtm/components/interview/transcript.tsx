@@ -63,7 +63,6 @@ export function InterviewThinkingIndicator() {
 
 function TranscriptEntry(props: {
   entry: InterviewTranscriptEntry,
-  /** Entries of a turn that is still streaming are not in the committed positional mapping yet. */
   streaming: boolean,
   questions: GrowthInterviewQuestion[],
   planQuestionByEntryId: InterviewChatView["planQuestionByEntryId"],

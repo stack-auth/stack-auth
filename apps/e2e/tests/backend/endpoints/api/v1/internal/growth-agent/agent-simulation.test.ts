@@ -166,8 +166,6 @@ describe("growth agent simulation", () => {
     // Phase 7 adds the answer surface.
     expect(replacedQuestions).toMatchObject({ status: 200, body: { interview_id: interviewId, question_count: 1 } });
 
-    // Duplicate keys within one plan are refused: the dashboard pairs a presented question card with
-    // its plan row by question_key, so duplicates make a card resolve to the wrong row.
     const duplicateKeyPlan = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,

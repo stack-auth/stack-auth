@@ -9,27 +9,12 @@ import { CheckCircleIcon, ProhibitIcon } from "@phosphor-icons/react";
 import { useState, type ElementType, type ReactNode } from "react";
 import { useAdminApp } from "../../use-admin-app";
 
-/**
- * The activate/dismiss controls for a Growth action, and the informed-consent dialog in front of
- * them.
- *
- * Shared because an action can now be acted on from two places: its own detail page, and an
- * `<ActionButton>` inside a staff-authored stage page. Both must go through the same dialog and the
- * same endpoints — an authored page is data, so it can only ever reference an action, never grant
- * itself a shortcut around the confirmation the customer gets everywhere else.
- */
-
-/**
- * Confirm-dialog-gated mutation button. In demo mode the dialog explains that mutations are disabled
- * instead of offering a confirm, so the flow is still explorable end to end.
- */
 export function GrowthConfirmActionButton(props: {
   buttonLabel: string,
   buttonVariant: "default" | "outline",
   icon: ElementType,
   title: string,
   description: string,
-  /** Rich dialog content rendered instead of the plain description paragraph (the description still shows in the header). */
   body?: ReactNode,
   confirmLabel: string,
   demo: boolean,
@@ -94,12 +79,6 @@ export function GrowthConfirmActionButton(props: {
   );
 }
 
-/**
- * Execution-specific activation copy for a workflow-bearing action. This dialog is the customer's
- * one informed-consent moment before code runs on their project, so it states — from the wire, not
- * from generic copy — what the automation does, when it runs, which external domains its source
- * references, and how to undo it.
- */
 export function GrowthActivateWorkflowDialogBody(props: { workflow: GrowthActionWorkflow }) {
   const { workflow } = props;
   const { externalDomains, otherWarnings } = splitGrowthWorkflowWarnings(workflow.warnings);
@@ -146,17 +125,9 @@ export function GrowthActivateWorkflowDialogBody(props: { workflow: GrowthAction
   );
 }
 
-/**
- * `demo` is a prop rather than a `useGrowthStatus()` read because these controls also render inside
- * authored stage pages, which the internal Growth admin page renders too — and that page is not under
- * the customer frame's `GrowthStatusProvider`. Reading the context here crashed the whole admin page
- * as soon as a stage's page contained an <ActionButton>.
- */
 export function GrowthActionMutationControls(props: { action: GrowthActionItem, onChanged: () => Promise<void>, demo: boolean, className?: string }) {
   const { action, demo } = props;
   const app = useAdminApp();
-  // Completed and dismissed are terminal: there is nothing left to confirm, so the controls go away
-  // rather than rendering a disabled button the customer would try to click.
   if (action.status !== "proposed" && action.status !== "active") return null;
   return (
     <div className={props.className ?? "flex flex-wrap items-center gap-2 border-t border-foreground/[0.08] pt-4"}>

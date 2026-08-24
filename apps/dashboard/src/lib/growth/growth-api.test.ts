@@ -137,9 +137,6 @@ describe("parseGrowthAdsBody", () => {
   });
 });
 
-// Regression coverage for the admin action PATCH: an action's payload column is nullable, but the
-// endpoint declares `payload` as optional-but-not-nullable, so sending the null back made every edit
-// (including flipping a proposal to active) fail with "body.payload cannot be null".
 describe("growthAdminActionRequestBody", () => {
   const action: GrowthActionItem = {
     id: "action-1", typeId: "custom", category: "reach", tags: ["funnel"], title: "Trial-extension offer", description: "Offer stalled signups a longer trial.",
@@ -174,13 +171,6 @@ describe("growthAdminActionRequestBody", () => {
   });
 });
 
-// ---------------------------------------------------------------------------------------------
-// parseGrowthAdminCategoryPagesBody
-// ---------------------------------------------------------------------------------------------
-
-// Regression coverage for a wire-contract mismatch: the admin route returns the stage pages inside a
-// `{ pages: [...] }` envelope, but the dashboard parsed the response as a bare array, so the stage-page
-// composer never loaded ("expected array, received object") for every stage of every project.
 describe("parseGrowthAdminCategoryPagesBody", () => {
   function versionWire(overrides: Record<string, unknown> = {}) {
     return {
@@ -254,9 +244,6 @@ describe("parseGrowthAdminCategoryPagesBody", () => {
   });
 });
 
-// A route that rejects with `new StatusError(400, "…")` answers in text/plain whose whole body is
-// the message, so reading only the `{ error }` shape turned every such rejection — including the
-// actionable "this page references an action from another stage" — into a bare status number.
 describe("readGrowthErrorMessage", () => {
   test("reads a plain-text StatusError body", () => {
     expect(readGrowthErrorMessage("This page references an action from another stage: abc", "fallback")).toBe("This page references an action from another stage: abc");

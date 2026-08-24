@@ -9,7 +9,6 @@ import {
   type SessionStreamReconnectPolicy,
 } from "#lib/session-stream.ts";
 
-
 function startedEvent(index: number): SessionStreamEvent {
   return { type: "session.started", data: {}, meta: { at: new Date(0).toISOString(), id: `evt_${index}` } };
 }
@@ -69,14 +68,10 @@ function createFakeSession(options: {
     getEventStream: async (streamOptions) => {
       const startIndex = streamOptions?.startIndex ?? 0;
       openedAt.push(startIndex);
-      // A script that runs out means the follower reconnected more times than the test expected;
-      // serving an endless empty stream would hang it, so fail loudly instead.
       const connection = options.connections[connectionIndex] ?? throwErr(`fake session opened ${connectionIndex + 1} streams but the script has ${options.connections.length}`);
       connectionIndex += 1;
       const open = connection.open ?? { kind: "ok" };
       if (open.kind === "throw") throw open.error;
-      // Deliberately a promise that never settles, not a long timer: the follower must be shown
-      // racing the open against its cap, not merely outlasting a slow one.
       if (open.kind === "hang") await new Promise<never>(() => {});
       const available = options.log.slice(startIndex, startIndex + connection.deliver);
       let emitted = 0;
@@ -93,7 +88,6 @@ function createFakeSession(options: {
               return;
             }
             case "disconnect": {
-              // The message undici uses for a socket cut, which is what the follower matches on.
               controller.error(new Error("terminated"));
               return;
             }
@@ -114,17 +108,14 @@ function throwErr(message: string): never {
   throw new Error(message);
 }
 
-/** No backoff, so the reconnect tests do not pay real wall-clock time for their retries. */
 const INSTANT_RETRIES: SessionStreamReconnectPolicy = { baseDelayMs: 0, maxDelayMs: 0, maxEmptyAttempts: 3, maxOpenAttempts: 3 };
 
 async function collect(session: Session, options?: {
   readonly maxSessionMs?: number,
   readonly reconnect?: SessionStreamReconnectPolicy,
-  /** Which event the consumer treats as its exit. Defaults to the real terminal event. */
   readonly stopOn?: SessionStreamEvent["type"],
   readonly cancelWaitMs?: number,
   readonly isAlreadyStopped?: () => boolean,
-  /** Runs on every event, so a test can mimic a consumer that stops the session mid-iteration. */
   readonly onEvent?: (event: SessionStreamEvent) => void,
 }): Promise<SessionStreamEvent[]> {
   const seen: SessionStreamEvent[] = [];
@@ -145,8 +136,6 @@ async function collect(session: Session, options?: {
 
 describe("followSessionEvents", () => {
   it("resumes from the cursor when the stream ends before the terminal event", async () => {
-    // The exact production failure: the connection dies after two events, and the terminal event
-    // only exists on the far side of a reconnect.
     const log = [startedEvent(0), startedEvent(1), completedEvent(2)];
     const fake = createFakeSession({
       log,
@@ -162,8 +151,6 @@ describe("followSessionEvents", () => {
         "evt_2",
       ]
     `);
-    // The second open resumes at 2 — the count already consumed — so nothing is replayed and the
-    // consumer never sees a duplicate.
     expect(fake.openedAt).toMatchInlineSnapshot(`
       [
         0,
@@ -187,7 +174,6 @@ describe("followSessionEvents", () => {
   });
 
   it("rethrows an error that does not look like a disconnect", async () => {
-    // A real bug in our own reading code must not be retried into silence.
     const fake = createFakeSession({
       log: [startedEvent(0)],
       connections: [{ deliver: 0, end: { kind: "fatal", error: new Error("unexpected token < in JSON") } }],
@@ -198,8 +184,6 @@ describe("followSessionEvents", () => {
   });
 
   it("keeps reconnecting while events still arrive, without spending the empty budget", async () => {
-    // Five drops, but every connection delivers something — a slow session that keeps producing is
-    // alive by definition, however often its connection is cut.
     const log = [startedEvent(0), startedEvent(1), startedEvent(2), startedEvent(3), completedEvent(4)];
     const fake = createFakeSession({
       log,
@@ -224,21 +208,18 @@ describe("followSessionEvents", () => {
     });
 
     await expect(collect(fake.session)).rejects.toThrow(SessionStreamLostError);
-    // One productive connection plus exactly the budget: the counter reset on the event it did see.
     expect(fake.openedAt).toEqual([0, 1, 1, 1]);
-    // Nothing else would ever stop the session, so it must be cancelled on the way out.
     expect(fake.cancelCalls()).toBe(1);
   });
 
   it("cancels the session when the wall-clock cap elapses", async () => {
-    // A stream that stays open and silent forever is the shape the cap exists for.
     const fake = createFakeSession({
       log: [],
       connections: [{ deliver: 0, end: { kind: "close" } }],
     });
     const stalled: Session = {
       ...fake.session,
-      getEventStream: async () => new ReadableStream<SessionStreamEvent>({ pull() { /* never resolves a read */ } }),
+      getEventStream: async () => new ReadableStream<SessionStreamEvent>({ pull() {} }),
     };
 
     await expect(collect(stalled, { maxSessionMs: 20 })).rejects.toThrow(SessionTimeoutError);
@@ -246,8 +227,6 @@ describe("followSessionEvents", () => {
   });
 
   it("reports a cancel failure without letting it replace the error the caller needs", async () => {
-    // The timeout is the diagnosis; a cancel that also fails must not become the thrown message,
-    // because several callers render what they catch to a customer.
     const fake = createFakeSession({
       log: [],
       connections: [{ deliver: 0, end: { kind: "close" } }],
@@ -255,7 +234,7 @@ describe("followSessionEvents", () => {
     });
     const stalled: Session = {
       ...fake.session,
-      getEventStream: async () => new ReadableStream<SessionStreamEvent>({ pull() { /* never resolves a read */ } }),
+      getEventStream: async () => new ReadableStream<SessionStreamEvent>({ pull() {} }),
     };
 
     await expect(collect(stalled, { maxSessionMs: 20 })).rejects.toThrow(/Test run timed out/);
@@ -263,8 +242,6 @@ describe("followSessionEvents", () => {
   });
 
   it("does not cancel a session the consumer finished with normally", async () => {
-    // Breaking out on the terminal event is the happy path; cancelling there would be cancelling a
-    // session that already completed.
     const fake = createFakeSession({
       log: [completedEvent(0)],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -276,8 +253,6 @@ describe("followSessionEvents", () => {
   });
 
   it("retries an open that the workflow API refuses, and stops the session when it never recovers", async () => {
-    // Opening is a distinct failure from a stream that opened and said nothing, and it has its own
-    // budget. A blip that refuses one connection must not fail the run.
     const log = [completedEvent(0)];
     const recovers = createFakeSession({
       log,
@@ -298,8 +273,6 @@ describe("followSessionEvents", () => {
       })),
     });
     await expect(collect(neverOpens.session)).rejects.toThrow(SessionStreamLostError);
-    // The session is still running on eve's side — the only thing that failed was our connection to
-    // it — so giving up has to stop it.
     expect(neverOpens.cancelCalls()).toBe(1);
   });
 
@@ -315,8 +288,6 @@ describe("followSessionEvents", () => {
   });
 
   it("does not hang when opening the stream never resolves", async () => {
-    // Without racing the open against the cap, maxSessionMs is unreachable: the follower parks
-    // forever, the phase heartbeat keeps the backend from reaping it, and the session runs unbounded.
     const fake = createFakeSession({
       log: [],
       connections: [{ deliver: 0, end: { kind: "close" }, open: { kind: "hang" } }],
@@ -333,15 +304,10 @@ describe("followSessionEvents", () => {
     });
 
     await expect(collect(fake.session)).rejects.toThrow("unexpected token < in JSON");
-    // The read failed for a reason that is ours, not the transport's — but the session on the other
-    // end is unaffected and still running.
     expect(fake.cancelCalls()).toBe(1);
   });
 
   it("stops the session when the consumer exits on a non-terminal event", async () => {
-    // `session.waiting` is where this bites in production: a task-mode session should never park,
-    // so every consumer treats it as a failure and bails — leaving a live, parked session that
-    // holds its continuation until eve's own timeout unless someone cancels it.
     const fake = createFakeSession({
       log: [waitingEvent(0)],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -354,10 +320,6 @@ describe("followSessionEvents", () => {
   });
 
   it("skips the cleanup cancel when the caller says it already stopped the session", async () => {
-    // The interview turn's shape: it cancels the session itself the moment a turn-ending tool
-    // returns, then reads on until `turn.cancelled` and bails. That exit is not a settled session,
-    // so without this option the follower would cancel a second time on every single turn — a
-    // wasted round-trip on a path where a founder is waiting for the reply.
     const fake = createFakeSession({
       log: [waitingEvent(0)],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -366,8 +328,6 @@ describe("followSessionEvents", () => {
 
     const seen = await collect(fake.session, {
       stopOn: "session.waiting",
-      // Deliberately flipped mid-iteration, after the options object was handed over: the follower
-      // must read the callback when it cleans up, not when it was called.
       onEvent: () => {
         stoppedByCaller = true;
       },
@@ -379,8 +339,6 @@ describe("followSessionEvents", () => {
   });
 
   it("still cancels every abandonment the caller has not stopped itself", async () => {
-    // The guard is opt-in per exit, not a blanket opt-out: a caller that has not yet stopped the
-    // session gets the old behaviour, including on the error paths it never reaches by choice.
     const bailsEarly = createFakeSession({
       log: [waitingEvent(0)],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -397,9 +355,6 @@ describe("followSessionEvents", () => {
   });
 
   it("still cleans up when the caller's own stop attempt failed", async () => {
-    // The guard reports what the caller achieved, not what it tried: a `cancel()` that rejected
-    // leaves the session running, so the caller keeps its flag down and the cleanup cancel — the
-    // last thing that can still stop it — has to run anyway.
     const fake = createFakeSession({
       log: [waitingEvent(0)],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -424,14 +379,10 @@ describe("followSessionEvents", () => {
     };
 
     await expect(follow()).rejects.toThrow("cancel route returned 503");
-    // The caller's failed attempt plus the follower's, and the follower's own failure stays in its
-    // log rather than replacing the error the caller is already propagating.
     expect(fake.cancelCalls()).toBe(2);
   });
 
   it("leaves a session that failed on its own alone", async () => {
-    // The mirror of the case above: `session.failed` means eve is already done with it, so
-    // cancelling would be a pointless call against a dead session.
     const fake = createFakeSession({
       log: [{ type: "session.failed", data: { code: "MODEL_ERROR", message: "boom", sessionId: "wrun_test" }, meta: { at: new Date(0).toISOString(), id: "evt_0" } }],
       connections: [{ deliver: 1, end: { kind: "close" } }],
@@ -443,8 +394,6 @@ describe("followSessionEvents", () => {
   });
 
   it("does not hang when cancelling the session never resolves", async () => {
-    // Cleanup on an error path must not become the reason a run hangs; we stop waiting, and the
-    // cancel may still land afterwards.
     const fake = createFakeSession({
       log: [],
       connections: [{ deliver: 0, end: { kind: "close" }, open: { kind: "hang" } }],
@@ -456,9 +405,6 @@ describe("followSessionEvents", () => {
   });
 
   it("defaults to eve's own idle-reconnect numbers", () => {
-    // Not arbitrary: these are eve's own client numbers — `streamIdleReconnectPolicy` for the
-    // silence budget, `streamOpenReconnectPolicy.maxAttempts` for the open budget — the only policy
-    // proven against this same durable stream. A change here should be deliberate.
     expect(DEFAULT_SESSION_STREAM_RECONNECT_POLICY).toMatchInlineSnapshot(`
       {
         "baseDelayMs": 250,

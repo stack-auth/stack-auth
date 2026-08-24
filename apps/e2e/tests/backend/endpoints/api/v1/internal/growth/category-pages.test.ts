@@ -7,10 +7,6 @@ const ADMIN_BASE = "/api/latest/internal/growth/admin";
 const GROWTH_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
 
-// Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
-// full-suite load, so default-timeout tests need generous headroom.
-
-/** A project with a released workspace and one conversion action a stage page can link to. */
 async function createFixture() {
   const keys = await createGrowthProject();
   if (keys === "no-project") throw new Error("The stage page test requires a fresh project.");
@@ -69,13 +65,11 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
         category: "conversion",
         document: documentWith(conversionActionId),
         source_action_ids: [conversionActionId],
-        // No draft exists yet, and saying so is what makes the save fail if one appeared meanwhile.
         expected_draft_updated_at_millis: null,
       },
     }));
     expect(saved).toMatchObject({ status: 200, body: { category: "conversion", version: 1, status: "draft", stale_source_ids: [] } });
 
-    // A draft is staff-only: the customer keeps seeing the raw lanes until someone publishes.
     const withDraft = await niceBackendFetch(`${GROWTH_BASE}/overview`, { accessType: "admin" });
     expect(customerCategoryPages(withDraft.body)).toEqual([]);
 
@@ -90,8 +84,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
     expect(live.status).toBe(200);
     const pages = customerCategoryPages(live.body);
     expect(pages).toMatchObject([{ category: "conversion", version: 1 }]);
-    // The customer receives the compiled document, not the authored source, and the action button is
-    // a typed reference — never the action's payload or workflow.
     expect(live.body).toMatchObject({
       category_pages: [expect.objectContaining({
         document: expect.objectContaining({
@@ -101,9 +93,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
       })],
     });
 
-    // The page carries the actions its buttons reference. Without that, a button would only render
-    // while its action happened to be inside the overview's capped suggestion/archive lanes — so a
-    // dismissed one, or the 21st action in the stage, would silently become "no longer available".
     expect(pages[0]?.actions).toMatchObject([{ id: conversionActionId, title: "Trim the signup form" }]);
     const dismissed = await niceBackendFetch(`${GROWTH_BASE}/actions/${conversionActionId}/dismiss`, { accessType: "admin", method: "POST" });
     expect(dismissed.status).toBe(200);
@@ -132,9 +121,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
     expect(saved.status).toBe(200);
     expect(saved.body).toMatchObject({ actions: [{ id: conversionActionId, title: "Trim the signup form" }] });
 
-    // The staff preview renders the draft, so the draft must carry its own referenced actions: the
-    // overview's lanes are capped and active-only, and a dismissed (or past-the-cap) action would
-    // otherwise make a perfectly publishable draft preview as "no longer available".
     const dismissed = await niceBackendFetch(`${GROWTH_BASE}/actions/${conversionActionId}/dismiss`, { accessType: "admin", method: "POST" });
     expect(dismissed.status).toBe(200);
 
@@ -172,8 +158,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
     expect(discarded.status).toBe(404);
   });
 
-  // Onboarding a project already lands near the suite's 90s under full-suite load, and this test adds
-  // four sequential saves on top of it, so it gets the same headroom as the other multi-round tests.
   it("refuses a draft save that was written against an older version of the draft", { timeout: 180_000 }, async ({ expect }) => {
     const { projectId, conversionActionId } = await createFixture();
     const save = async (body: { source_mdx: string, expected: number | null }) => await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages`, {
@@ -192,8 +176,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
     expect(first.status).toBe(200);
     const firstUpdatedAt = (first.body as { updated_at_millis: number }).updated_at_millis;
 
-    // A second author who loaded the page before the first save holds a stale timestamp (or, having
-    // seen no draft at all, none) and must not overwrite work they never saw.
     expect((await save({ source_mdx: "## Second author", expected: null })).status).toBe(409);
     expect((await save({ source_mdx: "## Second author", expected: firstUpdatedAt - 1000 })).status).toBe(409);
     expect((await save({ source_mdx: "## Second author", expected: firstUpdatedAt })).status).toBe(200);
@@ -209,7 +191,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
         category: "conversion",
         document: { format: "growth-mdx-v1", source_mdx: `## ${body}`, data: [] },
         source_action_ids: [conversionActionId],
-        // Publishing consumes the draft slot, so each save here starts from no draft.
         expected_draft_updated_at_millis: null,
       },
     }));
@@ -220,7 +201,6 @@ describe("internal Growth stage pages", { timeout: 180_000 }, () => {
       method: "POST",
       body: { target_project_id: projectId, category: "conversion", version: 1 },
     }));
-    // The published version is untouched by further editing, so a new draft takes the next number.
     expect(await saveDraft("Second cut")).toMatchObject({ status: 200, body: { version: 2, status: "draft" } });
     await asGrowthStaff(async () => await niceBackendFetch(`${ADMIN_BASE}/category-pages/publish`, {
       accessType: "client",

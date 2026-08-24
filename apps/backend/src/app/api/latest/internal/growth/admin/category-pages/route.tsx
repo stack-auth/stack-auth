@@ -5,16 +5,6 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
-/**
- * The Growth admin stage-page editor: the draft, the live version and the version
- * history of the page a customer reads under each hexagon stage.
- *
- * Platform-admin auth like every other route in this directory — a Hexclave staff
- * user acting inside the `internal` project, with the customer project named in the
- * request. `requireGrowthAdminTenancy` does the platform-admin check and resolves
- * the target tenancy.
- */
-
 const authSchema = yupObject({ type: clientOrHigherAuthTypeSchema.defined(), project: adaptSchema.defined(), user: adaptSchema }).defined();
 const responseSchema = yupObject({ statusCode: yupNumber().defined(), bodyType: yupString().oneOf(["json"]).defined(), body: yupMixed().defined() });
 
@@ -40,14 +30,9 @@ export const PUT = createSmartRouteHandler({
     body: yupObject({
       target_project_id: yupString().defined(),
       category: yupString().oneOf(GROWTH_CATEGORIES).defined(),
-      // The authored payload, validated by the growth-mdx-v1 compiler rather than by
-      // yup: its shape is a document AST contract, and duplicating it here would give
-      // us two definitions of what a valid document is.
       document: yupMixed().defined(),
       source_finding_ids: yupArray(yupString().uuid().defined()).max(100).default([]),
       source_action_ids: yupArray(yupString().uuid().defined()).max(100).default([]),
-      // The draft the author started from, so a save that would silently clobber a colleague's
-      // newer draft is rejected instead. null = they started from a stage with no draft.
       expected_draft_updated_at_millis: yupNumber().nullable().defined(),
     }).defined(),
     method: yupString().oneOf(["PUT"]).defined(),

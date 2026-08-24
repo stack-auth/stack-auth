@@ -27,20 +27,8 @@ export class GrowthApiError extends Error {
 // <body>", { cause: response })`). Without this conversion, GrowthApiError-based handling (e.g. the
 // settings page's friendly 409 "already running" alert) never triggers, and the raw message —
 // including the internal URL — leaks into user-facing alerts.
-/** Longer than any message a route writes for a human; past this we are looking at a page, not a message. */
 const MAX_ERROR_MESSAGE_LENGTH = 400;
 
-/**
- * The user-safe message inside an error response body, in either shape the backend produces.
- *
- * Routes that reject with `new StatusError(400, "…")` — which is most of Growth's validation —
- * answer with `text/plain` whose entire body IS the message (StatusError.getBody), while the
- * route-handler layer's own errors answer with `{ code, error }`. Reading only the latter is why an
- * actionable message like "This page references an action from another stage" used to reach the
- * author as a bare "failed with status 400".
- *
- * Exported for the regression test.
- */
 export function readGrowthErrorMessage(bodyText: string, fallback: string): string {
   const text = bodyText.trim();
   if (text.length === 0 || text.length > MAX_ERROR_MESSAGE_LENGTH) return fallback;
@@ -49,11 +37,9 @@ export function readGrowthErrorMessage(bodyText: string, fallback: string): stri
       const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(text));
       return body.error ?? fallback;
     } catch {
-      // Malformed JSON has no field we can trust to be user-safe; keep the status fallback.
       return fallback;
     }
   }
-  // An HTML error page from a proxy: not written for this reader, and not worth showing them.
   if (text.startsWith("<")) return fallback;
   return text;
 }

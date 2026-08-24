@@ -1,19 +1,6 @@
 import { GROWTH_DOCUMENT_UNITS } from "./growth-document";
 import type { GrowthCategory, GrowthActionItem, GrowthOverviewFinding } from "./growth-types";
 
-/**
- * The copyable prompts behind the "Copy prompt" buttons in the GTM admin workspace.
- *
- * Staff read what the agent found, decide how a customer should be told about it, and paste one of
- * these into an external model to get a first draft of the stage page. So the prompt has two jobs:
- * teach the model the exact `growth-mdx-v1` subset the backend compiler accepts (anything else is
- * rejected on save, which is a wasted round trip), and hand over the source material.
- *
- * What it deliberately leaves out is as important as what it includes: an action's `payload` and its
- * workflow `source` never appear. They are operational internals — a pasted prompt is the least
- * controlled place our data ever sits, and a customer-facing page has no use for either.
- */
-
 const CATEGORY_LABELS: Record<GrowthCategory, string> = {
   product: "Product",
   reach: "Reach",
@@ -53,10 +40,6 @@ function formatDate(millis: number): string {
   return new Date(millis).toISOString().slice(0, 10);
 }
 
-/**
- * The safe, customer-relevant view of an action. `payload` and `workflow.source` are absent by
- * construction — see the file comment.
- */
 function actionLines(action: GrowthActionItem): string[] {
   const lines = [
     `- Action id: ${action.id}  (use as <ActionButton action="${action.id}" />)`,
@@ -97,10 +80,6 @@ function findingLines(finding: GrowthOverviewFinding, noun: "Finding" | "Note"):
   return lines;
 }
 
-/**
- * The prompt for a single item — the per-row "Copy prompt" button. Useful when one finding carries
- * the whole story for a stage and the rest is noise.
- */
 export function buildGrowthItemPagePrompt(input:
   | { kind: "finding" | "note", category: GrowthCategory, finding: GrowthOverviewFinding }
   | { kind: "action", category: GrowthCategory, action: GrowthActionItem },
@@ -115,10 +94,6 @@ export function buildGrowthItemPagePrompt(input:
   return sections.join("\n\n");
 }
 
-/**
- * The prompt for a whole stage — everything the agent has on it, plus the stage score. This is the
- * one staff use to compose the page; the per-item prompts exist for the narrow cases.
- */
 export function buildGrowthCategoryPagePrompt(input: {
   category: GrowthCategory,
   score: number | null,

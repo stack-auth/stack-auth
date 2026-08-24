@@ -5,7 +5,6 @@ import type { GrowthAgentTokenRef, GrowthProjectRef } from "#lib/types.ts";
 import { PLAIN_LANGUAGE_RULE } from "#lib/writing-style.ts";
 import { FOUNDER_INTERVIEW_PROMPT_MAX_LENGTH } from "#lib/interview-question.ts";
 
-
 /** Inbound body of POST /interview (backend -> agent). */
 export type InterviewTurnRequest = GrowthProjectRef & GrowthAgentTokenRef & {
   readonly run_id: string,
@@ -14,7 +13,6 @@ export type InterviewTurnRequest = GrowthProjectRef & GrowthAgentTokenRef & {
   /** Question plan with answers, in the backend's wire shape; opaque prompt context here. */
   readonly questions: readonly unknown[],
 };
-
 
 type AssistantTextPart = {
   readonly type: "text",
@@ -41,12 +39,9 @@ export type InterviewTurnResult = {
   readonly message: AssistantUiMessage,
 };
 
-
 const PROJECTED_INTERVIEW_TOOLS = new Set(["present-interview-question", "record-adaptive-question", "complete-interview"]);
 
-
 const TURN_ENDING_INTERVIEW_TOOLS = new Set(["present-interview-question", "complete-interview"]);
-
 
 const MAX_INTERVIEW_TURN_MS = 5 * 60 * 1000;
 
@@ -85,7 +80,6 @@ function buildInterviewTurnPrompt(input: InterviewTurnRequest): string {
   ].join("\n");
 }
 
-
 export async function executeInterviewTurn(input: InterviewTurnRequest, helpers: { readonly from: ChannelFrom }): Promise<InterviewTurnResult> {
   const session = await helpers.from(`interview:${input.run_id}:turn:${input.transcript.length}`).send(buildInterviewTurnPrompt(input), {
     auth: buildGrowthSessionAuth({
@@ -98,7 +92,6 @@ export async function executeInterviewTurn(input: InterviewTurnRequest, helpers:
     }),
     mode: "task",
     title: `Growth interview turn (run ${input.run_id})`,
-    // Retries must queue behind an in-flight run instead of steering it away.
     turnPolicy: "queue",
   });
 

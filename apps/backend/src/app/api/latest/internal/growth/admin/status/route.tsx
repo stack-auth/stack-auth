@@ -3,11 +3,6 @@ import { getGrowthStatusBody } from "@/lib/growth/dashboard";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
-/**
- * The selected project's lifecycle status, for the admin workspace. Deliberately the same body the
- * customer's own `/status` returns: the admin page shows the customer's lifecycle, so a second
- * shape here would be a second source of truth about which phase a project is in.
- */
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({
