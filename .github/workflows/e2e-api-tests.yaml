@@ -43,6 +43,7 @@ jobs:
       HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_REQUIRE_SPACETIMEDB: "1"
 
     strategy:
       matrix:
@@ -252,33 +253,6 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
-
-      - name: Verify SpacetimeDB can reach the internal tool's OIDC issuer
-        run: |
-          set -euo pipefail
-          compose="docker compose -f docker/dependencies/docker.compose.yaml"
-          stdb="$($compose ps -q spacetimedb)"
-          if [[ -z "$stdb" ]]; then
-            echo "::error::spacetimedb container is not running"; exit 1
-          fi
-          issuer_url="http://127.0.0.1:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41/.well-known/openid-configuration"
-          # Host issuer is already wait-on'd above; the proxy has been up since
-          # compose start. A few tries cover a brief race; more just burns time
-          # spinning throwaway containers when the path is actually broken.
-          for attempt in $(seq 1 3); do
-            if docker run --rm --network "container:$stdb" --entrypoint wget alpine/socat \
-                 -q -O /dev/null -T 5 \
-                 "$issuer_url"; then
-              echo "OIDC issuer reachable from inside the SpacetimeDB network namespace."
-              exit 0
-            fi
-            echo "attempt $attempt: not reachable yet, retrying..."
-            sleep 1
-          done
-          echo "::error::SpacetimeDB cannot reach the internal tool's OIDC issuer via 127.0.0.1:<prefix>41. The issuer-proxy is missing, crash-looping, or cannot forward to the host — every member token will be rejected and reducer calls will fail."
-          $compose ps spacetimedb-issuer-proxy || true
-          $compose logs --tail=50 spacetimedb-issuer-proxy || true
-          exit 1
 
       - name: Wait 10 seconds
         run: sleep 10

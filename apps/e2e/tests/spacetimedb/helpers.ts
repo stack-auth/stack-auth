@@ -61,25 +61,54 @@ export function getSpacetimedbConfig(): SpacetimedbConfig {
   };
 }
 
-export async function isSpacetimedbReachable(): Promise<boolean> {
-  const { baseUrl } = getSpacetimedbConfig();
-  if (!baseUrl) return false;
+/** Fetch that resolves to null on timeout/connection failure instead of throwing. */
+async function probe(url: string, init: RequestInit, timeoutMs: number): Promise<Response | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${baseUrl}/v1/identity`, {
-      method: "POST",
-      signal: controller.signal,
-    });
-    return res.ok;
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     const isAbort = err instanceof DOMException && err.name === "AbortError";
     const isNetwork = err instanceof TypeError;
-    if (isAbort || isNetwork) return false;
+    if (isAbort || isNetwork) return null;
     throw err;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+
+export async function isSpacetimedbReachable(): Promise<boolean> {
+  const { baseUrl, dbName } = getSpacetimedbConfig();
+  const required = process.env.HEXCLAVE_REQUIRE_SPACETIMEDB === "1";
+  const unusable = (reason: string): boolean => {
+    if (required) {
+      throw new Error(
+        `HEXCLAVE_REQUIRE_SPACETIMEDB=1, but SpacetimeDB is not usable: ${reason}. `
+        + `Expected the \`${dbName}\` module published at ${baseUrl || "<STACK_SPACETIMEDB_URL unset>"}, `
+        + `and the internal tool serving the JWKS for issuer ${tokenIssuer()}.`,
+      );
+    }
+    return false;
+  };
+
+  if (!baseUrl) return unusable("STACK_SPACETIMEDB_URL is not set");
+
+  const identity = await probe(`${baseUrl}/v1/identity`, { method: "POST" }, 2000);
+  if (identity == null) return unusable(`no SpacetimeDB server responded at ${baseUrl}`);
+  if (!identity.ok) return unusable(`POST /v1/identity returned HTTP ${identity.status}`);
+  const sql = await probe(
+    `${baseUrl}/v1/database/${encodeURIComponent(dbName)}/sql`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", "Authorization": `Bearer ${await signMemberToken()}` },
+      body: "SELECT * FROM my_visible_mcp_call_log LIMIT 1",
+    },
+    5000,
+  );
+  if (sql == null) return unusable(`the \`${dbName}\` module did not respond within 5s`);
+  if (!sql.ok) return unusable(`\`${dbName}\` rejected a member-token query: HTTP ${sql.status} ${(await sql.text()).slice(0, 200)}`);
+  return true;
 }
 
 export async function mintIdentity(): Promise<MintedIdentity> {
