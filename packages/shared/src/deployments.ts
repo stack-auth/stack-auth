@@ -224,10 +224,10 @@ export type DeploymentServiceDefinition = {
   //
   // Stored as the author wrote it (normalized to a canonical, fully-qualified
   // ref by parseDeploymentImageRef, so `postgres:16` is stored as
-  // `docker.io/library/postgres:16`). A TAG here is deliberately not resolved
-  // at this layer: the definition is what the author asked for, and the digest
-  // it resolved to belongs to a DEPLOYMENT, which is what has to name fixed
-  // bytes. See the deployment's image map.
+  // `docker.io/library/postgres:16`). Nothing resolves it: the reference goes
+  // into the machine config as written, and the platform resolves a tag when it
+  // pulls. A deployment reports the digest the platform came back with, which
+  // is the only record of which bytes a tag turned out to mean.
   image?: string | undefined,
   // Persistent disks mounted into the container, keyed by VOLUME ID. Absent or
   // empty = the container filesystem is entirely ephemeral (the default).
@@ -479,8 +479,8 @@ const IMAGE_REGISTRY_HOST_REGEX = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[
  *
  * Exactly one of `tag` and `digest` is set. A tag is a POINTER the publisher can
  * move; a digest is the content hash and cannot be moved. Both spellings are
- * accepted from authors, and a tag is resolved to a digest when a deployment is
- * created — see the note on pinning in the deploy flow.
+ * accepted from authors and neither is resolved here — the reference reaches the
+ * runtime as written, and an author who needs fixed bytes writes the digest.
  */
 export type DeploymentImageRef = {
   registry: string,
@@ -903,8 +903,8 @@ import.meta.vitest?.test("parseDeploymentImageRef refuses references that would 
   // reference a publisher moves. The author says which version they meant.
   expect(message("postgres")).toMatch(/no tag or digest/);
   expect(message("ghcr.io/org/app")).toMatch(/no tag or digest/);
-  // An EXPLICIT :latest is allowed — it is pinned to a digest at deploy time
-  // like any other tag, and the author has stated what they want.
+  // An EXPLICIT :latest is allowed — no worse than any other tag, and unlike a
+  // bare name it says the author meant it.
   expect(parseDeploymentImageRef("postgres:latest").ok).toBe(true);
   // Two answers to "which bytes" in one string.
   expect(message(`postgres:16@sha256:${"a".repeat(64)}`)).toMatch(/both a tag and a digest/);

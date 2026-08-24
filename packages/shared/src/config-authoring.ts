@@ -196,10 +196,12 @@ export type HexclaveServiceSource =
      * `"ghcr.io/org/app:1.2.3"`, or a digest. Nothing is built and nothing is
      * uploaded for this service, so a deploy of it takes seconds.
      *
-     * The tag is resolved to a digest when the deployment is created, so the
-     * running service always names fixed bytes — redeploy to pick up a tag that
-     * has since moved. An explicit tag or digest is required: a bare
-     * `"postgres"` means `:latest`, which can change under you between deploys.
+     * A tag is resolved when the image is PULLED, by the platform rather than
+     * at deploy time. So a tag can name different bytes on machines started at
+     * different moments, and a redeploy of an unchanged tag rolls nothing at
+     * all — name a digest if a deploy must always run the same bytes. An
+     * explicit tag or digest is required either way: a bare `"postgres"` means
+     * `:latest`, which can change under you between deploys.
      *
      * Env vars reach the container at RUNTIME only. There is no build, so
      * nothing can be baked into the image — a framework that inlines values at

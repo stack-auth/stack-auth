@@ -114,10 +114,10 @@ export type DeploymentTarget = {
   // with the two fields above: a target either takes part in the deployment's
   // build or it does not.
   //
-  // A tag here is resolved to a digest when the deployment is created, and the
-  // digest is what the spec names — so an apply always runs fixed bytes even
-  // though the author wrote a pointer. A target with an image starts "pending"
-  // rather than "building": there is nothing to wait for.
+  // Stored as the author wrote it, normalized but NOT resolved: a tag reaches
+  // the machine config as a tag and Fly resolves it when it pulls. A target with
+  // an image starts "pending" rather than "building": there is nothing to wait
+  // for.
   image?: string,
   // The spec to apply once the image exists; its `source` is filled in with what
   // the build produced.
@@ -215,9 +215,12 @@ export type StoredDeployment = Omit<Deployment, "services"> & {
   // Per-target state, keyed by service key.
   services: Record<string, DeploymentServiceState>,
   // The image each target will run, keyed by service key. Targets that name a
-  // prebuilt image are here from the moment the deployment is created (their
-  // reference is resolved to a digest up front); the rest are filled in by the
-  // build-completion webhook, which MERGES into this rather than replacing it.
+  // prebuilt image are here from the moment the deployment is created (nothing
+  // has to resolve first); the rest are filled in by the build-completion
+  // webhook, which MERGES into this rather than replacing it.
+  //
+  // What a target will RUN, which for a tag is not the same as which bytes it
+  // ran — that is reported per service in `services`, from what Fly resolved.
   images: Record<string, string>,
   // Set for real Fly builds so live logs can be proxied from the builder machine and the
   // lazy backstop can detect a dead builder. Null for mock builds.

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deploymentStateForApply } from "./services.js";
 import type { ServiceState } from "./types.js";
 
-// The digest-pinned image the apply ran with. Every outcome reports it —
-// including a failure, where "which image" is most of the question.
+// The image the spec named. Every outcome reports one — including a failure,
+// where "which image" is most of the question.
 const IMAGE = "registry.fly.io/app@sha256:" + "a".repeat(64);
 
 function state(overrides: Partial<ServiceState> = {}): ServiceState {
@@ -24,7 +24,7 @@ function state(overrides: Partial<ServiceState> = {}): ServiceState {
 
 describe("the deployment outcome of one service's apply", () => {
   it("records a converged apply as deployed, with its URL", () => {
-    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", state: state() })).toEqual({
+    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", imageRef: null, state: state() })).toEqual({
       service_key: "web",
       status: "deployed",
       revision: "r1",
@@ -35,6 +35,7 @@ describe("the deployment outcome of one service's apply", () => {
     // A private service has no public URL, which is not a failure.
     expect(deploymentStateForApply("web", IMAGE, {
       revision: "r1",
+      imageRef: null,
       state: state({ outputs: { hostname: "web.flycast", internal_url: null, url: null } }),
     })).toMatchObject({ status: "deployed", url: null });
   });
@@ -47,6 +48,7 @@ describe("the deployment outcome of one service's apply", () => {
     // never through the caller's own catch.
     const failed = deploymentStateForApply("web", IMAGE, {
       revision: "r1",
+      imageRef: null,
       state: state({ status: "failed", error: "deploy failed: machine never started" }),
     });
     expect(failed).toMatchObject({ status: "failed", url: null, error: "deploy failed: machine never started" });
@@ -56,6 +58,7 @@ describe("the deployment outcome of one service's apply", () => {
     // Partially rolled and still broken: some machines came up, the apply errored.
     expect(deploymentStateForApply("web", IMAGE, {
       revision: "r1",
+      imageRef: null,
       state: state({ status: "degraded", error: "deploy failed: one machine would not start" }),
     })).toMatchObject({ status: "failed", error: "deploy failed: one machine would not start" });
   });
@@ -64,20 +67,41 @@ describe("the deployment outcome of one service's apply", () => {
     // "degraded" also arises from merely under-pinned machines during a scale-up,
     // which carries no error. Failing on the status alone would fail deploys for
     // a transient state that resolves itself.
-    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", state: state({ status: "degraded" }) }))
+    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", imageRef: null, state: state({ status: "degraded" }) }))
       .toMatchObject({ status: "deployed", url: "https://web.fly.dev" });
+  });
+
+  it("reports the image FLY resolved, not the tag the spec named", () => {
+    // Marshal does not resolve images, so a tag stays a tag in the spec and the
+    // digest only exists in what Fly reported back for the machine. Recording
+    // the tag here would make the deployment history say nothing at all about
+    // which bytes ran.
+    const ran = "docker.io/library/postgres@sha256:" + "b".repeat(64);
+    expect(deploymentStateForApply("db", "docker.io/library/postgres:16", { revision: "r1", imageRef: ran, state: state() }))
+      .toMatchObject({ status: "deployed", image: ran });
+    // Reported on a failure too, for the same reason every other field is.
+    expect(deploymentStateForApply("db", "docker.io/library/postgres:16", {
+      revision: "r1",
+      imageRef: ran,
+      state: state({ status: "failed", error: "deploy failed: machine never started" }),
+    })).toMatchObject({ status: "failed", image: ran });
+    // An apply that rolled no machine has no resolution to report, so the
+    // reference as written is all there is to say.
+    expect(deploymentStateForApply("db", "docker.io/library/postgres:16", { revision: "r1", imageRef: null, state: state() }))
+      .toMatchObject({ image: "docker.io/library/postgres:16" });
   });
 
   it("records a blocked apply as failed, and names the reason when the state gives none", () => {
     expect(deploymentStateForApply("web", IMAGE, {
       revision: "r1",
+      imageRef: null,
       state: state({ status: "blocked", error: "blocked on unresolved refs: api.url" }),
     })).toMatchObject({ status: "failed", error: "blocked on unresolved refs: api.url" });
     // The fallbacks differ per status so the deployment's own error says which
     // kind of failure it was, even when the state carried no message.
-    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", state: state({ status: "blocked" }) }))
+    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", imageRef: null, state: state({ status: "blocked" }) }))
       .toMatchObject({ status: "failed", error: "a connection could not be resolved" });
-    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", state: state({ status: "failed" }) }))
+    expect(deploymentStateForApply("web", IMAGE, { revision: "r1", imageRef: null, state: state({ status: "failed" }) }))
       .toMatchObject({ status: "failed", error: "web failed to deploy" });
   });
 });

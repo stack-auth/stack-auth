@@ -808,15 +808,17 @@ describe("deploys against the Marshal runtime", () => {
 
     const outcome = serviceOutcome(deployment, serviceId);
     expect(outcome.status).toBe("deployed");
-    // The deploy records what it actually ran: the tag resolved to a digest, and
-    // that is what the machine was given.
+    // The deploy records what it actually RAN, which for a tag is a fact only the
+    // platform has: nothing resolves the reference before the machine is created,
+    // so this digest is what the platform reported back for it.
     expect(outcome.image).toMatch(/^docker\.io\/library\/postgres@sha256:[0-9a-f]{64}$/);
 
     const app = await findMockApp(serviceId, 1);
     expect(app.machines).toHaveLength(1);
-    // The machine runs the author's image from ITS registry — not a Fly-registry
-    // image, which is what a built service would get.
-    expect(app.machines[0].image).toBe(outcome.image);
+    // The machine is given the reference AS WRITTEN — the author's image from its
+    // own registry, not a Fly-registry image (which is what a built service gets),
+    // and a tag rather than the digest the outcome reports.
+    expect(app.machines[0].image).toBe("docker.io/library/postgres:16");
     expect(app.machines[0].env).toMatchObject({ POSTGRES_PASSWORD: "hunter2" });
 
     // The definition still reports the reference the author wrote.
@@ -849,7 +851,8 @@ describe("deploys against the Marshal runtime", () => {
     expect(deployment.has_build_logs).toBe(true);
 
     // The prebuilt service runs its own registry's image; the built one runs what
-    // the build pushed to Fly's.
+    // the build pushed to Fly's. Both outcomes name a digest — the prebuilt one
+    // because the platform reported what its tag resolved to.
     expect(serviceOutcome(deployment, dbServiceId).image).toMatch(/^docker\.io\/library\/postgres@sha256:[0-9a-f]{64}$/);
     expect(serviceOutcome(deployment, webServiceId).image).toMatch(/^registry\.fly\.io\/.*@sha256:[0-9a-f]{64}$/);
     expect(serviceOutcome(deployment, dbServiceId).status).toBe("deployed");

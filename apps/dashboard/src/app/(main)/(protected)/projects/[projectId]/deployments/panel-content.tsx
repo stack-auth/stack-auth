@@ -728,7 +728,7 @@ export function SettingsContent({ service, isHexclave }: {
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
           Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. {prebuiltImage !== null
-            ? <>This service runs an already-built image, so nothing is built for it; each deploy pins the tag to the exact image it resolved to.</>
+            ? <>This service runs an already-built image, so nothing is built for it. A tag is resolved when the image is pulled, so pin it by digest if a deploy must always run the same bytes.</>
             : <>The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.</>}
         </p>
         {fields.map((field) => (

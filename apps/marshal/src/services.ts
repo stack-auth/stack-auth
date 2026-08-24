@@ -12,8 +12,7 @@ import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
 import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
-import { validateImageRef } from "./image-ref.js";
-import { resolveImage } from "./registry.js";
+import { pinToDigest, validateImageRef } from "./image-ref.js";
 import { portEntries, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
@@ -708,7 +707,21 @@ function mountsDiffer(a: { volume: string, path: string }[], b: { volume: string
   return b.some((mount) => !inA.has(key(mount)));
 }
 
-async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: string, env: Record<string, string>, lease: ReconciliationLeaseGuard): Promise<void> {
+/**
+ * Rolls the service's machines onto `imageRef`, and reports the image Fly says
+ * slot 0 is actually running.
+ *
+ * The two differ whenever `imageRef` names a tag: Marshal does not resolve
+ * images, so the digest Fly reports back is the only record of which bytes the
+ * tag pointed at. Slot 0 because it is the one machine every service has, and
+ * because a mid-roll tag move would make the later slots disagree — which is a
+ * property of tags, not something a second read here could fix.
+ *
+ * Null when Fly reports no digest (the mock Fly before it grew `image_ref`, or
+ * a machine the roll left untouched and unread); callers fall back to the
+ * reference as written.
+ */
+async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: string, env: Record<string, string>, lease: ReconciliationLeaseGuard): Promise<string | null> {
   const config = getConfig();
   const appName = appNameForService(config.envId, stored.ns, stored.key);
   const network = networkForNamespace(config.envId, stored.ns);
@@ -753,6 +766,11 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
   }
 
   const count = desiredMachineCount(stored.spec);
+  // Fly's resolution of `imageRef` for slot 0 — see this function's doc comment.
+  // Assigned directly in each branch rather than through a helper: a closure
+  // hides the assignment from TypeScript's control flow, which then reads the
+  // return below as dead code.
+  let runningDigest: string | null = null;
   // Rolling, one machine at a time with a started-wait between (deploy decision #6): a bad
   // image fails on slot 0 and leaves the rest serving the old revision.
   for (let slot = 0; slot < count; slot++) {
@@ -781,7 +799,10 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     // Proxy, so a same-spec reconcile must still boot it; otherwise an always-on service
     // stays down forever. Autostoppable slots are meant to be stopped, so leave those.
     const pinned = slot < pinnedMachineCount(stored.spec);
-    if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash && (existingStarted || !pinned)) continue;
+    if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash && (existingStarted || !pinned)) {
+      if (slot === 0) runningDigest = existing.image_ref?.digest ?? null;
+      continue;
+    }
     if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash) {
       // Hash matches but a pinned machine is stopped: just start it, no config churn.
       try {
@@ -792,6 +813,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         // Already booting / raced — the wait below arbitrates.
       }
       await fly.waitForMachineState(appName, existing.id, "started", { instanceId: existing.instance_id, totalTimeoutSeconds: 120 });
+      if (slot === 0) runningDigest = existing.image_ref?.digest ?? null;
       continue;
     }
     if (existing !== undefined) {
@@ -810,6 +832,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         }
       }
       await fly.waitForMachineState(appName, updated.id, "started", { instanceId: updated.instance_id, totalTimeoutSeconds: 120 });
+      if (slot === 0) runningDigest = updated.image_ref?.digest ?? null;
     } else {
       await lease.assertOwned();
       const created = await fly.createMachine(appName, {
@@ -818,18 +841,29 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         config: desired,
       });
       await fly.waitForMachineState(appName, created.id, "started", { instanceId: created.instance_id, totalTimeoutSeconds: 120 });
+      if (slot === 0) runningDigest = created.image_ref?.digest ?? null;
     }
   }
   for (const machine of [...bySlot.values(), ...extras]) {
     await lease.assertOwned();
     await fly.destroyMachine(appName, machine.id);
   }
+  return runningDigest === null ? null : pinToDigest(imageRef, runningDigest);
 }
 
 // ---------------------------------------------------------------------------
 // PUT /services/{key}
 
-export type ApplyResult = { revision: string, changed: boolean, state: ServiceState };
+export type ApplyResult = {
+  revision: string,
+  changed: boolean,
+  state: ServiceState,
+  // The image Fly reports the service is running, digest-pinned — see
+  // applyMachines. Null when no machine was rolled or read (an apply that ended
+  // blocked, lost the spec, or threw), in which case there is nothing to say
+  // beyond the reference the spec named.
+  imageRef: string | null,
+};
 
 async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revision: string, now: number): Promise<{
   stored: StoredSpec,
@@ -896,7 +930,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // starting builds — the backend re-applies when the blocking output appears.
   const resolved = await resolveEnv(fly, ns, stored.spec.env, knownTargets);
   if (!resolved.ok) {
-    return { revision, changed, state: await getServiceState(ns, key, stored, knownTargets) };
+    return { revision, changed, state: await getServiceState(ns, key, stored, knownTargets), imageRef: null };
   }
 
   // The app must exist before machines can be created into it, and its IPs must
@@ -923,16 +957,17 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     // Deliberately WITHOUT knownTargets: the spec being reported now belongs to whoever won the
     // race, and resolving someone else's refs against this deployment's targets would report
     // a state their own reads never agree with.
-    return { revision, changed, state: await getServiceState(ns, key) };
+    return { revision, changed, state: await getServiceState(ns, key), imageRef: null };
   }
+  let imageRef: string | null = null;
   try {
-    await applyMachines(fly, stored, stored.spec.source.image, resolved.env, lease);
+    imageRef = await applyMachines(fly, stored, stored.spec.source.image, resolved.env, lease);
     stored.last_apply_error = null;
   } catch (error) {
     if (isReconciliationFencingError(error)) throw error;
     stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
   }
-  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownTargets) };
+  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownTargets), imageRef };
 }
 
 // ---------------------------------------------------------------------------
@@ -1069,27 +1104,28 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
   return await withReconciliationLease(ns, sourceLeaseKey(sourceId), async (lease) => {
     const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
 
-    // Pin every prebuilt image BEFORE anything is created: a tag that does not
-    // resolve — a typo, a deleted repository, an image with no amd64 variant —
-    // is a 400 on this request rather than a deployment that fails at apply.
+    // A prebuilt target's image goes into the deployment exactly as the author
+    // wrote it, normalized but NOT resolved: Marshal never contacts the image's
+    // registry, and Fly resolves whatever this names when it pulls.
     //
-    // Resolved once, here, and never again: the digest is what every apply of
-    // this deployment names, so the bytes cannot change under a redeploy of the
-    // same deployment or under a machine that starts an hour later.
-    //
-    // Resolved CONCURRENTLY. Each reference carries its own wall-clock deadline,
-    // but a sequential loop multiplies them: at the 20-target cap that is twenty
-    // deadlines end to end, far past the backend's own timeout on this call. The
-    // backend would give up and mark the deployment failed while Marshal carried
-    // on to create apps and write a record nothing ever polls again. Resolving
-    // together bounds the whole step at roughly one deadline, and the target set
-    // is capped so the fan-out is small.
+    // What that costs the caller, stated once here because it is the whole
+    // contract for a tag:
+    //   - The bytes a tag names are fixed by FLY, at pull time, not by this
+    //     deployment. Two machines of one service, or one machine recreated
+    //     later, can therefore run different bytes under one revision if the
+    //     publisher moves the tag in between.
+    //   - A redeploy of an unchanged tag is a no-op: the machine config is
+    //     identical, so the config hash matches and nothing is pulled again.
+    //     Moving forward onto a republished tag means changing the reference.
+    //   - A reference that does not exist is Fly's error at apply time, not a
+    //     400 on this request — and on a mixed deployment that lands after the
+    //     build has already run.
+    // An author who wants none of that writes a digest, which is fixed by
+    // definition. `pinToDigest` records which bytes actually ran either way.
     const prebuiltImages: Record<string, string> = {};
-    const resolved = await Promise.all(prebuiltTargets.map(async (target) => ({
-      serviceKey: target.service_key,
-      imageRef: await resolveImage(validateImageRef(target.image, `target ${target.service_key} image`)),
-    })));
-    for (const entry of resolved) prebuiltImages[entry.serviceKey] = entry.imageRef;
+    for (const target of prebuiltTargets) {
+      prebuiltImages[target.service_key] = validateImageRef(target.image, `target ${target.service_key} image`).canonical;
+    }
 
     // Validate the archive before anything else touches it: the presigned PUT the
     // client used stays valid until it expires, so building from it directly would
@@ -1246,10 +1282,16 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
  * under-pinned machines (which carries no error) counted as deployed, instead of
  * failing deploys for a transient scale-up.
  */
-export function deploymentStateForApply(serviceKey: string, image: string, applied: { revision: string, state: ServiceState }): DeploymentServiceState {
+export function deploymentStateForApply(serviceKey: string, image: string, applied: { revision: string, state: ServiceState, imageRef: string | null }): DeploymentServiceState {
+  // What RAN, not what was asked for. `image` may name a tag, which Fly — not
+  // Marshal — resolves at pull time, so `applied.imageRef` is the digest that
+  // tag turned out to point at and is the only record of it. The reference as
+  // written is the fallback for an apply that rolled no machine, where there is
+  // no resolution to report.
+  const ran = applied.imageRef ?? image;
   const failed = applied.state.status === "blocked" || applied.state.status === "failed" || applied.state.error !== null;
   if (!failed) {
-    return { service_key: serviceKey, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, image, error: null };
+    return { service_key: serviceKey, status: "deployed", revision: applied.revision, url: applied.state.outputs.url ?? null, image: ran, error: null };
   }
   return {
     service_key: serviceKey,
@@ -1258,7 +1300,7 @@ export function deploymentStateForApply(serviceKey: string, image: string, appli
     url: null,
     // Reported on a FAILURE too: "which image" is most of the question when an
     // apply fails, and the apply did happen with this one.
-    image,
+    image: ran,
     error: applied.state.error ?? (applied.state.status === "blocked" ? "a connection could not be resolved" : `${serviceKey} failed to deploy`),
   };
 }

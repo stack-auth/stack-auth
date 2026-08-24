@@ -7,9 +7,13 @@
 // above it, and it takes no dependency on the product's packages.
 //
 // The rules that matter here: a reference is fully qualified before it is used
-// (so the registry client knows which host to ask), and it carries an explicit
-// tag or digest (an implicit ":latest" is the one reference guaranteed to move
-// under a running service).
+// (the machine config must name one unambiguous registry, since Fly is what
+// resolves it), and it carries an explicit tag or digest (an implicit ":latest"
+// is the one reference guaranteed to move under a running service).
+//
+// Nothing here contacts a registry. A tag stays a tag all the way into the
+// machine config and Fly resolves it when it pulls; see startSourceDeployment
+// for what that means for a caller.
 
 import { badRequest } from "./errors.js";
 
@@ -33,9 +37,39 @@ export type ImageRef = {
   canonical: string,
 };
 
-/** Whether a string is a well-formed sha256 digest. One rule, two callers. */
-export function isImageDigest(value: string): boolean {
+/** Whether a string is a well-formed sha256 digest. */
+function isImageDigest(value: string): boolean {
   return DIGEST_REGEX.test(value);
+}
+
+/**
+ * The same reference with `digest` in place of whatever version it named.
+ *
+ * Used to record what a deploy actually RAN: the spec may name a tag, and the
+ * digest Fly reports back for the machine is what that tag pointed at when it
+ * pulled.
+ *
+ * Composed from the REFERENCE rather than from Fly's own `image_ref.registry` /
+ * `.repository`, because those describe how Fly fetched the image, not what the
+ * author asked for: a Docker Hub image comes back as
+ * `docker-hub-mirror.fly.io/library/redis` (smoke-verified against real Fly).
+ * Recording that would put Fly's internal mirror in the user's deployment
+ * history, where it matches nothing they wrote.
+ *
+ * The digest itself is Fly's, and for a multi-platform image it is the
+ * linux/amd64 MANIFEST rather than the index the author may have named — so a
+ * service pinned to an index digest records a different (more precise) one.
+ * That is the exact bytes the machine ran, which is what this field is for.
+ */
+export function pinToDigest(imageRef: string, digest: string): string {
+  const atIndex = imageRef.indexOf("@");
+  const beforeDigest = atIndex === -1 ? imageRef : imageRef.slice(0, atIndex);
+  // Same tag-separator rule as validateImageRef: a ":" is a tag only after the
+  // last "/", before which it is the registry host's port.
+  const lastSlashIndex = beforeDigest.lastIndexOf("/");
+  const colonIndex = beforeDigest.indexOf(":", lastSlashIndex + 1);
+  const name = colonIndex === -1 ? beforeDigest : beforeDigest.slice(0, colonIndex);
+  return `${name}@${digest}`;
 }
 
 /**
