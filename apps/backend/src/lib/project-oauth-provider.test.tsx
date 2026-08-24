@@ -13,7 +13,6 @@ function createMockTenancy(): Tenancy {
           enabled: true,
           allowedDomains: {},
         },
-        scopes: {},
         clients: {},
       },
       rbac: { permissions: {} },
@@ -103,7 +102,6 @@ describe("resolveClientIdMetadataDocument", () => {
       mcp: {
         displayName: "MCP",
         uri: "https://mcp.example.com/mcp/",
-        scopes: {},
       },
     };
     expect([...getProjectResourceServers(tenancy).keys()]).toMatchInlineSnapshot(`

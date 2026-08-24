@@ -38,14 +38,14 @@ curl -s http://localhost:8102/api/v1/internal/config/override/environment \
 ```
 Keys look like `oauthProvider.clients.<clientId>.displayName`. A test client harness should resolve the id by
 display name on every request so dashboard edits don't require restarting the harness. The same endpoint
-accepts `PATCH` with `{"config_override_string": "{\"oauthProvider.scopes.x\": {...}}"}` for fast setup.
+accepts `PATCH` with `{"config_override_string": "{\"oauthProvider.resources.x\": {...}}"}` for fast setup.
 
 ## Test client harness
 A small Node server (PKCE S256, token exchange, `createMcpTokenVerifier` from
 `/packages/js/dist/mcp.js`) on `localhost:30000` with `/callback` registered as the client's redirect URI is
 enough to drive the flow from a real browser and to render the resulting token claims + JWKS verification
-result as a page. Useful adversarial variants to expose as separate links: undeclared `resource=`, a scope
-not in the resource allowlist, no PKCE, `code_challenge_method=plain`.
+result as a page. Useful adversarial variants to expose as separate links: undeclared `resource=`, no PKCE,
+`code_challenge_method=plain`.
 
 ## Triaging a spinning hosted consent page
 If `/handler/oauth-provider-interaction` spins forever, check the backend log for repeated
@@ -147,14 +147,14 @@ is guaranteed signed out. Same rule for the trusted-client "forces login then sk
 ## Dashboard save path vs direct config PATCH
 Direct `PATCH`es to `/api/v1/internal/config/override/{environment,branch}` can return `{"success":true}`
 while the *effective* project config (what `project.useConfig()` and the authorize endpoint read) is
-unchanged — authorize then answers `invalid_client`. Configure scopes/resources/clients through the dashboard
+unchanged — authorize then answers `invalid_client`. Configure resources/clients through the dashboard
 UI's "Save changes" instead; that writes UUID-keyed entries such as
 `oauthProvider.clients.<uuid> = {displayName, trusted, redirectUris:{...}}` at the environment level. Note the
 older dot-path keys (e.g. `oauthProvider.clients.demo-mcp-client.displayName`) may linger with `null` values;
 ignore them and resolve clients by `displayName`.
 
 ## Consent is re-prompted for an already-granted client
-Re-running the same client/scope/resource after a successful Approve shows the consent screen again (the grant
+Re-running the same client/resource after a successful Approve shows the consent screen again (the grant
 is not silently reused), so a single untrusted client can be used repeatedly for both approve and deny demos.
 
 ## Devin Secrets Needed

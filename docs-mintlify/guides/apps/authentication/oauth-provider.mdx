@@ -4,7 +4,7 @@ description: "Let other applications and AI agents sign in with your project, an
 sidebarTitle: "OAuth Provider & MCP"
 ---
 
-Your Hexclave project can act as its own OAuth 2.1 / OpenID Connect authorization server. Other applications — most commonly AI agents connecting to an [MCP](https://modelcontextprotocol.io) server — redirect their users to your project, your users sign in and approve the requested access, and the client receives an access token scoped to exactly what was approved.
+Your Hexclave project can act as its own OAuth 2.1 / OpenID Connect authorization server. Other applications — most commonly AI agents connecting to an [MCP](https://modelcontextprotocol.io) server — redirect their users to your project, your users sign in and approve the access, and the client receives an access token bound to your resource server.
 
 MCP is not a separate feature here; an MCP server is just an OAuth resource server whose clients happen to be AI agents. Everything on this page applies to any OAuth client.
 
@@ -71,19 +71,7 @@ A resource server is the thing tokens are minted *for* — your MCP server. Its 
 
 Tokens are bound to that resource: a token minted for one resource server is rejected by another, even within the same project. Resource URIs cannot contain a query or fragment, and must be unique within a project.
 
-Optionally narrow a resource server to a subset of scopes. Leaving the scope list empty means "any scope this project defines".
-
-### Scopes
-
-Three kinds of scope can be requested:
-
-* **Custom scopes** you define, e.g. `files:read`. Give each one a display name and description — that is what your users read on the consent screen.
-* **Permission scopes** `perm:<permission-id>`, derived automatically from your project's [RBAC](/guides/apps/rbac/overview) permissions.
-* **Team permission scopes** `team_perm:<permission-id>`, likewise derived from your team permissions.
-
-Standard OIDC scopes (`openid`, `profile`, `email`, `phone`, `address`, `offline_access`) are always available. `perm:` and `team_perm:` are reserved prefixes, so a custom scope can never shadow a permission.
-
-Permission scopes are the reason this integrates cleanly with the rest of Hexclave: a token granted `perm:read_docs` yields a user for whom `user.hasPermission("read_docs")` is true and every other permission is false. Authorization keeps working through the API you already use, and the token can only ever *narrow* what the user is allowed to do — never widen it.
+Clients request the standard OIDC scopes (`openid`, `profile`, `email`, `offline_access`); there is no custom scope vocabulary. A token's authority is the user's own — the resource server resolves the token to a Hexclave user and authorizes with the APIs you already use.
 
 ### Clients
 
@@ -93,7 +81,7 @@ Clients can reach your project three ways; enable whichever your ecosystem needs
   <Tab title="Static clients">
     Register the client yourself with a display name and its redirect URIs. Use this when you know the client up front (a partner integration, your own desktop app). Native and CLI clients typically need a loopback redirect URI such as `http://127.0.0.1:8976/callback`.
 
-    A static client can be marked **trusted**, which skips the consent *prompt* — never the authority check. A trusted client's token is still limited to the scopes it requested and narrowed by the user's own permissions.
+    A static client can be marked **trusted**, which skips the consent *prompt* — the user still has to be signed in to your project.
   </Tab>
   <Tab title="Dynamic registration">
     RFC 7591 dynamic client registration lets a client register itself at `<issuer>/reg`. Several MCP clients require this, since they cannot ask a user to pre-register anything. Clients that register themselves can never mark themselves trusted.
@@ -105,7 +93,7 @@ Clients can reach your project three ways; enable whichever your ecosystem needs
 
 ### Consent
 
-By default your users see a consent screen listing the client, the resource it is asking for, and each requested scope with the description you configured. You can turn the prompt off entirely. Optional-scope deselection is not currently available because the underlying OAuth provider cannot safely resume a reduced grant; the dashboard does not expose that inactive setting.
+By default your users see a consent screen showing the client and the resource it is asking for. You can turn the prompt off entirely.
 
 Users always have to be signed in to your project; consent settings only affect the approval step.
 
@@ -175,7 +163,7 @@ Pass the `AuthInfo` your MCP framework produced to `getUser`:
 const user = await hexclaveServerApp.getUser({ from: "mcp", authInfo: extra.authInfo });
 ```
 
-The returned `ServerUser` is already narrowed to the scopes the token was granted, so `user.hasPermission(...)` tells the truth without you thinking about scopes at all.
+The token was already verified by the verifier that produced the `AuthInfo`, so this is a lookup: you get an ordinary `ServerUser` with the same authority as one fetched by ID.
 
 <Warning>
 Tokens minted by your project's OAuth provider are deliberately *not* Hexclave session tokens. They cannot be used against the Hexclave API as an access token, and a session token cannot be used at your MCP server. Each is rejected in the other's place.
@@ -188,5 +176,4 @@ Revocation is always enabled at `<issuer>/token/revocation`. A revoked refresh t
 ## See also
 
 * [MCP SDK reference](/sdk/types/mcp) — `createMcpTokenVerifier`, `McpAuthInfo`, `McpTokenVerifier`
-* [RBAC](/guides/apps/rbac/overview) — the permissions that back `perm:` and `team_perm:` scopes
 * [JWT tokens](/guides/apps/authentication/jwts) — how Hexclave's own session tokens differ

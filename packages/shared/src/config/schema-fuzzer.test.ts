@@ -177,22 +177,10 @@ const branchSchemaFuzzerConfig = [{
     }],
   }],
   oauthProvider: [{
-    scopes: [{
-      "some-scope-config-id": [{
-        scope: ["files:read", "files.read", "NOT A SCOPE"],
-        displayName: ["Read files", "Read your files"],
-        description: ["Read the files in your account", ""],
-      }],
-    }],
     resources: [{
       "some-resource-id": [{
         displayName: ["Some MCP Server", "Some Other MCP Server"],
         uri: ["https://mcp.example.com/mcp", "not a url"],
-        scopes: [{
-          "some-resource-scope-id": [{
-            scope: ["files:read", "NOT A SCOPE"],
-          }],
-        }],
       }],
     }],
     clients: [{
@@ -220,7 +208,6 @@ const branchSchemaFuzzerConfig = [{
     }],
     consent: [{
       required: [true, false],
-      allowUserToDeselectOptionalScopes: [true, false],
     }],
   }],
   domains: [{}],

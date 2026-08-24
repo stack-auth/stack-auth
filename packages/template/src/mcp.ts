@@ -288,7 +288,7 @@ if (import.meta.vitest) {
         headers: { "content-type": "application/json" },
       });
       const token = await new jose.SignJWT({
-        scope: options.scope ?? "perm:read",
+        scope: options.scope ?? "openid profile",
         ...(options.resource === undefined ? {} : { resource: options.resource }),
       })
         .setProtectedHeader({ alg: "RS256", kid: "mcp-test" })
@@ -306,7 +306,7 @@ if (import.meta.vitest) {
       try {
         const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
         await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
-          scopes: ["perm:read"],
+          scopes: ["openid", "profile"],
           resource: new URL(resource),
           extra: { userId: "user-1" },
         });

@@ -181,8 +181,8 @@ function createPrismaAdapter(idpId: string, onFindMiss?: (model: string, id: str
  *  - the **integration IdPs** (Neon, custom) — singletons with a static, env-configured client list,
  *    no scopes, and an interaction flow that trades a Hexclave-issued wrapper code for an account;
  *  - a **customer project acting as its own OAuth provider** — one per tenancy, with clients from
- *    config (or self-registered), a scope vocabulary projected from the project's RBAC, and
- *    resource servers for RFC 8707 audience binding.
+ *    config (or self-registered), the standard OIDC scopes, and resource servers for RFC 8707
+ *    audience binding.
  *
  * Everything else — the Prisma adapter, the per-instance JWKS derivation, cookie keys, error
  * rendering, the JWKS endpoint — is identical, which is why it lives in one factory.
@@ -206,13 +206,13 @@ export type OidcProviderOptions = {
   /** The scope vocabulary this provider advertises and accepts. */
   scopes?: string[],
   /**
-   * Resource servers for RFC 8707 `resource=`. Maps a resource URI to its audience and the scopes
-   * valid there. MCP servers are resource servers.
+   * Resource servers for RFC 8707 `resource=`. Maps a resource URI to its audience. MCP servers are
+   * resource servers.
    */
-  resourceServers?: Map<string, { audience: string, scopes: string[] }>,
+  resourceServers?: Map<string, { audience: string }>,
   /** Resolves the subject to an account and its claims. Defaults to an opaque `sub`-only account. */
   findAccount?: Configuration['findAccount'],
-  /** Extra claims to stamp into issued access tokens (e.g. the granted scope list). */
+  /** Extra claims to stamp into issued access tokens (e.g. the resource URI). */
   extraTokenClaims?: Configuration['extraTokenClaims'],
   features?: {
     /** RFC 7591 dynamic client registration. */
@@ -316,7 +316,10 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
             // The audience identifies the resource server. Providers in one project share signing
             // keys, so resource validation is enforced by the resource claim and issuer checks.
             audience: resourceServer.audience,
-            scope: resourceServer.scopes.join(" "),
+            // Resource servers have no scope vocabulary; a resource-bound token's authority is the
+            // user's, resolved by the resource server via `getUser({ from: "mcp" })`. An empty
+            // string is oidc-provider's way of saying "this resource server supports no scopes".
+            scope: "",
             accessTokenFormat: 'jwt' as const,
             // Resource JWTs must use an algorithm and key that are published by this provider's
             // JWKS. The key set is ES256-only; leaving this unset makes oidc-provider default to

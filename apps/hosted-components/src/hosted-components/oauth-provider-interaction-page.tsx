@@ -4,7 +4,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiBaseUrlFromEnv } from "~/lib/api-base-url";
 import { getProjectClientRequestHeaders } from "~/lib/project-client-request";
-import { Button, Checkbox, Typography } from "~/components/ui";
+import { Button, Typography } from "~/components/ui";
 import {
   HostedAuthHeading,
   HostedAuthLoading,
@@ -14,17 +14,14 @@ import {
 
 type InteractionDetails = {
   client: { id: string, display_name: string },
-  scopes: Array<{ scope: string, display_name: string, description: string }>,
   resource: { uri: string, display_name: string } | null,
   trusted_client: boolean,
-  allow_user_to_deselect_optional_scopes: boolean,
 };
 
 export function HostedOAuthProviderInteraction() {
   const app = useStackApp();
   const user = useUser({ or: "return-null" });
   const [details, setDetails] = useState<InteractionDetails | null>(null);
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const loadStateRef = useRef<{ interactionUid: string | null, status: "idle" | "loading" | "done" | "error" }>({ interactionUid: null, status: "idle" });
@@ -54,10 +51,8 @@ export function HostedOAuthProviderInteraction() {
         if (!response.ok) throw new Error("This authorization request is expired or no longer available.");
         if (cancelled) return;
         if (!isInteractionDetails(body)) throw new Error("The authorization request returned invalid details.");
-        const nextDetails = body;
         loadStateRef.current = { interactionUid, status: "done" };
-        setDetails(nextDetails);
-        setSelectedScopes(nextDetails.scopes.map(scope => scope.scope));
+        setDetails(body);
       } catch (loadError) {
         if (!cancelled) {
           loadStateRef.current = { interactionUid, status: "error" };
@@ -92,10 +87,7 @@ export function HostedOAuthProviderInteraction() {
             "content-type": "application/json",
             ...headers,
           },
-          body: JSON.stringify({
-            approved_scopes: denied ? [] : selectedScopes,
-            denied,
-          }),
+          body: JSON.stringify({ denied }),
         },
       );
       const body: unknown = await response.json();
@@ -107,7 +99,7 @@ export function HostedOAuthProviderInteraction() {
       setRedirecting(false);
       setError("We couldn't complete this authorization request. Please return to the application and try again.");
     }
-  }, [apiBaseUrl, app, interactionUid, selectedScopes]);
+  }, [apiBaseUrl, app, interactionUid]);
 
   useEffect(() => {
     if (details?.trusted_client !== true || trustedCompletionStartedRef.current) return;
@@ -139,25 +131,6 @@ export function HostedOAuthProviderInteraction() {
           <Typography className="mt-1 text-sm text-muted-foreground">{details.resource.display_name}</Typography>
         </div>
       )}
-      <div className="space-y-3">
-        <Typography className="text-sm font-semibold">Permissions</Typography>
-        {details.scopes.map(scope => (
-          <label key={scope.scope} className="flex gap-3 rounded-xl border border-black/[0.08] p-3 dark:border-white/[0.12]">
-            <Checkbox
-              checked={selectedScopes.includes(scope.scope)}
-              disabled={!details.allow_user_to_deselect_optional_scopes}
-              onCheckedChange={(checked: boolean | "indeterminate") => {
-                if (checked === true) setSelectedScopes(current => [...new Set([...current, scope.scope])]);
-                else setSelectedScopes(current => current.filter(value => value !== scope.scope));
-              }}
-            />
-            <span>
-              <Typography className="text-sm font-medium">{scope.display_name}</Typography>
-              <Typography className="text-xs text-muted-foreground">{scope.description}</Typography>
-            </span>
-          </label>
-        ))}
-      </div>
       <div className="mt-6 flex flex-col gap-2.5">
         <Button onClick={() => finish(false)} className="h-10 rounded-xl font-semibold">Approve</Button>
         <Button variant="secondary" onClick={() => finish(true)} className="h-10 rounded-xl font-semibold">Deny</Button>
@@ -168,6 +141,5 @@ export function HostedOAuthProviderInteraction() {
 
 function isInteractionDetails(value: unknown): value is InteractionDetails {
   if (typeof value !== "object" || value == null) return false;
-  return "client" in value && "scopes" in value && Array.isArray(value.scopes)
-    && "trusted_client" in value && "allow_user_to_deselect_optional_scopes" in value;
+  return "client" in value && "resource" in value && "trusted_client" in value;
 }

@@ -160,6 +160,6 @@ server in protected-resource metadata.
 
 ### `serverApp.getUser({ from: "mcp", authInfo })`
 
-Resolves the `McpAuthInfo` from a verified token to a `ServerUser`. The returned user is
-already narrowed to the permissions represented by the token's scopes, so
-`user.hasPermission(...)` reflects the granted authority.
+Resolves the `McpAuthInfo` from a verified token to a `ServerUser`. The token was already
+verified by the verifier that produced the `AuthInfo`, so this is a lookup: the result is an
+ordinary `ServerUser` with the same authority as one fetched by ID.

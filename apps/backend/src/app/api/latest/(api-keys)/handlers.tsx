@@ -65,8 +65,6 @@ async function ensureUserCanManageApiKeys(
           userId,
           permissionId: '$manage_api_keys',
           recursive: true,
-          // Full authority — see the note in `project-permissions/crud.tsx`.
-          grantedScopes: null,
         });
         return permissions.length > 0;
       });

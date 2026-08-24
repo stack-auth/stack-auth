@@ -3068,28 +3068,6 @@
                         "display_name"
                       ]
                     },
-                    "scopes": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "scope": {
-                            "type": "string"
-                          },
-                          "display_name": {
-                            "type": "string"
-                          },
-                          "description": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "scope",
-                          "display_name",
-                          "description"
-                        ]
-                      }
-                    },
                     "resource": {
                       "type": [
                         "object",
@@ -3110,16 +3088,11 @@
                     },
                     "trusted_client": {
                       "type": "boolean"
-                    },
-                    "allow_user_to_deselect_optional_scopes": {
-                      "type": "boolean"
                     }
                   },
                   "required": [
                     "client",
-                    "scopes",
-                    "trusted_client",
-                    "allow_user_to_deselect_optional_scopes"
+                    "trusted_client"
                   ]
                 }
               }
@@ -3155,18 +3128,11 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "approved_scopes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
                   "denied": {
                     "type": "boolean"
                   }
                 },
                 "required": [
-                  "approved_scopes",
                   "denied"
                 ],
                 "example": {}

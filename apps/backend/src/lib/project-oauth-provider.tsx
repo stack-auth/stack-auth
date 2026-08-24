@@ -5,7 +5,6 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import type { AdapterPayload, ClientMetadata } from "oidc-provider";
 import { assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument } from "./ssrf-protection/oauth";
-import { deriveScopesFromConfig } from "./permissions";
 import { getResourceAudience } from "./tokens";
 import { Tenancy } from "./tenancies";
 import {
@@ -28,8 +27,8 @@ import {
  * The `idpId` partition key for a project's provider, used both for `IdPAdapterData` rows and as the
  * signing-key derivation salt.
  *
- * Includes the branch because config (and therefore the scope vocabulary and client list) is
- * per-branch. Two branches of the same project are genuinely different authorization servers.
+ * Includes the branch because config (and therefore the client list) is per-branch. Two branches of
+ * the same project are genuinely different authorization servers.
  *
  * This string is permanent: changing its shape orphans every stored grant and rotates every signing
  * key, silently signing users out of every connected app.
@@ -37,6 +36,16 @@ import {
 export function getProjectIdpId(tenancy: Tenancy): string {
   return `project:${tenancy.project.id}:${tenancy.branchId}`;
 }
+
+/**
+ * The entire scope vocabulary of a project's provider: the standard OIDC scopes, nothing else.
+ *
+ * `openid` and `offline_access` are protocol machinery; `profile` and `email` are backed by the
+ * claim mapping in `findProjectOAuthAccount`. The other OIDC standard scopes (`address`, `phone`)
+ * are deliberately absent because no claim mapping exists for them, so advertising them in the
+ * discovery document would be a lie.
+ */
+export const PROJECT_OAUTH_OIDC_SCOPES = ["openid", "profile", "email", "offline_access"];
 
 /**
  * The `iss` of tokens minted by a project's own provider.
@@ -60,9 +69,8 @@ export function getProjectOAuthIssuer(projectId: string, apiUrl?: string): strin
  * authorization is enforced by the issuer and mandatory resource claim checks; signing keys are
  * shared by providers within a project.
  */
-export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audience: string, scopes: string[] }> {
-  const allScopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
-  const resourceServers = new Map<string, { audience: string, scopes: string[] }>();
+export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audience: string }> {
+  const resourceServers = new Map<string, { audience: string }>();
   for (const [resourceId, resource] of Object.entries(tenancy.config.oauthProvider.resources)) {
     // A resource with no URI has been half-configured in the dashboard, so it is not targetable yet.
     if (resource.uri === undefined) continue;
@@ -73,11 +81,6 @@ export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audie
     }
     resourceServers.set(canonicalUri, {
       audience: getResourceAudience(tenancy.project.id, resourceId),
-      scopes: (() => {
-        const declaredScopes = Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
-        // An empty scope list means every scope the project defines.
-        return declaredScopes.length > 0 ? declaredScopes : allScopes;
-      })(),
     });
   }
   return resourceServers;
@@ -121,9 +124,6 @@ export function getProjectStaticClients(tenancy: Tenancy): ClientMetadata[] {
  * client registration or by serving a client ID metadata document — must not be able to declare
  * itself first-party, so those paths never consult anything but this function, and this function
  * only ever reads config.
- *
- * Skipping consent skips the prompt, never the authority check: the intersection rule in
- * `lib/scopes.tsx` applies to a trusted client's tokens exactly as it does to anyone else's.
  */
 export function isTrustedClient(tenancy: Tenancy, clientId: string): boolean {
   // `getOrUndefined` rather than a direct index: `clientId` is attacker-controlled here, and a plain
@@ -210,7 +210,6 @@ export async function createProjectOAuthProvider(
     apiUrl?: string,
   },
 ) {
-  const scopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
   const providerConfig = tenancy.config.oauthProvider;
   const resourceServers = getProjectResourceServers(tenancy);
   const issuer = getProjectOAuthIssuer(tenancy.project.id, options?.apiUrl);
@@ -223,7 +222,7 @@ export async function createProjectOAuthProvider(
     findClient: providerConfig.clientIdMetadataDocuments.enabled
       ? async (clientId) => await resolveClientIdMetadataDocument(tenancy, clientId)
       : undefined,
-    scopes,
+    scopes: PROJECT_OAUTH_OIDC_SCOPES,
     resourceServers,
     extraTokenClaims: async (_ctx, token) => {
       const audience = token.resourceServer?.audience;

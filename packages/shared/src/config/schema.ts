@@ -19,14 +19,12 @@ import { canonicalizeResourceUri, isValidHostname } from "../utils/urls";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
-import { customScopeIdRegex, isValidCustomScopeId, isValidPermissionScope, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
 const providerIdRegex = /^[a-z0-9_-]+$/;
-export { customScopeIdRegex, isValidCustomScopeId, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -85,26 +83,9 @@ const branchRbacSchema = yupObject({
 // --- OAuth Provider Schema ---
 /**
  * Configuration for a project acting as an OAuth 2.1 / OIDC *provider* — i.e. other applications
- * ("clients") sign users in against this project, and receive tokens scoped to what the user
- * consented to. MCP servers are the motivating case: an MCP server is just a resource server whose
- * clients happen to be AI agents.
- *
- * Note what is deliberately absent: a list of scopes mirroring the project's permissions. Every
- * permission in `rbac.permissions` is automatically also a scope (`perm:` / `team_perm:` prefixed) —
- * see `apps/backend/src/lib/scopes.tsx`. `scopes` below is only for *additional* scopes that have
- * meaning to a customer's own resource server but no corresponding Hexclave permission.
+ * ("clients") sign users in against this project. MCP servers are the motivating case: an MCP
+ * server is just a resource server whose clients happen to be AI agents.
  */
-// A custom scope may contain colons and dots (`files:read`, `files.read` are both idiomatic OAuth),
-// so this is looser than `userSpecifiedIdSchema`. Reserved prefixes (`perm:`, `team_perm:`, and the
-// OIDC standard scopes) are rejected by the schema test rather than by this regex, so the error
-// message can explain *why* the name is taken.
-//
-// Because of the dots and colons, a scope name can never be a config *key* — config overrides use
-// dot-path notation, so `scopes.files.read` would parse as three path segments. Every record below
-// that needs to name a scope is therefore keyed by an opaque ID with the scope as a value.
-const oauthProviderScopeIdRegex = customScopeIdRegex;
-const customScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("custom-scope-name", "Scope name is reserved or invalid.", value => value === undefined || isValidCustomScopeId(value)).optional();
-const resourceScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("resource-scope-name", "Scope name is invalid.", value => value === undefined || isValidCustomScopeId(value) || isValidPermissionScope(value)).optional();
 const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => {
   if (value === undefined) return true;
   const url = new URL(value);
@@ -112,16 +93,6 @@ const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components",
 });
 
 const branchOAuthProviderSchema = yupObject({
-  scopes: yupRecord(
-    userSpecifiedIdSchema("scopeConfigId"),
-    yupObject({
-      /** The actual scope string clients request, e.g. `files:read`. */
-      scope: customScopeSchema,
-      displayName: yupString().optional(),
-      description: yupString().optional(),
-    }).optional(),
-  ),
-
   /**
    * Resource servers (RFC 8707) that tokens can be minted for. Each entry's `uri` is the canonical
    * resource identifier a client passes as `resource=` at the authorize endpoint, and which the
@@ -132,18 +103,6 @@ const branchOAuthProviderSchema = yupObject({
     yupObject({
       displayName: yupString().optional(),
       uri: resourceUriSchema.optional(),
-      /**
-       * Scopes a token for this resource may carry. Empty means "any scope the project defines".
-       *
-       * Keyed by an opaque ID with the scope as a value: scope IDs may contain dots (`files.read`),
-       * and a dot in a config key is a path separator. See the note on `redirectUris` below.
-       */
-      scopes: yupRecord(
-        userSpecifiedIdSchema("resourceScopeId"),
-        yupObject({
-          scope: resourceScopeSchema,
-        }).optional(),
-      ).optional(),
     }).optional(),
   ).test("unique-resource-uris", "Resource URIs must be unique.", (resources: unknown) => {
     if (typeof resources !== "object" || resources === null) return true;
@@ -177,9 +136,7 @@ const branchOAuthProviderSchema = yupObject({
       // Confidential clients need a secret store; until then only public PKCE clients are supported.
       type: yupString().oneOf(['public']).optional(),
       /**
-       * First-party clients skip the consent *prompt*. They never skip the authority check — a
-       * trusted client's token is still narrowed by the intersection rule, so this only removes a
-       * click, never a boundary.
+       * First-party clients skip the consent *prompt*.
        *
        * Settable from config only. A client that registered itself (via dynamic client registration
        * or a client ID metadata document) must not be able to declare itself first-party, so the
@@ -216,13 +173,6 @@ const branchOAuthProviderSchema = yupObject({
 
   consent: yupObject({
     required: yupBoolean(),
-    /**
-     * Reserved for a future consent flow. The current oidc-provider integration cannot resume a
-     * reduced grant after optional scopes are removed, so this setting is accepted for config
-     * compatibility but is intentionally ignored and reported as unavailable by the interaction
-     * endpoint.
-     */
-    allowUserToDeselectOptionalScopes: yupBoolean(),
   }),
 });
 
@@ -235,17 +185,6 @@ import.meta.vitest?.test("branchOAuthProviderSchema accepts a minimal MCP-server
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
-import.meta.vitest?.test("branchOAuthProviderSchema accepts colon- and dot-namespaced custom scopes", async ({ expect }) => {
-  // `files:read` and `files.read` are both idiomatic OAuth, so the scope regex must be looser than
-  // `userSpecifiedIdSchema`. Reserved prefixes are rejected separately, at write time.
-  await expect(branchOAuthProviderSchema.validate({
-    scopes: {
-      "read-files": { scope: "files:read", displayName: "Read files" },
-      "write-files": { scope: "files.write" },
-    },
-  }, { abortEarly: false })).resolves.toBeDefined();
-});
-
 import.meta.vitest?.test("branchOAuthProviderSchema accepts loopback redirect URIs, which native MCP clients need", async ({ expect }) => {
   await expect(branchOAuthProviderSchema.validate({
     clients: {
@@ -255,29 +194,6 @@ import.meta.vitest?.test("branchOAuthProviderSchema accepts loopback redirect UR
           "loopback-v4": { url: "http://127.0.0.1:5173/callback" },
           "loopback-name": { url: "http://localhost:5173/callback" },
         },
-      },
-    },
-  }, { abortEarly: false })).resolves.toBeDefined();
-});
-
-import.meta.vitest?.test("branchOAuthProviderSchema rejects a malformed scope", async ({ expect }) => {
-  await expect(branchOAuthProviderSchema.validate({
-    scopes: { "some-id": { scope: "Has Space" } },
-  }, { abortEarly: false })).rejects.toThrow();
-});
-
-import.meta.vitest?.test("branchOAuthProviderSchema rejects reserved custom scopes", async ({ expect }) => {
-  await expect(branchOAuthProviderSchema.validate({
-    scopes: { "some-id": { scope: "perm:read" } },
-  }, { abortEarly: false })).rejects.toThrow();
-});
-
-import.meta.vitest?.test("branchOAuthProviderSchema accepts RBAC scopes in a resource allowlist", async ({ expect }) => {
-  await expect(branchOAuthProviderSchema.validate({
-    resources: {
-      "mcp": {
-        uri: "https://mcp.example.com",
-        scopes: { "read": { scope: "perm:read_docs" } },
       },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
@@ -323,11 +239,11 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects resource URIs with q
   }, { abortEarly: false })).rejects.toThrow();
 });
 
-import.meta.vitest?.test("branchOAuthProviderSchema keys nothing by a URL or scope name", async ({ expect }) => {
+import.meta.vitest?.test("branchOAuthProviderSchema keys nothing by a URL", async ({ expect }) => {
   // Config overrides are written in dot-path notation, so a key containing a dot would be parsed as
-  // a path separator. URLs and scope names both contain dots, which is why every record that names
-  // one is keyed by an opaque ID with the value inside. The fuzzer enforces this globally; this test
-  // pins the specific mistake so it fails with a legible message rather than a fuzzer trace.
+  // a path separator. URLs contain dots, which is why every record that names one is keyed by an
+  // opaque ID with the value inside. The fuzzer enforces this globally; this test pins the specific
+  // mistake so it fails with a legible message rather than a fuzzer trace.
   await expect(branchOAuthProviderSchema.validate({
     clients: { "some-client": { redirectUris: { "https://example.com/callback": {} } } },
   }, { abortEarly: false })).rejects.toThrow();
@@ -920,12 +836,11 @@ import.meta.vitest?.test("migrateConfigOverride leaves oauthProvider overrides u
   // deliberately no migration entry for it. This test exists to catch the case where someone later
   // renames a field inside it and forgets to add one: the round trip below would start failing.
   const oauthProvider = {
-    scopes: { "read-files": { scope: "files:read", displayName: "Read files" } },
     resources: { "my-mcp-server": { uri: "https://mcp.example.com/mcp" } },
     clients: { "some-client": { type: "public", trusted: false } },
     dynamicClientRegistration: { enabled: true },
     clientIdMetadataDocuments: { enabled: true },
-    consent: { required: true, allowUserToDeselectOptionalScopes: true },
+    consent: { required: true },
   };
 
   expect(migrateConfigOverride("branch", { oauthProvider })).toEqual({ oauthProvider });
@@ -1253,17 +1168,9 @@ const organizationConfigDefaults = {
   },
 
   oauthProvider: {
-    scopes: (key: string) => ({
-      scope: undefined,
-      displayName: undefined,
-      description: undefined,
-    }),
     resources: (key: string) => ({
       displayName: undefined,
       uri: undefined,
-      scopes: (scopeKey: string) => ({
-        scope: undefined,
-      }),
     }),
     clients: (key: string) => ({
       displayName: undefined,
@@ -1285,7 +1192,6 @@ const organizationConfigDefaults = {
     },
     consent: {
       required: true,
-      allowUserToDeselectOptionalScopes: true,
     },
   },
 

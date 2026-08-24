@@ -3,7 +3,7 @@ import { isTrustedClient } from "@/lib/project-oauth-provider";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 const authSchema = yupObject({
   type: clientOrHigherAuthTypeSchema.defined(),
@@ -29,14 +29,8 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       client: yupObject({ id: yupString().defined(), display_name: yupString().defined() }).defined(),
-      scopes: yupArray(yupObject({
-        scope: yupString().defined(),
-        display_name: yupString().defined(),
-        description: yupString().defined(),
-      }).defined()).defined(),
       resource: yupObject({ uri: yupString().defined(), display_name: yupString().defined() }).nullable().defined(),
       trusted_client: yupBoolean().defined(),
-      allow_user_to_deselect_optional_scopes: yupBoolean().defined(),
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
@@ -45,15 +39,6 @@ export const GET = createSmartRouteHandler({
     if (interaction === undefined) throw new StatusError(404, "This authorization request has expired.");
 
     const config = auth.tenancy.config.oauthProvider;
-    const scopes = interaction.requestedScopes.map(scope => {
-      const configured = Object.values(config.scopes).find(value => value.scope === scope);
-      return {
-        scope,
-        display_name: configured?.displayName
-          ?? (scope.startsWith("team_perm:") ? `Team permission: ${scope.slice("team_perm:".length)}` : scope.startsWith("perm:") ? `Permission: ${scope.slice("perm:".length)}` : scope),
-        description: configured?.description ?? "Access requested by this application.",
-      };
-    });
     const resourceConfig = interaction.resource === undefined
       ? undefined
       : Object.values(config.resources).find(resource => resource.uri === interaction.resource);
@@ -65,14 +50,10 @@ export const GET = createSmartRouteHandler({
           id: interaction.clientId,
           display_name: getOrUndefined(config.clients, interaction.clientId)?.displayName ?? interaction.clientId,
         },
-        scopes,
         resource: interaction.resource === undefined
           ? null
           : { uri: interaction.resource, display_name: resourceConfig?.displayName ?? interaction.resource },
         trusted_client: isTrustedClient(auth.tenancy, interaction.clientId),
-        // oidc-provider resumes the original scope request, so a reduced grant causes a prompt
-        // loop. Keep this capability visibly disabled until reduced-scope continuation is supported.
-        allow_user_to_deselect_optional_scopes: false,
       },
     };
   },
@@ -88,7 +69,6 @@ export const POST = createSmartRouteHandler({
     auth: authSchema,
     params: paramsSchema,
     body: yupObject({
-      approved_scopes: yupArray(yupString().defined()).defined(),
       denied: yupBoolean().defined(),
     }).defined(),
   }),
@@ -104,7 +84,6 @@ export const POST = createSmartRouteHandler({
       tenancy: auth.tenancy,
       uid: params.interaction_uid,
       userId,
-      approvedScopes: body.approved_scopes,
       denied: body.denied,
     });
     return { statusCode: 200, bodyType: "json", body: { done_url: doneUrl } };

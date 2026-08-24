@@ -103,8 +103,6 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
           permissionId: query.permission_id,
           userId: query.user_id,
           recursive: query.recursive === 'true',
-          // Full authority — see the note in `project-permissions/crud.tsx`.
-          grantedScopes: null,
         }),
         is_paginated: false,
       };

@@ -7,28 +7,13 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 const oauthCodeVerifier = "a".repeat(43);
 const oauthCodeChallenge = createHash("sha256").update(oauthCodeVerifier).digest("base64url");
 
-async function createConfiguredProject(options: { trustedClient?: boolean, includeWriteScope?: boolean } = {}) {
+async function createConfiguredProject(options: { trustedClient?: boolean } = {}) {
   const { projectId } = await Project.createAndSwitch();
   await Project.pushConfig({
     oauthProvider: {
-      scopes: {
-        filesRead: {
-          scope: "files:read",
-          displayName: "Read files",
-        },
-        ...(options.includeWriteScope ? {
-          filesWrite: {
-            scope: "files:write",
-            displayName: "Write files",
-          },
-        } : {}),
-      },
       resources: {
         mcp: {
           uri: "https://mcp.example.com/mcp",
-          scopes: {
-            filesRead: { scope: "files:read" },
-          },
         },
       },
       clients: {
@@ -45,7 +30,6 @@ async function createConfiguredProject(options: { trustedClient?: boolean, inclu
       clientIdMetadataDocuments: { enabled: false },
       consent: {
         required: true,
-        allowUserToDeselectOptionalScopes: true,
       },
     },
   });
@@ -74,7 +58,7 @@ function expectNoExpiredProviderSessionCookie(response: { headers: Headers }): v
 
 async function startProjectInteraction(
   projectId: string,
-  scope = "openid files:read",
+  scope = "openid profile",
   initialCookie = "",
   prompt?: string,
 ) {
@@ -112,7 +96,7 @@ async function getProjectAuthorizationCode(projectId: string): Promise<string> {
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(decision.status).toBe(200);
   const completed = await niceBackendFetch(decision.body.done_url, {
@@ -151,21 +135,10 @@ it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
       "jwks_uri": "<issuer>/.well-known/jwks.json",
       "registration_endpoint": "<issuer>/reg",
       "scopes_supported": [
-        "address",
-        "email",
-        "files:read",
-        "offline_access",
         "openid",
-        "phone",
         "profile",
-        "team_perm:$delete_team",
-        "team_perm:$invite_members",
-        "team_perm:$manage_api_keys",
-        "team_perm:$read_members",
-        "team_perm:$remove_members",
-        "team_perm:$update_team",
-        "team_perm:team_admin",
-        "team_perm:team_member",
+        "email",
+        "offline_access",
       ],
       "token_endpoint": "<issuer>/token",
     }
@@ -276,7 +249,7 @@ it("reconciles a replaced provider session after a completed authorization", asy
   const firstDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${first.interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(firstDecision.status).toBe(200);
   const firstCompleted = await niceBackendFetch(firstDecision.body.done_url, {
@@ -294,12 +267,12 @@ it("reconciles a replaced provider session after a completed authorization", asy
     .filter(cookie => cookie.startsWith("_session"))
     .join("; ");
 
-  const second = await startProjectInteraction(projectId, "openid files:read", dirtySessionCookie, "login");
+  const second = await startProjectInteraction(projectId, "openid profile", dirtySessionCookie, "login");
   const rotation = await startProjectInteraction(projectId);
   const rotationDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${rotation.interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(rotationDecision.status).toBe(200);
   const rotationCompleted = await niceBackendFetch(rotationDecision.body.done_url, {
@@ -320,7 +293,7 @@ it("reconciles a replaced provider session after a completed authorization", asy
   const secondDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${second.interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(secondDecision.status).toBe(200);
   const secondCompleted = await niceBackendFetch(secondDecision.body.done_url, {
@@ -356,7 +329,7 @@ it("reconciles a replaced provider session after a completed authorization", asy
     resource: "https://mcp.example.com/mcp",
   });
   await expect(verifier.verifyAccessToken(token.body.access_token)).resolves.toMatchObject({
-    scopes: ["files:read"],
+    scopes: [],
     resource: new URL("https://mcp.example.com/mcp"),
   });
 }, 60_000);
@@ -397,7 +370,7 @@ it("reads and records an authenticated project OAuth interaction", async () => {
       response_type: "code",
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
-      scope: "openid files:read",
+      scope: "openid profile",
       code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",
     },
@@ -417,19 +390,13 @@ it("reads and records an authenticated project OAuth interaction", async () => {
   expect(details.status).toBe(200);
   expect(details.body).toMatchObject({
     client: { id: "testClient", display_name: "Test client" },
-    scopes: [
-      { scope: "openid" },
-      { scope: "files:read", display_name: "Read files" },
-    ],
     resource: { uri: "https://mcp.example.com/mcp" },
     trusted_client: false,
-    allow_user_to_deselect_optional_scopes: false,
   });
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
     body: {
-      approved_scopes: ["openid", "files:read"],
       denied: false,
     },
   });
@@ -446,7 +413,7 @@ it("completes the signed-out-first project OAuth authorization code flow", async
       response_type: "code",
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
-      scope: "openid profile email offline_access files:read",
+      scope: "openid profile email offline_access",
       resource: "https://mcp.example.com/mcp",
       prompt: "consent",
       code_challenge: oauthCodeChallenge,
@@ -467,17 +434,16 @@ it("completes the signed-out-first project OAuth authorization code flow", async
   const fullDetails = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     accessType: "client",
   });
-  expect(fullDetails.body.scopes).toEqual(expect.arrayContaining([
-    expect.objectContaining({ scope: "openid" }),
-    expect.objectContaining({ scope: "profile" }),
-    expect.objectContaining({ scope: "email" }),
-    expect.objectContaining({ scope: "offline_access" }),
-    expect.objectContaining({ scope: "files:read" }),
-  ]));
+  expect(fullDetails.status).toBe(200);
+  expect(fullDetails.body).toMatchObject({
+    client: { id: "testClient", display_name: "Test client" },
+    resource: { uri: "https://mcp.example.com/mcp" },
+    trusted_client: false,
+  });
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "profile", "email", "offline_access", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(decision.status).toBe(200);
   const completed = await niceBackendFetch(decision.body.done_url, {
@@ -514,23 +480,26 @@ it("completes the signed-out-first project OAuth authorization code flow", async
     resource?: string,
     scope?: string,
   };
+  // A resource-bound access token carries no scopes: the resource server resolves the user's full
+  // authority via the SDK instead. code.scope is non-empty (the OIDC scopes), so oidc-provider
+  // reports the resource token's (empty) scope rather than omitting the field.
   expect(token.body).toMatchObject({
     token_type: "Bearer",
-    scope: "files:read",
+    scope: "",
   });
   expect(accessTokenPayload).toMatchObject({
     iss: providerUrl(projectId, ""),
     aud: expect.any(String),
     resource: "https://mcp.example.com/mcp",
-    scope: "files:read",
   });
+  expect(accessTokenPayload.scope).toBeUndefined();
   const verifier = createMcpTokenVerifier({
     projectId,
     baseUrl: STACK_BACKEND_BASE_URL,
     resource: "https://mcp.example.com/mcp",
   });
   await expect(verifier.verifyAccessToken(token.body.access_token)).resolves.toMatchObject({
-    scopes: ["files:read"],
+    scopes: [],
     resource: new URL("https://mcp.example.com/mcp"),
   });
   const normalSessionControl = await niceBackendFetch("/api/v1/users/me", {
@@ -569,7 +538,7 @@ it("completes the signed-out-first project OAuth authorization code flow", async
     rawContentType: "application/x-www-form-urlencoded",
   });
   expect(refreshed.status).toBe(200);
-  expect(refreshed.body).toMatchObject({ token_type: "Bearer", scope: "files:read" });
+  expect(refreshed.body).toMatchObject({ token_type: "Bearer" });
   const revoked = await niceBackendFetch(providerUrl(projectId, "/token/revocation"), {
     method: "POST",
     rawBody: new TextEncoder().encode(new URLSearchParams({
@@ -592,40 +561,6 @@ it("completes the signed-out-first project OAuth authorization code flow", async
   expect(afterRevocation.status).toBe(400);
 });
 
-it("rejects an approved scope that was not requested", async () => {
-  const projectId = await createConfiguredProject();
-  await Auth.fastSignUp();
-  const { interactionUid } = await startProjectInteraction(projectId);
-  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
-    method: "POST",
-    accessType: "client",
-    body: { approved_scopes: ["openid", "files:read", "files:write"], denied: false },
-  });
-  expect(decision.status).toBe(400);
-  expect(decision.body).toMatchInlineSnapshot(`"The selected permissions are not part of this authorization request."`);
-});
-
-it("filters a requested custom scope that is not allowed for the selected resource", async () => {
-  const projectId = await createConfiguredProject({ includeWriteScope: true });
-  await Auth.fastSignUp();
-  const { interactionUid } = await startProjectInteraction(projectId, "openid files:write");
-  const details = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
-    accessType: "client",
-  });
-  expect(details.status).toBe(200);
-  expect(details.body.scopes).toEqual(expect.arrayContaining([
-    expect.objectContaining({ scope: "openid" }),
-    expect.objectContaining({ scope: "files:write" }),
-  ]));
-  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
-    method: "POST",
-    accessType: "client",
-    body: { approved_scopes: ["openid", "files:write"], denied: false },
-  });
-  expect(decision.status).toBe(400);
-  expect(decision.body).toMatchInlineSnapshot(`"The selected permissions are not allowed for this resource."`);
-});
-
 it("denies an interaction and rejects replay of its consumed decision", async () => {
   const projectId = await createConfiguredProject();
   await Auth.fastSignUp();
@@ -633,7 +568,7 @@ it("denies an interaction and rejects replay of its consumed decision", async ()
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: [], denied: true },
+    body: { denied: true },
   });
   expect(decision.status).toBe(200);
   const completed = await niceBackendFetch(decision.body.done_url, {
@@ -672,7 +607,7 @@ it("rejects completion with a different interaction cookie", async () => {
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${first.interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(decision.status).toBe(200);
   const completed = await niceBackendFetch(decision.body.done_url, {
@@ -689,14 +624,14 @@ it("rejects a decision submitted by a different user", async () => {
   const firstDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(firstDecision.status).toBe(200);
   await Auth.fastSignUp();
   const secondDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { denied: false },
   });
   expect(secondDecision.status).toBe(400);
   expect(secondDecision.body).toMatchInlineSnapshot(`"This authorization request is not available for this user."`);
@@ -711,7 +646,7 @@ it("marks trusted clients so the hosted flow can skip consent", async () => {
       response_type: "code",
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
-      scope: "openid files:read",
+      scope: "openid profile",
       resource: "https://mcp.example.com/mcp",
       code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",

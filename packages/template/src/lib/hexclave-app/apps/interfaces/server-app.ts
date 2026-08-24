@@ -63,9 +63,8 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * const user = await hexclaveServerApp.getUser({ from: "mcp", authInfo: extra.authInfo });
      * ```
      *
-     * The returned user is already narrowed to the scopes the token was granted, so
-     * `user.hasPermission(...)` simply tells the truth — a developer who never thinks about scopes
-     * still gets correct authorization.
+     * The token was already verified by `createMcpTokenVerifier`, so this is a lookup: the result
+     * is an ordinary `ServerUser` with the same authority as one fetched by ID.
      */
     getUser(options: { from: "mcp", authInfo: McpAuthInfo, or?: "return-null" }): Promise<ServerUser | null>,
 

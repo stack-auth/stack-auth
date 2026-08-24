@@ -1,6 +1,5 @@
 import type Provider from "oidc-provider";
 import { createProjectOAuthProvider, getProjectIdpId } from "./project-oauth-provider";
-import { deriveScopesFromConfig } from "./permissions";
 import type { Tenancy } from "./tenancies";
 
 const PROJECT_PROVIDER_CACHE_TTL_MS = 5 * 60 * 1_000;
@@ -15,10 +14,7 @@ type CachedProvider = {
 const providerCache = new Map<string, CachedProvider>();
 
 function getProviderConfigFingerprint(tenancy: Tenancy): string {
-  return JSON.stringify({
-    oauthProvider: tenancy.config.oauthProvider,
-    scopes: deriveScopesFromConfig(tenancy.config),
-  });
+  return JSON.stringify(tenancy.config.oauthProvider);
 }
 
 function evictExpiredProviders(now: number): void {
