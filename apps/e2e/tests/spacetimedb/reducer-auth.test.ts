@@ -30,6 +30,11 @@ const ALL_MUTATING_REDUCERS: Array<{ name: string, args: unknown[] }> = [
   { name: "delete_ai_query_log", args: ["corr"] },
   { name: "clear_mcp_qa_review", args: ["corr"] },
   { name: "update_mcp_qa_review", args: ["corr", false, false, false, "[]", "", 0, "model", opt(null), opt(null)] },
+  {
+    name: "log_feedback",
+    args: ["corr", opt(null), "bug", "message", "mcp-ask-hexclave", opt(null), opt(null), opt(null), opt(null), opt(null)],
+  },
+  { name: "delete_feedback", args: ["corr"] },
 ];
 
 describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
