@@ -11,7 +11,7 @@ import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { projectPublicIssueOccurrence } from "@/lib/issues/occurrence-projection";
 import { loadIssueReleaseContext } from "@/lib/releases/issue-release-context";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload, type ErrorIngestScrubbedRecord } from "@/lib/error-ingest";
 import { parsePublicIssueHours } from "@/app/api/latest/issues/contract";
 import {
   IssueDetailResponseSchema,
@@ -21,7 +21,7 @@ import {
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
-function parseErrorEnvelope(raw: string): Record<string, unknown> | null {
+function parseErrorEnvelope(raw: string): ErrorIngestScrubbedRecord | null {
   if (raw === "" || raw === "{}") return null;
   let parsed: unknown;
   try {
@@ -31,8 +31,7 @@ function parseErrorEnvelope(raw: string): Record<string, unknown> | null {
     throw error;
   }
   const scrubbed = scrubErrorIngestPayload(parsed).value;
-  if (scrubbed === undefined || typeof scrubbed !== "object" || scrubbed === null || Array.isArray(scrubbed)) return null;
-  return scrubbed;
+  return isErrorIngestScrubbedRecord(scrubbed) ? scrubbed : null;
 }
 
 function serializeIssueAttachment(attachment: {

@@ -1,3 +1,4 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { formatCount } from "../format";
 import type { IssueFrame } from "./issues-data";
 
@@ -27,11 +28,28 @@ export function issueSubtitle(issue: IssueTitleInput): string {
   return message === issueTitle(issue) ? "" : message;
 }
 
+/** The occurrence-payload fields the culprit fallback chain reads. */
+export type IssueCulpritData = {
+  url?: string,
+  path?: string,
+  mechanism_type?: string,
+};
+
 export type IssueCulpritInput = {
   culprit: string | null,
   frames?: readonly IssueFrame[],
-  data?: Record<string, unknown> | null,
+  data?: IssueCulpritData | null,
 };
+
+/** Extracts the culprit-relevant fields from an untrusted occurrence payload. */
+export function parseIssueCulpritData(value: unknown): IssueCulpritData | null {
+  if (!isRecord(value)) return null;
+  const data: IssueCulpritData = {};
+  if (typeof value.url === "string") data.url = value.url;
+  if (typeof value.path === "string") data.path = value.path;
+  if (typeof value.mechanism_type === "string") data.mechanism_type = value.mechanism_type;
+  return data;
+}
 
 function frameCulprit(frame: IssueFrame): string | null {
   const location = frame.module ?? frame.filename ?? frame.abs_path;
@@ -42,9 +60,10 @@ function frameCulprit(frame: IssueFrame): string | null {
   return `${location} in ${fn}`;
 }
 
-function stringField(data: Record<string, unknown> | null | undefined, key: string): string | null {
-  const value = data?.[key];
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+function nonBlank(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 const SERVER_UNKNOWN_CULPRIT_SENTINEL = "<unknown>";
@@ -63,9 +82,9 @@ export function issueCulprit(input: IssueCulpritInput): string {
   const fromTop = top == null ? null : frameCulprit(top);
   if (fromTop != null && fromTop !== "") return fromTop;
 
-  return stringField(input.data, "url")
-    ?? stringField(input.data, "path")
-    ?? stringField(input.data, "mechanism_type")
+  return nonBlank(input.data?.url)
+    ?? nonBlank(input.data?.path)
+    ?? nonBlank(input.data?.mechanism_type)
     ?? UNKNOWN_ISSUE_CULPRIT;
 }
 

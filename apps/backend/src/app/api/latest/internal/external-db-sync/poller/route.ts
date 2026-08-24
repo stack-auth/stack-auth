@@ -193,12 +193,13 @@ export const GET = createSmartRouteHandler({
           }
         }
 
-        await upstash.publishJSON({
+        const publishOptions: Parameters<typeof upstash.publishJSON>[0] = {
           url: fullUrl,
           body: options.body,
           flowControl: options.flowControl,
-          ...(options.delay === undefined ? {} : { delay: options.delay }),
-        });
+        };
+        if (options.delay !== undefined) publishOptions.delay = options.delay;
+        await upstash.publishJSON(publishOptions);
         await deleteOutgoingRequest(request.id);
       }
 
@@ -220,12 +221,13 @@ export const GET = createSmartRouteHandler({
           }
         }
 
-        return {
+        const upstashRequest: UpstashRequest = {
           url: fullUrl,
           body: options.body,
-          ...(options.flowControl === undefined ? {} : { flowControl: options.flowControl }),
-          ...(options.delay === undefined ? {} : { delay: options.delay }),
         };
+        if (options.flowControl !== undefined) upstashRequest.flowControl = options.flowControl;
+        if (options.delay !== undefined) upstashRequest.delay = options.delay;
+        return upstashRequest;
       }
 
       async function processRequests(requests: OutgoingRequest[]): Promise<{ processed: number, failed: number }> {

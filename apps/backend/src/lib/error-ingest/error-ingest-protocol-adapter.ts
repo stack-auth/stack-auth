@@ -333,22 +333,23 @@ function normalizeItem(
     : undefined;
   const retryAfterMs = "retryAfterMs" in outcome ? validateRetryAfter(outcome.retryAfterMs) : undefined;
 
-  return {
+  const projection: ErrorIngestProtocolItemProjection = {
     itemIndex,
     itemId,
     itemType: outcome.itemType,
-    ...(eventId === undefined ? {} : { eventId }),
     status: outcome.status,
-    ...(reason === undefined ? {} : { reason }),
-    ...(canonicalItemId === undefined ? {} : { canonicalItemId }),
-    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
     category: reportCategory(outcome.itemType),
-    ...(disposition === undefined ? {} : {
-      clientReportBucket: disposition.bucket,
-      clientReportReason: disposition.reason,
-    }),
     rejectedByOtlp: isOtlpRejected(outcome.status),
   };
+  if (eventId !== undefined) projection.eventId = eventId;
+  if (reason !== undefined) projection.reason = reason;
+  if (canonicalItemId !== undefined) projection.canonicalItemId = canonicalItemId;
+  if (retryAfterMs !== undefined) projection.retryAfterMs = retryAfterMs;
+  if (disposition !== undefined) {
+    projection.clientReportBucket = disposition.bucket;
+    projection.clientReportReason = disposition.reason;
+  }
+  return projection;
 }
 
 function encodeCanonicalPart(value: string): string {

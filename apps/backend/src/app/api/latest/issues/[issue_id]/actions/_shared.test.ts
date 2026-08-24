@@ -1,17 +1,11 @@
+import type { resolveIssueIdentity } from "@/lib/issues/issue-identity";
 import { IssueNotFoundError } from "@/lib/issues/issue-lifecycle";
 import type { Tenancy } from "@/lib/tenancies";
 import { applyOrganizationDefaults, sanitizeOrganizationConfig } from "@hexclave/shared/dist/config/schema";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  resolveIssueIdentity: vi.fn(),
-}));
-
-vi.mock("@/lib/issues/issue-identity", () => ({
-  resolveIssueIdentity: mocks.resolveIssueIdentity,
-}));
-
 import { withIssueActionTarget } from "./_shared";
+
+const resolveIdentity = vi.fn<Parameters<typeof resolveIssueIdentity>, ReturnType<typeof resolveIssueIdentity>>();
 
 const tenancy = {
   id: "123e4567-e89b-42d3-a456-426614174001",
@@ -38,7 +32,7 @@ describe("issue action target resolution", () => {
   });
 
   it("uses the primary when retrying a mutation that lost a merge race", async () => {
-    mocks.resolveIssueIdentity
+    resolveIdentity
       .mockResolvedValueOnce({ issueId: "11111111-1111-4111-8111-111111111111", redirectedFromIssueId: null })
       .mockResolvedValueOnce({
         issueId: "22222222-2222-4222-8222-222222222222",
@@ -55,12 +49,13 @@ describe("issue action target resolution", () => {
       tenancy,
       rawIssueId: "11111111-1111-4111-8111-111111111111",
       action,
+      resolveIdentity,
     })).resolves.toMatchObject({
       target: { issueId: "22222222-2222-4222-8222-222222222222" },
       result: "updated",
     });
 
-    expect(mocks.resolveIssueIdentity).toHaveBeenNthCalledWith(1, expect.anything(), "11111111-1111-4111-8111-111111111111", { consistency: "replica" });
-    expect(mocks.resolveIssueIdentity).toHaveBeenNthCalledWith(2, expect.anything(), "11111111-1111-4111-8111-111111111111", { consistency: "primary" });
+    expect(resolveIdentity).toHaveBeenNthCalledWith(1, expect.anything(), "11111111-1111-4111-8111-111111111111", { consistency: "replica" });
+    expect(resolveIdentity).toHaveBeenNthCalledWith(2, expect.anything(), "11111111-1111-4111-8111-111111111111", { consistency: "primary" });
   });
 });

@@ -13,7 +13,7 @@ import {
   SPAN_DETAIL_COLUMNS,
   SPAN_TECHNICAL_DETAIL_COLUMNS,
   TRACE_SERVICES_QUERY,
-} from "./page-client";
+} from "./trace-queries";
 import {
   selectValueToServiceIdentity,
   serviceIdentityToSelectValue,

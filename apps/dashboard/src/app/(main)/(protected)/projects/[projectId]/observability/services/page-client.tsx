@@ -26,6 +26,7 @@ import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
+import { getErrorMessage } from "../format";
 import {
   serviceIdentityEquals,
   serviceIdentityLabel,
@@ -614,7 +615,7 @@ export default function PageClient() {
       });
     } catch (caught) {
       if (requestSequence !== requestSequenceRef.current) return;
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(getErrorMessage(caught));
     } finally {
       if (requestSequence === requestSequenceRef.current) setLoading(false);
     }

@@ -1,6 +1,9 @@
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 import type { StackAdminApp } from "@hexclave/next";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import type { RowData } from "../../analytics/shared";
 import { getBucketGranularity } from "../bucket-granularity";
 import { queryObservability } from "../filters";
 import {
@@ -10,7 +13,6 @@ import {
   type ServiceSummary,
   type ServiceTimeRangeHours,
 } from "../services/services-data";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const PERFORMANCE_TIME_RANGES = [
   { label: "1h", hours: 1 },
@@ -151,6 +153,30 @@ export type PerformanceMetricSeriesPoint = {
   } | null,
 };
 
+export function getPerformanceMetricChartDomain(
+  values: readonly (number | null)[],
+  startsAtZero: boolean,
+): [number, number] {
+  const numericValues = values.filter((value): value is number => value !== null);
+  if (numericValues.length === 0) return [0, 1];
+
+  const minimum = Math.min(...numericValues);
+  const maximum = Math.max(...numericValues);
+  if (startsAtZero) {
+    return [0, maximum === 0 ? 1 : maximum * 1.1];
+  }
+
+  // A flat metric still needs a visible plot. Centering the value in a
+  // labeled domain avoids collapsing a constant series onto the baseline.
+  if (minimum === maximum) {
+    const padding = minimum === 0 ? 1 : Math.abs(minimum) * 0.1;
+    return [minimum - padding, maximum + padding];
+  }
+
+  const padding = (maximum - minimum) * 0.1;
+  return [minimum - padding, maximum + padding];
+}
+
 export type PerformanceMetricResponse = {
   window: {
     start_time_unix_nano: string,
@@ -176,33 +202,33 @@ const PERFORMANCE_METRIC_TYPES: readonly PerformanceMetricType[] = [
 ];
 
 
-function requiredRecord(value: unknown, field: string): Record<string, unknown> {
+function requiredRecord(value: Json | undefined, field: string): Record<string, Json> {
   if (!isRecord(value)) throw new Error(`Native metrics response field ${field} must be an object`);
   return value;
 }
 
-function requiredString(value: unknown, field: string): string {
+function requiredString(value: Json | undefined, field: string): string {
   if (typeof value !== "string") throw new Error(`Native metrics response field ${field} must be a string`);
   return value;
 }
 
-function requiredFiniteNumber(value: unknown, field: string): number {
+function requiredFiniteNumber(value: Json | undefined, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Native metrics response field ${field} must be finite`);
   return value;
 }
 
-function requiredNonNegativeInteger(value: unknown, field: string): number {
+function requiredNonNegativeInteger(value: Json | undefined, field: string): number {
   const number = requiredFiniteNumber(value, field);
   if (!Number.isSafeInteger(number) || number < 0) throw new Error(`Native metrics response field ${field} must be a non-negative integer`);
   return number;
 }
 
-function requiredBoolean(value: unknown, field: string): boolean {
+function requiredBoolean(value: Json | undefined, field: string): boolean {
   if (typeof value !== "boolean") throw new Error(`Native metrics response field ${field} must be boolean`);
   return value;
 }
 
-function requiredMetricType(value: unknown, field: string): PerformanceMetricType {
+function requiredMetricType(value: Json | undefined, field: string): PerformanceMetricType {
   if (typeof value !== "string" || !isPerformanceMetricType(value)) {
     throw new Error(`Native metrics response field ${field} contains an unknown metric type`);
   }
@@ -217,12 +243,12 @@ function isPerformanceTimeRangeHours(value: number): value is PerformanceTimeRan
   return PERFORMANCE_TIME_RANGES.some((range) => range.hours === value);
 }
 
-function nullableFiniteNumber(value: unknown, field: string): number | null {
+function nullableFiniteNumber(value: Json | undefined, field: string): number | null {
   if (value === null) return null;
   return requiredFiniteNumber(value, field);
 }
 
-function parseCatalog(value: unknown): PerformanceMetricCatalogEntry[] {
+function parseCatalog(value: Json | undefined): PerformanceMetricCatalogEntry[] {
   if (!Array.isArray(value)) throw new Error("Native metrics response catalog must be an array");
   return value.map((entry, index) => {
     const record = requiredRecord(entry, `catalog[${index}]`);
@@ -240,7 +266,7 @@ function parseCatalog(value: unknown): PerformanceMetricCatalogEntry[] {
   });
 }
 
-function parseSeries(value: unknown): PerformanceMetricSeriesPoint[] {
+function parseSeries(value: Json | undefined): PerformanceMetricSeriesPoint[] {
   if (!Array.isArray(value)) throw new Error("Native metrics response series must be an array");
   return value.map((entry, index) => {
     const record = requiredRecord(entry, `series[${index}]`);
@@ -264,7 +290,7 @@ function parseSeries(value: unknown): PerformanceMetricSeriesPoint[] {
   });
 }
 
-export function parsePerformanceMetricResponse(value: unknown): PerformanceMetricResponse {
+export function parsePerformanceMetricResponse(value: Json): PerformanceMetricResponse {
   const response = requiredRecord(value, "response");
   const window = requiredRecord(response.window, "window");
   const hours = requiredNonNegativeInteger(window.hours, "window.hours");
@@ -309,14 +335,17 @@ export async function fetchPerformanceMetrics(
   const response = await sendInternalAdminRequest(adminApp, "/internal/analytics/metrics", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    // JSON.stringify omits undefined-valued fields, so a null metric name or
+    // type is absent from the request body, same as the backend expects.
     body: JSON.stringify({
       hours: request.hours,
-      ...(request.metricName == null ? {} : { metric_name: request.metricName }),
-      ...(request.metricType == null ? {} : { metric_type: request.metricType }),
+      metric_name: request.metricName ?? undefined,
+      metric_type: request.metricType ?? undefined,
     }),
   });
   if (!response.ok) throw new Error("Native metrics could not be loaded");
-  return parsePerformanceMetricResponse(await response.json());
+  const body: Json = await response.json();
+  return parsePerformanceMetricResponse(body);
 }
 
 export async function fetchWebVitals(
@@ -424,12 +453,75 @@ export type PagePerformance = {
   avgScrollRatio: number | null,
 } & PageBehavior;
 
+export type PerformancePageSort = "views" | "slowest" | "friction";
+
+function pageLatencyScore(page: PagePerformance): number {
+  const lcp = webVitalByKey("lcp");
+  const inp = webVitalByKey("inp");
+  return Math.max(
+    page.lcpP75 == null ? -1 : page.lcpP75 / lcp.goodThreshold,
+    page.inpP75 == null ? -1 : page.inpP75 / inp.goodThreshold,
+  );
+}
+
+export function sortPerformancePages(
+  pages: readonly PagePerformance[],
+  sort: PerformancePageSort,
+): PagePerformance[] {
+  const sorted = [...pages];
+  sorted.sort((left, right) => {
+    switch (sort) {
+      case "views": {
+        return right.views - left.views || stringCompare(left.path, right.path);
+      }
+      case "slowest": {
+        // LCP is absent for SPA-only pages, so rank the worst available
+        // latency p75 against its own good threshold instead of making the
+        // entire control a no-op whenever hard-load samples are missing.
+        return pageLatencyScore(right) - pageLatencyScore(left)
+          || right.views - left.views
+          || stringCompare(left.path, right.path);
+      }
+      case "friction": {
+        const leftFriction = left.rageClicks * 3 + left.deadClicks * 2;
+        const rightFriction = right.rageClicks * 3 + right.deadClicks * 2;
+        return rightFriction - leftFriction
+          || right.views - left.views
+          || stringCompare(left.path, right.path);
+      }
+      default: {
+        const exhaustive: never = sort;
+        throw new Error(`Unknown page performance sort: ${exhaustive}`);
+      }
+    }
+  });
+  return sorted;
+}
+
 export type PerformanceTimelineBucket = {
   bucketMs: number,
   views: number,
   lcpP75: number | null,
   inpP75: number | null,
 };
+
+export type PerformanceTimelineMetric = "lcp" | "inp";
+
+export function selectAvailableTimelineMetric(
+  buckets: readonly PerformanceTimelineBucket[],
+  preferred: PerformanceTimelineMetric,
+): PerformanceTimelineMetric {
+  const preferredHasSamples = buckets.some((bucket) => (
+    preferred === "lcp" ? bucket.lcpP75 != null : bucket.inpP75 != null
+  ));
+  if (preferredHasSamples) return preferred;
+
+  const alternative = preferred === "lcp" ? "inp" : "lcp";
+  const alternativeHasSamples = buckets.some((bucket) => (
+    alternative === "lcp" ? bucket.lcpP75 != null : bucket.inpP75 != null
+  ));
+  return alternativeHasSamples ? alternative : preferred;
+}
 
 export type PageInsightKind = "slow-lcp" | "slow-inp" | "rage" | "dead-clicks" | "shallow";
 
@@ -625,7 +717,7 @@ ORDER BY bucket_start ASC
   };
 }
 
-function requiredRowNumber(row: Record<string, unknown>, key: string): number {
+function requiredRowNumber(row: RowData, key: string): number {
   const value = row[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -635,7 +727,7 @@ function requiredRowNumber(row: Record<string, unknown>, key: string): number {
   throw new Error(`Performance ${key} must be a finite number`);
 }
 
-function optionalRowNumber(row: Record<string, unknown>, key: string): number | null {
+function optionalRowNumber(row: RowData, key: string): number | null {
   const value = row[key];
   if (value == null) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -647,7 +739,7 @@ function optionalRowNumber(row: Record<string, unknown>, key: string): number | 
   throw new Error(`Performance ${key} must be a finite number or null`);
 }
 
-function requiredRowString(row: Record<string, unknown>, key: string): string {
+function requiredRowString(row: RowData, key: string): string {
   const value = row[key];
   if (typeof value !== "string" || value === "") {
     throw new Error(`Performance ${key} must be a non-empty string`);
@@ -656,7 +748,7 @@ function requiredRowString(row: Record<string, unknown>, key: string): string {
 }
 
 function parseDistribution(
-  row: Record<string, unknown>,
+  row: RowData,
   prefix: string,
 ): VitalDistribution {
   return {
@@ -668,7 +760,7 @@ function parseDistribution(
   };
 }
 
-export function parsePerformanceVitalsOverviewRow(row: Record<string, unknown>): PerformanceVitalsOverview {
+export function parsePerformanceVitalsOverviewRow(row: RowData): PerformanceVitalsOverview {
   return {
     pageViews: requiredRowNumber(row, "page_views"),
     users: requiredRowNumber(row, "users"),
@@ -686,7 +778,7 @@ export function parsePerformanceVitalsOverviewRow(row: Record<string, unknown>):
   };
 }
 
-export function parsePerformancePageRow(row: Record<string, unknown>): Omit<PagePerformance, keyof PageBehavior> {
+export function parsePerformancePageRow(row: RowData): Omit<PagePerformance, keyof PageBehavior> {
   return {
     path: requiredRowString(row, "path"),
     views: requiredRowNumber(row, "views"),
@@ -703,7 +795,7 @@ export function parsePerformancePageRow(row: Record<string, unknown>): Omit<Page
   };
 }
 
-export function parsePerformanceBehaviorRow(row: Record<string, unknown>): { path: string } & PageBehavior {
+export function parsePerformanceBehaviorRow(row: RowData): { path: string } & PageBehavior {
   return {
     path: requiredRowString(row, "path"),
     clicks: requiredRowNumber(row, "clicks"),
@@ -751,7 +843,7 @@ export function sumPageBehavior(pages: readonly PagePerformance[]): PageBehavior
 }
 
 export function buildPerformanceTimeline(
-  rows: readonly Record<string, unknown>[],
+  rows: readonly RowData[],
   hours: PerformanceTimeRangeHours,
   nowMs: number,
 ): PerformanceTimelineBucket[] {

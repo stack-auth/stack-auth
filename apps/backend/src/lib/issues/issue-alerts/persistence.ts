@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "@/lib/utf8";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
   IssueAlertDeliveryOutcome,
   IssueAlertDeliveryState,
@@ -44,7 +46,6 @@ const ISSUE_ALERT_MAX_TAG_FILTERS = 32;
 const ISSUE_ALERT_MAX_PREDICATES = 64;
 const ISSUE_ALERT_RULE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
 const ISSUE_ALERT_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
-const TEXT_ENCODER = new TextEncoder();
 
 const ISSUE_ALERT_VALUE_OPERATORS: readonly IssueAlertValueOperator[] = [
   "equals",
@@ -233,10 +234,6 @@ type DeliveryRow = {
   updatedAt: Date,
 };
 
-function isObject(value: unknown): value is { readonly [key: string]: unknown } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isJsonValue(value: unknown, ancestors: ReadonlySet<object> = new Set()): boolean {
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
@@ -249,7 +246,7 @@ function isJsonValue(value: unknown, ancestors: ReadonlySet<object> = new Set())
     return value.every((entry) => isJsonValue(entry, nextAncestors));
   }
 
-  if (!isObject(value)) return false;
+  if (!isRecord(value)) return false;
   return Object.keys(value).every((key) => {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     return descriptor !== undefined && descriptor.get === undefined && descriptor.set === undefined
@@ -266,14 +263,14 @@ function serializedJson(value: unknown): string | null {
     if (error instanceof TypeError) return null;
     throw error;
   }
-  return TEXT_ENCODER.encode(serialized).byteLength <= ISSUE_ALERT_RULE_CONFIG_MAX_BYTES ? serialized : null;
+  return utf8ByteLength(serialized) <= ISSUE_ALERT_RULE_CONFIG_MAX_BYTES ? serialized : null;
 }
 
 function isBoundedText(value: unknown, maxBytes: number, allowEmpty = false): value is string {
   return typeof value === "string"
     && (allowEmpty || value.length > 0)
     && !ISSUE_ALERT_CONTROL_CHARACTER_PATTERN.test(value)
-    && TEXT_ENCODER.encode(value).byteLength <= maxBytes;
+    && utf8ByteLength(value) <= maxBytes;
 }
 
 function isSafeIdentifier(value: unknown): value is string {
@@ -344,7 +341,7 @@ function parseAttributeValue(value: unknown, operator: IssueAlertValueOperator):
 }
 
 function parseTagFilter(value: unknown): IssueAlertTagFilter | null {
-  if (!isObject(value) || !isBoundedText(value.key, ISSUE_ALERT_KEY_MAX_BYTES)) return null;
+  if (!isRecord(value) || !isBoundedText(value.key, ISSUE_ALERT_KEY_MAX_BYTES)) return null;
   const operator = parseValueOperator(value.operator);
   if (operator === null) return null;
   const parsedValue = parseTagValue(value.value, operator);
@@ -354,19 +351,8 @@ function parseTagFilter(value: unknown): IssueAlertTagFilter | null {
     : { key: value.key, operator, value: parsedValue };
 }
 
-function parseAttributePredicate(value: { readonly [key: string]: unknown }): IssueAlertPredicate | null {
-  if (value.type !== "attribute" || !isBoundedText(value.path, ISSUE_ALERT_KEY_MAX_BYTES)) return null;
-  const operator = parseValueOperator(value.operator);
-  if (operator === null) return null;
-  const parsedValue = parseAttributeValue(value.value, operator);
-  if (parsedValue === null) return null;
-  return parsedValue === undefined
-    ? { type: "attribute", path: value.path, operator }
-    : { type: "attribute", path: value.path, operator, value: parsedValue };
-}
-
 function parsePredicate(value: unknown): IssueAlertPredicate | null {
-  if (!isObject(value) || typeof value.type !== "string") return null;
+  if (!isRecord(value) || typeof value.type !== "string") return null;
   switch (value.type) {
     case "new":
     case "regression": {
@@ -385,7 +371,7 @@ function parsePredicate(value: unknown): IssueAlertPredicate | null {
       }
       if (value.operator !== "in") return null;
       const statuses = parseStringArray(value.value, ISSUE_ALERT_MAX_FILTER_VALUES);
-      if (statuses === null || !statuses.every((status) => parseStatus(status) !== null)) return null;
+      if (statuses === null) return null;
       const parsedStatuses: IssueAlertStatus[] = [];
       for (const status of statuses) {
         const parsed = parseStatus(status);
@@ -402,7 +388,14 @@ function parsePredicate(value: unknown): IssueAlertPredicate | null {
         : null;
     }
     case "attribute": {
-      return parseAttributePredicate(value);
+      if (!isBoundedText(value.path, ISSUE_ALERT_KEY_MAX_BYTES)) return null;
+      const operator = parseValueOperator(value.operator);
+      if (operator === null) return null;
+      const parsedValue = parseAttributeValue(value.value, operator);
+      if (parsedValue === null) return null;
+      return parsedValue === undefined
+        ? { type: "attribute", path: value.path, operator }
+        : { type: "attribute", path: value.path, operator, value: parsedValue };
     }
     default: {
       return null;
@@ -422,7 +415,7 @@ function parsePredicateArray(value: unknown, maximum: number, requireNonEmpty: b
 }
 
 function parseConditionGroup(value: unknown): IssueAlertConditionGroup | null {
-  if (!isObject(value)) return null;
+  if (!isRecord(value)) return null;
   const all = value.all === undefined ? undefined : parsePredicateArray(value.all, ISSUE_ALERT_MAX_PREDICATES, false);
   const any = value.any === undefined ? undefined : parsePredicateArray(value.any, ISSUE_ALERT_MAX_PREDICATES, true);
   if ((value.all !== undefined && all === null) || (value.any !== undefined && any === null)) return null;
@@ -433,7 +426,7 @@ function parseConditionGroup(value: unknown): IssueAlertConditionGroup | null {
 }
 
 function parseFilters(value: unknown): IssueAlertRuleFilters | null {
-  if (!isObject(value)) return null;
+  if (!isRecord(value)) return null;
   const projectIds = value.projectIds === undefined ? undefined : parseStringArray(value.projectIds, ISSUE_ALERT_MAX_FILTER_VALUES);
   const environments = value.environments === undefined ? undefined : parseStringArray(value.environments, ISSUE_ALERT_MAX_FILTER_VALUES);
   const releases = value.releases === undefined ? undefined : parseStringArray(value.releases, ISSUE_ALERT_MAX_FILTER_VALUES);
@@ -460,7 +453,7 @@ function parseFilters(value: unknown): IssueAlertRuleFilters | null {
 }
 
 function parseRuleConfig(value: unknown): IssueAlertRule | null {
-  if (!isObject(value) || value.schemaVersion !== 1 || typeof value.id !== "string"
+  if (!isRecord(value) || value.schemaVersion !== 1 || typeof value.id !== "string"
     || !ISSUE_ALERT_RULE_ID_PATTERN.test(value.id) || !isPositiveInteger(value.version, Number.MAX_SAFE_INTEGER)
     || typeof value.enabled !== "boolean") return null;
 
@@ -473,20 +466,21 @@ function parseRuleConfig(value: unknown): IssueAlertRule | null {
   const conditions = parseConditionGroup(value.conditions);
   const cooldownValue = value.cooldown;
   const action = parseIssueAlertAction(value.action);
-  if (conditions === null || !isObject(cooldownValue) || action === null) return null;
+  if (conditions === null || !isRecord(cooldownValue) || action === null) return null;
   if (!isNonNegativeInteger(cooldownValue.durationSeconds, ISSUE_ALERT_MAX_COOLDOWN_SECONDS)
     || !isOneOf(ISSUE_ALERT_COOLDOWN_SCOPES, cooldownValue.keyBy)) return null;
 
-  return {
+  const rule: IssueAlertRule = {
     schemaVersion: 1,
     id: value.id,
     version: value.version,
     enabled: value.enabled,
-    ...(filters === undefined ? {} : { filters }),
     conditions,
     cooldown: { durationSeconds: cooldownValue.durationSeconds, keyBy: cooldownValue.keyBy },
     action,
   };
+  if (filters !== undefined) rule.filters = filters;
+  return rule;
 }
 
 export function parseStoredIssueAlertRule(row: StoredRuleRow): IssueAlertRule | null {
@@ -577,14 +571,15 @@ function toDeliverySnapshot(row: DeliveryRow): IssueAlertDeliverySnapshot {
 }
 
 async function findDelivery(client: PrismaClientTransaction, scope: IssueAlertRuleScope, where: { id?: string, deduplicationKey?: string }): Promise<IssueAlertDeliverySnapshot | null> {
+  const rowWhere: Prisma.IssueAlertDeliveryWhereInput = {
+    tenancyId: scope.tenancyId,
+    projectId: scope.projectId,
+    branchId: scope.branchId,
+  };
+  if (where.id !== undefined) rowWhere.id = where.id;
+  if (where.deduplicationKey !== undefined) rowWhere.deduplicationKey = where.deduplicationKey;
   const row = await client.issueAlertDelivery.findFirst({
-    where: {
-      tenancyId: scope.tenancyId,
-      projectId: scope.projectId,
-      branchId: scope.branchId,
-      ...(where.id === undefined ? {} : { id: where.id }),
-      ...(where.deduplicationKey === undefined ? {} : { deduplicationKey: where.deduplicationKey }),
-    },
+    where: rowWhere,
     select: DELIVERY_SELECT,
   });
   return row === null ? null : toDeliverySnapshot(row);
@@ -741,6 +736,13 @@ async function recordWorkflowUpdateInTransaction(
     case "enqueued": {
       validateWorkflowEventId(update.workflowEventId);
       if (expectedDelivery !== undefined && expectedDelivery.state !== IssueAlertDeliveryState.CLAIMED) return null;
+      const data: Prisma.IssueAlertDeliveryUpdateManyMutationInput = {
+        state: IssueAlertDeliveryState.ENQUEUED,
+        outcome: IssueAlertDeliveryOutcome.WORKFLOW_ENQUEUED,
+        workflowEventId: update.workflowEventId,
+        enqueuedAt: at,
+      };
+      if (update.payload !== undefined) data.workflowPayload = update.payload;
       const updated = await client.issueAlertDelivery.updateMany({
         where: {
           tenancyId: scope.tenancyId,
@@ -751,13 +753,7 @@ async function recordWorkflowUpdateInTransaction(
             ? { ...workflowEventGuard, state: IssueAlertDeliveryState.CLAIMED }
             : { ...workflowEventGuard, ...expectedDeliveryGuard }),
         },
-        data: {
-          state: IssueAlertDeliveryState.ENQUEUED,
-          outcome: IssueAlertDeliveryOutcome.WORKFLOW_ENQUEUED,
-          workflowEventId: update.workflowEventId,
-          ...(update.payload === undefined ? {} : { workflowPayload: update.payload }),
-          enqueuedAt: at,
-        },
+        data,
       });
       if (expectedWorkflowEventId !== undefined && updated.count === 0) return null;
       break;

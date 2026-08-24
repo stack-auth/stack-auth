@@ -1,11 +1,18 @@
 import type { IssueFrame, IssueOccurrence } from "./issues-data";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
-export type IssueEventRecord = Readonly<Record<string, unknown>>;
+/**
+ * An untrusted, JSON-derived event payload object. The keys are whatever the
+ * reporting SDK sent, so values stay `Json` until the parsers below promote
+ * them into the typed payload structures.
+ */
+export type IssueEventRecord = Readonly<Record<string, Json>>;
 
 export type IssueEventField = {
   key: string,
-  value: unknown,
+  value: Json | undefined,
 };
 
 export type IssueSymbolicationDiagnosticCode =
@@ -148,7 +155,12 @@ function scrubDisplayString(value: string): string {
     .replace(/([?&](?:access[-_.]?token|api[-_.]?key|authorization|client[-_.]?secret|password|refresh[-_.]?token|secret|signature|token)=)[^&#\s]*/gi, "$1[Filtered]");
 }
 
-function safeDisplayValue(value: unknown, key: string, depth = 0): unknown {
+function safeDisplayValue(value: Json | undefined, key: string): Json | undefined {
+  if (value === undefined) return undefined;
+  return safeDisplayJson(value, key, 0);
+}
+
+function safeDisplayJson(value: Json, key: string, depth: number): Json {
   if (typeof value === "string") {
     if (isUrlEventKey(key)) {
       try {
@@ -160,49 +172,50 @@ function safeDisplayValue(value: unknown, key: string, depth = 0): unknown {
     }
     return scrubDisplayString(value);
   }
-  if (value == null || typeof value === "boolean" || typeof value === "number") return value;
+  if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (depth >= 6) return "[Truncated]";
-  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeDisplayValue(item, key, depth + 1));
-  const record = asIssueEventRecord(value);
-  if (record == null) return "[Unavailable]";
-  return Object.fromEntries(Object.entries(record)
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeDisplayJson(item, key, depth + 1));
+  return Object.fromEntries(Object.entries(value)
     .filter(([entryKey]) => !isSensitiveEventKey(entryKey))
     .sort(([left], [right]) => stringCompare(left, right))
     .slice(0, 100)
-    .map(([entryKey, entryValue]) => [entryKey, safeDisplayValue(entryValue, entryKey, depth + 1)]));
+    .map(([entryKey, entryValue]) => [entryKey, safeDisplayJson(entryValue, entryKey, depth + 1)]));
 }
 
 export function asIssueEventRecord(value: unknown): IssueEventRecord | null {
-  if (typeof value !== "object" || value == null || Array.isArray(value)) return null;
-  return Object.fromEntries(Object.entries(value));
+  if (!isRecord(value)) return null;
+  // SAFETY: every value routed here is JSON-derived — occurrence payloads come
+  // out of the JSON-parsed issue detail response, and nested calls re-read
+  // properties of records already established as such — so property values are
+  // Json by construction. The copy also drops any prototype the value carried.
+  return Object.fromEntries(Object.entries(value)) as IssueEventRecord;
 }
 
-function valueAt(record: IssueEventRecord | null, key: string): unknown {
+function valueAt(record: IssueEventRecord | null, key: string): Json | undefined {
   return record?.[key];
 }
 
-function stringValue(value: unknown): string | null {
+function stringValue(value: Json | undefined): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
-function numberValue(value: unknown): number | null {
+function numberValue(value: Json | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function booleanValue(value: unknown): boolean | null {
+function booleanValue(value: Json | undefined): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function objectEntries(value: unknown): IssueEventField[] {
-  const record = asIssueEventRecord(value);
-  if (record == null) return [];
-  return Object.entries(record)
+function objectEntries(value: Json | undefined): IssueEventField[] {
+  if (!isRecord(value)) return [];
+  return Object.entries(value)
     .filter(([key]) => !isSensitiveEventKey(key))
     .sort(([left], [right]) => stringCompare(left, right))
-    .map(([key, entryValue]) => ({ key, value: safeDisplayValue(entryValue, key) }));
+    .map(([key, entryValue]) => ({ key, value: safeDisplayJson(entryValue, key, 0) }));
 }
 
-function stringList(value: unknown): string[] {
+function stringList(value: Json | undefined): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item !== "");
 }
@@ -324,7 +337,7 @@ function parseFrameSymbolication(record: IssueEventRecord): IssueFrameSymbolicat
 
 function displayFrame(raw: IssueRawFrame, symbolication: IssueFrameSymbolication | null): IssueEventFrame {
   if (symbolication?.status !== "symbolicated") return { ...raw, raw, symbolication };
-  return {
+  const frame: IssueEventFrame = {
     ...raw,
     filename: symbolication.sourceFile ?? raw.filename,
     function: symbolication.name ?? raw.function,
@@ -332,15 +345,13 @@ function displayFrame(raw: IssueRawFrame, symbolication: IssueFrameSymbolication
     abs_path: symbolication.sourceFile ?? raw.abs_path,
     lineno: symbolication.originalLine ?? raw.lineno,
     colno: symbolication.originalColumn ?? raw.colno,
-    ...(symbolication.context == null ? {} : {
-      context: {
-        ...symbolication.context,
-        symbolicated: true,
-      } satisfies NonNullable<IssueEventFrame["context"]>,
-    }),
     raw,
     symbolication,
   };
+  if (symbolication.context != null) {
+    frame.context = { ...symbolication.context, symbolicated: true };
+  }
+  return frame;
 }
 
 function parseFrame(value: unknown): IssueEventFrame | null {
@@ -356,8 +367,8 @@ function parseFrame(value: unknown): IssueEventFrame | null {
     lineno: numberValue(valueAt(record, "lineno")),
     colno: numberValue(valueAt(record, "colno")),
     in_app: inApp,
-    ...debugId == null ? {} : { debug_id: debugId },
   };
+  if (debugId != null) raw.debug_id = debugId;
   return displayFrame(raw, parseFrameSymbolication(record));
 }
 
@@ -366,7 +377,7 @@ function parseFrames(value: unknown): IssueEventFrame[] {
   return value.map(parseFrame).filter((frame): frame is IssueEventFrame => frame != null);
 }
 
-function parseMechanism(value: unknown): string | null {
+function parseMechanism(value: Json | undefined): string | null {
   const direct = stringValue(value);
   if (direct != null) return direct;
   const record = asIssueEventRecord(value);
@@ -493,7 +504,7 @@ export function breadcrumbTimestampMillis(timestamp: number): number {
   return Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
 }
 
-export function formatIssueEventValue(value: unknown): string {
+export function formatIssueEventValue(value: Json | undefined): string {
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
 }

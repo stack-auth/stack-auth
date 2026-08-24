@@ -1,5 +1,8 @@
 
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import type { RowData } from "../../analytics/shared";
 
 export type SpanInput = {
   traceId: string,
@@ -8,7 +11,7 @@ export type SpanInput = {
   startMs: number,
   endMs: number | null,
   parentSpanId: string | null,
-  raw: Record<string, unknown>,
+  raw: RowData,
 };
 
 export type EventInput = {
@@ -16,7 +19,7 @@ export type EventInput = {
   eventType: string,
   atMs: number,
   spanId: string | null,
-  raw: Record<string, unknown>,
+  raw: RowData,
 };
 
 export type TraceNode = {
@@ -42,9 +45,9 @@ export type WaterfallRow =
 const GENERIC_HTTP_METHOD_SPAN = /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)$/;
 const INTERNAL_SDK_SPAN_TYPES = new Set(["hexclave.api.request"]);
 
-function objectStringProperty(value: unknown, property: string): string | null {
-  if (typeof value !== "object" || value === null) return null;
-  const propertyValue = Object.getOwnPropertyDescriptor(value, property)?.value;
+function objectStringProperty(value: Json | undefined, property: string): string | null {
+  if (!isRecord(value)) return null;
+  const propertyValue = value[property];
   return typeof propertyValue === "string" && propertyValue !== "" ? propertyValue : null;
 }
 

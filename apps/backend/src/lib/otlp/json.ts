@@ -1,3 +1,5 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
+
 export class OtlpJsonRequestError extends Error {}
 
 export type OtlpAttributeValue =
@@ -17,12 +19,8 @@ export const DEFAULT_OTLP_ATTRIBUTE_LIMITS = {
   maxAttributeArrayValues: 256,
 } as const;
 
-function isOtlpRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function otlpRecord(value: unknown, path: string): Record<string, unknown> {
-  if (!isOtlpRecord(value)) throw new OtlpJsonRequestError(`${path} must be an object`);
+  if (!isRecord(value)) throw new OtlpJsonRequestError(`${path} must be an object`);
   return value;
 }
 

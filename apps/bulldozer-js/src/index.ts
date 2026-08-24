@@ -3,6 +3,7 @@ import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/s
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
@@ -393,11 +394,35 @@ function readNonNegativeSafeIntegerField(body: Record<string, unknown>, fieldNam
   return value;
 }
 
-function readRowData(body: unknown): Record<string, unknown> {
+/**
+ * Row data as it is persisted: the JSON body's `rowData` object, parsed into
+ * Piledriver's value domain at the HTTP boundary so the write path never has to
+ * assert what it is storing.
+ */
+type PiledriverRowData = { [key: string]: PiledriverObject };
+
+function readRowData(body: unknown): PiledriverRowData {
   const record = readObjectBody(body);
   const rowData = record.rowData;
-  if (typeof rowData !== "object" || rowData == null || Array.isArray(rowData)) throw new StatusError(StatusError.BadRequest, "Expected rowData object");
-  return Object.fromEntries(Object.entries(rowData));
+  if (!isRecord(rowData)) throw new StatusError(StatusError.BadRequest, "Expected rowData object");
+  const result: PiledriverRowData = {};
+  for (const [key, value] of Object.entries(rowData)) result[key] = readPiledriverValue(value, `rowData.${key}`);
+  return result;
+}
+
+// The framework hands us JSON.parse output for JSON bodies, so this never
+// rejects a well-formed request — it exists so a non-JSON body value (e.g. a
+// multipart File) can never reach storage as something Piledriver cannot
+// represent.
+function readPiledriverValue(value: unknown, path: string): PiledriverObject {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((entry, index) => readPiledriverValue(entry, `${path}[${index}]`));
+  if (isRecord(value)) {
+    const result: PiledriverRowData = {};
+    for (const [key, entry] of Object.entries(value)) result[key] = readPiledriverValue(entry, `${path}.${key}`);
+    return result;
+  }
+  throw new StatusError(StatusError.BadRequest, `Expected a JSON value at ${path}`);
 }
 
 function readRowTenancyId(rowData: Record<string, unknown>) {
@@ -456,7 +481,7 @@ async function latestItemQuantitiesRowAsOfSnapshot<T>(
   return null;
 }
 
-async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: Record<string, unknown> }): Promise<void> {
+async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: PiledriverRowData }): Promise<void> {
   if (readRowTenancyId(options.rowData) !== options.tenancyId) {
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
@@ -465,7 +490,7 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
-      newRowData: options.rowData as unknown as PiledriverObject,
+      newRowData: options.rowData,
     }));
   } catch (error) {
     // Attach which table/row poisoned the cascade so Sentry's beforeSend surfaces it
@@ -542,7 +567,7 @@ function readStoredRowsFromBodies(options: { tenancyId: string, tableId: string,
     return {
       rowIdentifier: readStringField(rowData, idField),
       rowData,
-      newRowData: rowData as unknown as PiledriverObject,
+      newRowData: rowData,
     };
   });
 }
@@ -685,10 +710,6 @@ function parseSourceId(row: TransactionRow): string {
   if (row.type === "refund") return row.txnId;
   if (row.type === "subscription-renewal") return row.txnId.replace(/^sub-renewal:/, "");
   return row.txnId;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type InlineProduct = Extract<TransactionEntry, { type: "product_grant" }>["product"];

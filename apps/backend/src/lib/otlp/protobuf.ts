@@ -1,4 +1,5 @@
 import protobuf from "protobufjs";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 
 // protobufjs is CommonJS-only. Named ESM imports like `{ parse }` fail at
 // runtime under Node's native loader (OpenAPI codegen, Next route graphs).
@@ -267,7 +268,13 @@ function bytesToBase64(value: Uint8Array): string {
   return Buffer.from(value).toString("base64");
 }
 
-function toOtlpJsonValue(value: unknown, fieldName?: string): unknown {
+// The plain-object message form protobufjs exchanges with our OTLP types under
+// the conversion options in `decode`: JSON scalars plus Uint8Array for bytes
+// fields (longs and enums are already mapped to strings and numbers).
+export type OtlpProtobufMessageValue = string | number | boolean | null | Uint8Array | OtlpProtobufMessageValue[] | { [key: string]: OtlpProtobufMessageValue };
+export type OtlpProtobufMessageRecord = { [key: string]: OtlpProtobufMessageValue };
+
+function toOtlpJsonValue(value: OtlpProtobufMessageValue, fieldName?: string): Json {
   if (value instanceof Uint8Array) {
     return fieldName === "traceId" || fieldName === "spanId" || fieldName === "parentSpanId"
       ? bytesToHex(value)
@@ -276,14 +283,14 @@ function toOtlpJsonValue(value: unknown, fieldName?: string): unknown {
   if (Array.isArray(value)) return value.map((entry) => toOtlpJsonValue(entry));
   if (typeof value !== "object" || value === null) return value;
 
-  const result: Record<string, unknown> = {};
+  const result: Record<string, Json> = {};
   for (const [key, entry] of Object.entries(value)) {
     result[key] = toOtlpJsonValue(entry, key);
   }
   return result;
 }
 
-function decode(type: Type, body: ArrayBuffer | Uint8Array): unknown {
+function decode(type: Type, body: ArrayBuffer | Uint8Array): Json {
   try {
     const message = type.decode(body instanceof Uint8Array ? body : new Uint8Array(body));
     return toOtlpJsonValue(type.toObject(message, {
@@ -299,25 +306,25 @@ function decode(type: Type, body: ArrayBuffer | Uint8Array): unknown {
   }
 }
 
-function encode(type: Type, value: Record<string, unknown>): Uint8Array {
+function encode(type: Type, value: OtlpProtobufMessageRecord): Uint8Array {
   const message = type.fromObject(value);
   const validationError = type.verify(message);
   if (validationError !== null) throw new OtlpProtobufError(`Invalid OTLP protobuf value: ${validationError}`);
   return type.encode(message).finish();
 }
 
-export function decodeOtlpProtobufRequest(signal: OtlpSignal, body: ArrayBuffer | Uint8Array): unknown {
+export function decodeOtlpProtobufRequest(signal: OtlpSignal, body: ArrayBuffer | Uint8Array): Json {
   return decode(requestType(signal), body);
 }
 
-export function encodeOtlpProtobufRequest(signal: OtlpSignal, value: Record<string, unknown>): Uint8Array {
+export function encodeOtlpProtobufRequest(signal: OtlpSignal, value: OtlpProtobufMessageRecord): Uint8Array {
   return encode(requestType(signal), value);
 }
 
-export function encodeOtlpProtobufResponse(signal: OtlpSignal, value: Record<string, unknown> = {}): Uint8Array {
+export function encodeOtlpProtobufResponse(signal: OtlpSignal, value: OtlpProtobufMessageRecord = {}): Uint8Array {
   return encode(responseType(signal), value);
 }
 
-export function decodeOtlpProtobufResponse(signal: OtlpSignal, body: ArrayBuffer | Uint8Array): unknown {
+export function decodeOtlpProtobufResponse(signal: OtlpSignal, body: ArrayBuffer | Uint8Array): Json {
   return decode(responseType(signal), body);
 }

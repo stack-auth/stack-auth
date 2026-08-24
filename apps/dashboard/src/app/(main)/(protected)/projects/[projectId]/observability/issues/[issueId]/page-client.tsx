@@ -33,6 +33,7 @@ import {
   formatAbsoluteTimeFromMillis,
   formatDateFromMillis,
   formatRelativeTimeFromMillis,
+  getErrorMessage,
 } from "../../format";
 import { LogLevelChip } from "../../log-level";
 import {
@@ -42,7 +43,7 @@ import {
   resolveCorrelationAnchor,
   type LeadingUpToLogLine,
 } from "../correlation";
-import { formatIssueCount, issueCulprit, issueShortIdLabel, issueSubtitle, issueTitle, parseIssueRouteId } from "../issue-format";
+import { formatIssueCount, issueCulprit, issueShortIdLabel, issueSubtitle, issueTitle, parseIssueCulpritData, parseIssueRouteId } from "../issue-format";
 import { parseIssueRangeHours } from "../issue-filters";
 import { issueDetailHref, issuesListHref, traceDetailHref } from "../issue-links";
 import { sessionReplayHref } from "../../observability-links";
@@ -106,11 +107,6 @@ function RailRow({ label, children }: { label: string, children: React.ReactNode
       <span className="min-w-0 truncate text-right text-xs">{children}</span>
     </div>
   );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value == null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
 }
 
 function EmptyRailValue() {
@@ -218,7 +214,7 @@ export default function PageClient() {
         }
       } catch (caught) {
         if (cancelled) return;
-        setError(caught instanceof Error ? caught.message : String(caught));
+        setError(getErrorMessage(caught));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -255,7 +251,7 @@ export default function PageClient() {
         setLeadingUpToError(null);
       } catch (caught) {
         if (cancelled) return;
-        setLeadingUpToError(caught instanceof Error ? caught.message : String(caught));
+        setLeadingUpToError(getErrorMessage(caught));
         setLeadingUpTo([]);
       }
     });
@@ -264,88 +260,96 @@ export default function PageClient() {
     };
   }, [adminApp, anchor, occurrence]);
 
-  const changeStatus = useCallback(async (status: IssueStatus) => {
-    if (detail == null || statusSaving) return;
-    setStatusError(null);
-    setStatusSaving(true);
+  // Shared shape for all optimistic issue mutations: snapshot the current
+  // detail, apply the optimistic patch, run the API call, roll back + surface
+  // the error on failure. `apply` receives the pre-mutation detail so it can
+  // reconcile the server response on top of it.
+  const runOptimisticIssueUpdate = useCallback(async (opts: {
+    blocked: boolean,
+    setError: (error: string | null) => void,
+    setSaving?: (saving: boolean) => void,
+    optimistic?: (detail: IssueDetailResponse) => IssueDetailResponse,
+    apply: (detail: IssueDetailResponse) => Promise<unknown>,
+  }): Promise<void> => {
+    if (detail == null || opts.blocked) return;
     const previous = detail;
-    setDetail({ ...detail, issue: { ...detail.issue, status } });
+    opts.setError(null);
+    if (opts.setSaving != null) opts.setSaving(true);
+    if (opts.optimistic != null) setDetail(opts.optimistic(detail));
     try {
-      await updateIssueStatus(adminApp, detail.issue.id, status);
+      await opts.apply(detail);
     } catch (caught) {
       setDetail(previous);
-      setStatusError(caught instanceof Error ? caught.message : String(caught));
+      opts.setError(getErrorMessage(caught));
     } finally {
-      setStatusSaving(false);
+      if (opts.setSaving != null) opts.setSaving(false);
     }
-  }, [adminApp, detail, statusSaving]);
+  }, [detail]);
+
+  const changeStatus = useCallback(async (status: IssueStatus) => {
+    await runOptimisticIssueUpdate({
+      blocked: statusSaving,
+      setError: setStatusError,
+      setSaving: setStatusSaving,
+      optimistic: (current) => ({ ...current, issue: { ...current.issue, status } }),
+      apply: (current) => updateIssueStatus(adminApp, current.issue.id, status),
+    });
+  }, [adminApp, runOptimisticIssueUpdate, statusSaving]);
 
   const changeSnooze = useCallback(async (durationMs: number) => {
-    if (detail == null || statusSaving) return;
-    setStatusError(null);
-    setStatusSaving(true);
-    const previous = detail;
-    setDetail({ ...detail, issue: { ...detail.issue, status: "ignored" } });
-    try {
-      const result = await snoozeIssue(adminApp, detail.issue.id, Date.now() + durationMs);
-      const status = result.status;
-      if (status != null) {
-        setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
-      }
-    } catch (caught) {
-      setDetail(previous);
-      setStatusError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setStatusSaving(false);
-    }
-  }, [adminApp, detail, statusSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: statusSaving,
+      setError: setStatusError,
+      setSaving: setStatusSaving,
+      optimistic: (current) => ({ ...current, issue: { ...current.issue, status: "ignored" } }),
+      apply: async (current) => {
+        const result = await snoozeIssue(adminApp, current.issue.id, Date.now() + durationMs);
+        const status = result.status;
+        if (status != null) {
+          setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
+        }
+      },
+    });
+  }, [adminApp, runOptimisticIssueUpdate, statusSaving]);
 
   const changeUnsnooze = useCallback(async () => {
-    if (detail == null || statusSaving) return;
-    setStatusError(null);
-    setStatusSaving(true);
-    const previous = detail;
-    setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved" } });
-    try {
-      const result = await unsnoozeIssue(adminApp, detail.issue.id);
-      const status = result.status;
-      if (status != null) {
-        setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
-      }
-    } catch (caught) {
-      setDetail(previous);
-      setStatusError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setStatusSaving(false);
-    }
-  }, [adminApp, detail, statusSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: statusSaving,
+      setError: setStatusError,
+      setSaving: setStatusSaving,
+      optimistic: (current) => ({ ...current, issue: { ...current.issue, status: "unresolved" } }),
+      apply: async (current) => {
+        const result = await unsnoozeIssue(adminApp, current.issue.id);
+        const status = result.status;
+        if (status != null) {
+          setDetail((current) => current == null ? current : { ...current, issue: { ...current.issue, status } });
+        }
+      },
+    });
+  }, [adminApp, runOptimisticIssueUpdate, statusSaving]);
 
   const changeRegress = useCallback(async () => {
-    if (detail == null || statusSaving) return;
-    setStatusError(null);
-    setStatusSaving(true);
-    const previous = detail;
-    setDetail({ ...detail, issue: { ...detail.issue, status: "unresolved", substatus: "regressed" } });
-    try {
-      const result = await regressIssue(adminApp, detail.issue.id);
-      const status = result.status;
-      if (status != null) {
-        setDetail((current) => current == null ? current : {
-          ...current,
-          issue: {
-            ...current.issue,
-            status,
-            substatus: result.transition_kind === "regressed" ? "regressed" : current.issue.substatus,
-          },
-        });
-      }
-    } catch (caught) {
-      setDetail(previous);
-      setStatusError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setStatusSaving(false);
-    }
-  }, [adminApp, detail, statusSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: statusSaving,
+      setError: setStatusError,
+      setSaving: setStatusSaving,
+      optimistic: (current) => ({ ...current, issue: { ...current.issue, status: "unresolved", substatus: "regressed" } }),
+      apply: async (current) => {
+        const result = await regressIssue(adminApp, current.issue.id);
+        const status = result.status;
+        if (status != null) {
+          setDetail((current) => current == null ? current : {
+            ...current,
+            issue: {
+              ...current.issue,
+              status,
+              substatus: result.transition_kind === "regressed" ? "regressed" : current.issue.substatus,
+            },
+          });
+        }
+      },
+    });
+  }, [adminApp, runOptimisticIssueUpdate, statusSaving]);
 
   const changePriority = useCallback(async (priority: IssuePriority | null) => {
     if (detail == null) return;
@@ -356,7 +360,7 @@ export default function PageClient() {
       await updateIssuePriority(adminApp, detail.issue.id, priority);
     } catch (caught) {
       setDetail({ ...detail, product: { ...detail.product, priority: previous } });
-      setProductError(caught instanceof Error ? caught.message : String(caught));
+      setProductError(getErrorMessage(caught));
     }
   }, [adminApp, detail]);
 
@@ -381,146 +385,117 @@ export default function PageClient() {
   }, [adminApp, detail]);
 
   const changeAssignment = useCallback(async (assigneeUserId: string | null) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
-    setDetail(setIssueAssignee(detail, assigneeUserId));
-    try {
-      const result = await updateIssueAssignment(adminApp, detail.issue.id, assigneeUserId);
-      setDetail((current) => current == null ? current : setIssueAssignee(current, result.assignee_user_id));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, detail, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      optimistic: (current) => setIssueAssignee(current, assigneeUserId),
+      apply: async (current) => {
+        const result = await updateIssueAssignment(adminApp, current.issue.id, assigneeUserId);
+        setDetail((current) => current == null ? current : setIssueAssignee(current, result.assignee_user_id));
+      },
+    });
+  }, [adminApp, productSaving, runOptimisticIssueUpdate]);
 
   const changeOwner = useCallback(async (type: "user" | "team" | "none", id: string | null) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
-    try {
-      if (type === "none") {
-        await clearManualIssueOwners(adminApp, detail.issue.id);
-        setDetail((current) => current == null ? current : clearManualIssueOwnerState(current));
-        return;
-      }
-      if (id === null) throw new Error("A manual issue owner requires an identity");
-      const result = await updateIssueOwner(adminApp, detail.issue.id, {
-        type,
-        userId: type === "user" ? id : null,
-        teamId: type === "team" ? id : null,
-      });
-      const existing = detail.product.owners.find((owner) => owner.id === result.id);
-      const updatedAt = new Date(result.updated_at_millis).toISOString();
-      setDetail((current) => current == null ? current : setIssueOwnerState(current, {
-        id: result.id,
-        type: result.type,
-        user_id: result.user_id,
-        team_id: result.team_id,
-        source: result.source,
-        context: result.context,
-        created_at: existing?.created_at ?? updatedAt,
-        updated_at: updatedAt,
-      }));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, detail, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      apply: async (current) => {
+        if (type === "none") {
+          await clearManualIssueOwners(adminApp, current.issue.id);
+          setDetail((current) => current == null ? current : clearManualIssueOwnerState(current));
+          return;
+        }
+        if (id === null) throw new Error("A manual issue owner requires an identity");
+        const result = await updateIssueOwner(adminApp, current.issue.id, {
+          type,
+          userId: type === "user" ? id : null,
+          teamId: type === "team" ? id : null,
+        });
+        const existing = current.product.owners.find((owner) => owner.id === result.id);
+        const updatedAt = new Date(result.updated_at_millis).toISOString();
+        setDetail((current) => current == null ? current : setIssueOwnerState(current, {
+          id: result.id,
+          type: result.type,
+          user_id: result.user_id,
+          team_id: result.team_id,
+          source: result.source,
+          context: result.context,
+          created_at: existing?.created_at ?? updatedAt,
+          updated_at: updatedAt,
+        }));
+      },
+    });
+  }, [adminApp, productSaving, runOptimisticIssueUpdate]);
 
   const changeBookmark = useCallback(async (bookmarked: boolean) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
-    setDetail(setIssueBookmarkState(detail, dashboardUser.id, bookmarked));
-    try {
-      const result = await updateIssueBookmark(adminApp, detail.issue.id, dashboardUser.id, bookmarked, `dashboard-bookmark-${crypto.randomUUID()}`);
-      setDetail((current) => current == null ? current : setIssueBookmarkState(current, result.user_id, result.bookmarked));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, dashboardUser.id, detail, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      optimistic: (current) => setIssueBookmarkState(current, dashboardUser.id, bookmarked),
+      apply: async (current) => {
+        const result = await updateIssueBookmark(adminApp, current.issue.id, dashboardUser.id, bookmarked, `dashboard-bookmark-${crypto.randomUUID()}`);
+        setDetail((current) => current == null ? current : setIssueBookmarkState(current, result.user_id, result.bookmarked));
+      },
+    });
+  }, [adminApp, dashboardUser.id, productSaving, runOptimisticIssueUpdate]);
+
+  const reconcileSubscription = useCallback((result: Awaited<ReturnType<typeof updateIssueSubscription>>) => {
+    const existing = detail?.product.subscriptions.find((subscription) => subscription.type === result.subject_type && subscription.id === result.subject_id);
+    const resultTime = new Date(result.updated_at_millis).toISOString();
+    setDetail((current) => current == null ? current : setIssueSubscriptionState(current, {
+      type: result.subject_type,
+      id: result.subject_id,
+      is_active: result.subscribed,
+      reason: result.reason,
+      created_at: existing?.created_at ?? resultTime,
+      updated_at: resultTime,
+    }, result.subscribed, resultTime));
+  }, [detail]);
 
   const changeSubscription = useCallback(async (subscribed: boolean) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
     const updatedAt = new Date().toISOString();
-    setDetail(setIssueSubscriptionState(detail, { type: "user", id: dashboardUser.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt));
-    try {
-      const result = await updateIssueSubscription(adminApp, detail.issue.id, "user", dashboardUser.id, subscribed, "manual", `dashboard-subscription-${crypto.randomUUID()}`);
-      const existing = detail.product.subscriptions.find((subscription) => subscription.type === result.subject_type && subscription.id === result.subject_id);
-      const resultTime = new Date(result.updated_at_millis).toISOString();
-      setDetail((current) => current == null ? current : setIssueSubscriptionState(current, {
-        type: result.subject_type,
-        id: result.subject_id,
-        is_active: result.subscribed,
-        reason: result.reason,
-        created_at: existing?.created_at ?? resultTime,
-        updated_at: resultTime,
-      }, result.subscribed, resultTime));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, dashboardUser.id, detail, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      optimistic: (current) => setIssueSubscriptionState(current, { type: "user", id: dashboardUser.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt),
+      apply: async (current) => {
+        const result = await updateIssueSubscription(adminApp, current.issue.id, "user", dashboardUser.id, subscribed, "manual", `dashboard-subscription-${crypto.randomUUID()}`);
+        reconcileSubscription(result);
+      },
+    });
+  }, [adminApp, dashboardUser.id, productSaving, reconcileSubscription, runOptimisticIssueUpdate]);
 
   const changeTeam = useCallback(async () => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
-    setDetail(setIssueTeam(detail, ownerTeam.id));
-    try {
-      const result = await updateIssueTeam(adminApp, detail.issue.id, ownerTeam.id);
-      setDetail((current) => current == null ? current : setIssueTeam(current, result.team_id));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, detail, ownerTeam.id, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      optimistic: (current) => setIssueTeam(current, ownerTeam.id),
+      apply: async (current) => {
+        const result = await updateIssueTeam(adminApp, current.issue.id, ownerTeam.id);
+        setDetail((current) => current == null ? current : setIssueTeam(current, result.team_id));
+      },
+    });
+  }, [adminApp, ownerTeam.id, productSaving, runOptimisticIssueUpdate]);
 
   const changeTeamSubscription = useCallback(async (subscribed: boolean) => {
-    if (detail == null || productSaving) return;
-    const previous = detail;
-    setProductError(null);
-    setProductSaving(true);
     const updatedAt = new Date().toISOString();
-    setDetail(setIssueSubscriptionState(detail, { type: "team", id: ownerTeam.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt));
-    try {
-      const result = await updateIssueSubscription(adminApp, detail.issue.id, "team", ownerTeam.id, subscribed, "manual", `dashboard-team-subscription-${crypto.randomUUID()}`);
-      const existing = detail.product.subscriptions.find((subscription) => subscription.type === result.subject_type && subscription.id === result.subject_id);
-      const resultTime = new Date(result.updated_at_millis).toISOString();
-      setDetail((current) => current == null ? current : setIssueSubscriptionState(current, {
-        type: result.subject_type,
-        id: result.subject_id,
-        is_active: result.subscribed,
-        reason: result.reason,
-        created_at: existing?.created_at ?? resultTime,
-        updated_at: resultTime,
-      }, result.subscribed, resultTime));
-    } catch (caught) {
-      setDetail(previous);
-      setProductError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProductSaving(false);
-    }
-  }, [adminApp, detail, ownerTeam.id, productSaving]);
+    await runOptimisticIssueUpdate({
+      blocked: productSaving,
+      setError: setProductError,
+      setSaving: setProductSaving,
+      optimistic: (current) => setIssueSubscriptionState(current, { type: "team", id: ownerTeam.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt),
+      apply: async (current) => {
+        const result = await updateIssueSubscription(adminApp, current.issue.id, "team", ownerTeam.id, subscribed, "manual", `dashboard-team-subscription-${crypto.randomUUID()}`);
+        reconcileSubscription(result);
+      },
+    });
+  }, [adminApp, ownerTeam.id, productSaving, reconcileSubscription, runOptimisticIssueUpdate]);
 
   const splitHashes = useCallback(async (hashes: string[]) => {
     if (detail == null || productSaving) return;
@@ -600,7 +575,7 @@ export default function PageClient() {
           description={
             issue == null
               ? undefined
-              : `${issueCulprit({ culprit: issue.culprit, frames: occurrence?.frames, data: asRecord(occurrence?.data) })}${issueSubtitle(issue) === "" ? "" : ` · ${issueSubtitle(issue)}`}`
+              : `${issueCulprit({ culprit: issue.culprit, frames: occurrence?.frames, data: parseIssueCulpritData(occurrence?.data) })}${issueSubtitle(issue) === "" ? "" : ` · ${issueSubtitle(issue)}`}`
           }
           actions={headerActions}
           sticky

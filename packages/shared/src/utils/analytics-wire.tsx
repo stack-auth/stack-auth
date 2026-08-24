@@ -1,4 +1,5 @@
 import { HexclaveAssertionError } from "./errors";
+import { isRecord } from "./objects";
 
 export type TelemetryLens = "analytics" | "observability";
 export type TelemetrySignalKind = "event" | "log" | "error" | "span";
@@ -22,21 +23,21 @@ export type TelemetryResource = {
   attributes?: Record<string, TelemetryResourceAttributeValue>,
 };
 
-function getUnexpectedObjectKey(value: object, allowedKeys: readonly string[]): string | null {
+function getUnexpectedObjectKey(value: Record<string, unknown>, allowedKeys: readonly string[]): string | null {
   const allowed = new Set(allowedKeys);
   return Object.keys(value).find((key) => !allowed.has(key)) ?? null;
 }
 
 export function getTelemetryResourceError(resource: unknown): string | null {
-  if (typeof resource !== "object" || resource === null || Array.isArray(resource)) {
+  if (!isRecord(resource)) {
     return "telemetry.resource must be an object";
   }
   const unexpectedResourceKey = getUnexpectedObjectKey(resource, ["service", "deploymentEnvironmentName", "attributes"]);
   if (unexpectedResourceKey !== null) {
     return `telemetry.resource contains unknown field ${JSON.stringify(unexpectedResourceKey)}`;
   }
-  const service = Reflect.get(resource, "service");
-  if (typeof service !== "object" || service === null || Array.isArray(service)) {
+  const service = resource.service;
+  if (!isRecord(service)) {
     return "telemetry.resource.service must be an object";
   }
   const unexpectedServiceKey = getUnexpectedObjectKey(service, ["name", "namespace", "version", "instanceId"]);
@@ -44,11 +45,11 @@ export function getTelemetryResourceError(resource: unknown): string | null {
     return `telemetry.resource.service contains unknown field ${JSON.stringify(unexpectedServiceKey)}`;
   }
   const fields = [
-    ["service.name", Reflect.get(service, "name"), true],
-    ["service.namespace", Reflect.get(service, "namespace"), false],
-    ["service.version", Reflect.get(service, "version"), false],
-    ["service.instanceId", Reflect.get(service, "instanceId"), false],
-    ["deploymentEnvironmentName", Reflect.get(resource, "deploymentEnvironmentName"), false],
+    ["service.name", service.name, true],
+    ["service.namespace", service.namespace, false],
+    ["service.version", service.version, false],
+    ["service.instanceId", service.instanceId, false],
+    ["deploymentEnvironmentName", resource.deploymentEnvironmentName, false],
   ] as const;
   for (const [name, value, required] of fields) {
     if (value === undefined && !required) continue;
@@ -59,9 +60,9 @@ export function getTelemetryResourceError(resource: unknown): string | null {
       return `telemetry.resource.${name} must be at most ${TELEMETRY_RESOURCE_STRING_MAX_LENGTH} characters`;
     }
   }
-  const attributes = Reflect.get(resource, "attributes");
+  const attributes = resource.attributes;
   if (attributes === undefined) return null;
-  if (typeof attributes !== "object" || attributes === null || Array.isArray(attributes)) {
+  if (!isRecord(attributes)) {
     return "telemetry.resource.attributes must be a plain object";
   }
   const prototype = Object.getPrototypeOf(attributes);
@@ -111,16 +112,14 @@ export function snapshotTelemetryResource(resource: unknown): TelemetryResource 
 
   const { service, deploymentEnvironmentName, attributes } = resource;
 
-  return {
-    service: {
-      name: service.name,
-      ...service.namespace === undefined ? {} : { namespace: service.namespace },
-      ...service.version === undefined ? {} : { version: service.version },
-      ...service.instanceId === undefined ? {} : { instanceId: service.instanceId },
-    },
-    ...deploymentEnvironmentName === undefined ? {} : { deploymentEnvironmentName },
-    ...attributes === undefined ? {} : { attributes: JSON.parse(JSON.stringify(attributes)) },
-  };
+  const serviceSnapshot: TelemetryResource["service"] = { name: service.name };
+  if (service.namespace !== undefined) serviceSnapshot.namespace = service.namespace;
+  if (service.version !== undefined) serviceSnapshot.version = service.version;
+  if (service.instanceId !== undefined) serviceSnapshot.instanceId = service.instanceId;
+  const snapshot: TelemetryResource = { service: serviceSnapshot };
+  if (deploymentEnvironmentName !== undefined) snapshot.deploymentEnvironmentName = deploymentEnvironmentName;
+  if (attributes !== undefined) snapshot.attributes = JSON.parse(JSON.stringify(attributes));
+  return snapshot;
 }
 export type TelemetrySignalDescriptor = {
   kind: TelemetrySignalKind,

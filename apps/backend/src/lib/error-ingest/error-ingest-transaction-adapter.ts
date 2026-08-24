@@ -1,7 +1,7 @@
-import type { ErrorIngestScrubbedValue } from "./error-ingest-scrubber";
-import { scrubErrorIngestPayload } from "./error-ingest-scrubber";
+import type { ErrorIngestScrubbedRecord, ErrorIngestScrubbedValue } from "./error-ingest-scrubber";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload } from "./error-ingest-scrubber";
 import type { ErrorIngestEnvelopeTransactionMetadata } from "./error-ingest-envelope";
-import type { CanonicalOtlpSpan, CanonicalOtlpSpanEvent, CanonicalOtlpSpanLink } from "@/lib/otlp/traces";
+import type { CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import type { OtlpAttributeValue, OtlpAttributes } from "@/lib/otlp/json";
 import { isW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 
@@ -24,19 +24,13 @@ export class ErrorIngestTransactionAdapterError extends Error {
   }
 }
 
-type ScrubbedRecord = { [key: string]: ErrorIngestScrubbedValue };
-
-function isRecord(value: ErrorIngestScrubbedValue): value is ScrubbedRecord {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function boundedRecord(value: ScrubbedRecord, label: string): ScrubbedRecord {
+function boundedRecord(value: ErrorIngestScrubbedRecord, label: string): ErrorIngestScrubbedRecord {
   const result = scrubErrorIngestPayload(value, {
     maxPayloadBytes: MAX_ATTRIBUTE_BYTES,
     maxStringBytes: MAX_ATTRIBUTE_BYTES,
     maxCollectionEntries: 100,
   });
-  if (result.value === undefined || !isRecord(result.value)) {
+  if (result.value === undefined || !isErrorIngestScrubbedRecord(result.value)) {
     throw new ErrorIngestTransactionAdapterError("payload_too_large", `${label} exceeds its privacy budget`);
   }
   return result.value;
@@ -65,7 +59,7 @@ function toOtlpValue(value: ErrorIngestScrubbedValue, label: string, depth = 0):
   return { type: "kvlist", value: toOtlpAttributes(record, label, depth + 1) };
 }
 
-function toOtlpAttributes(value: ScrubbedRecord, label: string, depth = 0): OtlpAttributes {
+function toOtlpAttributes(value: ErrorIngestScrubbedRecord, label: string, depth = 0): OtlpAttributes {
   const bounded = boundedRecord(value, label);
   const result: OtlpAttributes = new Map();
   for (const [key, entry] of Object.entries(bounded).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
@@ -78,7 +72,7 @@ function addStringAttribute(attributes: OtlpAttributes, key: string, value: stri
   if (value !== null) attributes.set(key, { type: "string", value });
 }
 
-function addRecordAttribute(attributes: OtlpAttributes, key: string, value: ScrubbedRecord | null): void {
+function addRecordAttribute(attributes: OtlpAttributes, key: string, value: ErrorIngestScrubbedRecord | null): void {
   if (value !== null) attributes.set(key, { type: "kvlist", value: toOtlpAttributes(value, key) });
 }
 
@@ -149,8 +143,8 @@ function baseSpan(
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
     droppedLinksCount: 0,
-    events: [] as CanonicalOtlpSpanEvent[],
-    links: [] as CanonicalOtlpSpanLink[],
+    events: [],
+    links: [],
     resource: context.resource,
     scope: context.scope,
   };

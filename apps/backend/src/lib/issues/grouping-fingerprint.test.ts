@@ -62,7 +62,7 @@ describe("server-side custom fingerprint contract", () => {
       message: "Payment 12345 declined",
       fingerprint: ["{{ type }}", "{{ message }}"],
     }), CONFIG);
-    const sameShape = computeGrouping(input({
+    const sameParameterizedMessage = computeGrouping(input({
       stack: null,
       message: "Payment 67890 declined",
       fingerprint: ["{{ type }}", "{{ message }}"],
@@ -76,7 +76,7 @@ describe("server-side custom fingerprint contract", () => {
 
     expect(first.variant).toBe("custom");
     expect(first.aliasHashes).toEqual([]);
-    expect(first.ownerHash).toBe(sameShape.ownerHash);
+    expect(first.ownerHash).toBe(sameParameterizedMessage.ownerHash);
     expect(first.ownerHash).not.toBe(otherType.ownerHash);
     expect(first.provenance.fingerprint.resolvedTokens).toEqual(["TypeError", "Payment <int> declined"]);
   });

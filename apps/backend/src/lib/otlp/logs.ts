@@ -1,4 +1,5 @@
 import { CUSTOM_TELEMETRY_NAME_RE, canWriteTelemetrySignal, isAnalyticsSystemEvent, isW3cSpanId, isW3cTraceId, type TelemetryWriterOrigin } from "@hexclave/shared/dist/utils/analytics-wire";
+import type { ErrorIngestScrubbedRecord } from "@/lib/error-ingest/error-ingest-scrubber";
 import { OtlpJsonRequestError, otlpAnyValue, otlpArray, otlpAttributes, otlpCanonicalUint64String, otlpRecord, otlpString, otlpUint, otlpUint32, type OtlpAttributes, type OtlpAttributeValue } from "./json";
 
 export type CanonicalOtlpLogRecord = {
@@ -26,7 +27,7 @@ export type CanonicalOtlpLogRecord = {
     schemaUrl: string,
   },
   errorEnvelope: OtlpErrorEnvelope | null,
-  policyScrubbedData?: Readonly<Record<string, unknown>>,
+  policyScrubbedData?: Readonly<ErrorIngestScrubbedRecord>,
 };
 
 export const HEXCLAVE_ERROR_EVENT_ID_RE = /^[0-9a-f]{32}$/;

@@ -1,12 +1,12 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { createOtlpTraceProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
-import { OtlpProtobufError } from "@/lib/otlp/protobuf";
+import { createOtlpHttpResponse, parseOtlpHttpRequest, resolveOtlpClientContext } from "@/lib/otlp/http";
 import { buildOtlpTraceRows, getOtlpSpanPolicyData, insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp/trace-writer";
-import { normalizeOtlpJsonTraceRequest, OtlpTraceRequestError, type CanonicalOtlpSpan } from "@/lib/otlp/traces";
+import { normalizeOtlpJsonTraceRequest, type CanonicalOtlpSpan } from "@/lib/otlp/traces";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
@@ -42,34 +42,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }, fullRequest) => {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) {
-      throw new KnownErrors.ObservabilityNotEnabled();
-    }
-    let userId: string | null = null;
-    let refreshTokenId: string | null = null;
-    if (auth.type === "client") {
-      if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
-      if (!auth.refreshTokenId) {
-        throw new StatusError(StatusError.BadRequest, "A refresh token is required for browser OTLP traces");
-      }
-      userId = auth.user.id;
-      refreshTokenId = auth.refreshTokenId;
-    }
+    assertObservabilityEnabled(auth.tenancy);
+    const { userId, refreshTokenId } = resolveOtlpClientContext("traces", auth);
 
-    let encoding: ReturnType<typeof getOtlpHttpEncoding>;
-    let spans: CanonicalOtlpSpan[];
-    try {
-      encoding = getOtlpHttpEncoding(fullRequest.headers);
-      spans = normalizeOtlpJsonTraceRequest(decodeOtlpHttpRequest("traces", encoding, body));
-    } catch (error) {
-      if (error instanceof OtlpTraceRequestError || error instanceof OtlpProtobufError || error instanceof OtlpHttpError) {
-        const fallback = error instanceof OtlpProtobufError
-          ? "Invalid OTLP protobuf request"
-          : "Invalid OTLP traces request";
-        throw new StatusError(StatusError.BadRequest, scrubOtlpErrorMessage(error.message, fallback));
-      }
-      throw error;
-    }
+    const { encoding, value: spans } = parseOtlpHttpRequest({
+      kind: "traces",
+      headers: fullRequest.headers,
+      body,
+      normalize: normalizeOtlpJsonTraceRequest,
+    });
     if (spans.length > MAX_SPANS_PER_REQUEST) {
       throw new StatusError(StatusError.PayloadTooLarge, `OTLP trace request contains more than ${MAX_SPANS_PER_REQUEST} spans`);
     }

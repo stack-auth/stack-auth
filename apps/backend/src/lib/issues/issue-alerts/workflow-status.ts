@@ -1,3 +1,4 @@
+import { utf8ByteLength } from "@/lib/utf8";
 import {
   IssueAlertDeliveryOutcome,
   IssueAlertDeliveryState,
@@ -5,7 +6,7 @@ import {
   type IssueAlertDeliveryState as IssueAlertDeliveryStateValue,
 } from "@/generated/prisma/enums";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { scrubErrorIngestPayload, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload, type ErrorIngestScrubbedRecord, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 import { deterministicWorkflowUuid } from "@/lib/workflows/events";
 import {
   ISSUE_ALERT_EMAIL_WORKFLOW_ID,
@@ -27,8 +28,7 @@ export const ISSUE_ALERT_WORKFLOW_REPLAY_MAX_COUNT = 1_000;
 export const ISSUE_ALERT_WORKFLOW_REPLAY_MAX_PAYLOAD_BYTES = 32 * 1024;
 
 const IDENTIFIER_PATTERN = /^[^\u0000-\u001f\u007f]+$/u;
-const TEXT_ENCODER = new TextEncoder();
-type IssueAlertWorkflowReplayPayload = { [key: string]: ErrorIngestScrubbedValue };
+type IssueAlertWorkflowReplayPayload = ErrorIngestScrubbedRecord;
 
 function isMissingReplayPayload(value: unknown): value is null | undefined {
   return value === null || value === undefined;
@@ -81,15 +81,11 @@ export type IssueAlertWorkflowStatusResult =
 
 export const ISSUE_ALERT_WORKFLOW_RECONCILE_BATCH_SIZE = 200;
 
-function isObject(value: unknown): value is { readonly [key: string]: ErrorIngestScrubbedValue } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isBoundedIdentifier(value: unknown, maximumBytes: number): value is string {
   return typeof value === "string"
     && value.length > 0
     && IDENTIFIER_PATTERN.test(value)
-    && TEXT_ENCODER.encode(value).byteLength <= maximumBytes;
+    && utf8ByteLength(value) <= maximumBytes;
 }
 
 function isBoundedUniqueUserIdArray(value: ErrorIngestScrubbedValue | undefined): value is string[] {
@@ -247,10 +243,8 @@ const defaultStatusStore: IssueAlertWorkflowStatusStore = {
       },
       orderBy: [{ enqueuedAt: "asc" }, { id: "asc" }],
       take: limit,
-      ...(afterDelivery === undefined ? {} : {
-        cursor: { tenancyId_id: { tenancyId: afterDelivery.tenancyId, id: afterDelivery.id } },
-        skip: 1,
-      }),
+      cursor: afterDelivery === undefined ? undefined : { tenancyId_id: { tenancyId: afterDelivery.tenancyId, id: afterDelivery.id } },
+      skip: afterDelivery === undefined ? undefined : 1,
       select: {
         id: true,
         tenancyId: true,
@@ -387,7 +381,7 @@ export type IssueAlertWorkflowReplayDropReason =
   | "invalid_replay_time";
 
 function isReplayableAction(value: ErrorIngestScrubbedValue | undefined): value is IssueAlertWorkflowReplayPayload {
-  if (!isObject(value)) return false;
+  if (!isErrorIngestScrubbedRecord(value)) return false;
   if (value.type === "webhook") {
     return typeof value.integration_id === "string" && value.integration_id.length > 0;
   }
@@ -412,7 +406,7 @@ function isReplayableAction(value: ErrorIngestScrubbedValue | undefined): value 
 }
 
 function isReplayablePayload(value: ErrorIngestScrubbedValue | undefined): value is IssueAlertWorkflowReplayPayload {
-  if (!isObject(value)) return false;
+  if (!isErrorIngestScrubbedRecord(value)) return false;
   return value.schema_version === ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION
     && value.kind === "issue_alert"
     && typeof value.event_kind === "string"
@@ -451,7 +445,7 @@ export function buildIssueAlertWorkflowReplayPlan(input: {
   });
   if (!isReplayablePayload(scrubbed.value)) return { status: "drop", reason: "invalid_event_payload" };
   const payloadJson = JSON.stringify(scrubbed.value);
-  if (TEXT_ENCODER.encode(payloadJson).byteLength > ISSUE_ALERT_WORKFLOW_REPLAY_MAX_PAYLOAD_BYTES) {
+  if (utf8ByteLength(payloadJson) > ISSUE_ALERT_WORKFLOW_REPLAY_MAX_PAYLOAD_BYTES) {
     return { status: "drop", reason: "payload_too_large" };
   }
   return {

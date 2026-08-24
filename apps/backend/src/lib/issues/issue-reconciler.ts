@@ -111,7 +111,7 @@ async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[
     },
     format: "JSONEachRow",
   });
-  return await result.json() as CandidateRow[];
+  return await result.json<CandidateRow>();
 }
 
 async function findAppliedBatchIds(tenancy: Tenancy, batchIds: readonly string[]): Promise<Set<string>> {
@@ -137,6 +137,15 @@ async function rebuildInputs(options: {
     : `
         AND event_at >= {from:DateTime64(3)}
         AND event_at < {to:DateTime64(3)}`;
+  const queryParams: { projectId: string, branchId: string, batchIds: string[], from?: number, to?: number } = {
+    projectId: options.projectId,
+    branchId: options.branchId,
+    batchIds: [...options.batchIds],
+  };
+  if (options.from !== undefined && options.to !== undefined) {
+    queryParams.from = options.from.getTime() / 1000;
+    queryParams.to = options.to.getTime() / 1000;
+  }
   const result = await client.query({
     query: `
       SELECT
@@ -177,20 +186,10 @@ async function rebuildInputs(options: {
         AND batch_id IN {batchIds:Array(String)}
       GROUP BY batch_id, issue_hash
     `,
-    query_params: {
-      projectId: options.projectId,
-      branchId: options.branchId,
-      batchIds: [...options.batchIds],
-      ...(options.from === undefined || options.to === undefined
-        ? {}
-        : {
-          from: options.from.getTime() / 1000,
-          to: options.to.getTime() / 1000,
-        }),
-    },
+    query_params: queryParams,
     format: "JSONEachRow",
   });
-  const rows = await result.json() as OccurrenceGroupRow[];
+  const rows = await result.json<OccurrenceGroupRow>();
 
   const byBatch = new Map<string, { inputs: IssueBatchDelta[], receivedAt: Date }>();
   let skipped = 0;

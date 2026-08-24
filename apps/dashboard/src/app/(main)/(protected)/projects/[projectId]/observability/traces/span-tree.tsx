@@ -2,6 +2,7 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { cn } from "@/lib/utils";
 import { CaretDownIcon, CaretRightIcon, SpinnerGapIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -32,7 +33,7 @@ function DurationLabel({ startMs, endMs, nowMs }: { startMs: number, endMs: numb
   return <span className="font-mono text-[11px] text-muted-foreground">{formatDuration(endMs - startMs)}</span>;
 }
 
-function stringValue(value: unknown): string | null {
+function stringValue(value: Json | undefined): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 

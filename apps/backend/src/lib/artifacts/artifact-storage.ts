@@ -40,7 +40,7 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
           private: true,
         });
       } catch (error) {
-        throw translateStorageConfigurationError(error);
+        rethrowStorageConfigurationError(error);
       }
     },
     async createUploadUrl(options) {
@@ -54,7 +54,7 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
           private: true,
         });
       } catch (error) {
-        throw translateStorageConfigurationError(error);
+        rethrowStorageConfigurationError(error);
       }
     },
     async headObject(key) {
@@ -62,7 +62,7 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
         const result = await headBytes({ key, private: true });
         return result === null ? null : { byteLength: result.byteLength, eTag: result.eTag };
       } catch (error) {
-        throw translateStorageConfigurationError(error);
+        rethrowStorageConfigurationError(error);
       }
     },
     async readObject(key, expectedETag) {
@@ -81,7 +81,7 @@ export function createS3ArtifactObjectStorage(): ArtifactObjectStorage {
           throw error;
         }
       } catch (error) {
-        throw translateStorageConfigurationError(error);
+        rethrowStorageConfigurationError(error);
       }
     },
   };
@@ -93,14 +93,14 @@ const STORAGE_NOT_CONFIGURED_MESSAGES = [
   "S3 private bucket is not configured",
 ];
 
-function translateStorageConfigurationError(error: unknown): ArtifactServiceError | unknown {
+function rethrowStorageConfigurationError(error: unknown): never {
   const isNotConfigured = error instanceof HexclaveAssertionError
     && STORAGE_NOT_CONFIGURED_MESSAGES.some((message) => error.message === message || error.message.startsWith(`${message}\n`));
   if (isNotConfigured) {
-    return new ArtifactServiceError(
+    throw new ArtifactServiceError(
       "storage_unavailable",
       "Artifact object storage is not configured on this Hexclave instance.",
     );
   }
-  return error;
+  throw error;
 }

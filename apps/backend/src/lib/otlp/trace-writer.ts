@@ -1,10 +1,11 @@
 import { isW3cSpanId, TELEMETRY_UUID_RE, type TelemetrySpanKind, type TelemetrySpanStatusCode } from "@hexclave/shared/dist/utils/analytics-wire";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
 import { type CanonicalOtlpSpan, type OtlpAttributes, type OtlpAttributeValue } from "./traces";
 import { insertSpanLinks, insertSpans, type SpanInsertRow, type SpanLinkInsertRow } from "@/lib/spans";
 import type { GroupingRuntimeConfig } from "@/lib/issues/grouping-config";
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
+import { scrubErrorIngestPayload, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 
 // The product read model predates an explicit "unspecified" kind. OTel kind 0
 // is projected as internal while the canonical numeric meaning remains
@@ -24,7 +25,7 @@ export type OtlpTenantContext = {
 type SpanEventInsertRow = {
   event_type: string,
   event_at: Date,
-  data: unknown,
+  data: Json,
   producer: "sdk",
   runtime: "server" | "browser",
   project_id: string,
@@ -49,17 +50,19 @@ type SpanEventInsertRow = {
   dropped_attributes: number,
 };
 
-export function taggedValue(value: OtlpAttributeValue): unknown {
+// The `{type, value}` storage form of an attribute value: kvlists become plain
+// objects (Maps are not JSON-serializable), everything else keeps its wire pair.
+export function taggedValue(value: OtlpAttributeValue): Json {
   if (value.type === "kvlist") return { type: value.type, value: taggedAttributes(value.value) };
   if (value.type === "array") return { type: value.type, value: value.value.map(taggedValue) };
   return value;
 }
 
-export function taggedAttributes(attributes: OtlpAttributes): Record<string, unknown> {
+export function taggedAttributes(attributes: OtlpAttributes): Record<string, Json> {
   return Object.fromEntries([...attributes].map(([key, value]) => [key, taggedValue(value)]));
 }
 
-export function productValue(value: OtlpAttributeValue): unknown {
+export function productValue(value: OtlpAttributeValue): Json {
   if (value.type === "kvlist") return productAttributes(value.value);
   if (value.type === "array") return value.value.map(productValue);
   if (value.type === "int") {
@@ -69,14 +72,16 @@ export function productValue(value: OtlpAttributeValue): unknown {
   return value.value;
 }
 
-export function productAttributes(attributes: OtlpAttributes): Record<string, unknown> {
+export function productAttributes(attributes: OtlpAttributes): Record<string, Json> {
   return Object.fromEntries([...attributes].map(([key, value]) => [key, productValue(value)]));
 }
 
-function customSpanData(attributes: OtlpAttributes): Record<string, unknown> | null {
+function customSpanData(attributes: OtlpAttributes): Record<string, Json> | null {
   const value = attributes.get("hexclave.data");
   if (value?.type !== "string") return null;
-  let parsed: unknown;
+  // JSON.parse output is Json by construction; the annotation replaces the
+  // `any` the lib signature would otherwise leak.
+  let parsed: Json;
   try {
     parsed = JSON.parse(value.value);
   } catch (error) {
@@ -94,7 +99,7 @@ export function attributesJson(attributes: OtlpAttributes): string {
   return JSON.stringify(stripLoneSurrogates(scrubbed.value));
 }
 
-export function scrubOtlpValue(value: unknown, label: string): unknown {
+export function scrubOtlpValue(value: Json, label: string): ErrorIngestScrubbedValue {
   const scrubbed = scrubErrorIngestPayload(value);
   if (scrubbed.value === undefined) throw new Error(`${label} could not be normalized for durable storage`);
   return scrubbed.value;
@@ -105,17 +110,17 @@ export function stringAttribute(attributes: OtlpAttributes, key: string): string
   return value?.type === "string" ? value.value : null;
 }
 
-function rawProductSpanData(span: CanonicalOtlpSpan): Record<string, unknown> {
+function rawProductSpanData(span: CanonicalOtlpSpan): Record<string, Json> {
   const customData = customSpanData(span.attributes);
   if (customData !== null) return customData;
   return productAttributes(span.attributes);
 }
 
-export function getOtlpSpanPolicyData(span: CanonicalOtlpSpan): unknown {
+export function getOtlpSpanPolicyData(span: CanonicalOtlpSpan): Record<string, Json> {
   return rawProductSpanData(span);
 }
 
-function productSpanData(span: CanonicalOtlpSpan): unknown {
+function productSpanData(span: CanonicalOtlpSpan): Json {
   return span.policyScrubbedData ?? rawProductSpanData(span);
 }
 

@@ -15,6 +15,7 @@ import {
 import { attributesJson, scrubOtlpValue, type OtlpTenantContext } from "./trace-writer";
 import type { OtlpAttributeValue, OtlpAttributes } from "./json";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 
 export type OtlpMetricInsertRow = {
   project_id: string,
@@ -55,39 +56,44 @@ type MetricPoint =
   | CanonicalOtlpExponentialHistogramDataPoint
   | CanonicalOtlpSummaryDataPoint;
 
-function stableAttributeValue(value: OtlpAttributeValue): unknown {
+function stableAttributeValue(value: OtlpAttributeValue): Json {
   if (value.type === "kvlist") return { type: value.type, value: stableAttributes(value.value) };
   if (value.type === "array") return { type: value.type, value: value.value.map(stableAttributeValue) };
   return { type: value.type, value: value.value };
 }
 
-function stableAttributes(attributes: OtlpAttributes): Record<string, unknown> {
+function stableAttributes(attributes: OtlpAttributes): Record<string, Json> {
   const entries = [...attributes.entries()].sort(([left], [right]) => stringCompare(left, right));
   return Object.fromEntries(entries.map(([key, entry]) => [key, stableAttributeValue(entry)]));
 }
 
-function stableValue(value: unknown): unknown {
+// The canonical metric types keep attributes as Maps, so the trees we hash and
+// store mix plain JSON with OtlpAttributes maps until stableValue flattens them.
+type StableMetricInput = Json | OtlpAttributes | readonly StableMetricInput[] | { readonly [key: string]: StableMetricInput };
+
+function stableValue(value: StableMetricInput): Json {
   if (value instanceof Map) return stableAttributes(value);
-  if (Array.isArray(value)) return value.map(stableValue);
+  if (Array.isArray(value)) return value.map((entry) => stableValue(entry));
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(Object.entries(value).sort(([left], [right]) => stringCompare(left, right)).map(([key, entry]) => [key, stableValue(entry)]));
 }
 
-function stableJson(value: unknown): string {
+function stableJson(value: StableMetricInput): string {
   return JSON.stringify(stripLoneSurrogates(stableValue(value)));
 }
 
-function scrubbedStablePoint(point: MetricPoint): unknown {
-  return stableValue({
+function scrubbedStablePoint(point: MetricPoint): Json {
+  const stablePoint: { [key: string]: StableMetricInput } = {
     ...point,
     attributes: scrubOtlpValue(stableAttributes(point.attributes), "OTLP metric point attributes"),
-    ..."exemplars" in point ? {
-      exemplars: point.exemplars.map((pointExemplar) => ({
-        ...pointExemplar,
-        filteredAttributes: scrubOtlpValue(stableAttributes(pointExemplar.filteredAttributes), "OTLP metric exemplar attributes"),
-      })),
-    } : {},
-  });
+  };
+  if ("exemplars" in point) {
+    stablePoint.exemplars = point.exemplars.map((pointExemplar) => ({
+      ...pointExemplar,
+      filteredAttributes: scrubOtlpValue(stableAttributes(pointExemplar.filteredAttributes), "OTLP metric exemplar attributes"),
+    }));
+  }
+  return stableValue(stablePoint);
 }
 
 function firstExemplar(point: MetricPoint): CanonicalOtlpExemplar | null {

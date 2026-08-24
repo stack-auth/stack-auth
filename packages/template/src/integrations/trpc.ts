@@ -29,11 +29,16 @@ export type HexclaveTRPCContext = {
   user?: AdapterUser | null,
 };
 
+/**
+ * The slice of tRPC's middleware options the adapter reads. The runtime
+ * objects carry the consumer's full context; everything beyond this slice
+ * passes through the `...ctx` spread untouched.
+ */
 type TRPCMiddlewareOpts = {
-  ctx: HexclaveTRPCContext & Record<string, unknown>,
+  ctx: HexclaveTRPCContext,
   path: string,
   type: string,
-  next: (opts?: { ctx?: Record<string, unknown> }) => Promise<unknown>,
+  next: (opts?: { ctx?: HexclaveTRPCContext }) => Promise<unknown>,
 };
 
 /** The slice of a `initTRPC...create()` instance the adapter needs. */
@@ -50,9 +55,17 @@ export type HexclaveTRPCMiddlewareOptions = {
   unauthorized?: () => Error,
 };
 
+/**
+ * The slice of the tRPC adapter's `createContext` options the adapter reads:
+ * the fetch adapter provides `req` (a `Request`), Node adapters provide `req`
+ * (an `IncomingMessage`), and some custom setups provide `request`. The values
+ * stay unknown until `normalizeRequestLike` parses them.
+ */
+export type TRPCContextOptionsLike = { req?: unknown, request?: unknown };
+
 export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: AdapterServerApp, options?: {
   /** Override how the request is pulled out of the adapter's context options. */
-  getRequest?: (contextOptions: Record<string, unknown>) => unknown,
+  getRequest?: (contextOptions: TRPCContextOptionsLike) => unknown,
   unauthorized?: () => Error,
 }) {
   return {
@@ -62,7 +75,7 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
      * and Node's IncomingMessage are request-like) and stashes the lazy
      * per-request Hexclave context.
      */
-    createContext: (contextOptions: Record<string, unknown>): HexclaveTRPCContext => {
+    createContext: (contextOptions: TRPCContextOptionsLike): HexclaveTRPCContext => {
       const requestInput = options?.getRequest
         ? options.getRequest(contextOptions)
         : contextOptions.req ?? contextOptions.request ?? null;
@@ -75,6 +88,9 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
       if (middlewareOptions?.required && unauthorized === undefined) {
         throw new Error("Hexclave tRPC adapter: `required: true` needs an `unauthorized` error factory (e.g. () => new TRPCError({ code: \"UNAUTHORIZED\" })).");
       }
+      // SAFETY (for the trailing cast): TS resolves `t.middleware(...)` through
+      // the TRPCInstanceLike constraint (returning unknown); the concrete `t`
+      // returns exactly ReturnType<T["middleware"]>, which the cast restores.
       return t.middleware(async ({ ctx, path, type, next }: TRPCMiddlewareOpts) => {
         const hexclave = ctx.hexclave
           ?? throwErr("Hexclave tRPC adapter: pass `hexclave.createContext` to your tRPC adapter so the middleware can see the request.");

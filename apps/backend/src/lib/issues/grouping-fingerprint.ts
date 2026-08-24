@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "@/lib/utf8";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { parameterizeMessage } from "./parameterize";
 import type {
   GroupingFingerprintProvenance,
@@ -34,20 +36,9 @@ export type GroupingFingerprintResolution = {
   resolvedValues: string[],
 };
 
-type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readField(data: unknown, key: string): unknown {
-  return isRecord(data) ? data[key] : undefined;
-}
-
 export const MAX_GROUPING_FINGERPRINT_TOKENS = 32;
 export const MAX_GROUPING_FINGERPRINT_TOKEN_BYTES = 512;
 export const MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES = 64 * 1024;
-const FINGERPRINT_TEXT_ENCODER = new TextEncoder();
 
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -55,18 +46,19 @@ function readStringArray(value: unknown): string[] | undefined {
   const result: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") return undefined;
-    if (FINGERPRINT_TEXT_ENCODER.encode(item).byteLength > MAX_GROUPING_FINGERPRINT_TOKEN_BYTES) return undefined;
+    if (utf8ByteLength(item) > MAX_GROUPING_FINGERPRINT_TOKEN_BYTES) return undefined;
     result.push(item);
   }
   return result;
 }
 
 export function readGroupingFingerprint(data: unknown): readonly string[] | undefined {
-  const rawOverride = readField(data, "fingerprint_override");
+  if (!isRecord(data)) return undefined;
+  const rawOverride = data.fingerprint_override;
   if (rawOverride !== undefined) {
     return readStringArray(rawOverride);
   }
-  return readStringArray(readField(data, "fingerprint"));
+  return readStringArray(data.fingerprint);
 }
 
 export function classifyGroupingFingerprint(fingerprint: readonly string[] | undefined): GroupingFingerprintType {
@@ -106,7 +98,7 @@ export function resolveGroupingFingerprint(
     tokens,
     resolved_tokens: resolvedValues,
   };
-  if (FINGERPRINT_TEXT_ENCODER.encode(JSON.stringify(durableFingerprint)).byteLength > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
+  if (utf8ByteLength(JSON.stringify(durableFingerprint)) > MAX_GROUPING_FINGERPRINT_PROVENANCE_BYTES) {
     return {
       resolvedValues: [],
       provenance: {

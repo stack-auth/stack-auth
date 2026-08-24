@@ -1,4 +1,6 @@
 import { type DebugImage, ERROR_MAX_DEBUG_IMAGES, ERROR_MAX_DEBUG_IMAGES_BYTES } from "@hexclave/shared/dist/utils/analytics-wire";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import { runtimeGlobals } from "./runtime-globals";
 
 
 const DEBUG_IDS_GLOBAL_KEY = "_hexclaveDebugIds";
@@ -28,17 +30,16 @@ export function extractInnermostFrameFilename(stack: string): string | null {
   return null;
 }
 
-function readDebugIdsGlobal(): object | null {
+function readDebugIdsGlobal(): Record<string, unknown> | null {
   try {
-    const value: unknown = Reflect.get(globalThis, DEBUG_IDS_GLOBAL_KEY);
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-    return value;
+    const value = runtimeGlobals[DEBUG_IDS_GLOBAL_KEY];
+    return isRecord(value) ? value : null;
   } catch {
     return null;
   }
 }
 
-let cachedSource: object | null = null;
+let cachedSource: Record<string, unknown> | null = null;
 let cachedEntries: readonly (readonly [string, unknown])[] | null = null;
 let cachedMap: ReadonlyMap<string, string> | null = null;
 
@@ -75,7 +76,7 @@ export function getFilenameToDebugIdMap(): ReadonlyMap<string, string> {
       && cachedSource === debugIds
       && cachedEntries !== null
       && keys.length === cachedEntries.length
-      && cachedEntries.every(([key, value]) => Reflect.get(debugIds, key) === value)
+      && cachedEntries.every(([key, value]) => debugIds[key] === value)
     ) {
       return cachedMap;
     }
@@ -83,7 +84,7 @@ export function getFilenameToDebugIdMap(): ReadonlyMap<string, string> {
     const map = new Map<string, string>();
     const entries: (readonly [string, unknown])[] = [];
     for (const key of keys) {
-      const debugId: unknown = Reflect.get(debugIds, key);
+      const debugId = debugIds[key];
       entries.push([key, debugId]);
       if (typeof debugId !== "string" || debugId === "") continue;
       const filename = extractInnermostFrameFilename(key);

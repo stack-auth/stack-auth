@@ -33,6 +33,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObje
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 import { telemetryMeteredAt } from "@/lib/telemetry-metering-time";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 
 const MAX_TRANSACTION_SPANS_PER_ENVELOPE = 10_000;
 
@@ -44,13 +45,11 @@ function envelopeBytes(value: unknown): Uint8Array {
 
 function envelopeResource(envelope: ErrorIngestEnvelope): TelemetryResource {
   const sdk = envelope.header.sdk;
-  return {
-    service: {
-      name: sdk?.name ?? "sentry-envelope",
-      ...(sdk?.version === undefined ? {} : { version: sdk.version }),
-    },
-    ...(envelope.header.trace?.environment === undefined ? {} : { deploymentEnvironmentName: envelope.header.trace.environment }),
-  };
+  const service: TelemetryResource["service"] = { name: sdk?.name ?? "sentry-envelope" };
+  if (sdk?.version !== undefined) service.version = sdk.version;
+  const resource: TelemetryResource = { service };
+  if (envelope.header.trace?.environment !== undefined) resource.deploymentEnvironmentName = envelope.header.trace.environment;
+  return resource;
 }
 
 function envelopeOtlpContext(envelope: ErrorIngestEnvelope): Parameters<typeof sentryTransactionToCanonicalOtlpSpans>[1] {
@@ -129,7 +128,7 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   handler: async ({ auth, body }) => {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) throw new KnownErrors.ObservabilityNotEnabled();
+    assertObservabilityEnabled(auth.tenancy);
     const bytes = envelopeBytes(body);
     const attachmentPayloads = new Map<string, ErrorIngestEnvelopeAttachmentPayload>();
     let envelope: ErrorIngestEnvelope;

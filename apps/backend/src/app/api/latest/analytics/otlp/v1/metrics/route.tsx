@@ -1,10 +1,9 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
-import { OtlpProtobufError } from "@/lib/otlp/protobuf";
+import { createOtlpHttpResponse, parseOtlpHttpRequest, resolveOtlpClientContext } from "@/lib/otlp/http";
 import { buildOtlpMetricRows, insertOtlpMetrics } from "@/lib/otlp/metric-writer";
-import { normalizeOtlpJsonMetricsRequest, OtlpMetricsRequestError } from "@/lib/otlp/metrics";
+import { normalizeOtlpJsonMetricsRequest } from "@/lib/otlp/metrics";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
@@ -35,35 +34,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }, fullRequest) => {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) {
-      throw new KnownErrors.ObservabilityNotEnabled();
-    }
+    assertObservabilityEnabled(auth.tenancy);
+    const { userId, refreshTokenId } = resolveOtlpClientContext("metrics", auth);
 
-    let userId: string | null = null;
-    let refreshTokenId: string | null = null;
-    if (auth.type === "client") {
-      if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
-      if (!auth.refreshTokenId) {
-        throw new StatusError(StatusError.BadRequest, "A refresh token is required for browser OTLP metrics");
-      }
-      userId = auth.user.id;
-      refreshTokenId = auth.refreshTokenId;
-    }
-
-    let encoding: ReturnType<typeof getOtlpHttpEncoding>;
-    let metricsRequest: ReturnType<typeof normalizeOtlpJsonMetricsRequest>;
-    try {
-      encoding = getOtlpHttpEncoding(fullRequest.headers);
-      metricsRequest = normalizeOtlpJsonMetricsRequest(decodeOtlpHttpRequest("metrics", encoding, body));
-    } catch (error) {
-      if (error instanceof OtlpMetricsRequestError || error instanceof OtlpProtobufError || error instanceof OtlpHttpError) {
-        const fallback = error instanceof OtlpProtobufError
-          ? "Invalid OTLP protobuf request"
-          : "Invalid OTLP metrics request";
-        throw new StatusError(StatusError.BadRequest, scrubOtlpErrorMessage(error.message, fallback));
-      }
-      throw error;
-    }
+    const { encoding, value: metricsRequest } = parseOtlpHttpRequest({
+      kind: "metrics",
+      headers: fullRequest.headers,
+      body,
+      normalize: normalizeOtlpJsonMetricsRequest,
+    });
 
     const tenant = {
       projectId: auth.tenancy.project.id,

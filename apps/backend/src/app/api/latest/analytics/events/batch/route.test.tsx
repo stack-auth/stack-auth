@@ -68,7 +68,11 @@ const FULL_REQUEST: SmartRequest = {
 
 type BatchHandlerRequest = Parameters<NonNullable<typeof routeOverload>["handler"]>[0];
 
-const HANDLER_REQUEST = {
+// SAFETY: the batch handler only reads auth (tenancy id/branchId/project.id, the analytics app gate, the
+// observability grouping config, user id, refreshTokenId) and body; the rest of the handler-request surface is
+// unused. Starting from an empty base means any new dependency of the handler fails loudly here instead of being
+// silently satisfied.
+const HANDLER_REQUEST = Object.assign({} as BatchHandlerRequest, {
   auth: {
     type: "client",
     tenancy: {
@@ -84,7 +88,7 @@ const HANDLER_REQUEST = {
     refreshTokenId: "refresh-token-1",
   },
   body: LEGACY_BODY,
-} as unknown as BatchHandlerRequest;
+});
 
 function validateBatchRequest(body: unknown) {
   if (routeOverload === undefined) throw new Error("analytics batch route did not register its POST overload");

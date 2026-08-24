@@ -30,8 +30,13 @@ export type AdapterUser = ServerUser;
  */
 export function normalizeRequestLike(input: unknown): RequestLike | null {
   if (typeof input !== "object" || input === null) return null;
+  // SAFETY: reading a possibly-absent `headers` as unknown claims nothing.
   const headers = (input as { headers?: unknown }).headers;
   if (typeof headers !== "object" || headers === null) return null;
+  // SAFETY: an object-typed `headers` is, in every supported runtime, either a
+  // Fetch/Node Headers instance (the `{ get }` variant) or a plain name→value
+  // dict — exactly RequestLike's two variants; per-entry value types cannot be
+  // verified without eagerly walking headers the SDK may never read.
   return input as RequestLike;
 }
 
@@ -54,6 +59,10 @@ export function createRequestContext(app: AdapterServerApp, requestInput: unknow
   return {
     request,
     getUser: () => {
+      // SAFETY: getUser's overloads do not resolve for the non-generic
+      // AdapterServerApp (HasTokenStore = boolean), but every concrete
+      // instantiation accepts the ({ tokenStore, or: "return-null" }) form
+      // selected here and resolves to a nullable user for it.
       userPromise ??= (app.getUser as (options: { tokenStore: RequestLike, or: "return-null" }) => Promise<AdapterUser | null>)({ tokenStore: request, or: "return-null" });
       return userPromise;
     },
@@ -71,7 +80,8 @@ export type AdapterTelemetryOptions = boolean | {
   data?: Record<string, unknown>,
 };
 
-type AdapterSpanLink = Record<string, unknown>;
+/** The span-attribution options an adapter may thread into `withSpan` alongside `data`. */
+type AdapterSpanLink = { request?: RequestLike, userId?: string };
 
 /**
  * Wraps `fn` in an adapter span (or calls it straight through when telemetry is

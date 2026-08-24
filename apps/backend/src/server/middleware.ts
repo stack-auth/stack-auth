@@ -1,5 +1,6 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
@@ -209,10 +210,6 @@ function ensureForwardedForHeader(headers: Headers, request: Request) {
     return;
   }
   headers.set("x-forwarded-for", normalizeClientIp(socketIp));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function readClientSocketIp(request: Request): string | undefined {

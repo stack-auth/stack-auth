@@ -632,16 +632,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
           await waitUntil(Date.now() + this._retryDelayMs(attempt - 1, retryAfterResponse), deadline, "retry");
         } catch (error) {
           if (!isDeadlineError(error)) throw error;
-          return {
+          const deadlineResult: Extract<SerializedOtlpSendResult, { kind: "retryable" }> = {
             kind: "retryable",
             reason: "deadline",
             itemCount: batch.itemCount,
             attempts: attempt - 1,
             bodyBytes: batch.bodyBytes,
             retryAfterMs: 0,
-            ...(lastStatusCode === undefined ? {} : { statusCode: lastStatusCode }),
             message: error instanceof Error ? error.message : String(error),
           };
+          if (lastStatusCode !== undefined) deadlineResult.statusCode = lastStatusCode;
+          return deadlineResult;
         }
       }
 
@@ -743,16 +744,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
     }
 
     const error = lastError ?? throwErr("unreachable: the Hexclave OTLP export retry loop cannot exit without recording an error");
-    return {
+    const exhaustedResult: Extract<SerializedOtlpSendResult, { kind: "retryable" }> = {
       kind: "retryable",
       reason: lastFailureWasNetwork ? "network_error" : "retry_exhausted",
       itemCount: batch.itemCount,
       attempts,
       bodyBytes: batch.bodyBytes,
       retryAfterMs: this._retryDelayMs(attempts, retryAfterResponse),
-      ...(lastStatusCode === undefined ? {} : { statusCode: lastStatusCode }),
       message: error.message,
     };
+    if (lastStatusCode !== undefined) exhaustedResult.statusCode = lastStatusCode;
+    return exhaustedResult;
   }
 
   private async _fetch(body: Uint8Array<ArrayBuffer>, deadline: number, url = this._url): Promise<Response> {
@@ -867,16 +869,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         return { code: ExportResultCode.FAILED, error: new Error(result.message) };
       }
       case "permanent_failure": {
-        this._recordOutcome({
+        const outcome: Omit<BrowserOtlpDeliveryOutcome, "signal"> = {
           outcome: "dropped",
           reason: result.reason,
           itemCount: result.itemCount,
           droppedItemCount: result.itemCount,
           attempts: result.attempts,
           bodyBytes: result.bodyBytes,
-          ...(result.statusCode === undefined ? {} : { statusCode: result.statusCode }),
           message: result.message,
-        });
+        };
+        if (result.statusCode !== undefined) outcome.statusCode = result.statusCode;
+        this._recordOutcome(outcome);
         return { code: ExportResultCode.FAILED, error: new Error(result.message) };
       }
       case "auth_generation_mismatch": {
@@ -948,16 +951,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         });
         return { code: ExportResultCode.FAILED, error };
       }
-      this._recordOutcome({
+      const outcome: Omit<BrowserOtlpDeliveryOutcome, "signal"> = {
         outcome: "queued",
         reason: result.reason,
         itemCount: batch.itemCount,
         droppedItemCount: 0,
         attempts: result.attempts,
         bodyBytes: batch.bodyBytes,
-        ...(result.statusCode === undefined ? {} : { statusCode: result.statusCode }),
         message: result.message,
-      });
+      };
+      if (result.statusCode !== undefined) outcome.statusCode = result.statusCode;
+      this._recordOutcome(outcome);
       this._scheduleQueueDrain();
       return { code: ExportResultCode.SUCCESS };
     });
@@ -1064,16 +1068,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         }
         case "permanent_failure": {
           await this._queue.remove(entry.id);
-          this._recordOutcome({
+          const outcome: Omit<BrowserOtlpDeliveryOutcome, "signal"> = {
             outcome: "dropped",
             reason: result.reason,
             itemCount: result.itemCount,
             droppedItemCount: result.itemCount,
             attempts: result.attempts,
             bodyBytes: result.bodyBytes,
-            ...(result.statusCode === undefined ? {} : { statusCode: result.statusCode }),
             message: result.message,
-          });
+          };
+          if (result.statusCode !== undefined) outcome.statusCode = result.statusCode;
+          this._recordOutcome(outcome);
           continue;
         }
         case "auth_generation_mismatch": {
@@ -1091,16 +1096,17 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
         }
         case "retryable": {
           await this._queue.reschedule(entry.id, Date.now() + result.retryAfterMs);
-          this._recordOutcome({
+          const outcome: Omit<BrowserOtlpDeliveryOutcome, "signal"> = {
             outcome: "queued",
             reason: result.reason,
             itemCount: result.itemCount,
             droppedItemCount: 0,
             attempts: result.attempts,
             bodyBytes: result.bodyBytes,
-            ...(result.statusCode === undefined ? {} : { statusCode: result.statusCode }),
             message: result.message,
-          });
+          };
+          if (result.statusCode !== undefined) outcome.statusCode = result.statusCode;
+          this._recordOutcome(outcome);
           return;
         }
       }
@@ -1291,7 +1297,9 @@ class HexclaveBrowserOtlpJsonExporter<Payload> implements BrowserOtlpExporterCon
       : "error_message" in partialSuccessValue && typeof partialSuccessValue.error_message === "string"
         ? partialSuccessValue.error_message
         : undefined;
-    return { rejectedItemCount: Math.floor(rejectedItemCount), ...(message === undefined ? {} : { message }) };
+    const partialSuccess: { rejectedItemCount: number, message?: string } = { rejectedItemCount: Math.floor(rejectedItemCount) };
+    if (message !== undefined) partialSuccess.message = message;
+    return partialSuccess;
   }
 
   async shutdown(timeoutMs = this._shutdownDeadlineMs): Promise<void> {
@@ -1608,6 +1616,10 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
   };
 
   const claim = (nextOptions: BrowserManagedOtelOptions): number => {
+    // Deadline options are deliberately excluded from `registrationSignature`
+    // (they don't affect provider identity), so they can change per owner and
+    // must always be read from `activeOptions`, never from the first owner's
+    // captured `options`.
     activeOptions = nextOptions;
     ambientContextGetter = nextOptions.getAmbientOtelContext;
     activeOwnerId += 1;
@@ -1621,7 +1633,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     loggerProvider,
     meterProvider,
     forceFlush: async (timeoutMs) => {
-      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"), "timeoutMs");
+      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(activeOptions.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs"), "timeoutMs");
       await withDeadline(Promise.all([
         provider.forceFlush(),
         loggerProvider.forceFlush(),
@@ -1636,7 +1648,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     enableHttpInstrumentationForOwner: (ownerId) => ownerId === activeOwnerId && setHttpInstrumentationEnabled(true),
     claim,
     flushBeforeAuthenticationChange: async () => {
-      const flushResult = await Result.fromPromise(value.forceFlush(normalizedPositiveInteger(options.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs")));
+      const flushResult = await Result.fromPromise(value.forceFlush(normalizedPositiveInteger(activeOptions.flushDeadlineMs, OTLP_FLUSH_DEADLINE_MS, "flushDeadlineMs")));
       const advanceGeneration = async () => await Result.fromPromise(Promise.all([
         exporter.advanceAuthGeneration(),
         logExporter.advanceAuthGeneration(),
@@ -1659,7 +1671,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
         });
       }
 
-      const shutdownTimeout = normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs");
+      const shutdownTimeout = normalizedPositiveInteger(activeOptions.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs");
       removeLifecycleListeners();
       const shutdownResult = await Result.fromPromise(withDeadline(
         Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]),
@@ -1684,7 +1696,7 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
     updatePropagationPolicy,
     shutdown: async (timeoutMs) => {
       disableInstrumentations?.();
-      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(options.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"), "timeoutMs");
+      const timeout = normalizedPositiveInteger(timeoutMs, normalizedPositiveInteger(activeOptions.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs"), "timeoutMs");
       const shutdownResult = await Result.fromPromise(withDeadline(
         Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]),
         elapsedDeadline(timeout),

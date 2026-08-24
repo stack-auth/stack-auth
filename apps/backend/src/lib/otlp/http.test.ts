@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError } from "./http";
+import { createOtlpHttpResponse, getOtlpHttpEncoding, OtlpHttpError, parseOtlpHttpRequest } from "./http";
 import { decodeOtlpProtobufResponse, encodeOtlpProtobufRequest } from "./protobuf";
 
 describe("OTLP/HTTP content negotiation", () => {
@@ -10,11 +10,12 @@ describe("OTLP/HTTP content negotiation", () => {
   });
 
   it("decodes protobuf requests before the shared canonical normalizer", () => {
+    const headers = { "content-type": ["application/x-protobuf"] };
     const encoded = encodeOtlpProtobufRequest("logs", { resourceLogs: [] });
-    expect(decodeOtlpHttpRequest("logs", "protobuf", encoded)).toEqual({ resourceLogs: [] });
+    expect(parseOtlpHttpRequest({ kind: "logs", headers, body: encoded, normalize: (decoded) => decoded }).value).toEqual({ resourceLogs: [] });
 
     const metrics = encodeOtlpProtobufRequest("metrics", { resourceMetrics: [] });
-    expect(decodeOtlpHttpRequest("metrics", "protobuf", metrics)).toEqual({ resourceMetrics: [] });
+    expect(parseOtlpHttpRequest({ kind: "metrics", headers, body: metrics, normalize: (decoded) => decoded }).value).toEqual({ resourceMetrics: [] });
   });
 
   it("returns standard empty JSON success and protobuf partial-success messages", () => {

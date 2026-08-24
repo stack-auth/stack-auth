@@ -29,17 +29,19 @@ function catalogRow(overrides: Partial<{ metric_name: string, metric_type: strin
 
 function fakeCatalogClient(responses: Array<{ expectQueryContains?: string, rows: unknown[] }>) {
   const executed: Array<{ query: string, query_params: Record<string, unknown> }> = [];
-  const client = {
-    query: async (options: { query: string, query_params: Record<string, unknown> }) => {
-      executed.push({ query: options.query, query_params: options.query_params });
-      const response = responses.shift();
-      if (response === undefined) throw new Error("Unexpected extra ClickHouse query");
-      if (response.expectQueryContains !== undefined && !options.query.includes(response.expectQueryContains)) {
-        throw new Error(`Expected query to contain ${JSON.stringify(response.expectQueryContains)}: ${options.query}`);
-      }
-      return { json: async () => response.rows };
-    },
-  } as unknown as ClickHouseClient;
+  const query = async (options: { query: string, query_params: Record<string, unknown> }) => {
+    executed.push({ query: options.query, query_params: options.query_params });
+    const response = responses.shift();
+    if (response === undefined) throw new Error("Unexpected extra ClickHouse query");
+    if (response.expectQueryContains !== undefined && !options.query.includes(response.expectQueryContains)) {
+      throw new Error(`Expected query to contain ${JSON.stringify(response.expectQueryContains)}: ${options.query}`);
+    }
+    return { json: async () => response.rows };
+  };
+  // SAFETY: the metric-query helpers only call client.query and read .json() off the result, so a query-only
+  // fixture is sufficient; starting from an empty base means any new ClickHouseClient dependency of the code
+  // under test fails loudly here instead of being silently mocked.
+  const client = Object.assign({} as ClickHouseClient, { query });
   return { client, executed };
 }
 

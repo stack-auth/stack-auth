@@ -3,8 +3,8 @@ import {
   parseErrorIngestClientReportRequest,
   persistErrorIngestClientReportRequest,
 } from "@/lib/error-ingest";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
@@ -29,7 +29,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({ accepted: yupNumber().defined() }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) throw new KnownErrors.ObservabilityNotEnabled();
+    assertObservabilityEnabled(auth.tenancy);
     let request: ReturnType<typeof parseErrorIngestClientReportRequest>;
     try {
       request = parseErrorIngestClientReportRequest(body);

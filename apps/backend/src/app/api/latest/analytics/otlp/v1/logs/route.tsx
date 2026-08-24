@@ -7,11 +7,10 @@ import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { buildTelemetryMaterializationMessage, enqueueQstashMessage } from "@/lib/qstash-outbox";
-import { createOtlpHttpResponse, decodeOtlpHttpRequest, getOtlpHttpEncoding, OtlpHttpError, scrubOtlpErrorMessage } from "@/lib/otlp/http";
+import { createOtlpHttpResponse, parseOtlpHttpRequest, resolveOtlpClientContext, scrubOtlpErrorMessage } from "@/lib/otlp/http";
 import { getHexclaveOtlpLogContractError, normalizeOtlpJsonLogsRequest, type CanonicalOtlpLogRecord } from "@/lib/otlp/logs";
-import { OtlpProtobufError } from "@/lib/otlp/protobuf";
-import { OtlpJsonRequestError } from "@/lib/otlp/json";
 import type { OtlpTenantContext } from "@/lib/otlp/trace-writer";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
@@ -46,30 +45,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }, fullRequest) => {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) throw new KnownErrors.ObservabilityNotEnabled();
-    let userId: string | null = null;
-    let refreshTokenId: string | null = null;
-    if (auth.type === "client") {
-      if (!auth.user) throw new KnownErrors.UserAuthenticationRequired();
-      if (!auth.refreshTokenId) throw new StatusError(StatusError.BadRequest, "A refresh token is required for browser OTLP logs");
-      userId = auth.user.id;
-      refreshTokenId = auth.refreshTokenId;
-    }
+    assertObservabilityEnabled(auth.tenancy);
+    const { userId, refreshTokenId } = resolveOtlpClientContext("logs", auth);
 
-    let encoding: ReturnType<typeof getOtlpHttpEncoding>;
-    let logRecords: CanonicalOtlpLogRecord[];
-    try {
-      encoding = getOtlpHttpEncoding(fullRequest.headers);
-      logRecords = normalizeOtlpJsonLogsRequest(decodeOtlpHttpRequest("logs", encoding, body));
-    } catch (error) {
-      if (error instanceof OtlpJsonRequestError || error instanceof OtlpProtobufError || error instanceof OtlpHttpError) {
-        const fallback = error instanceof OtlpProtobufError
-          ? "Invalid OTLP protobuf request"
-          : "Invalid OTLP logs request";
-        throw new StatusError(StatusError.BadRequest, scrubOtlpErrorMessage(error.message, fallback));
-      }
-      throw error;
-    }
+    const { encoding, value: logRecords } = parseOtlpHttpRequest({
+      kind: "logs",
+      headers: fullRequest.headers,
+      body,
+      normalize: normalizeOtlpJsonLogsRequest,
+    });
     if (logRecords.length > MAX_LOG_RECORDS_PER_REQUEST) {
       throw new StatusError(StatusError.PayloadTooLarge, `OTLP logs request contains more than ${MAX_LOG_RECORDS_PER_REQUEST} log records`);
     }

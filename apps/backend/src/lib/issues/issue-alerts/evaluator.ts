@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "@/lib/utf8";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { createHash } from "node:crypto";
 import {
   ISSUE_ALERT_RULE_SCHEMA_VERSION,
@@ -32,7 +34,6 @@ const MAX_RECIPIENTS = 64;
 const MAX_COOLDOWN_SECONDS = 30 * 24 * 60 * 60;
 const MAX_FREQUENCY_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const MAX_FREQUENCY_COUNT = 1_000_000_000;
-const TEXT_ENCODER = new TextEncoder();
 
 const ISSUE_ALERT_STATUSES: readonly IssueAlertStatus[] = ["unresolved", "resolved", "ignored"];
 const ISSUE_ALERT_COOLDOWN_SCOPES: readonly IssueAlertCooldown["keyBy"][] = [
@@ -71,10 +72,6 @@ type RuleValidationResult =
   | { valid: true }
   | { valid: false, reason: "invalid_rule" };
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isScalar(value: unknown): value is IssueAlertScalar {
   return value === null || typeof value === "string" || typeof value === "boolean"
     || (typeof value === "number" && Number.isFinite(value));
@@ -84,7 +81,7 @@ function isBoundedText(value: unknown, maxBytes: number): value is string {
   return typeof value === "string"
     && value.length > 0
     && !SAFE_TEXT_PATTERN.test(value)
-    && TEXT_ENCODER.encode(value).byteLength <= maxBytes;
+    && utf8ByteLength(value) <= maxBytes;
 }
 
 function isOptionalBoundedText(value: unknown, maxBytes: number): value is string | null {
@@ -159,17 +156,17 @@ function validateExpectedValue(operator: IssueAlertValueOperator, value: unknown
 }
 
 function validateTagFilter(filter: unknown): boolean {
-  if (!isObject(filter) || !isBoundedText(filter.key, MAX_IDENTIFIER_BYTES) || !isValueOperator(filter.operator)) return false;
+  if (!isRecord(filter) || !isBoundedText(filter.key, MAX_IDENTIFIER_BYTES) || !isValueOperator(filter.operator)) return false;
   return validateExpectedValue(filter.operator, filter.value, false, true);
 }
 
 function validateAttributePredicate(predicate: unknown): boolean {
-  if (!isObject(predicate) || predicate.type !== "attribute" || !isBoundedText(predicate.path, MAX_IDENTIFIER_BYTES) || !isValueOperator(predicate.operator)) return false;
+  if (!isRecord(predicate) || predicate.type !== "attribute" || !isBoundedText(predicate.path, MAX_IDENTIFIER_BYTES) || !isValueOperator(predicate.operator)) return false;
   return validateExpectedValue(predicate.operator, predicate.value, true, false);
 }
 
 function validatePredicate(predicate: unknown): boolean {
-  if (!isObject(predicate) || typeof predicate.type !== "string") return false;
+  if (!isRecord(predicate) || typeof predicate.type !== "string") return false;
 
   switch (predicate.type) {
     case "new": {
@@ -200,7 +197,7 @@ function validatePredicate(predicate: unknown): boolean {
 }
 
 function validateConditionGroup(group: unknown): boolean {
-  if (!isObject(group)) return false;
+  if (!isRecord(group)) return false;
   const all = group.all;
   if (all !== undefined && (!Array.isArray(all) || all.length > MAX_PREDICATES || !all.every(validatePredicate))) return false;
   const any = group.any;
@@ -210,7 +207,7 @@ function validateConditionGroup(group: unknown): boolean {
 
 function validateRuleFilters(filters: unknown): boolean {
   if (filters === undefined) return true;
-  if (!isObject(filters)) return false;
+  if (!isRecord(filters)) return false;
   if (filters.projectIds !== undefined && (!isStringArray(filters.projectIds, MAX_FILTER_VALUES) || !hasOnlyUniqueStrings(filters.projectIds))) return false;
   if (filters.environments !== undefined && (!isStringArray(filters.environments, MAX_FILTER_VALUES) || !hasOnlyUniqueStrings(filters.environments))) return false;
   if (filters.releases !== undefined && (!isStringArray(filters.releases, MAX_FILTER_VALUES) || !hasOnlyUniqueStrings(filters.releases))) return false;
@@ -227,11 +224,11 @@ function validateRuleAction(action: unknown): boolean {
 }
 
 function validateRule(rule: unknown): RuleValidationResult {
-  if (!isObject(rule)) return { valid: false, reason: "invalid_rule" };
+  if (!isRecord(rule)) return { valid: false, reason: "invalid_rule" };
   if (rule.schemaVersion !== ISSUE_ALERT_RULE_SCHEMA_VERSION
     || typeof rule.id !== "string"
     || !RULE_ID_PATTERN.test(rule.id)
-    || TEXT_ENCODER.encode(rule.id).byteLength > MAX_RULE_ID_BYTES
+    || utf8ByteLength(rule.id) > MAX_RULE_ID_BYTES
     || !isPositiveInteger(rule.version, Number.MAX_SAFE_INTEGER)
     || typeof rule.enabled !== "boolean"
     || !validateRuleFilters(rule.filters)
@@ -239,7 +236,7 @@ function validateRule(rule: unknown): RuleValidationResult {
     return { valid: false, reason: "invalid_rule" };
   }
   const cooldown = rule.cooldown;
-  if (!isObject(cooldown)
+  if (!isRecord(cooldown)
     || !isNonNegativeInteger(cooldown.durationSeconds, MAX_COOLDOWN_SECONDS)
     || !isOneOf(ISSUE_ALERT_COOLDOWN_SCOPES, cooldown.keyBy)
     || !validateRuleAction(rule.action)) {
@@ -249,11 +246,11 @@ function validateRule(rule: unknown): RuleValidationResult {
 }
 
 function validateSignal(signal: IssueAlertSignal): boolean {
-  return isObject(signal)
+  return isRecord(signal)
     && isSafeIdentifier(signal.tenancyId)
     && isSafeIdentifier(signal.projectId)
     && isSafeIdentifier(signal.branchId)
-    && isObject(signal.issue)
+    && isRecord(signal.issue)
     && isSafeIdentifier(signal.issue.id)
     && isBoundedText(signal.issue.shortId, MAX_IDENTIFIER_BYTES)
     && isBoundedText(signal.issue.type, MAX_TEXT_BYTES)
@@ -263,7 +260,7 @@ function validateSignal(signal: IssueAlertSignal): boolean {
     && typeof signal.issue.isNew === "boolean"
     && typeof signal.issue.isRegression === "boolean"
     && !(signal.issue.isNew && signal.issue.isRegression)
-    && isObject(signal.occurrence)
+    && isRecord(signal.occurrence)
     && isSafeIdentifier(signal.occurrence.id)
     && signal.occurrence.occurredAt instanceof Date
     && Number.isFinite(signal.occurrence.occurredAt.getTime())

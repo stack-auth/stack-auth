@@ -1,3 +1,4 @@
+import { isPrismaJsonObject } from "@/lib/prisma-json";
 import { IssueOwnerSource as PrismaIssueOwnerSource } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
@@ -82,10 +83,6 @@ type SuspectCommitReference = {
   strategy: string | null,
 };
 
-function isRecord(value: Prisma.JsonValue | null): value is Prisma.JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function boundedToken(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 && Buffer.byteLength(value, "utf8") <= MAX_CONTEXT_TOKEN_BYTES
     ? value
@@ -93,7 +90,7 @@ function boundedToken(value: unknown): string | null {
 }
 
 function parseSuspectCommitReference(owner: IssueSuspectOwner): SuspectCommitReference | null {
-  if (!isRecord(owner.context)) return null;
+  if (!isPrismaJsonObject(owner.context)) return null;
   const serialized = JSON.stringify(owner.context);
   if (Buffer.byteLength(serialized, "utf8") > MAX_CONTEXT_BYTES) return null;
 

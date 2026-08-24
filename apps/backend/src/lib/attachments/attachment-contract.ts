@@ -12,6 +12,16 @@ export const MAX_ERROR_ATTACHMENT_OCCURRENCE_ID_BYTES = 256;
 export const MAX_ERROR_ATTACHMENTS_PER_EVENT = 100;
 export const MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES = 1024;
 
+// Thrown for all caller-input validation failures in this module. Routes catch
+// exactly this class (instead of any Error) so that unexpected internal errors
+// never leak their messages to clients as BadRequest responses.
+export class ErrorAttachmentValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ErrorAttachmentValidationError";
+  }
+}
+
 const EVENT_ID_RE = /^[0-9a-f]{32}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -22,16 +32,6 @@ export type ErrorAttachmentScope = {
   tenantId: string,
   projectId: string,
   branchId: string,
-};
-
-export type ErrorAttachmentUploadInput = {
-  eventId: unknown,
-  occurrenceId?: unknown,
-  idempotencyKey?: unknown,
-  filename: unknown,
-  contentType?: unknown,
-  attachmentType?: unknown,
-  dataBase64: unknown,
 };
 
 export type ValidatedErrorAttachmentUpload = {
@@ -77,18 +77,18 @@ export function validateErrorAttachmentScope(scope: ErrorAttachmentScope): Error
 
 export function validateErrorEventId(value: unknown): string {
   if (typeof value !== "string" || !EVENT_ID_RE.test(value.toLowerCase())) {
-    throw new Error("eventId must be 32 lowercase hexadecimal characters");
+    throw new ErrorAttachmentValidationError("eventId must be 32 lowercase hexadecimal characters");
   }
   return value.toLowerCase();
 }
 
 export function validateErrorAttachmentSha256(value: unknown): string {
-  if (typeof value !== "string" || !SHA256_RE.test(value)) throw new Error("Attachment SHA-256 is invalid");
+  if (typeof value !== "string" || !SHA256_RE.test(value)) throw new ErrorAttachmentValidationError("Attachment SHA-256 is invalid");
   return value;
 }
 
 export function validateErrorAttachmentUpload(input: unknown): ValidatedErrorAttachmentUpload {
-  if (!isRecord(input)) throw new Error("Attachment upload body must be an object");
+  if (!isRecord(input)) throw new ErrorAttachmentValidationError("Attachment upload body must be an object");
   const eventId = validateErrorEventId(input.event_id ?? input.eventId);
   const filename = validateFilename(input.filename);
   const contentType = validateContentType(input.content_type ?? input.contentType);
@@ -107,7 +107,7 @@ export function getErrorAttachmentObjectKey(scopeInput: ErrorAttachmentScope, ev
   const digest = validateErrorAttachmentSha256(sha256);
   const key = `error-attachments/v1/tenants/${encodeURIComponent(scope.tenantId)}/projects/${encodeURIComponent(scope.projectId)}/branches/${encodeURIComponent(scope.branchId)}/events/${eventId}/objects/${digest}.bin`;
   if (Buffer.byteLength(key, "utf8") > MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES) {
-    throw new Error(`Attachment storage key exceeds ${MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES} bytes; the tenant/project/branch scope is too long to store attachments`);
+    throw new ErrorAttachmentValidationError(`Attachment storage key exceeds ${MAX_ERROR_ATTACHMENT_STORAGE_KEY_BYTES} bytes; the tenant/project/branch scope is too long to store attachments`);
   }
   return key;
 }
@@ -118,21 +118,21 @@ export function encodeErrorAttachmentBytes(bytes: Uint8Array): string {
 
 function decodeBase64(value: unknown): Uint8Array {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_ERROR_ATTACHMENT_BASE64_BYTES || !BASE64_RE.test(value)) {
-    throw new Error("data_base64 must be a bounded standard base64 value");
+    throw new ErrorAttachmentValidationError("data_base64 must be a bounded standard base64 value");
   }
   const bytes = new Uint8Array(Buffer.from(value, "base64"));
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_ERROR_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment bytes must be between 1 and ${MAX_ERROR_ATTACHMENT_BYTES} bytes`);
+    throw new ErrorAttachmentValidationError(`Attachment bytes must be between 1 and ${MAX_ERROR_ATTACHMENT_BYTES} bytes`);
   }
   return bytes;
 }
 
 function validateFilename(value: unknown): string {
   if (typeof value !== "string" || value.trim() !== value || value.length === 0 || value.length > MAX_ERROR_ATTACHMENT_FILENAME_BYTES) {
-    throw new Error("filename must be a bounded non-empty string");
+    throw new ErrorAttachmentValidationError("filename must be a bounded non-empty string");
   }
   if (Buffer.byteLength(value, "utf8") > MAX_ERROR_ATTACHMENT_FILENAME_BYTES || value === "." || value === ".." || /[\\/\u0000-\u001f\u007f]/u.test(value)) {
-    throw new Error("filename must be a single safe path segment");
+    throw new ErrorAttachmentValidationError("filename must be a single safe path segment");
   }
   return value;
 }
@@ -140,7 +140,7 @@ function validateFilename(value: unknown): string {
 function validateContentType(value: unknown): string {
   const contentType = value === undefined ? "application/octet-stream" : value;
   if (typeof contentType !== "string" || Buffer.byteLength(contentType, "utf8") > MAX_ERROR_ATTACHMENT_CONTENT_TYPE_BYTES || !MIME_RE.test(contentType)) {
-    throw new Error("contentType must be a valid bounded MIME type");
+    throw new ErrorAttachmentValidationError("contentType must be a valid bounded MIME type");
   }
   return contentType.toLowerCase();
 }
@@ -148,7 +148,7 @@ function validateContentType(value: unknown): string {
 function validateAttachmentType(value: unknown): string {
   const attachmentType = value === undefined ? "event.attachment" : value;
   if (typeof attachmentType !== "string" || Buffer.byteLength(attachmentType, "utf8") > MAX_ERROR_ATTACHMENT_TYPE_BYTES || !ATTACHMENT_TYPE_RE.test(attachmentType)) {
-    throw new Error("attachmentType must be a bounded identifier");
+    throw new ErrorAttachmentValidationError("attachmentType must be a bounded identifier");
   }
   return attachmentType;
 }
@@ -156,14 +156,14 @@ function validateAttachmentType(value: unknown): string {
 function validateOptionalText(value: unknown, maxBytes: number, label: string): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string" || value.length === 0 || Buffer.byteLength(value, "utf8") > maxBytes || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new Error(`${label} must be a bounded printable string`);
+    throw new ErrorAttachmentValidationError(`${label} must be a bounded printable string`);
   }
   return value;
 }
 
 function validateScopePart(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new Error(`${label} is invalid`);
+    throw new ErrorAttachmentValidationError(`${label} is invalid`);
   }
   return value;
 }

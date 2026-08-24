@@ -543,7 +543,7 @@ function installBrowserHistoryBreadcrumbs(context: ErrorIntegrationContext): Err
   return installOptionalHook(browser?.onHistory, signal => {
     const from = safeUrlPath(signal.from, context.options.maxBreadcrumbMessageBytes);
     const to = safeUrlPath(signal.to, context.options.maxBreadcrumbMessageBytes);
-    const data: Record<string, unknown> = { operation: signal.operation };
+    const data: { operation: typeof signal.operation, from?: string, to?: string } = { operation: signal.operation };
     if (from !== undefined) data.from = from;
     if (to !== undefined) data.to = to;
     context.addBreadcrumb({

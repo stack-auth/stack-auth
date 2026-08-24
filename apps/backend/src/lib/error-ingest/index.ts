@@ -1,6 +1,8 @@
 export {
   DEFAULT_ERROR_INGEST_SCRUB_LIMITS,
+  isErrorIngestScrubbedRecord,
   scrubErrorIngestPayload,
+  type ErrorIngestScrubbedRecord,
   type ErrorIngestScrubbedValue,
   type ErrorIngestScrubLimits,
   type ErrorIngestScrubOptions,

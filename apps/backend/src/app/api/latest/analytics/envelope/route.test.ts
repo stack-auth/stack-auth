@@ -45,7 +45,10 @@ vi.mock("@/utils/background-tasks", () => ({
   runAsynchronouslyAndWaitUntil: vi.fn(),
 }));
 
-const tenancy = {
+// SAFETY: the envelope route only reads tenancy.id, branchId, project.id, the observability app gate, and the
+// observability grouping/ingest config sections; the rest of the Tenancy surface is unused. Starting from an empty
+// base means any new Tenancy dependency of the route fails loudly here instead of being silently satisfied.
+const tenancy = Object.assign({} as Tenancy, {
   id: "11111111-2222-4333-8444-555555555555",
   branchId: "main",
   project: { id: "envelope-route-test-project" },
@@ -53,7 +56,7 @@ const tenancy = {
     apps: { installed: { observability: { enabled: true } } },
     observability: { errorGrouping: {}, errorIngest: {} },
   },
-} as unknown as Tenancy;
+});
 
 function request(body: unknown): SmartRequest {
   return {

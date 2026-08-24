@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import type {
   JavaScriptSymbolicationRequest,
   JavaScriptSymbolicationResult,
@@ -18,7 +19,7 @@ const SCOPE = {
   branchId: "main",
 };
 
-function occurrenceRow(data: Record<string, unknown>): PublicOccurrenceRow {
+function occurrenceRow(data: Record<string, Json>): PublicOccurrenceRow {
   return {
     occurrence_id: "occurrence-1",
     event_at: "2026-08-06 12:00:00",

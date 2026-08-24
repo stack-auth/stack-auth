@@ -1,5 +1,7 @@
 import type { DebugImage } from "@hexclave/shared/dist/utils/analytics-wire";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { getDebugImagesForStack } from "./debug-ids";
+import { runtimeGlobals } from "./runtime-globals";
 import type { CapturedExceptionValue, CaptureEvent, ErrorEventId, ErrorScopeData, ErrorStackFrame } from "../interfaces/error-capture";
 import type { ErrorCaptureOptions } from "./observability-config";
 import { truncateUtf8Bytes } from "./telemetry-core";
@@ -114,7 +116,10 @@ export const MAX_LINKED_ERROR_VALUES = 10;
 
 function linkedErrorProperty(error: Error, key: "cause" | "errors"): unknown {
   try {
-    return Reflect.get(error, key);
+    // SAFETY: `cause` (typed unknown since ES2022) and AggregateError's
+    // `errors` are read through a widened optional view because the base
+    // Error type predates both; reading them as unknown claims nothing.
+    return (error as Error & { cause?: unknown, errors?: unknown })[key];
   } catch {
     return undefined;
   }
@@ -345,17 +350,20 @@ export function buildErrorEventDataFromNormalized(normalized: NormalizedError, o
   };
 }
 
-function errorScopeToEventData(scope: ErrorScopeData | undefined): Record<string, unknown> {
+/** The scope-derived slice of the `$error` event payload (see CapturedErrorEvent). */
+type ErrorScopeEventData = Pick<CapturedErrorEvent, "user" | "tags" | "contexts" | "extra" | "breadcrumbs" | "level" | "fingerprint_override">;
+
+function errorScopeToEventData(scope: ErrorScopeData | undefined): ErrorScopeEventData {
   if (scope === undefined) return {};
-  return {
-    ...scope.user === undefined ? {} : { user: scope.user },
-    ...scope.tags === undefined ? {} : { tags: scope.tags },
-    ...scope.contexts === undefined ? {} : { contexts: scope.contexts },
-    ...scope.extra === undefined ? {} : { extra: scope.extra },
-    ...scope.breadcrumbs === undefined ? {} : { breadcrumbs: scope.breadcrumbs },
-    ...scope.level === undefined ? {} : { level: scope.level },
-    ...scope.fingerprint === undefined ? {} : { fingerprint_override: scope.fingerprint },
-  };
+  const data: ErrorScopeEventData = {};
+  if (scope.user !== undefined) data.user = scope.user;
+  if (scope.tags !== undefined) data.tags = scope.tags;
+  if (scope.contexts !== undefined) data.contexts = scope.contexts;
+  if (scope.extra !== undefined) data.extra = scope.extra;
+  if (scope.breadcrumbs !== undefined) data.breadcrumbs = scope.breadcrumbs;
+  if (scope.level !== undefined) data.level = scope.level;
+  if (scope.fingerprint !== undefined) data.fingerprint_override = scope.fingerprint;
+  return data;
 }
 
 function renderStackFrames(frames: readonly ErrorStackFrame[] | undefined): string | null {
@@ -583,6 +591,8 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
     }
   };
 
+  // SAFETY: `stackTraceLimit` is a V8-only static missing from lib.dom's
+  // ErrorConstructor; reading it as a possibly-absent unknown claims nothing.
   const errorCtor = Error as ErrorConstructor & { stackTraceLimit?: unknown };
   const previousStackTraceLimit = errorCtor.stackTraceLimit;
   if (typeof previousStackTraceLimit === "number" && previousStackTraceLimit < ERROR_STACK_TRACE_LIMIT) {
@@ -623,7 +633,7 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
   window.onerror = patchedOnError;
 
   const previousOnUnhandledRejection = window.onunhandledrejection;
-  const patchedOnUnhandledRejection = function (this: WindowEventHandlers, event: PromiseRejectionEvent): unknown {
+  const patchedOnUnhandledRejection: NonNullable<WindowEventHandlers["onunhandledrejection"]> = function (event: PromiseRejectionEvent) {
     let reason: unknown = event;
     if (!isPrimitive(event)) {
       if ("reason" in event) {
@@ -669,24 +679,24 @@ export function installClientErrorCapture(deps: ClientErrorCaptureDeps): ClientE
 const SERVER_ERROR_MONITOR_MARKER = "__hexclaveServerErrorMonitor";
 
 function getServerMonitorRegistry(): Map<string, () => void> {
-  const g = globalThis as typeof globalThis & Record<string, unknown>;
-  const existing = g[SERVER_ERROR_MONITOR_MARKER];
+  const existing = runtimeGlobals[SERVER_ERROR_MONITOR_MARKER];
   if (existing instanceof Map) return existing;
   const registry = new Map<string, () => void>();
-  g[SERVER_ERROR_MONITOR_MARKER] = registry;
+  runtimeGlobals[SERVER_ERROR_MONITOR_MARKER] = registry;
   return registry;
 }
 
 type ProcessLike = {
-  on: (event: string, listener: (error: unknown) => void) => unknown,
-  removeListener: (event: string, listener: (error: unknown) => void) => unknown,
+  on: (event: string, listener: (error: unknown) => void) => void,
+  removeListener: (event: string, listener: (error: unknown) => void) => void,
 };
 
 function getProcessLike(): ProcessLike | null {
-  const candidate = (globalThis as { process?: unknown }).process;
-  if (typeof candidate !== "object" || candidate === null) return null;
-  const withMethods = candidate as { on?: unknown, removeListener?: unknown };
-  if (typeof withMethods.on !== "function" || typeof withMethods.removeListener !== "function") return null;
+  const candidate = runtimeGlobals["process"];
+  if (!isRecord(candidate)) return null;
+  if (typeof candidate["on"] !== "function" || typeof candidate["removeListener"] !== "function") return null;
+  // SAFETY: `on`/`removeListener` were verified as functions above; their
+  // (event, listener) contract is Node's process API, which typeof cannot express.
   return candidate as ProcessLike;
 }
 

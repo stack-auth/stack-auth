@@ -561,10 +561,8 @@ export default function ObservabilityPage() {
         },
       });
       try {
-        const params = new URLSearchParams({
-          delay: failure ? "180" : "420",
-          ...(failure ? { failure: "1" } : {}),
-        });
+        const params = new URLSearchParams({ delay: failure ? "180" : "420" });
+        if (failure) params.set("failure", "1");
         const response = await clientSpan.fetch(`/error-tracking-demo/api/telemetry?${params.toString()}`, {
           method: "POST",
           cache: "no-store",
@@ -1079,7 +1077,10 @@ function loadSymbolicatedBundle(): Promise<void> {
 }
 
 function readDemoThrower(): () => void {
-  const value: unknown = Reflect.get(globalThis, OBSERVABILITY_DEMO_THROWER_GLOBAL_KEY);
+  // SAFETY: the side-loaded demo bundle registers its thrower on globalThis
+  // under this key, which TypeScript cannot know about; reading the property as
+  // `unknown` is sound for any object, and the function check below validates it.
+  const value: unknown = (globalThis as typeof globalThis & { [OBSERVABILITY_DEMO_THROWER_GLOBAL_KEY]?: unknown })[OBSERVABILITY_DEMO_THROWER_GLOBAL_KEY];
   if (typeof value !== "function") {
     throw new Error("The symbolicated demo bundle did not register throwSymbolicatedChargeError.");
   }

@@ -2,6 +2,7 @@
 
 import { DesignAlert, DesignButton, DesignCard } from "@/components/design-components";
 import { runGrowthAdminManualStep, type GrowthAdminManualStep } from "@/lib/growth/growth-api";
+import { typedKeys } from "@hexclave/shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { GearSixIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -34,7 +35,7 @@ export function GrowthAdminRunNowCard(props: { app: object, projectId: string, p
         {state.status === "error" && <DesignAlert variant="error">{state.message}</DesignAlert>}
         {state.status === "success" && <DesignAlert variant="info">{stepLabels[state.step]} completed{state.didWork ? " and processed work." : ", but found no work to process."}</DesignAlert>}
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(stepLabels) as GrowthAdminManualStep[]).map((step) => (
+          {typedKeys(stepLabels).map((step) => (
             <DesignButton key={step} variant="outline" size="sm" disabled={runningStep != null} loading={runningStep === step} onClick={() => runStep(step)}>
               {stepLabels[step]}
             </DesignButton>

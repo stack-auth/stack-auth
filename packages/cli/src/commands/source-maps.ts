@@ -2,6 +2,7 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { getInternalUser } from "../lib/app.js";
 import {
   isProjectAuthWithRefreshToken,
@@ -26,7 +27,6 @@ import {
   sha256Hex,
   type SourceMapArtifactCandidate,
 } from "../lib/source-maps.js";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type SourceMapsUploadOptions = {
   release?: string,
@@ -340,15 +340,15 @@ export async function uploadPreparedSourceMaps(request: SourceMapUploadRequest):
     manifest: expectedPlan.manifest,
     manifest_sha256: expectedPlan.manifestSha256,
   };
-  const registrationValue = await requestSourceMapJson(
+  const registration = await requestSourceMapJson(
     request,
     transport,
     SOURCE_MAP_REGISTRATION_PATH,
     registrationBody,
     expectedPlan.manifestSha256,
     "registration",
+    (value) => parseRegistrationResponse(value, expectedPlan, request.artifacts),
   );
-  const registration = parseRegistrationResponse(registrationValue, expectedPlan, request.artifacts);
 
   if (!registration.artifacts.every((artifact) => artifact.alreadyFinalized)) {
     for (const registered of registration.artifacts) {
@@ -375,15 +375,15 @@ export async function uploadPreparedSourceMaps(request: SourceMapUploadRequest):
     }
   }
 
-  const finalizeValue = await requestSourceMapJson(
+  const finalized = await requestSourceMapJson(
     { ...request, plan: expectedPlan },
     transport,
     registration.finalizePath,
     { manifest_sha256: expectedPlan.manifestSha256 },
     expectedPlan.manifestSha256,
     "finalize",
+    (value) => parseFinalizeResponse(value, expectedPlan),
   );
-  const finalized = parseFinalizeResponse(finalizeValue, expectedPlan);
   return {
     uploaded: finalized.uploaded,
     alreadyUploaded: finalized.alreadyUploaded,
@@ -404,14 +404,20 @@ function readAndVerifyBundle(artifact: PreparedSourceMapArtifact, manifestSha256
   return bytes;
 }
 
-async function requestSourceMapJson(
+type SourceMapApiRequestBody = {
+  manifest?: SourceMapManifest,
+  manifest_sha256: string,
+};
+
+async function requestSourceMapJson<T>(
   request: SourceMapUploadRequest,
   transport: SourceMapUploadTransport,
   apiPath: string,
-  body: unknown,
+  body: SourceMapApiRequestBody,
   idempotencyKey: string,
   operation: string,
-): Promise<unknown> {
+  parse: (value: unknown) => T,
+): Promise<T> {
   const url = createSourceMapApiUrl(request.auth, apiPath, operation);
   const authHeaders = await request.getAuthHeaders();
   const response = await fetchWithRetries(transport, url, {
@@ -431,12 +437,13 @@ async function requestSourceMapJson(
   if (responseText.trim() === "") {
     throw new SourceMapUploadProtocolError(operation, "the response body was empty");
   }
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(responseText);
-    return parsed;
+    parsed = JSON.parse(responseText);
   } catch {
     throw new SourceMapUploadProtocolError(operation, "the response body was not valid JSON");
   }
+  return parse(parsed);
 }
 
 async function uploadPresignedObject(
@@ -447,14 +454,15 @@ async function uploadPresignedObject(
   bytes: Uint8Array,
   operation: string,
 ): Promise<void> {
+  const headers: Record<string, string> = {
+    "content-type": contentType,
+    "content-length": bytes.byteLength.toString(),
+    "if-none-match": "*",
+  };
+  if (contentEncoding !== null) headers["content-encoding"] = contentEncoding;
   const response = await fetchWithRetries(transport, uploadUrl, {
     method: "PUT",
-    headers: {
-      "content-type": contentType,
-      "content-length": bytes.byteLength.toString(),
-      "if-none-match": "*",
-      ...(contentEncoding === null ? {} : { "content-encoding": contentEncoding }),
-    },
+    headers,
     // A copied ArrayBuffer satisfies Node's BodyInit type and prevents a
     // caller-owned Buffer from being mutated while fetch is in flight.
     body: new Uint8Array(bytes).slice().buffer,
@@ -564,8 +572,12 @@ function describeResponseBody(text: string, statusText: string): string {
     if (isRecord(parsed)) {
       const error = parsed.error;
       if (typeof error === "string") return error.slice(0, 1_000);
-      if (isRecord(error) && typeof error.message === "string") return error.message.slice(0, 1_000);
-      if (typeof parsed.message === "string") return parsed.message.slice(0, 1_000);
+      if (isRecord(error)) {
+        const message = error.message;
+        if (typeof message === "string") return message.slice(0, 1_000);
+      }
+      const message = parsed.message;
+      if (typeof message === "string") return message.slice(0, 1_000);
     }
   } catch {
   }
@@ -701,7 +713,9 @@ function validatePresignedUploadUrl(value: string, label: string): string {
 }
 
 function readResponseRecord(value: unknown, operation: string): Record<string, unknown> {
-  if (!isRecord(value)) throw new SourceMapUploadProtocolError(operation, "the response must be an object");
+  if (!isRecord(value)) {
+    throw new SourceMapUploadProtocolError(operation, "the response must be an object");
+  }
   return value;
 }
 

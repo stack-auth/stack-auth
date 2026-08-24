@@ -143,12 +143,16 @@ const INP_LONGEST_KEPT = 10;
 type LongestInteraction = { id: number, durationMs: number };
 
 function supportsEntryType(type: string): boolean {
-  const supported: unknown = Reflect.get(PerformanceObserver, "supportedEntryTypes");
+  // SAFETY: lib.dom types `supportedEntryTypes` as always present, but
+  // pre-2019 browsers lack the static — the absent case is what this probes.
+  const supported = PerformanceObserver.supportedEntryTypes as readonly string[] | undefined;
   return Array.isArray(supported) && supported.includes(type);
 }
 
 function nativeInteractionCount(): number | null {
-  const value: unknown = Reflect.get(performance, "interactionCount");
+  // SAFETY: `interactionCount` (event-timing spec) is missing from lib.dom's
+  // Performance; reading it as a possibly-absent unknown claims nothing.
+  const value = (performance as Performance & { interactionCount?: unknown }).interactionCount;
   return typeof value === "number" ? value : null;
 }
 
@@ -224,12 +228,15 @@ export function startWebVitalsCollector(onUpdate: (snapshot: WebVitalsSnapshot) 
     return true;
   };
 
-  const tryObserve = (type: string, callback: (entries: PerformanceEntry[]) => void, extraOptions?: Record<string, unknown>) => {
+  const tryObserve = (type: string, callback: (entries: PerformanceEntry[]) => void, extraOptions?: { durationThreshold?: number }) => {
     if (!supportsEntryType(type)) return;
     try {
       const observer = new PerformanceObserver((list) => {
         callback(list.getEntries());
       });
+      // SAFETY: `durationThreshold` (event-timing spec) is missing from
+      // lib.dom's PerformanceObserverInit; browsers that predate it ignore
+      // unknown members, so the widened literal is a valid observe() argument.
       observer.observe({ type, buffered: true, ...extraOptions } as PerformanceObserverInit);
       observers.push(observer);
     } catch {

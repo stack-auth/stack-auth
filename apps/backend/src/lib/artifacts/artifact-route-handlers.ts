@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ArtifactServiceError } from "./artifact-errors";
 import {
   validateArtifactMetadata,

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { pageViewChildCount } from "./span-tree";
 import type { Trace } from "./trace-utils";
 
-function traceWithChildCount(childCount?: unknown): Trace {
+function traceWithChildCount(childCount?: Json): Trace {
   return {
     root: {
       span: {

@@ -11,6 +11,7 @@ import {
 } from "@/components/design-components";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import {
   ClockCounterClockwiseIcon,
@@ -25,6 +26,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { getErrorMessage } from "../format";
 
 const CommitSchema = yup.object({
   id: yup.string().defined(),
@@ -80,7 +82,7 @@ const RELEASE_STATUS_OPTIONS = [
   { value: "archived", label: "Archived" },
 ];
 
-async function readJsonOrThrow(response: Response, what: string): Promise<unknown> {
+async function readJsonOrThrow(response: Response, what: string): Promise<Json> {
   if (!response.ok) throw new HexclaveAssertionError(`${what} failed with status ${response.status}`);
   return await response.json();
 }
@@ -109,10 +111,6 @@ function optionalReleasedAt(value: string): string | undefined {
     throw new Error("Release date must be a valid date and time.");
   }
   return date.toISOString();
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function mergeById<Item extends { id: string }>(serverItems: readonly Item[], sessionItems: readonly Item[]): Item[] {
@@ -167,7 +165,7 @@ export default function PageClient() {
         setRecentTruncated(page.truncated);
       } catch (caught) {
         if (cancelled) return;
-        setRecentError(errorMessage(caught));
+        setRecentError(getErrorMessage(caught));
       } finally {
         if (!cancelled) setRecentLoading(false);
       }
@@ -197,7 +195,7 @@ export default function PageClient() {
     } catch (caught) {
       if (seq !== lookupSeqRef.current) return;
       setSelectedRelease(null);
-      setOperationError(errorMessage(caught));
+      setOperationError(getErrorMessage(caught));
     } finally {
       if (seq === lookupSeqRef.current) setLookingUp(false);
     }
@@ -219,12 +217,14 @@ export default function PageClient() {
       const response = await sendInternalAdminRequest(adminApp, "/releases", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // JSON.stringify omits undefined-valued fields, so blank optional
+        // inputs stay absent from the request body.
         body: JSON.stringify({
           version: nextVersion,
           status: createStatus,
-          ...(ref === undefined ? {} : { ref }),
-          ...(url === undefined ? {} : { url }),
-          ...(dateReleased === undefined ? {} : { date_released: dateReleased }),
+          ref,
+          url,
+          date_released: dateReleased,
         }),
       });
       const created = await ReleaseSchema.validate(await readJsonOrThrow(response, "Creating release"));
@@ -233,7 +233,7 @@ export default function PageClient() {
       setNotice(`Release ${created.version} is registered.`);
       setReloadToken((current) => current + 1);
     } catch (caught) {
-      setOperationError(errorMessage(caught));
+      setOperationError(getErrorMessage(caught));
     } finally {
       setCreating(false);
     }
@@ -272,12 +272,13 @@ export default function PageClient() {
       const response = await sendInternalAdminRequest(adminApp, "/releases/commits", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // JSON.stringify omits undefined-valued fields (see `create` above).
         body: JSON.stringify({
           release_id: selectedReleaseId,
           repository,
           commit_sha: sha,
           position,
-          ...(message === undefined ? {} : { message }),
+          message,
         }),
       });
       const commit = await CommitSchema.validate(await readJsonOrThrow(response, "Adding release commit"));
@@ -293,7 +294,7 @@ export default function PageClient() {
         setNotice(`Commit ${commit.commit_sha} is registered on ${selectedReleaseVersion}.`);
       }
     } catch (caught) {
-      setOperationError(errorMessage(caught));
+      setOperationError(getErrorMessage(caught));
     } finally {
       setAddingCommit(false);
     }
@@ -321,12 +322,13 @@ export default function PageClient() {
       const response = await sendInternalAdminRequest(adminApp, "/releases/deployments", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // JSON.stringify omits undefined-valued fields (see `create` above).
         body: JSON.stringify({
           release_id: selectedReleaseId,
           deployment_key: key,
           environment,
-          ...(name === undefined ? {} : { name }),
-          ...(url === undefined ? {} : { url }),
+          name,
+          url,
         }),
       });
       const deployment = await DeploymentSchema.validate(
@@ -344,7 +346,7 @@ export default function PageClient() {
         setNotice(`Deployment ${deployment.deployment_key} is registered on ${selectedReleaseVersion}.`);
       }
     } catch (caught) {
-      setOperationError(errorMessage(caught));
+      setOperationError(getErrorMessage(caught));
     } finally {
       setAddingDeployment(false);
     }

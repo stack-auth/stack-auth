@@ -9,7 +9,7 @@ import type { TelemetryResource } from "./telemetry-config";
 import type { NetworkCaptureConfig } from "./network-capture";
 import type { SessionRecorder } from "./session-replay";
 import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
-import { buildFetchInitWithSpanContext, buildPropagationHeaderValues } from "./span-propagation";
+import { buildPropagationHeaderValues, fetchWithSpanPropagation } from "./span-propagation";
 import { getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { getActiveErrorScope, mergeErrorScopeData } from "./error-scope";
 import { generateUuid } from "./telemetry-transport";
@@ -27,9 +27,10 @@ const IDLE_LOAD_TIMEOUT_MS = 2_000;
 const FALLBACK_LOAD_DELAY_MS = 200;
 
 function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
-  return value !== null
-    && (typeof value === "object" || typeof value === "function")
-    && typeof Reflect.get(value, "then") === "function";
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return false;
+  // SAFETY: probing for the thenable protocol; reading a possibly-absent
+  // `then` as unknown claims nothing about the value.
+  return typeof (value as { then?: unknown }).then === "function";
 }
 
 export type ClientAnalyticsDeps = {
@@ -507,7 +508,7 @@ export class ClientAnalytics {
       release: this._deps.release,
       environment: this._deps.environment,
       sdkVersion: this._deps.sdkVersion,
-      scope,
+      scope: mergedScope,
     }), mergedScope);
     return eventId;
   }
@@ -522,7 +523,7 @@ export class ClientAnalytics {
       release: this._deps.release,
       environment: this._deps.environment,
       sdkVersion: this._deps.sdkVersion,
-      scope,
+      scope: mergedScope,
     }), mergedScope);
     return eventId;
   }
@@ -712,20 +713,15 @@ export class ClientAnalytics {
   }
 
   private _preloadSpanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    try {
-      const policy = this._deps.getPropagationPolicy();
-      const initWithHeader = buildFetchInitWithSpanContext({
-        input,
-        init,
-        headerValues: this._preloadSpanPropagationHeaders(span),
-        selfOrigin: policy.selfOrigin,
-        allowedOrigins: policy.allowedOrigins,
-        allowLocalhost: policy.allowLocalhost,
-      });
-      return globalThis.fetch(input, initWithHeader?.init ?? init);
-    } catch {
-      return globalThis.fetch(input, init);
-    }
+    const policy = this._deps.getPropagationPolicy();
+    return fetchWithSpanPropagation({
+      input,
+      init,
+      headerValues: this._preloadSpanPropagationHeaders(span),
+      selfOrigin: policy.selfOrigin,
+      allowedOrigins: policy.allowedOrigins,
+      allowLocalhost: policy.allowLocalhost,
+    });
   }
 
   setGlobalSpan(span: Span): void {

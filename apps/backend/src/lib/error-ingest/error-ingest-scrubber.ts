@@ -5,7 +5,13 @@ export type ErrorIngestScrubbedValue =
   | number
   | string
   | ErrorIngestScrubbedValue[]
-  | { [key: string]: ErrorIngestScrubbedValue };
+  | ErrorIngestScrubbedRecord;
+
+export type ErrorIngestScrubbedRecord = { [key: string]: ErrorIngestScrubbedValue };
+
+export function isErrorIngestScrubbedRecord(value: ErrorIngestScrubbedValue | undefined): value is ErrorIngestScrubbedRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export type ErrorIngestScrubLimits = {
   maxDepth: number,

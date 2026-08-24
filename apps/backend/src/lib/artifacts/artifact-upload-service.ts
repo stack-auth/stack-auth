@@ -1,3 +1,4 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { gunzipSync } from "node:zlib";
 import {
   assertManifestDigest,
@@ -20,7 +21,6 @@ import {
   type ArtifactStorageObject,
   type ArtifactUploadContentType,
 } from "./artifact-storage";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 const ARTIFACT_STORAGE_SCHEMA_VERSION = 1 as const;
 const MANIFEST_CONTENT_TYPE: ArtifactUploadContentType = "application/json";
@@ -365,7 +365,7 @@ function getDebugIdIndexObjectKey(scope: ArtifactScope, debugId: string, release
   return `${getScopePrefix(scope)}/debug-ids/${validateDebugId(debugId)}/${bindingDigest}.json`;
 }
 
-function jsonBytes(value: object): Uint8Array {
+function jsonBytes(value: StoredManifestRecord | StoredArtifactIndexRecord | StoredFinalizeRecord): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
 }
 
@@ -481,12 +481,11 @@ function readStoredScope(value: unknown): ArtifactScope {
   if (!isRecord(value)) {
     throw new ArtifactServiceError("integrity_mismatch", "Stored artifact scope is invalid.");
   }
-  const record = value;
-  if (typeof record.tenantId !== "string" || typeof record.projectId !== "string" || typeof record.branchId !== "string") {
+  if (typeof value.tenantId !== "string" || typeof value.projectId !== "string" || typeof value.branchId !== "string") {
     throw new ArtifactServiceError("integrity_mismatch", "Stored artifact scope is invalid.");
   }
   try {
-    return validateArtifactScope({ tenantId: record.tenantId, projectId: record.projectId, branchId: record.branchId });
+    return validateArtifactScope({ tenantId: value.tenantId, projectId: value.projectId, branchId: value.branchId });
   } catch (error) {
     if (error instanceof ArtifactServiceError && error.code === "invalid_manifest") {
       throw new ArtifactServiceError("integrity_mismatch", "Stored artifact scope is invalid.");

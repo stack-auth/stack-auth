@@ -5,9 +5,9 @@ import { Prisma } from "@/generated/prisma/client";
 import type { IssueBatchDelta } from "./issue-materialization-contract";
 import { ISSUE_LOCK_LEASE_MS } from "./issue-merge";
 import { randomUUID } from "node:crypto";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { toDurableGroupingProvenance } from "./grouping-provenance";
 import type { GroupingHashProvenance } from "./types";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 
 export type IssueBatchApplyOutcome = {
@@ -40,20 +40,23 @@ function decodeStoredOutcomes(value: unknown): IssueBatchApplyOutcome[] {
   if (!Array.isArray(parsedValue)) throw new Error("Issue materialization ledger outcomes must be an array");
 
   return parsedValue.map((entry) => {
-    if (!isRecord(entry)
-      || typeof entry.issueId !== "string"
-      || typeof entry.shortId !== "string"
-      || typeof entry.ownerHash !== "string"
-      || typeof entry.isNew !== "boolean"
-      || typeof entry.isRegression !== "boolean") {
+    if (!isRecord(entry)) {
+      throw new Error("Issue materialization ledger contains an invalid outcome");
+    }
+    const outcome = entry;
+    if (typeof outcome.issueId !== "string"
+      || typeof outcome.shortId !== "string"
+      || typeof outcome.ownerHash !== "string"
+      || typeof outcome.isNew !== "boolean"
+      || typeof outcome.isRegression !== "boolean") {
       throw new Error("Issue materialization ledger contains an invalid outcome");
     }
     return {
-      issueId: entry.issueId,
-      shortId: BigInt(entry.shortId),
-      ownerHash: entry.ownerHash,
-      isNew: entry.isNew,
-      isRegression: entry.isRegression,
+      issueId: outcome.issueId,
+      shortId: BigInt(outcome.shortId),
+      ownerHash: outcome.ownerHash,
+      isNew: outcome.isNew,
+      isRegression: outcome.isRegression,
     };
   });
 }

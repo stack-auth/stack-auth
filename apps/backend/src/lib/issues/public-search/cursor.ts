@@ -1,8 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { PublicSearchFilters, PublicSearchRecordType } from "./contract";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type PublicSearchIssueCursorPosition = {
   kind: "issue",
@@ -106,17 +106,18 @@ function signature(value: UnsignedCursor, secret: string | undefined): string {
 
 function hasValidPosition(value: unknown, record: PublicSearchRecordType): value is PublicSearchCursorPosition {
   if (!isRecord(value)) return false;
+  const position = value;
   if (record === "issue") {
-    return value.kind === "issue"
-      && isSafeMillis(value.lastSeenAtMillis)
-      && typeof value.issueId === "string"
-      && isUuid(value.issueId);
+    return position.kind === "issue"
+      && isSafeMillis(position.lastSeenAtMillis)
+      && typeof position.issueId === "string"
+      && isUuid(position.issueId);
   }
-  return value.kind === "occurrence"
-    && isSafeMillis(value.eventAtMillis)
-    && typeof value.occurrenceId === "string"
-    && value.occurrenceId.length > 0
-    && value.occurrenceId.length <= 256;
+  return position.kind === "occurrence"
+    && isSafeMillis(position.eventAtMillis)
+    && typeof position.occurrenceId === "string"
+    && position.occurrenceId.length > 0
+    && position.occurrenceId.length <= 256;
 }
 
 function sameSignature(left: string, right: string): boolean {
@@ -148,20 +149,21 @@ export function decodePublicSearchCursor(
   }
 
   if (!isRecord(parsed)) return null;
-  if (parsed.version !== 1 || parsed.project_id !== expected.projectId || parsed.branch_id !== expected.branchId) return null;
-  if (!isRecordType(parsed.record) || parsed.record !== expected.filters.record) return null;
-  if (parsed.filter_hash !== publicSearchFilterHash(expected.filters)) return null;
-  if (!hasValidPosition(parsed.position, expected.filters.record)) return null;
-  if (!isBase64Url(parsed.signature)) return null;
+  const payload = parsed;
+  if (payload.version !== 1 || payload.project_id !== expected.projectId || payload.branch_id !== expected.branchId) return null;
+  if (!isRecordType(payload.record) || payload.record !== expected.filters.record) return null;
+  if (payload.filter_hash !== publicSearchFilterHash(expected.filters)) return null;
+  if (!hasValidPosition(payload.position, expected.filters.record)) return null;
+  if (!isBase64Url(payload.signature)) return null;
 
   const unsigned: UnsignedCursor = {
     version: 1,
-    project_id: parsed.project_id,
-    branch_id: parsed.branch_id,
-    record: parsed.record,
-    filter_hash: parsed.filter_hash,
-    position: parsed.position,
+    project_id: payload.project_id,
+    branch_id: payload.branch_id,
+    record: payload.record,
+    filter_hash: payload.filter_hash,
+    position: payload.position,
   };
-  if (!sameSignature(parsed.signature, signature(unsigned, secret))) return null;
-  return parsed.position;
+  if (!sameSignature(payload.signature, signature(unsigned, secret))) return null;
+  return payload.position;
 }

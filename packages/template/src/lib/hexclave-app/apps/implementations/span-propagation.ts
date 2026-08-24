@@ -123,6 +123,42 @@ export function buildFetchInitWithSpanContext(opts: {
   return { init: { ...opts.init, headers }, attachedHeaderNames };
 }
 
+let warnedFetchPropagationFailure = false;
+
+/**
+ * Performs `fetch` with span-propagation headers attached when the origin
+ * policy allows it. Propagation is a best-effort enhancement, so an internal
+ * failure here falls back to a plain fetch — but it must never be silent:
+ * silently dropped propagation headers break trace correlation in ways that
+ * are nearly impossible to debug, so we warn once per page load.
+ */
+export function fetchWithSpanPropagation(opts: {
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  headerValues: Readonly<Record<string, string>>,
+  selfOrigin: string | null,
+  allowedOrigins: readonly string[],
+  allowLocalhost?: boolean,
+}): Promise<Response> {
+  try {
+    const initWithHeader = buildFetchInitWithSpanContext({
+      input: opts.input,
+      init: opts.init,
+      headerValues: opts.headerValues,
+      selfOrigin: opts.selfOrigin,
+      allowedOrigins: opts.allowedOrigins,
+      allowLocalhost: opts.allowLocalhost,
+    });
+    return globalThis.fetch(opts.input, initWithHeader?.init ?? opts.init);
+  } catch (error) {
+    if (!warnedFetchPropagationFailure) {
+      warnedFetchPropagationFailure = true;
+      console.warn("Hexclave could not attach span propagation headers to a fetch; continuing without trace correlation for this request.", error);
+    }
+    return globalThis.fetch(opts.input, opts.init);
+  }
+}
+
 /** Serializes explicit facade context through the official W3C propagator. */
 export function buildPropagationHeaderValues(opts: {
   traceparent: { traceId: string, spanId: string, sampled: boolean, traceState?: string } | null,

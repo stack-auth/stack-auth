@@ -1,8 +1,6 @@
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload, type ErrorIngestScrubbedRecord, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 
-export { isRecord } from "@hexclave/shared/dist/utils/objects";
-
-export function scrubPublicValue(value: unknown): unknown {
+export function scrubPublicValue(value: unknown): ErrorIngestScrubbedValue | undefined {
   return scrubErrorIngestPayload(value).value;
 }
 
@@ -17,7 +15,7 @@ export function scrubPublicOptionalText(value: unknown): string | null {
   return typeof scrubbed === "string" && scrubbed.length > 0 ? scrubbed : null;
 }
 
-export function scrubPublicRecord(value: unknown): Record<string, unknown> {
+export function scrubPublicRecord(value: unknown): ErrorIngestScrubbedRecord {
   const scrubbed = scrubPublicValue(value);
-  return isRecord(scrubbed) ? scrubbed : {};
+  return isErrorIngestScrubbedRecord(scrubbed) ? scrubbed : {};
 }

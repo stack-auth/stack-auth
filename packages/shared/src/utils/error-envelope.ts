@@ -1,4 +1,5 @@
 import type { ReadonlyJson } from "./json";
+import { isRecord } from "./objects";
 
 /** Stable product schema identifier, stamped onto every normalized envelope. */
 export const ERROR_ENVELOPE_SCHEMA = "hexclave.error-envelope";
@@ -251,12 +252,8 @@ class NormalizationState {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function field(value: unknown, key: string): unknown {
-  return isRecord(value) ? Reflect.get(value, key) : undefined;
+  return isRecord(value) ? value[key] : undefined;
 }
 
 function firstField(values: readonly unknown[], keys: readonly string[]): unknown {
@@ -341,7 +338,7 @@ function normalizeJson(value: unknown, state: NormalizationState, path: string, 
         state.drop(`${path}.${key}`);
         continue;
       }
-      const normalized = normalizeJson(Reflect.get(value, key), state, `${path}.${key}`, limits, depth + 1);
+      const normalized = normalizeJson(field(value, key), state, `${path}.${key}`, limits, depth + 1);
       if (normalized !== undefined) result[key] = normalized;
     }
     return result;
@@ -362,7 +359,7 @@ function normalizeRecord(value: unknown, state: NormalizationState, path: string
       state.drop(`${path}.${key}`);
       continue;
     }
-    const normalized = normalizeJson(Reflect.get(value, key), state, `${path}.${key}`, limits);
+    const normalized = normalizeJson(value[key], state, `${path}.${key}`, limits);
     if (normalized !== undefined) result[truncateUtf8Bytes(key, 256, () => state.drop(`${path}.key`))] = normalized;
   }
   return result;
@@ -454,11 +451,10 @@ function normalizeExceptionValues(value: unknown, state: NormalizationState, pat
     if (value.length > limits.maxExceptionValues) state.drop(`${path}.values`);
   }
   if (values.length === 0 && (fallback.name !== undefined || fallback.message !== undefined || fallback.stack !== undefined)) {
-    const exception: ErrorEnvelopeExceptionValue = {
-      ...fallback.name === undefined ? {} : { type: fallback.name },
-      ...fallback.message === undefined ? {} : { value: fallback.message },
-      ...fallback.mechanism === undefined ? {} : { mechanism: fallback.mechanism },
-    };
+    const exception: ErrorEnvelopeExceptionValue = {};
+    if (fallback.name !== undefined) exception.type = fallback.name;
+    if (fallback.message !== undefined) exception.value = fallback.message;
+    if (fallback.mechanism !== undefined) exception.mechanism = fallback.mechanism;
     if (fallback.stack !== undefined) exception.stacktrace = { raw: fallback.stack };
     values.push(exception);
   }
@@ -535,7 +531,7 @@ function normalizeTags(value: unknown, state: NormalizationState, limits: typeof
       state.drop(`tags.${key}`);
       continue;
     }
-    const tag = stringValue(Reflect.get(value, key), state, `tags.${key}`, limits.maxStringBytes);
+    const tag = stringValue(value[key], state, `tags.${key}`, limits.maxStringBytes);
     if (tag !== undefined) result[truncateUtf8Bytes(key, 256, () => state.drop("tags.key"))] = tag;
   }
   return result;
@@ -644,7 +640,7 @@ function normalizeItemMetadata(value: unknown, state: NormalizationState, limits
   return result;
 }
 
-function normalizeInputRecord(input: unknown): Record<string, unknown> {
+function normalizeInputRecord(input: unknown): FlatErrorEventInput {
   if (!isRecord(input)) throw new Error("Error envelope input must be an object");
   return input;
 }
@@ -676,7 +672,7 @@ function normalizeEventId(value: unknown, fallback: unknown): string {
   return deriveErrorEnvelopeEventId(fallback);
 }
 
-function adaptFlatErrorInput(input: Record<string, unknown>): Record<string, unknown> {
+function adaptFlatErrorInput(input: FlatErrorEventInput): FlatErrorEventInput {
   const data = field(input, "data");
   const source = isRecord(data) ? data : input;
   const pick = (key: string): unknown => firstField([source, input], [key]);
@@ -793,7 +789,7 @@ function fitEnvelope(envelope: ErrorEnvelopeV1, limits: typeof ERROR_ENVELOPE_LI
   return result;
 }
 
-function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERROR_ENVELOPE_LIMITS, state: NormalizationState): ErrorEnvelopeV1 {
+function normalizeToEnvelope(input: FlatErrorEventInput, limits: typeof ERROR_ENVELOPE_LIMITS, state: NormalizationState): ErrorEnvelopeV1 {
   const exceptionInput = field(input, "exception");
   const name = stringValue(field(input, "name"), state, "name", limits.maxStringBytes);
   const message = stringValue(field(input, "message"), state, "message", limits.maxStringBytes);
@@ -850,31 +846,31 @@ function normalizeToEnvelope(input: Record<string, unknown>, limits: typeof ERRO
     kind,
     level,
     handled,
-    ...synthetic === undefined ? {} : { synthetic },
-    ...message === undefined ? {} : { message },
-    ...name === undefined ? {} : { name },
-    ...stack === undefined ? {} : { stack },
-    ...exceptionValues.length === 0 ? {} : { exception: { values: exceptionValues } },
-    ...topStacktrace === undefined ? {} : { stacktrace: topStacktrace },
-    ...mechanism === undefined ? {} : { mechanism },
-    ...request === undefined ? {} : { request },
-    ...user === undefined ? {} : { user },
     tags,
     contexts,
     extra,
     breadcrumbs,
     fingerprint,
-    ...sdk === undefined ? {} : { sdk },
-    ...runtime === undefined ? {} : { runtime },
-    ...release === undefined ? {} : { release },
-    ...dist === undefined ? {} : { dist },
-    ...environment === undefined ? {} : { environment },
-    ...correlation === undefined ? {} : { correlation },
-    ...debugMeta === undefined ? {} : { debug_meta: debugMeta },
     attachments,
     item_metadata: itemMetadata,
     normalization: state.snapshot(),
   };
+  if (synthetic !== undefined) envelope.synthetic = synthetic;
+  if (message !== undefined) envelope.message = message;
+  if (name !== undefined) envelope.name = name;
+  if (stack !== undefined) envelope.stack = stack;
+  if (exceptionValues.length > 0) envelope.exception = { values: exceptionValues };
+  if (topStacktrace !== undefined) envelope.stacktrace = topStacktrace;
+  if (mechanism !== undefined) envelope.mechanism = mechanism;
+  if (request !== undefined) envelope.request = request;
+  if (user !== undefined) envelope.user = user;
+  if (sdk !== undefined) envelope.sdk = sdk;
+  if (runtime !== undefined) envelope.runtime = runtime;
+  if (release !== undefined) envelope.release = release;
+  if (dist !== undefined) envelope.dist = dist;
+  if (environment !== undefined) envelope.environment = environment;
+  if (correlation !== undefined) envelope.correlation = correlation;
+  if (debugMeta !== undefined) envelope.debug_meta = debugMeta;
   return fitEnvelope(envelope, limits, state);
 }
 

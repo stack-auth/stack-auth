@@ -7,7 +7,7 @@ import {
   type IssueLifecycleStatus,
   type IssueLifecycleTransition,
 } from "@/lib/issues/issue-lifecycle";
-import { IssueProductInputError } from "@/lib/issues/issue-product";
+import { ISSUE_PRODUCT_ERROR_CODES, IssueProductInputError } from "@/lib/issues/issue-product";
 import type { SmartRequest } from "@/route-handlers/smart-request";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -71,16 +71,21 @@ export function actorUserId(fullReq: SmartRequest): string | null {
 }
 
 export function isIssueRowVanishedError(error: unknown): boolean {
-  return error instanceof IssueProductInputError && error.message.includes("was not found in the authenticated branch");
+  return error instanceof IssueProductInputError
+    && error.code === ISSUE_PRODUCT_ERROR_CODES.issueNotFoundInBranch;
 }
 
 export async function withIssueActionTarget<T>(options: {
   tenancy: Tenancy,
   rawIssueId: string,
   action: (target: IssueActionTarget) => Promise<T>,
+  // Injection seam so tests can exercise the replica-then-primary retry logic
+  // without the DB-backed resolver; production callers omit it.
+  resolveIdentity?: typeof resolveIssueIdentity,
 }): Promise<{ target: IssueActionTarget, result: T }> {
+  const resolveIdentity = options.resolveIdentity ?? resolveIssueIdentity;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const target = await resolveIssueIdentity(options.tenancy, options.rawIssueId, {
+    const target = await resolveIdentity(options.tenancy, options.rawIssueId, {
       consistency: attempt === 0 ? "replica" : "primary",
     });
     if (target === null) {

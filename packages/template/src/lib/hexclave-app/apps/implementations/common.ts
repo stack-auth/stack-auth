@@ -3,7 +3,7 @@ import { AsyncCache } from "@hexclave/shared/dist/utils/caches";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { createGlobal, getGlobal, setGlobal } from "@hexclave/shared/dist/utils/globals";
-import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
+import { filterUndefined, isRecord, omit } from "@hexclave/shared/dist/utils/objects";
 import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { use } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -185,11 +185,16 @@ function fetchBackendUrlsInBackground(primaryBaseUrl: string): void {
       if (!res.ok) {
         return;
       }
-      const data = await res.json();
-      if (!Array.isArray(data.urls) || !data.urls.every((u: unknown) => typeof u === 'string')) {
+      const data: unknown = await res.json();
+      if (!isRecord(data) || !Array.isArray(data.urls)) {
         return;
       }
-      createGlobal('__stack-fetched-backend-urls', () => data.urls as string[]);
+      const urls: string[] = [];
+      for (const url of data.urls) {
+        if (typeof url !== 'string') return;
+        urls.push(url);
+      }
+      createGlobal('__stack-fetched-backend-urls', () => urls);
     } catch (e) {
       captureError('fetch-backend-urls-in-background', e);
     }

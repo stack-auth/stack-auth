@@ -1,4 +1,5 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { RowData } from "../../analytics/shared";
 import { parseClickHouseUtc, type IssueOccurrence } from "./issues-data";
 
 
@@ -78,7 +79,7 @@ export type LeadingUpToLogLine = {
 };
 
 export function parseLeadingUpToLogRows(
-  rows: readonly Record<string, unknown>[],
+  rows: readonly RowData[],
 ): LeadingUpToLogLine[] {
   return rows.map((row) => {
     return {

@@ -1,5 +1,5 @@
 import { createProductionErrorAttachmentService, ErrorAttachmentConflictError, type ErrorAttachmentMetadata } from "@/lib/attachments";
-import { validateErrorAttachmentScope, validateErrorAttachmentUpload, validateErrorEventId, type ValidatedErrorAttachmentUpload } from "@/lib/attachments/attachment-contract";
+import { validateErrorAttachmentScope, validateErrorAttachmentUpload, validateErrorEventId, ErrorAttachmentValidationError, type ValidatedErrorAttachmentUpload } from "@/lib/attachments/attachment-contract";
 import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -48,8 +48,10 @@ export const POST = createSmartRouteHandler({
     try {
       upload = validateErrorAttachmentUpload(body);
     } catch (error) {
-      if (error instanceof Error) throw new StatusError(StatusError.BadRequest, error.message);
-      throw error;
+      // Only validation failures become BadRequest; anything else must not
+      // leak its internal message to the client.
+      if (!(error instanceof ErrorAttachmentValidationError)) throw error;
+      throw new StatusError(StatusError.BadRequest, error.message);
     }
     const service = await createProductionErrorAttachmentService(auth.tenancy);
     let result;

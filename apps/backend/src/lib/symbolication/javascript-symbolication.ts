@@ -13,6 +13,7 @@ import {
 } from "../artifacts/artifact-storage";
 import type { ArtifactLookup } from "../artifacts/artifact-upload-service";
 import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import { utf8ByteLength } from "@/lib/utf8";
 
 type ArtifactLookupService = {
   lookupArtifact(scope: ArtifactScope, query: { debugId: string, release: string | null, dist: string | null }): Promise<ArtifactLookup | null>,
@@ -316,20 +317,23 @@ export class JavaScriptSymbolicationService {
     );
     const name = segment.nameIndex === null ? null : loaded.map.names[segment.nameIndex] ?? null;
 
+    // The sourceContext key stays absent (not `undefined`) when there is no context, so
+    // serialized frames don't grow a null-ish field; `SymbolicatedJavaScriptLocation` is
+    // Readonly, hence two complete literals instead of a conditional assignment.
+    const locationBase = {
+      source: originalSource,
+      line: segment.originalLine + 1,
+      column: segment.originalColumn + 1,
+      name,
+      artifact: {
+        manifestSha256: loaded.lookup.manifestSha256,
+        debugId,
+        codeFile: raw.codeFile,
+      },
+    };
     return {
       raw,
-      location: {
-        source: originalSource,
-        line: segment.originalLine + 1,
-        column: segment.originalColumn + 1,
-        name,
-        ...(sourceContext === undefined ? {} : { sourceContext }),
-        artifact: {
-          manifestSha256: loaded.lookup.manifestSha256,
-          debugId,
-          codeFile: raw.codeFile,
-        },
-      },
+      location: sourceContext === undefined ? locationBase : { ...locationBase, sourceContext },
       diagnostics: frameDiagnostics,
     };
   }
@@ -1014,10 +1018,6 @@ function boundedContextLines(value: number | undefined, max: number): number {
   if (value === undefined) return max;
   if (!Number.isSafeInteger(value) || value < 0) return 0;
   return Math.min(value, max);
-}
-
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
 }
 
 function decodeUtf8(bytes: Uint8Array): string | null {

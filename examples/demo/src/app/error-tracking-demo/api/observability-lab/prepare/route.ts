@@ -1,5 +1,5 @@
-import { prepareObservabilityLab } from "../../../observability-lab-upload";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { prepareObservabilityLab } from "../../../observability-lab-upload";
 
 export const runtime = "nodejs";
 

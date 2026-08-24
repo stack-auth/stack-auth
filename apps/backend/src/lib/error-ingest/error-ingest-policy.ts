@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
+  isErrorIngestScrubbedRecord,
   scrubErrorIngestPayload,
   type ErrorIngestScrubbedValue,
   type ErrorIngestScrubOverrides,
@@ -10,8 +12,6 @@ const MAX_OVERRIDE_KEYS = 32;
 const MAX_OVERRIDE_KEY_BYTES = 96;
 const SAFE_OVERRIDE_KEY = /^(?:user\.(?:email|username|ip_address)|request\.url|url|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64}|extra\.[a-zA-Z0-9_.-]{1,64})$/;
 const SAFE_OVERRIDE_RULE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
-
-type JsonRecord = { [key: string]: unknown };
 
 export type ErrorIngestPolicyConfig = {
   finalScrub: ErrorIngestScrubOverrides,
@@ -48,20 +48,12 @@ export class ErrorIngestPolicyConfigError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is JsonRecord {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isScrubbedObject(value: unknown): value is { [key: string]: ErrorIngestScrubbedValue } {
-  return isRecord(value);
-}
-
-function requiredRecord(value: unknown, field: string): JsonRecord {
+function requiredRecord(value: unknown, field: string): Record<string, unknown> {
   if (!isRecord(value)) throw new ErrorIngestPolicyConfigError(`${field} must be an object`);
   return value;
 }
 
-function rejectUnknownKeys(record: JsonRecord, allowed: readonly string[], field: string): void {
+function rejectUnknownKeys(record: Record<string, unknown>, allowed: readonly string[], field: string): void {
   const allowedKeys = new Set(allowed);
   for (const key of Object.keys(record)) {
     if (!allowedKeys.has(key)) throw new ErrorIngestPolicyConfigError(`Unsupported ${field} policy field`);
@@ -130,7 +122,7 @@ export function evaluateErrorIngestPolicy(options: {
 
   for (const item of options.items) {
     const scrubbed = scrubErrorIngestPayload(item.data, { overrides: config.finalScrub });
-    if (scrubbed.value === undefined || !isScrubbedObject(scrubbed.value)) {
+    if (!isErrorIngestScrubbedRecord(scrubbed.value)) {
       outcomes.push({
         itemId: item.itemId,
         itemType: item.itemType,

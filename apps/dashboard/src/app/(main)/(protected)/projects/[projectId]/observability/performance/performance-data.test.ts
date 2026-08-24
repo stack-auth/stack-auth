@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 
-const { sendInternalAdminRequestMock } = vi.hoisted(() => ({
-  sendInternalAdminRequestMock: vi.fn(),
-}));
-
-vi.mock("@/lib/hexclave-app-internals", () => ({
-  sendInternalAdminRequest: sendInternalAdminRequestMock,
-}));
+// The data module reaches the backend through the admin app's internals
+// symbol, so the test injects a fake `sendRequest` through that same seam
+// instead of mocking the module. The real `sendInternalAdminRequest` runs,
+// which also pins the "admin" request type in the call assertions.
+const sendRequestMock = vi.fn();
+const adminApp = { [hexclaveAppInternalsSymbol]: { sendRequest: sendRequestMock } };
 
 import {
   buildPerformanceTimeline,
   fetchPerformanceMetrics,
   fetchWebVitals,
+  getPerformanceMetricChartDomain,
   getPerformanceBehaviorQuery,
   getPerformancePagesQuery,
   getPerformanceTimelineQuery,
@@ -24,6 +25,8 @@ import {
   parsePerformancePageRow,
   parsePerformanceVitalsOverviewRow,
   rankPageInsights,
+  selectAvailableTimelineMetric,
+  sortPerformancePages,
   sumPageBehavior,
   webVitalRating,
   WEB_VITAL_METRICS,
@@ -86,37 +89,44 @@ describe("performance metrics data contract", () => {
   });
 
   it("uses the typed admin route and sends no arbitrary SQL", async () => {
-    sendInternalAdminRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
-    const result = await fetchPerformanceMetrics({}, { hours: 1, metricName: "queue.depth", metricType: "gauge" });
+    sendRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
+    const result = await fetchPerformanceMetrics(adminApp, { hours: 1, metricName: "queue.depth", metricType: "gauge" });
 
     expect(result.selected_metric_name).toBe("queue.depth");
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith({}, "/internal/analytics/metrics", expect.objectContaining({
+    expect(sendRequestMock).toHaveBeenCalledWith("/internal/analytics/metrics", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({ hours: 1, metric_name: "queue.depth", metric_type: "gauge" }),
-    }));
+    }), "admin");
   });
 
   it("resolves by name only when no metric type is selected", async () => {
-    sendInternalAdminRequestMock.mockClear();
-    sendInternalAdminRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
-    await fetchPerformanceMetrics({}, { hours: 1, metricName: "queue.depth", metricType: null });
+    sendRequestMock.mockClear();
+    sendRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
+    await fetchPerformanceMetrics(adminApp, { hours: 1, metricName: "queue.depth", metricType: null });
 
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith({}, "/internal/analytics/metrics", expect.objectContaining({
+    expect(sendRequestMock).toHaveBeenCalledWith("/internal/analytics/metrics", expect.objectContaining({
       body: JSON.stringify({ hours: 1, metric_name: "queue.depth" }),
-    }));
+    }), "admin");
   });
 
   it("loads each browser metric stream in parallel for the overview cards", async () => {
-    sendInternalAdminRequestMock.mockClear();
-    sendInternalAdminRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
+    sendRequestMock.mockClear();
+    sendRequestMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify(responseBody()), { status: 200 })));
 
-    const result = await fetchWebVitals({}, 1);
+    const result = await fetchWebVitals(adminApp, 1);
 
     expect(result.size).toBe(WEB_VITAL_METRICS.length);
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(WEB_VITAL_METRICS.length);
-    expect(sendInternalAdminRequestMock.mock.calls.map((call) => JSON.parse(call[2].body).metric_name)).toEqual(
+    expect(sendRequestMock).toHaveBeenCalledTimes(WEB_VITAL_METRICS.length);
+    expect(sendRequestMock.mock.calls.map((call) => JSON.parse(call[1].body).metric_name)).toEqual(
       WEB_VITAL_METRICS.map((metric) => metric.metricName),
     );
+  });
+
+  it("keeps a flat numeric stream centered in a non-zero chart domain", () => {
+    const [minimum, maximum] = getPerformanceMetricChartDomain([0.02, 0.02, 0.02], false);
+    expect(minimum).toBeCloseTo(0.018);
+    expect(maximum).toBeCloseTo(0.022);
+    expect(getPerformanceMetricChartDomain([4, 4], true)).toEqual([0, 4.4]);
   });
 });
 function page(overrides: Partial<PagePerformance> = {}): PagePerformance {
@@ -292,6 +302,25 @@ describe("performance page-view parsers and ranking", () => {
     expect(webVitalRating(lcp, 3000).label).toBe("Needs work");
     expect(webVitalRating(lcp, 5000).label).toBe("Poor");
     expect(webVitalRating(lcp, null).label).toBe("No data");
+  });
+
+  it("sorts SPA-only pages by INP when LCP has no samples", () => {
+    const sorted = sortPerformancePages([
+      page({ path: "/popular", views: 100, lcpP75: null, lcpSamples: 0, inpP75: null, inpSamples: 0 }),
+      page({ path: "/responsive", views: 20, lcpP75: null, lcpSamples: 0, inpP75: 80, inpSamples: 10 }),
+      page({ path: "/laggy", views: 5, lcpP75: null, lcpSamples: 0, inpP75: 600, inpSamples: 10 }),
+    ], "slowest");
+
+    expect(sorted.map((entry) => entry.path)).toEqual(["/laggy", "/responsive", "/popular"]);
+  });
+
+  it("opens the timeline on the populated metric when the preferred series is empty", () => {
+    expect(selectAvailableTimelineMetric([
+      { bucketMs: 1, views: 2, lcpP75: null, inpP75: 120 },
+    ], "lcp")).toBe("inp");
+    expect(selectAvailableTimelineMetric([
+      { bucketMs: 1, views: 2, lcpP75: 1800, inpP75: 120 },
+    ], "lcp")).toBe("lcp");
   });
 
   it("surfaces at most one insight per kind and ignores undersampled slow pages", () => {

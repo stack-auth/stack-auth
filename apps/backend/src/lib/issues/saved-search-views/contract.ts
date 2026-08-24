@@ -1,11 +1,12 @@
+import { utf8ByteLength } from "@/lib/utf8";
 import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import {
   parsePublicSearchQuery,
   type PublicSearchFilters,
 } from "../public-search/contract";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const SAVED_ISSUE_SEARCH_QUERY_VERSION = 1 as const;
 export const SAVED_ISSUE_SEARCH_QUERY_MAX_BYTES = 16 * 1024;
@@ -118,14 +119,13 @@ function forbidden(message: string): never {
   throw new StatusError(StatusError.Forbidden, message);
 }
 
-
 function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
 function serializedByteLength(value: unknown): number {
   const serialized = JSON.stringify(value);
-  return new TextEncoder().encode(serialized).byteLength;
+  return utf8ByteLength(serialized);
 }
 
 function parseVisibility(value: unknown): SavedIssueSearchViewVisibility {

@@ -1,4 +1,5 @@
 import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import type { ErrorIngestScrubbedRecord } from "@/lib/error-ingest/error-ingest-scrubber";
 import { OtlpJsonRequestError as OtlpTraceRequestError, otlpArray as array, otlpAttributes as attributes, otlpRecord as record, otlpString as string, otlpUint as uint, otlpUint32 as uint32, otlpUnixNano as unixNano, otlpUnixNanoOrOpen as unixNanoOrOpen, type OtlpAttributes } from "./json";
 export { OtlpJsonRequestError as OtlpTraceRequestError } from "./json";
 export type { OtlpAttributeValue, OtlpAttributes } from "./json";
@@ -48,7 +49,7 @@ export type CanonicalOtlpSpan = {
     droppedAttributesCount: number,
     schemaUrl: string,
   },
-  policyScrubbedData?: Readonly<Record<string, unknown>>,
+  policyScrubbedData?: Readonly<ErrorIngestScrubbedRecord>,
 };
 
 

@@ -4,6 +4,7 @@ import {
 } from "./issue-alert-email-template";
 import type {
   IssueAlertConditionGroup,
+  IssueAlertEmailAction,
   IssueAlertPredicate,
   IssueAlertRule,
   IssueAlertRulePayload,
@@ -143,16 +144,17 @@ export function issueAlertTriggerLabel(rule: IssueAlertRule): string {
 }
 
 export function issueAlertRuleToPayload(rule: IssueAlertRuleResponse): IssueAlertRulePayload {
-  return {
+  const payload: IssueAlertRulePayload = {
     schemaVersion: rule.schemaVersion,
     id: rule.id,
     version: rule.version,
     enabled: rule.enabled,
-    ...(rule.filters == null ? {} : { filters: rule.filters }),
     conditions: rule.conditions,
     cooldown: rule.cooldown,
     action: rule.action,
   };
+  if (rule.filters != null) payload.filters = rule.filters;
+  return payload;
 }
 
 type BuildRuleResult =
@@ -207,13 +209,13 @@ export function buildIssueAlertRule(
     const categoryError = boundedText(category, "Notification category", 256);
     if (categoryError != null) return { status: "error", message: categoryError };
   }
-  const action: IssueAlertRulePayload["action"] = {
+  const action: IssueAlertEmailAction = {
     type: "email",
     userIds: [...new Set(draft.userIds)],
     subject,
     html,
-    ...(category === "" ? {} : { notificationCategoryName: category }),
   };
+  if (category !== "") action.notificationCategoryName = category;
 
   const cooldownDurationSeconds = parseInteger(draft.cooldownDurationSeconds, "Cooldown", 30 * 24 * 60 * 60, true);
   if (cooldownDurationSeconds == null) return { status: "error", message: "Cooldown must be a whole number from 0 to 30 days in seconds." };

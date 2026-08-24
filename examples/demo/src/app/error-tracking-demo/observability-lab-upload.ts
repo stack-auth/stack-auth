@@ -1,5 +1,7 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
   buildObservabilityDemoBundle,
+  type ObservabilityDemoArtifactManifest,
   type ObservabilityDemoBundle,
 } from "./symbolicated-bundle";
 import {
@@ -50,13 +52,12 @@ async function upsertDemoRelease(
   auth: ObservabilityLabApiAuth,
   bundle: ObservabilityDemoBundle,
 ): Promise<{ id: string }> {
-  const release = await requestJson(auth, RELEASES_PATH, {
+  const releaseId = await requestJson(auth, RELEASES_PATH, {
     version: OBSERVABILITY_DEMO_RELEASE,
     status: "open",
     ref: "observability-demo",
     date_released: "2026-08-12T00:00:00.000Z",
-  }, "release upsert");
-  const releaseId = readString(release, "id", "release upsert");
+  }, "release upsert", (value) => readString(readRecord(value, "release upsert"), "id", "release upsert"));
   const commitSha = bundle.manifestSha256.slice(0, 40);
   await requestJson(auth, RELEASE_COMMITS_PATH, {
     release_id: releaseId,
@@ -65,13 +66,13 @@ async function upsertDemoRelease(
     position: 0,
     message: "Register the observability lab source-map fixture.",
     author_name: "Observability Lab",
-  }, "release commit");
+  }, "release commit", () => undefined);
   await requestJson(auth, RELEASE_DEPLOYMENTS_PATH, {
     release_id: releaseId,
     deployment_key: "observability-lab-local",
     environment: OBSERVABILITY_DEMO_ENVIRONMENT,
     name: "local demo",
-  }, "release deployment");
+  }, "release deployment", () => undefined);
   return { id: releaseId };
 }
 
@@ -79,47 +80,61 @@ async function uploadDemoSourceMaps(
   auth: ObservabilityLabApiAuth,
   bundle: ObservabilityDemoBundle,
 ): Promise<"uploaded" | "already_uploaded"> {
-  const registration = await requestJson(auth, SOURCE_MAP_REGISTRATION_PATH, {
+  const registeredArtifact = await requestJson(auth, SOURCE_MAP_REGISTRATION_PATH, {
     manifest: bundle.manifest,
     manifest_sha256: bundle.manifestSha256,
-  }, "source-map registration", bundle.manifestSha256);
-  const artifacts = readArray(registration, "artifacts", "source-map registration");
+  }, "source-map registration", parseRegistrationArtifact, bundle.manifestSha256);
+  if (!registeredArtifact.alreadyFinalized) {
+    await putPresigned(registeredArtifact.bundleUploadUrl, "application/javascript", null, bundle.bundleBytes, "bundle upload");
+    await putPresigned(registeredArtifact.sourceMapUploadUrl, "application/json", "gzip", bundle.sourceMapGzipped, "source-map upload");
+  }
+  const alreadyUploaded = await requestJson(auth, SOURCE_MAP_FINALIZE_PATH, {
+    manifest_sha256: bundle.manifestSha256,
+  }, "source-map finalize", (value) => readStringArray(readRecord(value, "source-map finalize"), "already_uploaded", "source-map finalize"), bundle.manifestSha256);
+  if (alreadyUploaded.includes(bundle.debugId)) return "already_uploaded";
+  return "uploaded";
+}
+
+type DemoRegisteredArtifact =
+  | { alreadyFinalized: true }
+  | { alreadyFinalized: false, bundleUploadUrl: string, sourceMapUploadUrl: string };
+
+function parseRegistrationArtifact(value: unknown): DemoRegisteredArtifact {
+  const artifacts = readArray(readRecord(value, "source-map registration"), "artifacts", "source-map registration");
   if (artifacts.length === 0) {
     throw new Error("Source-map registration returned no artifacts.");
   }
   const first = artifacts[0];
   const alreadyFinalized = readBoolean(first, "already_finalized", "source-map registration artifact");
-  if (!alreadyFinalized) {
-    const bundleUploadUrl = readString(first, "bundle_upload_url", "source-map registration artifact");
-    const sourceMapUploadUrl = readString(first, "source_map_upload_url", "source-map registration artifact");
-    await putPresigned(bundleUploadUrl, "application/javascript", null, bundle.bundleBytes, "bundle upload");
-    await putPresigned(sourceMapUploadUrl, "application/json", "gzip", bundle.sourceMapGzipped, "source-map upload");
-  }
-  const finalize = await requestJson(auth, SOURCE_MAP_FINALIZE_PATH, {
-    manifest_sha256: bundle.manifestSha256,
-  }, "source-map finalize", bundle.manifestSha256);
-  const alreadyUploaded = readStringArray(finalize, "already_uploaded", "source-map finalize");
-  if (alreadyUploaded.includes(bundle.debugId)) return "already_uploaded";
-  return "uploaded";
+  if (alreadyFinalized) return { alreadyFinalized: true };
+  return {
+    alreadyFinalized: false,
+    bundleUploadUrl: readString(first, "bundle_upload_url", "source-map registration artifact"),
+    sourceMapUploadUrl: readString(first, "source_map_upload_url", "source-map registration artifact"),
+  };
 }
 
-async function requestJson(
+type DemoApiRequestBody = Record<string, string | number | ObservabilityDemoArtifactManifest>;
+
+async function requestJson<T>(
   auth: ObservabilityLabApiAuth,
   apiPath: string,
-  body: unknown,
+  body: DemoApiRequestBody,
   operation: string,
+  parse: (value: unknown) => T,
   idempotencyKey?: string,
-): Promise<Record<string, unknown>> {
+): Promise<T> {
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "content-type": "application/json",
+    "x-stack-access-type": "server",
+    "x-stack-project-id": auth.projectId,
+    "x-stack-secret-server-key": auth.secretServerKey,
+  };
+  if (idempotencyKey !== undefined) headers["idempotency-key"] = idempotencyKey;
   const response = await fetch(`${auth.apiUrl.replace(/\/+$/, "")}${apiPath}`, {
     method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "x-stack-access-type": "server",
-      "x-stack-project-id": auth.projectId,
-      "x-stack-secret-server-key": auth.secretServerKey,
-      ...(idempotencyKey === undefined ? {} : { "idempotency-key": idempotencyKey }),
-    },
+    headers,
     body: JSON.stringify(body),
   });
   const text = await response.text();
@@ -135,7 +150,7 @@ async function requestJson(
   } catch {
     throw new Error(`${operation} returned a non-JSON response.`);
   }
-  return readRecord(parsed, operation);
+  return parse(parsed);
 }
 
 async function putPresigned(
@@ -147,13 +162,14 @@ async function putPresigned(
 ): Promise<void> {
   const fetchBody = new Uint8Array(new ArrayBuffer(bytes.byteLength));
   fetchBody.set(bytes);
+  const headers: Record<string, string> = {
+    "content-type": contentType,
+    "content-length": bytes.byteLength.toString(),
+  };
+  if (contentEncoding !== null) headers["content-encoding"] = contentEncoding;
   const response = await fetch(url, {
     method: "PUT",
-    headers: {
-      "content-type": contentType,
-      "content-length": bytes.byteLength.toString(),
-      ...(contentEncoding === null ? {} : { "content-encoding": contentEncoding }),
-    },
+    headers,
     body: fetchBody,
   });
   if (!response.ok) {
@@ -167,10 +183,6 @@ function readRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} must be a JSON object.`);
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readArray(record: Record<string, unknown>, key: string, label: string): Record<string, unknown>[] {
@@ -216,14 +228,14 @@ function describeBody(text: string, statusText: string): string {
   if (text.trim() === "") return statusText || "empty response";
   try {
     const parsed: unknown = JSON.parse(text);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      const error = Reflect.get(parsed, "error");
+    if (isRecord(parsed)) {
+      const error = parsed.error;
       if (typeof error === "string") return error.slice(0, 1_000);
-      if (typeof error === "object" && error !== null && !Array.isArray(error)) {
-        const message = Reflect.get(error, "message");
+      if (isRecord(error)) {
+        const message = error.message;
         if (typeof message === "string") return message.slice(0, 1_000);
       }
-      const message = Reflect.get(parsed, "message");
+      const message = parsed.message;
       if (typeof message === "string") return message.slice(0, 1_000);
     }
   } catch {

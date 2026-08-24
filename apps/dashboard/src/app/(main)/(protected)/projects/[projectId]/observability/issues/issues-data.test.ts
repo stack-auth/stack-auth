@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IssueDetailResponseSchema } from "@hexclave/shared/dist/interface/admin-issues";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { OBSERVABILITY_TIME_RANGES } from "../filters";
 import {
   buildIssueListQueryString,
@@ -29,20 +30,18 @@ import {
   type IssueListRequest,
 } from "./issues-data";
 
-const { sendInternalAdminRequestMock } = vi.hoisted(() => ({
-  sendInternalAdminRequestMock: vi.fn(),
-}));
-
-vi.mock("@/lib/hexclave-app-internals", () => ({
-  sendInternalAdminRequest: sendInternalAdminRequestMock,
-}));
+// The data module reaches the backend through the admin app's internals
+// symbol, so the test injects a fake `sendRequest` through that same seam
+// instead of mocking the module. The real `sendInternalAdminRequest` runs,
+// which also pins the "admin" request type in the call assertions.
+const sendRequestMock = vi.fn();
 
 const SAMPLE_HASH_A = "0123456789abcdef0123456789abcdef";
 const SAMPLE_HASH_B = "fedcba9876543210fedcba9876543210";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const TEAM_ID = "00000000-0000-4000-8000-000000000002";
 const ISSUE_ID = "00000000-0000-4000-8000-000000000003";
-const adminApp = { projectId: "project-1" };
+const adminApp = { projectId: "project-1", [hexclaveAppInternalsSymbol]: { sendRequest: sendRequestMock } };
 
 const detail = IssueDetailResponseSchema.validateSync({
   issue: {
@@ -70,7 +69,7 @@ const detail = IssueDetailResponseSchema.validateSync({
 });
 
 beforeEach(() => {
-  sendInternalAdminRequestMock.mockReset();
+  sendRequestMock.mockReset();
 });
 
 describe("getIssueSparklineQuery", () => {
@@ -251,7 +250,7 @@ describe("buildIssueListQueryString", () => {
 
 describe("issue triage action helpers", () => {
   it("validates and posts bounded bulk status changes with per-item outcomes", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       status: "resolved",
       results: [{
         input_issue_id: ISSUE_ID,
@@ -271,20 +270,20 @@ describe("issue triage action helpers", () => {
 
     await expect(updateIssuesStatusBulk(adminApp, [ISSUE_ID], "resolved"))
       .resolves.toMatchObject({ status: "resolved", results: [{ issue_id: ISSUE_ID, changed: true }] });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       "/issues/actions/bulk",
       expect.objectContaining({ body: JSON.stringify({ issue_ids: [ISSUE_ID], status: "resolved" }) }),
+      "admin",
     );
 
     await expect(updateIssuesStatusBulk(adminApp, [ISSUE_ID, ISSUE_ID], "resolved"))
       .rejects.toThrow(/duplicates/);
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
+    expect(sendRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it("validates and posts a merge of two or more issues", async () => {
     const otherIssueId = "00000000-0000-4000-8000-000000000004";
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       primary_issue_id: ISSUE_ID,
       merged_issue_ids: [otherIssueId],
     }), { status: 200 }));
@@ -293,20 +292,20 @@ describe("issue triage action helpers", () => {
       primary_issue_id: ISSUE_ID,
       merged_issue_ids: [otherIssueId],
     });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       "/internal/issues/merge",
       expect.objectContaining({
         body: JSON.stringify({ issue_ids: [ISSUE_ID, otherIssueId] }),
       }),
+      "admin",
     );
 
     await expect(mergeIssues(adminApp, [ISSUE_ID])).rejects.toThrow(/at least 2/);
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledTimes(1);
+    expect(sendRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it("validates and posts unmerge, snooze, unsnooze, and regress", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       source_issue_id: ISSUE_ID,
       new_issue_id: "00000000-0000-4000-8000-000000000006",
       counters_truncated_at_millis: 10,
@@ -314,27 +313,27 @@ describe("issue triage action helpers", () => {
     await expect(unmergeIssue(adminApp, ISSUE_ID, [SAMPLE_HASH_A])).resolves.toMatchObject({
       source_issue_id: ISSUE_ID,
     });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       `/internal/issues/${ISSUE_ID}/unmerge`,
       expect.objectContaining({ body: JSON.stringify({ hashes: [SAMPLE_HASH_A] }) }),
+      "admin",
     );
 
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "snooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
       changed: true, changed_at_millis: 10, status: "ignored", previous_assignee_user_id: null,
       assignee_user_id: null, transition_kind: "status_changed", ignored_until_millis: 99, regressed_at_millis: null,
     }), { status: 200 }));
     await expect(snoozeIssue(adminApp, ISSUE_ID, Date.now() + 60_000)).resolves.toMatchObject({ action: "snooze", status: "ignored" });
 
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "unsnooze", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
       changed: true, changed_at_millis: 11, status: "unresolved", previous_assignee_user_id: null,
       assignee_user_id: null, transition_kind: "reopened", ignored_until_millis: null, regressed_at_millis: null,
     }), { status: 200 }));
     await expect(unsnoozeIssue(adminApp, ISSUE_ID)).resolves.toMatchObject({ action: "unsnooze" });
 
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "regress", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
       changed: true, changed_at_millis: 12, status: "unresolved", previous_assignee_user_id: null,
       assignee_user_id: null, transition_kind: "regressed", ignored_until_millis: null, regressed_at_millis: 12,
@@ -343,54 +342,54 @@ describe("issue triage action helpers", () => {
   });
 
   it("validates and posts self-assignment and unassignment through their typed routes", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "assign", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
       changed: true, changed_at_millis: 10, status: null, previous_assignee_user_id: null,
       assignee_user_id: USER_ID, transition_kind: null, ignored_until_millis: null, regressed_at_millis: null,
     }), { status: 200 }));
 
     await expect(updateIssueAssignment(adminApp, ISSUE_ID, USER_ID)).resolves.toMatchObject({ assignee_user_id: USER_ID });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/assign`, expect.objectContaining({ body: JSON.stringify({ assignee_user_id: USER_ID }) }));
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/assign`, expect.objectContaining({ body: JSON.stringify({ assignee_user_id: USER_ID }) }), "admin");
 
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       action: "unassign", issue_id: ISSUE_ID, redirected: false, redirected_from_issue_id: null,
       changed: true, changed_at_millis: 11, status: null, previous_assignee_user_id: USER_ID,
       assignee_user_id: null, transition_kind: null, ignored_until_millis: null, regressed_at_millis: null,
     }), { status: 200 }));
     await expect(updateIssueAssignment(adminApp, ISSUE_ID, null)).resolves.toMatchObject({ assignee_user_id: null });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/unassign`, expect.objectContaining({ body: "{}" }));
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/unassign`, expect.objectContaining({ body: "{}" }), "admin");
   });
 
   it("validates team assignment and keeps tenant/action errors visible", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response("private tenant detail", { status: 409 }));
+    sendRequestMock.mockResolvedValue(new Response("private tenant detail", { status: 409 }));
     await expect(updateIssueTeam(adminApp, ISSUE_ID, TEAM_ID)).rejects.toThrow("Updating issue team failed with status 409");
     await expect(updateIssueTeam(adminApp, ISSUE_ID, "not-a-uuid")).rejects.toThrow("Team ID must be a UUID");
   });
 
   it("posts ownership with bounded null context and rejects invalid subjects", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       issue_id: ISSUE_ID, id: "00000000-0000-4000-8000-000000000004", type: "user",
       user_id: USER_ID, team_id: null, source: "manual", context: null, updated_at_millis: 12,
     }), { status: 200 }));
     await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: USER_ID, teamId: null })).resolves.toMatchObject({ user_id: USER_ID });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/owner`, expect.objectContaining({ body: JSON.stringify({ type: "user", user_id: USER_ID, team_id: null, source: "manual", context: null }) }));
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/owner`, expect.objectContaining({ body: JSON.stringify({ type: "user", user_id: USER_ID, team_id: null, source: "manual", context: null }) }), "admin");
     await expect(updateIssueOwner(adminApp, ISSUE_ID, { type: "user", userId: null, teamId: null })).rejects.toThrow("A user owner requires only a user ID");
 
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       issue_id: ISSUE_ID, deleted_count: 1, updated_at_millis: 13,
     }), { status: 200 }));
     await expect(clearManualIssueOwners(adminApp, ISSUE_ID)).resolves.toBeUndefined();
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/owner`, { method: "DELETE" });
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/owner`, { method: "DELETE" }, "admin");
   });
 
   it("posts bookmark and subscription changes for the authenticated subject", async () => {
-    sendInternalAdminRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, user_id: USER_ID, bookmarked: true, changed: true, changed_at_millis: 13 }), { status: 200 }));
+    sendRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, user_id: USER_ID, bookmarked: true, changed: true, changed_at_millis: 13 }), { status: 200 }));
     await expect(updateIssueBookmark(adminApp, ISSUE_ID, USER_ID, true, "bookmark-1")).resolves.toMatchObject({ bookmarked: true });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/bookmark`, expect.objectContaining({ body: JSON.stringify({ user_id: USER_ID, bookmarked: true, idempotency_key: "bookmark-1" }) }));
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/bookmark`, expect.objectContaining({ body: JSON.stringify({ user_id: USER_ID, bookmarked: true, idempotency_key: "bookmark-1" }) }), "admin");
 
-    sendInternalAdminRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", updated_at_millis: 14 }), { status: 200 }));
+    sendRequestMock.mockResolvedValueOnce(new Response(JSON.stringify({ issue_id: ISSUE_ID, subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", updated_at_millis: 14 }), { status: 200 }));
     await expect(updateIssueSubscription(adminApp, ISSUE_ID, "user", USER_ID, true, "manual", "subscription-1")).resolves.toMatchObject({ subscribed: true });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, `/issues/${ISSUE_ID}/actions/subscribe`, expect.objectContaining({ body: JSON.stringify({ subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", idempotency_key: "subscription-1" }) }));
+    expect(sendRequestMock).toHaveBeenCalledWith(`/issues/${ISSUE_ID}/actions/subscribe`, expect.objectContaining({ body: JSON.stringify({ subject_type: "user", subject_id: USER_ID, subscribed: true, reason: "manual", idempotency_key: "subscription-1" }) }), "admin");
   });
 
   it("bounds comment/action text before it reaches the authenticated route", async () => {
@@ -418,7 +417,7 @@ describe("issue triage optimistic state", () => {
   });
 
   it("searches public issue records with the extra event dimensions", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       items: [{
         record_type: "issue",
         issue_id: ISSUE_ID,
@@ -455,12 +454,12 @@ describe("issue triage optimistic state", () => {
       items: [{ issue_id: ISSUE_ID, level: "error", release: "1.4.2" }],
       nextCursor: null,
     });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       expect.stringMatching(/^\/issues\/search\?/),
       { method: "GET" },
+      "admin",
     );
-    const searchPath = sendInternalAdminRequestMock.mock.calls[0]?.[1];
+    const searchPath = sendRequestMock.mock.calls[0]?.[0];
     expect(searchPath).toContain("record=issue");
     expect(searchPath).toContain("level=error");
     expect(searchPath).toContain("release=1.4.2");

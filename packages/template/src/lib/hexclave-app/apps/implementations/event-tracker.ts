@@ -11,7 +11,7 @@ import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTeleme
 import { generateUuid } from "./telemetry-transport";
 import type { TelemetryResource } from "./telemetry-config";
 import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
-import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, type SpanPropagationContext } from "./span-propagation";
+import { buildPropagationHeaderValues, fetchWithSpanPropagation, type SpanPropagationContext } from "./span-propagation";
 import { OtlpWebVitalsMetricRecorder, startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
 
 export {
@@ -633,24 +633,19 @@ export class EventTracker {
   }
 
   private _spanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    try {
-      const policy = this._deps.getPropagationPolicy?.() ?? {
-        selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
-        allowedOrigins: [],
-        allowLocalhost: false,
-      };
-      const initWithHeader = buildFetchInitWithSpanContext({
-        input,
-        init,
-        headerValues: span.getSpanPropagationHeaders(),
-        selfOrigin: policy.selfOrigin,
-        allowedOrigins: policy.allowedOrigins,
-        allowLocalhost: policy.allowLocalhost,
-      });
-      return globalThis.fetch(input, initWithHeader?.init ?? init);
-    } catch {
-      return globalThis.fetch(input, init);
-    }
+    const policy = this._deps.getPropagationPolicy?.() ?? {
+      selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
+      allowedOrigins: [],
+      allowLocalhost: false,
+    };
+    return fetchWithSpanPropagation({
+      input,
+      init,
+      headerValues: span.getSpanPropagationHeaders(),
+      selfOrigin: policy.selfOrigin,
+      allowedOrigins: policy.allowedOrigins,
+      allowLocalhost: policy.allowLocalhost,
+    });
   }
 
   /**
@@ -1436,14 +1431,14 @@ export class EventTracker {
     const target = event.target;
     if (target instanceof Element && isInsideHexclaveUi(target)) return;
     const text = event.clipboardData?.getData("text/plain");
-    const data: Record<string, unknown> = {
+    const data: { url: string, path: string, tag_name?: string, selector?: string, length?: number, same_page_origin?: 0 | 1 } = {
       url: window.location.href,
       path: window.location.pathname,
-      ...target instanceof Element ? {
-        tag_name: target.tagName.toLowerCase(),
-        selector: this._buildSelector(target),
-      } : {},
     };
+    if (target instanceof Element) {
+      data.tag_name = target.tagName.toLowerCase();
+      data.selector = this._buildSelector(target);
+    }
     if (typeof text === "string") {
       data.length = text.length;
       data.same_page_origin = this._lastCopyHash !== null && text !== "" && hashTextLocal(text) === this._lastCopyHash ? 1 : 0;

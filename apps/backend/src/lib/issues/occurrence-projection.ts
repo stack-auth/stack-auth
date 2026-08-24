@@ -1,3 +1,4 @@
+import { utf8ByteLength } from "@/lib/utf8";
 import type {
   IssueGroupingHashProvenance,
   PublicIssueErrorEnvelope,
@@ -8,22 +9,22 @@ import type {
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { IssueAttachment } from "@hexclave/shared/dist/interface/admin-issues";
-import { isJsonSerializable } from "@hexclave/shared/dist/utils/json";
+import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
   emptyFrameSymbolication,
   symbolicatePublicFrames,
   type PublicIssueSymbolicator,
   type StoredIssueFrame,
 } from "./occurrence-symbolication";
-import { isRecord, scrubPublicRecord, scrubPublicText, scrubPublicValue } from "./public-scrub";
-
+import { scrubPublicRecord, scrubPublicText, scrubPublicValue } from "./public-scrub";
 
 export type PublicOccurrenceRow = {
   occurrence_id: string,
   event_at: string,
   message: string,
   level: string,
-  data: Record<string, unknown>,
+  data: Record<string, Json>,
   error_envelope: string | null,
   issue_grouping_provenance: string,
   error_frames: string,
@@ -38,9 +39,7 @@ export type PublicOccurrenceRow = {
 };
 
 const PUBLIC_ERROR_ENVELOPE_MAX_BYTES = 256 * 1024;
-const PUBLIC_ERROR_ENVELOPE_TEXT_ENCODER = new TextEncoder();
 const PUBLIC_GROUPING_PROVENANCE_MAX_BYTES = 64 * 1024;
-const PUBLIC_GROUPING_PROVENANCE_TEXT_ENCODER = new TextEncoder();
 const PUBLIC_GROUPING_PROVENANCE_MAX_ENTRIES = 16;
 
 function parsePublicStringArray(value: unknown, maximumLength: number): string[] | null {
@@ -54,7 +53,7 @@ function parsePublicStringArray(value: unknown, maximumLength: number): string[]
 }
 
 function parsePublicGroupingProvenance(raw: string): IssueGroupingHashProvenance[] {
-  if (raw === "" || PUBLIC_GROUPING_PROVENANCE_TEXT_ENCODER.encode(raw).byteLength > PUBLIC_GROUPING_PROVENANCE_MAX_BYTES) {
+  if (raw === "" || utf8ByteLength(raw) > PUBLIC_GROUPING_PROVENANCE_MAX_BYTES) {
     return [];
   }
 
@@ -105,7 +104,7 @@ function isPublicErrorEnvelope(value: unknown): value is PublicIssueErrorEnvelop
 
 export function parsePublicErrorEnvelope(raw: string | null): PublicIssueErrorEnvelope | null {
   if (raw === null || raw === "") return null;
-  if (PUBLIC_ERROR_ENVELOPE_TEXT_ENCODER.encode(raw).byteLength > PUBLIC_ERROR_ENVELOPE_MAX_BYTES) return null;
+  if (utf8ByteLength(raw) > PUBLIC_ERROR_ENVELOPE_MAX_BYTES) return null;
 
   let parsed: unknown;
   try {
@@ -154,7 +153,7 @@ function parseStoredFrames(raw: string): StoredIssueFrame[] {
 }
 
 function toPublicFrame(frame: StoredIssueFrame, symbolication: PublicIssueFrameSymbolication): PublicIssueFrame {
-  return {
+  const publicFrame: PublicIssueFrame = {
     filename: frame.filename === null ? null : scrubPublicText(frame.filename),
     function: frame.function === null ? null : scrubPublicText(frame.function),
     module: frame.module === null ? null : scrubPublicText(frame.module),
@@ -162,9 +161,10 @@ function toPublicFrame(frame: StoredIssueFrame, symbolication: PublicIssueFrameS
     lineno: frame.lineno,
     colno: frame.colno,
     in_app: frame.inApp,
-    ...(frame.debugId === null ? {} : { debug_id: scrubPublicText(frame.debugId) }),
     symbolication,
   };
+  if (frame.debugId !== null) publicFrame.debug_id = scrubPublicText(frame.debugId);
+  return publicFrame;
 }
 
 function occurrenceRelease(envelope: PublicIssueErrorEnvelope | null): string | null {

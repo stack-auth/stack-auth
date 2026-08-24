@@ -359,6 +359,86 @@ Buffering, export, and sampling:
   (spanmetrics), so they follow the same head-sampling decision as the
   request span.
 
+## Managed browser OTLP delivery (offline queue, retries, client reports)
+
+The managed browser exporter wraps the official OTLP/HTTP exporters with one
+delivery layer per signal (`traces` | `logs` | `metrics`). All signals share
+these constants:
+
+    export attempts per batch:            3
+    retry base delay:                     1_000 ms
+    retry max delay:                      30_000 ms
+    max request body:                     1 MiB (1_048_576 bytes)
+    retryable HTTP statuses:              408, 429, 500, 502, 503, 504
+    flush deadline (default):             5_000 ms
+    shutdown deadline (default):          2_000 ms
+    page-unload flush deadline:           250 ms
+    offline queue max entries:            30
+    offline queue max bytes:              5 MiB (5 * 1_024 * 1_024)
+    unload keepalive per-request cap:     30_000 bytes
+    unload keepalive per-page budget:     64 KiB (65_536 bytes)
+
+Retry/backoff: a failed attempt is retried up to 3 attempts total. Delay for
+attempt N > 1 is the server's `Retry-After` header when present and parseable
+(integer seconds or an HTTP date, clamped to the 30 s max), otherwise
+exponential with jitter: `min(30_000, 1_000 * 2^(N-1))` scaled by a uniform
+0.5–1.0 factor. Deadline expiry mid-retry returns a retryable "deadline"
+outcome instead of throwing. Non-retryable statuses classify as `rejected`
+(generic), `oversized` (413), or permanent failure; network errors are always
+retryable. Exhausted retries surface a delivery outcome (with reason such as
+`retry_exhausted`, including attempt count and status code) through the
+`onOutcome` hook — data is never silently lost without an outcome record.
+
+Offline persistence: when configured, undelivered batches persist to IndexedDB
+so telemetry survives page reloads while offline. One database per signal,
+named `${dbName}-${signal}` where `dbName` defaults to
+`hexclave-otlp-offline-<projectKey>` (preserving the naming of older SDKs).
+Bounds are enforced on enqueue: oldest entries are evicted first when the queue
+would exceed 30 entries or 5 MiB. Each entry carries its serialized body,
+item count, byte size, scheduled `nextAttemptAt`, and the authentication
+generation it was captured under. Queue bounds are tracked in a metadata store
+(`queue-bytes`, `auth-generation`; database version 1).
+
+Authentication-generation isolation: every batch is stamped with the current
+generation and re-checked immediately before each send attempt and again after
+the response arrives; a mismatch aborts delivery with an
+`auth_generation_mismatch` outcome so buffered telemetry can never be
+attributed to the wrong user. Advancing the generation (authentication change)
+flushes first; if that fails, providers shut down within the shutdown deadline
+and the whole managed registration is replaced rather than letting spans cross
+users. Client reports are never emitted for `auth_generation_mismatch`,
+`queue_overflow`, or `persistence_failure` outcomes.
+
+Page-unload path: on `visibilitychange → hidden` / `pagehide` a single
+microtask flush runs under the 250 ms unload deadline. Requests may use
+`fetch(..., { keepalive: true })` only when the body is ≤ 30,000 bytes AND the
+page-wide in-flight keepalive budget (64 KiB, tracked across all signals)
+has room; otherwise the normal (non-keepalive) fetch is used and the data
+rides the offline queue.
+
+Client reports (self-telemetry about dropped telemetry): whenever a full
+outcome records drops — except the auth/queue/persistence reasons above — the
+exporter enqueues one JSON report to
+`POST /api/v1/analytics/client-reports` through the same offline queue and
+retry rules as ordinary batches:
+
+    {
+      discarded_events: [{
+        reason,        // the outcome reason string
+        category,      // "span" | "log_item" | "metric" by signal
+        quantity,      // dropped item count (falls back to item count)
+      }],
+      rate_limited_events: [],
+      filtered_events: [],
+      filtered_sampling_events: [],
+      idempotency_key, // `hexclave-client-report-<signal>-` + 4 random u32 hex
+                       // (crypto.getRandomValues) or timestamp-sequence fallback
+    }
+
+The receiver deduplicates on the idempotency key. Reports are queued at
+`nextAttemptAt = now` and drained opportunistically; a full queue drops the
+report with a console warning instead of blocking telemetry.
+
 
 ## trackEvent(eventType, data?, options?)
 
@@ -698,8 +778,15 @@ data shared by all capture paths:
     name,
     stack?,                     // raw stack string, truncated to 8,192 bytes;
                                 // no client-side frame parsing/sourcemapping
-    mechanism_type,             // "global.onerror" | "global.unhandledrejection"
-                                //  | "node.uncaughtexception" | "next.onRequestError"
+    mechanism_type,             // automatic captures:
+                                //   "global.onerror" | "global.unhandledrejection"
+                                //   | "node.uncaughtexception" | "next.onRequestError"
+                                // manual/promoted captures:
+                                //   "captured.exception" (captureException default)
+                                //   | "captured.message" (captureMessage default)
+                                //   | "captured.event" (captureEvent default)
+                                //   | "console.error" (console.error promotion)
+                                //   | caller-supplied `mechanism` override
     handled: false,
     synthetic?: 1,              // non-Error throw / synthesized message
     fingerprint,                // hex of djb2-xor over
@@ -760,11 +847,16 @@ record:
   lastEventId(): ErrorEventId | undefined
 
 `captureException` accepts an arbitrary thrown value and optional `handled` and
-`mechanism` fields. `captureMessage` rejects an empty message. `captureEvent`
-accepts a normalized message or exception chain with optional stack frames,
-platform, release, and environment fields. All three paths preserve the
-current bounded `$error` projection while retaining the normalized exception
-chain under `exception` when one is supplied.
+`mechanism` fields (default `mechanism_type` "captured.exception").
+`captureMessage` rejects an empty message and defaults `mechanism_type` to
+"captured.message". `captureEvent` accepts a normalized message or exception
+chain with optional stack frames, platform, release, and environment fields,
+and defaults `mechanism_type` to "captured.event". A caller-supplied `mechanism`
+string overrides the default on any path. console.error promotion (client and
+server) emits `mechanism_type = "console.error"` with `handled: true` while the
+original `$log` row is retained. All three paths preserve the current bounded
+`$error` projection while retaining the normalized exception chain under
+`exception` when one is supplied.
 
 `withErrorScope(fn)` creates an isolated scope inherited from the current
 scope, passes it to `fn`, and restores the parent scope even when `fn` throws.
@@ -796,6 +888,59 @@ automatic global handlers or instrumentation, but explicit manual capture
 remains available and initializes only the delivery facade it needs. `flush()`
 waits for queued server manual captures before force-flushing managed OTel
 providers.
+
+### v1 error envelope normalization (shared wire contract)
+
+Manual captures and ingest-side projections share one normalizer (the
+`error-envelope` module in the shared package) so client capture and server
+scrubbing cannot drift. Every normalized envelope carries stable markers:
+
+    schema: "hexclave.error-envelope"
+    version: 1
+
+and a `kind` of `"exception" | "message" | "event"` plus a `level` of
+`"fatal" | "error" | "warning" | "info" | "debug" | "log"`.
+
+Normalization limits (defaults; callers may pass stricter overrides):
+
+    maxDepth: 8                  maxEventBytes: 256 * 1024 (256 KiB)
+    maxStringBytes: 8 * 1024     maxExceptionValues: 10
+    maxFrames: 50                maxBreadcrumbs: 100
+    maxTags: 100                 maxContexts: 50
+    maxExtraFields: 100          maxAttachmentItems: 20
+    maxDebugImages: 20           maxCollectionEntries: 100
+
+Strings are truncated on UTF-8 byte boundaries (never mid-codepoint) to
+`maxStringBytes`; keys are additionally bounded to 256 bytes. Oversized
+collections keep the first N entries.
+
+Sensitive-key redaction replaces values whose key matches either regex with an
+empty object:
+
+    /^(authorization|cookie|set-cookie|x-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|secret|password|passwd|credential|signature|body|query|search|raw[-_]?body)$/i
+    /(^|[-_.])(authorization|cookie|token|secret|password|credential)([-_.]|$)/i
+
+(the second catches embedded occurrences like `headers.authorization` or
+`user.password_hash`). Request URLs are reduced to `origin + pathname`
+(query/hash stripped).
+
+Every value that is dropped or truncated records a reason into the
+normalization state; the envelope then reports `normalization.truncated`
+(whether anything was cut) and `normalization.dropped`: all reasons sorted,
+deduplicated, capped at 32 entries with the 32nd replaced by `"more-drops"`.
+Reason strings are dotted paths plus a cause suffix — e.g. `<path>.string`,
+`<path>.depth`, `<path>.cycle`, `<path>.items`, `<path>.fields`,
+`<path>.key`, `<path>.frames`, `<path>.values`, `request.url.string`,
+`tags.fields`, `tags.key`, `breadcrumbs.items`, `attachments.items`,
+`debug_meta.images`, `event.exception.values`, `event.exception.stacktrace`.
+
+Deterministic fallback identity: when an input has no valid event ID (32
+lowercase hex characters; dashes are stripped before matching), the ID is
+derived as four concatenations of an FNV-1a-style 32-bit hash over the stable
+serialization of the input — `hash = (2166136261 ^ seed) >>> 0`, then per code
+point `hash ^= codePoint; hash = Math.imul(hash, 16777619) >>> 0` — for seeds
+0..3, each rendered as zero-padded 8-character lowercase hex (32 chars total).
+This is an identity function, not a security hash.
 
 ## Server request linking (withSpan({ request }) etc.)
 

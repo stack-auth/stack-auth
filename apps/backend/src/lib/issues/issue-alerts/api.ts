@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
   loadOwnerTeamMemberEmailsByUserId,
   matchOwnerTeamRecipients,
@@ -103,10 +104,6 @@ export function parseIssueAlertRuleInput(value: unknown): IssueAlertRule {
   });
   if (parsed === null) throw new StatusError(StatusError.BadRequest, "Invalid issue alert rule");
   return parsed;
-}
-
-function isRecord(value: unknown): value is { readonly [key: string]: unknown } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function issueAlertScope(tenancy: Tenancy): IssueAlertRuleScope {

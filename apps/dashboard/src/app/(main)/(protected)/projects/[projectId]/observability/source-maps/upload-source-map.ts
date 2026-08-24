@@ -1,3 +1,4 @@
+import { parseJson, type Json } from "@hexclave/shared/dist/utils/json";
 import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 const DEBUG_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -78,7 +79,7 @@ export async function prepareSourceMapUpload(input: {
   }
 
   const parsedSourceMap = parseSourceMap(input.sourceMapSource);
-  if (parsedSourceMap.debug_id !== undefined || parsedSourceMap.debugId !== undefined) {
+  if ("debug_id" in parsedSourceMap || "debugId" in parsedSourceMap) {
     throw new Error("Source map already contains a debug ID. Choose the original map before debug-ID injection.");
   }
 
@@ -236,23 +237,22 @@ function bytesToHex(bytes: Uint8Array<ArrayBuffer>): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function parseSourceMap(source: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source);
-  } catch {
+function parseSourceMap(source: string): Record<string, Json> {
+  const parsed = parseJson(source);
+  if (parsed.status === "error") {
     throw new Error("Source map must contain valid JSON.");
   }
-  if (!isRecord(parsed)) {
+  const sourceMap = parsed.data;
+  if (!isRecord(sourceMap)) {
     throw new Error("Source map must be a JSON object.");
   }
-  if (parsed.version !== 3) {
+  if (sourceMap.version !== 3) {
     throw new Error("Source map must use version 3.");
   }
-  if (typeof parsed.mappings !== "string" && !Array.isArray(parsed.sections)) {
+  if (typeof sourceMap.mappings !== "string" && !Array.isArray(sourceMap.sections)) {
     throw new Error("Source map must contain mappings or sections.");
   }
-  return parsed;
+  return sourceMap;
 }
 
 function validateMetadata(value: string, label: string): string {
@@ -273,6 +273,3 @@ function findLastSourceMappingUrl(source: string): { lineStart: number } | null 
   return last;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

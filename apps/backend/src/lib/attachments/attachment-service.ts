@@ -9,7 +9,6 @@ import {
   validateErrorAttachmentUpload,
   type ErrorAttachmentMetadata,
   type ErrorAttachmentScope,
-  type ErrorAttachmentUploadInput,
   type ErrorAttachmentUploadResult,
   type ValidatedErrorAttachmentUpload,
 } from "./attachment-contract";

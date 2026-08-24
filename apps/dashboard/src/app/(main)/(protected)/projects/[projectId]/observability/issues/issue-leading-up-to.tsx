@@ -1,17 +1,18 @@
 "use client";
 
 import { DesignAlert, DesignBadge, DesignCard, DesignDialog } from "@/components/design-components";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { formatAbsoluteTimeFromMillis, tryParseJson } from "../format";
 import { LogLevelChip } from "../log-level";
 import { ClockCounterClockwiseIcon, SpinnerGapIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { LeadingUpToLogLine } from "./correlation";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 
 function parseStructuredLogMessage(message: string): { type: string, value: string } | null {
   const parsed = tryParseJson(message);
-  if (!isRecord(parsed) || typeof parsed.type !== "string" || typeof parsed.value !== "string") return null;
+  if (!isRecord(parsed)) return null;
+  if (typeof parsed.type !== "string" || typeof parsed.value !== "string") return null;
   return { type: parsed.type, value: parsed.value };
 }
 

@@ -4,6 +4,7 @@ import { DesignAlert, DesignButton, DesignCard, DesignInput } from "@/components
 import { Link } from "@/components/link";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { getErrorMessage } from "../format";
 import { issueDetailHref } from "./issue-links";
 import { searchPublicIssues, type IssuePublicSearchRecord, type IssuePublicSearchRequest } from "./issues-data";
 import type { IssueFilters } from "./issue-filters";
@@ -61,7 +62,7 @@ export function IssueEventSearch({
         setNextCursor(null);
         setCursorFilters(null);
       }
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(getErrorMessage(caught));
     } finally {
       setBusy(false);
     }

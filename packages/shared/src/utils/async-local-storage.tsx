@@ -35,6 +35,9 @@ export function loadAsyncLocalStorage<T>(key: string): Promise<AsyncLocalStorage
     existing = (async (): Promise<AsyncLocalStorageLike<T> | null> => {
       try {
         const specifier = asyncHooksSpecifier();
+        // SAFETY: the specifier is deliberately opaque (see asyncHooksSpecifier), so TS cannot type this
+        // import. The only member we rely on, `AsyncLocalStorage`, is typeof-guarded on the next line, so
+        // an unexpected module still degrades to the documented `null` fallback instead of misbehaving.
         const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as AsyncHooksModuleLike<T>;
         return typeof mod.AsyncLocalStorage === "function" ? new mod.AsyncLocalStorage() : null;
       } catch {
@@ -43,6 +46,9 @@ export function loadAsyncLocalStorage<T>(key: string): Promise<AsyncLocalStorage
     })();
     loadPromise.set(key, existing);
   }
+  // SAFETY: the shared cache erases `T`. Each key belongs to a single call site with a fixed `T` (that is
+  // the point of the per-key memoization: `run`/`getStore` must observe the same store type), so the
+  // promise stored under `key` was created as `Promise<AsyncLocalStorageLike<T> | null>` for this same `T`.
   return existing as Promise<AsyncLocalStorageLike<T> | null>;
 }
 

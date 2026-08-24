@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException, type PutObjectCommandInput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -58,13 +58,14 @@ export async function uploadBytes(options: {
     throw new HexclaveAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
   }
 
-  const command = new PutObjectCommand({
+  const putInput: PutObjectCommandInput = {
     Bucket: bucket,
     Key: options.key,
     Body: options.body,
-    ...(options.contentType ? { ContentType: options.contentType } : {}),
-    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
-  });
+  };
+  if (options.contentType) putInput.ContentType = options.contentType;
+  if (options.contentEncoding) putInput.ContentEncoding = options.contentEncoding;
+  const command = new PutObjectCommand(putInput);
 
   await s3Client.send(command);
 
@@ -84,15 +85,16 @@ export async function uploadBytesIfAbsent(options: {
   private?: boolean,
 }): Promise<boolean> {
   const { client, bucket } = getS3Target(options.private === true);
+  const putInput: PutObjectCommandInput = {
+    Bucket: bucket,
+    Key: options.key,
+    Body: options.body,
+    IfNoneMatch: "*",
+  };
+  if (options.contentType) putInput.ContentType = options.contentType;
+  if (options.contentEncoding) putInput.ContentEncoding = options.contentEncoding;
   return await sendConditionalPutWithConflictRetry(async () => {
-    await client.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: options.key,
-      Body: options.body,
-      IfNoneMatch: "*",
-      ...(options.contentType ? { ContentType: options.contentType } : {}),
-      ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
-    }));
+    await client.send(new PutObjectCommand(putInput));
   });
 }
 
@@ -177,13 +179,14 @@ type PresignedUploadOptions = {
 };
 
 export function createPresignedUploadCommand(options: PresignedUploadOptions, bucket: string): PutObjectCommand {
-  return new PutObjectCommand({
+  const putInput: PutObjectCommandInput = {
     Bucket: bucket,
     Key: options.key,
     ContentType: options.contentType,
-    ...(options.createOnly === true ? { IfNoneMatch: "*" } : {}),
-    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
-  });
+  };
+  if (options.createOnly === true) putInput.IfNoneMatch = "*";
+  if (options.contentEncoding) putInput.ContentEncoding = options.contentEncoding;
+  return new PutObjectCommand(putInput);
 }
 
 export async function createPresignedUploadUrl(options: PresignedUploadOptions): Promise<string> {

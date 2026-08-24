@@ -37,6 +37,7 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
+import { getErrorMessage } from "../../format";
 import { issuesListHref } from "../issue-links";
 import {
   buildIssueAlertRule,
@@ -76,10 +77,6 @@ const COOLDOWN_OPTIONS: { value: AlertRuleDraft["cooldownKeyBy"], label: string 
   { value: "issue_release", label: "Per issue + release" },
   { value: "issue_environment_release", label: "Per issue + environment + release" },
 ];
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function recipientLabel(user: AlertRecipient): string {
   return user.displayName ?? user.id;
@@ -137,10 +134,7 @@ function EmailTemplateFields(props: {
   const subjectRef = useRef<HTMLInputElement>(null);
   const htmlRef = useRef<HTMLTextAreaElement>(null);
   const lastFocused = useRef<"subject" | "html">("html");
-  const [dashboardOrigin, setDashboardOrigin] = useState("https://app.hexclave.com");
-  useEffect(() => {
-    setDashboardOrigin(window.location.origin);
-  }, []);
+  const [dashboardOrigin] = useState(() => typeof window === "undefined" ? "https://app.hexclave.com" : window.location.origin);
   const previewValues = useMemo(
     () => createIssueAlertEmailPreviewValues({
       projectId: props.projectId,
@@ -340,23 +334,24 @@ function RuleEditorDialog(props: RuleEditorDialogProps) {
     [props.recipients],
   );
 
+  const { existingRule, onOpenChange, onSave } = props;
   const submit = useCallback(async () => {
     setFormError(null);
-    const result = buildIssueAlertRule(draft, props.existingRule);
+    const result = buildIssueAlertRule(draft, existingRule);
     if (result.status === "error") {
       setFormError(result.message);
       return;
     }
     setSaving(true);
     try {
-      await props.onSave(result.rule);
-      props.onOpenChange(false);
+      await onSave(result.rule);
+      onOpenChange(false);
     } catch (error) {
-      setFormError(errorMessage(error));
+      setFormError(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
-  }, [draft, props]);
+  }, [draft, existingRule, onOpenChange, onSave]);
 
   const selectedRecipientLabels = draft.userIds.map((userId) => {
     const user = recipientById.get(userId);
@@ -582,7 +577,7 @@ export default function PageClient() {
         setRulesTruncated(nextRules.truncated);
       } catch (error) {
         if (cancelled) return;
-        setRulesError(errorMessage(error));
+        setRulesError(getErrorMessage(error));
       } finally {
         if (!cancelled) setRulesLoading(false);
       }
@@ -604,7 +599,7 @@ export default function PageClient() {
         setDeliveriesTruncated(page.truncated);
       } catch (error) {
         if (cancelled) return;
-        setDeliveriesError(errorMessage(error));
+        setDeliveriesError(getErrorMessage(error));
       } finally {
         if (!cancelled) setDeliveriesLoading(false);
       }
@@ -653,7 +648,7 @@ export default function PageClient() {
       setRules((current) => updateRuleInList(current, saved));
       setNotice(`${saved.id} saved as version ${saved.version}.`);
     } catch (error) {
-      setOperationError(errorMessage(error));
+      setOperationError(getErrorMessage(error));
       throw error;
     }
   }, [adminApp]);
@@ -689,7 +684,7 @@ export default function PageClient() {
       setNotice(result.replayed ? "Delivery replayed." : "Replay was already in flight.");
       setDeliveriesReloadToken((current) => current + 1);
     } catch (error) {
-      setOperationError(errorMessage(error));
+      setOperationError(getErrorMessage(error));
     } finally {
       setReplayingDeliveryId(null);
     }
@@ -782,7 +777,7 @@ export default function PageClient() {
                       try {
                         await toggleRule(rule);
                       } catch (error) {
-                        setOperationError(errorMessage(error));
+                        setOperationError(getErrorMessage(error));
                       }
                     },
                   };

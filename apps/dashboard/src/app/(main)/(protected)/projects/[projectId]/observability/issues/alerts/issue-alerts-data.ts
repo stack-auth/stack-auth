@@ -1,5 +1,7 @@
 import * as yup from "yup";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 
 export type IssueAlertValueOperator =
@@ -85,17 +87,13 @@ export type IssueAlertWebhookAction = {
 export type IssueAlertAction = IssueAlertEmailAction | IssueAlertWebhookAction;
 
 function isIssueAlertAction(value: unknown): value is IssueAlertAction {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) return false;
-  const action: Record<string, unknown> = Object.fromEntries(Object.entries(value));
+  if (!isRecord(value)) return false;
+  const action = value;
   if (action.type === "webhook") return typeof action.integrationId === "string" && action.integrationId.length > 0;
   const hasValidUserIds = Array.isArray(action.userIds)
     && action.userIds.length > 0
     && action.userIds.every((userId) => typeof userId === "string" && userId.length > 0);
-  const routing: Record<string, unknown> | null = action.routing != null
-    && typeof action.routing === "object"
-    && !Array.isArray(action.routing)
-    ? Object.fromEntries(Object.entries(action.routing))
-    : null;
+  const routing = isRecord(action.routing) ? action.routing : null;
   const hasValidRouting = routing != null
     && (
       (routing.type === "team" && typeof routing.teamId === "string" && routing.teamId.length > 0)
@@ -225,7 +223,7 @@ const issueAlertDeliveriesResponseSchema = yup.object({
   truncated: yup.boolean().defined(),
 }).defined();
 
-async function readJsonOrThrow(response: Response, operation: string): Promise<unknown> {
+async function readJsonOrThrow(response: Response, operation: string): Promise<Json> {
   if (!response.ok) {
     throw new HexclaveAssertionError(`${operation} failed with status ${response.status}`);
   }

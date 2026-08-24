@@ -15,14 +15,14 @@ import {
   serializeIssueFilters,
   type IssueFilters,
 } from "./issue-filters";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 
-const { sendInternalAdminRequestMock } = vi.hoisted(() => ({
-  sendInternalAdminRequestMock: vi.fn(),
-}));
-
-vi.mock("@/lib/hexclave-app-internals", () => ({
-  sendInternalAdminRequest: sendInternalAdminRequestMock,
-}));
+// The data module reaches the backend through the admin app's internals
+// symbol, so the test injects a fake `sendRequest` through that same seam
+// instead of mocking the module. The real `sendInternalAdminRequest` runs,
+// which also pins the "admin" request type in the call assertions.
+const sendRequestMock = vi.fn();
+const adminApp = { [hexclaveAppInternalsSymbol]: { sendRequest: sendRequestMock } };
 
 const SAMPLE_VIEW: SavedIssueSearchView = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -107,23 +107,22 @@ describe("dashboard saved issue search view data", () => {
   });
 
   it("uses the admin internal route family for bounded CRUD", async () => {
-    sendInternalAdminRequestMock
+    sendRequestMock
       .mockResolvedValueOnce(jsonResponse({ items: [SAMPLE_VIEW], has_more: false }))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_VIEW, 201))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_VIEW))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    const adminApp = {};
     await expect(fetchSavedIssueSearchViews(adminApp)).resolves.toEqual([SAMPLE_VIEW]);
     await expect(createSavedIssueSearchView(adminApp, savedIssueSearchViewMutationForFilters("Errors", DEFAULT_ISSUE_FILTERS))).resolves.toEqual(SAMPLE_VIEW);
     await expect(updateSavedIssueSearchView(adminApp, SAMPLE_VIEW.id, savedIssueSearchViewMutationForFilters("Updated", DEFAULT_ISSUE_FILTERS))).resolves.toEqual(SAMPLE_VIEW);
     await expect(deleteSavedIssueSearchView(adminApp, SAMPLE_VIEW.id)).resolves.toBeUndefined();
 
-    expect(sendInternalAdminRequestMock.mock.calls.map(([app, path, request]) => [app, path, request.method])).toEqual([
-      [adminApp, "/internal/issues/search-views?limit=100", "GET"],
-      [adminApp, "/internal/issues/search-views", "POST"],
-      [adminApp, `/internal/issues/search-views/${SAMPLE_VIEW.id}`, "PUT"],
-      [adminApp, `/internal/issues/search-views/${SAMPLE_VIEW.id}`, "DELETE"],
+    expect(sendRequestMock.mock.calls.map(([path, request, requestType]) => [path, request.method, requestType])).toEqual([
+      ["/internal/issues/search-views?limit=100", "GET", "admin"],
+      ["/internal/issues/search-views", "POST", "admin"],
+      [`/internal/issues/search-views/${SAMPLE_VIEW.id}`, "PUT", "admin"],
+      [`/internal/issues/search-views/${SAMPLE_VIEW.id}`, "DELETE", "admin"],
     ]);
   });
 });

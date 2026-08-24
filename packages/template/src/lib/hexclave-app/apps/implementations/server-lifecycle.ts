@@ -13,6 +13,9 @@
  * removed before host ownership is handed back.
  */
 
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import { runtimeGlobals } from "./runtime-globals";
+
 export type ServerLifecycleSignal = "uncaughtException" | "unhandledRejection" | "SIGTERM" | "SIGINT";
 
 export type ServerLifecycleCaptureInfo = {
@@ -26,11 +29,11 @@ export type ServerLifecycleDeliveryOutcome = {
 };
 
 export type ServerLifecycleHost = {
-  on: (event: string, listener: (...args: unknown[]) => void) => unknown,
-  removeListener: (event: string, listener: (...args: unknown[]) => void) => unknown,
-  nextTick?: (callback: () => void) => unknown,
-  exit?: (code: number) => unknown,
-  kill?: (pid: number, signal: "SIGTERM" | "SIGINT") => unknown,
+  on: (event: string, listener: (...args: unknown[]) => void) => void,
+  removeListener: (event: string, listener: (...args: unknown[]) => void) => void,
+  nextTick?: (callback: () => void) => void,
+  exit?: (code: number) => void,
+  kill?: (pid: number, signal: "SIGTERM" | "SIGINT") => void,
   pid?: number,
   /** Test/runtime seam. Production hosts receive this from `nextTick`. */
   rethrow?: (error: unknown) => void,
@@ -76,40 +79,57 @@ function isRegistry(value: unknown): value is Registry {
 }
 
 function getRegistry(): Registry {
-  const existing = Reflect.get(globalThis, SERVER_LIFECYCLE_REGISTRY_KEY);
+  const existing = runtimeGlobals[SERVER_LIFECYCLE_REGISTRY_KEY];
   if (isRegistry(existing)) return existing;
   const registry: Registry = new Map();
-  Reflect.set(globalThis, SERVER_LIFECYCLE_REGISTRY_KEY, registry);
+  runtimeGlobals[SERVER_LIFECYCLE_REGISTRY_KEY] = registry;
   return registry;
 }
 
+/**
+ * The members of the ambient process object this integration uses, with Node's
+ * documented signatures. Edge runtimes ship partial process shims, so only
+ * `on`/`removeListener` are required and every optional member is still
+ * verified individually before use.
+ */
+type ProcessLike = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void,
+  removeListener: (event: string, listener: (...args: unknown[]) => void) => void,
+  nextTick?: (callback: () => void) => void,
+  exit?: (code: number) => void,
+  kill?: (pid: number, signal: "SIGTERM" | "SIGINT") => void,
+  pid?: number,
+};
+
 function getProcessHost(): ServerLifecycleHost | null {
-  const candidate = Reflect.get(globalThis, "process");
-  if (Object.is(candidate, null) || typeof candidate !== "object") return null;
+  const candidate = runtimeGlobals["process"];
+  if (!isRecord(candidate)) return null;
+  if (typeof candidate["on"] !== "function" || typeof candidate["removeListener"] !== "function") return null;
+  // SAFETY: this is the parse boundary for the ambient (possibly shimmed)
+  // process object. `on`/`removeListener` were verified as functions above and
+  // every optional member is re-verified below before use, so the cast only
+  // names Node's documented call signatures, which typeof cannot express.
+  const proc = candidate as ProcessLike;
 
-  const on = Reflect.get(candidate, "on");
-  const removeListener = Reflect.get(candidate, "removeListener");
-  if (typeof on !== "function" || typeof removeListener !== "function") return null;
+  const nextTickMember = proc.nextTick;
+  const exitMember = proc.exit;
+  const killMember = proc.kill;
+  const pidValue = proc.pid;
 
-  const nextTickValue = Reflect.get(candidate, "nextTick");
-  const exitValue = Reflect.get(candidate, "exit");
-  const killValue = Reflect.get(candidate, "kill");
-  const pidValue = Reflect.get(candidate, "pid");
-
-  const nextTick = typeof nextTickValue === "function"
-    ? (callback: () => void): unknown => Reflect.apply(nextTickValue, candidate, [callback])
+  const nextTick = typeof nextTickMember === "function"
+    ? (callback: () => void): void => nextTickMember.call(proc, callback)
     : undefined;
-  const exit = typeof exitValue === "function"
-    ? (code: number): unknown => Reflect.apply(exitValue, candidate, [code])
+  const exit = typeof exitMember === "function"
+    ? (code: number): void => exitMember.call(proc, code)
     : undefined;
-  const kill = typeof killValue === "function"
-    ? (pid: number, signal: "SIGTERM" | "SIGINT"): unknown => Reflect.apply(killValue, candidate, [pid, signal])
+  const kill = typeof killMember === "function"
+    ? (pid: number, signal: "SIGTERM" | "SIGINT"): void => killMember.call(proc, pid, signal)
     : undefined;
   const pid = typeof pidValue === "number" && Number.isSafeInteger(pidValue) ? pidValue : undefined;
 
   const host: ServerLifecycleHost = {
-    on: (event, listener) => Reflect.apply(on, candidate, [event, listener]),
-    removeListener: (event, listener) => Reflect.apply(removeListener, candidate, [event, listener]),
+    on: (event, listener) => proc.on(event, listener),
+    removeListener: (event, listener) => proc.removeListener(event, listener),
     ...nextTick === undefined ? {} : { nextTick },
     ...exit === undefined ? {} : { exit },
     ...kill === undefined ? {} : { kill },

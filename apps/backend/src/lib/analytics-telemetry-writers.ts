@@ -1,5 +1,7 @@
 import { classifyTelemetrySignal, TELEMETRY_MAX_LOG_MESSAGE_BYTES, truncateUtf8Bytes, type LogLevel, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 import { computeGrouping, computeGroupingWithReadableConfigs, getGroupingHashProvenance } from "./issues/grouping";
@@ -71,19 +73,18 @@ export type NormalizedEventBatch = {
 
 export type NativeTelemetryWritePlan = TelemetryWritePlan<IssueBatchDelta>;
 
-function stripLoneSurrogatesInString(value: string): string {
-  const sanitized = stripLoneSurrogates(value);
-  if (typeof sanitized !== "string") throw new Error("Expected lone-surrogate normalization to preserve a string value");
-  return sanitized;
-}
-
 function scrubBatchEvent(event: BatchEventWireItem): BatchEventWireItem {
   const result = scrubErrorIngestPayload(event.data);
   if (result.value === undefined) throw new Error("Telemetry event data could not be normalized for durable storage");
   return { ...event, data: result.value };
 }
 
-function toStorableTelemetryData(data: unknown): unknown {
+// The parse step between wire data and the ClickHouse `data` column: wire data
+// always originates from a JSON request body (or in-repo JSON literals), so the
+// serializability check never fails in practice — it is what lets the storable
+// value carry a precise Json type through the writers instead of `unknown`.
+function toStorableTelemetryData(data: unknown): { [key: string]: Json } {
+  if (!isJsonSerializable(data)) throw new Error("Telemetry event data must be JSON-serializable");
   if (data !== null && typeof data === "object" && !Array.isArray(data)) return data;
   return { "$value": data };
 }
@@ -96,7 +97,7 @@ function scrubBatchMessage(message: string): string {
 
 function serializeErrorEnvelope(data: unknown): string {
   const serialized = JSON.stringify(normalizeErrorEnvelope(data));
-  return stripLoneSurrogatesInString(serialized);
+  return stripLoneSurrogates(serialized);
 }
 
 function requireLogMessage(event: BatchEventWireItem): string {
@@ -104,13 +105,8 @@ function requireLogMessage(event: BatchEventWireItem): string {
   return event.message;
 }
 
-function readField(data: unknown, key: string): unknown {
-  if (typeof data !== "object" || data === null) return undefined;
-  return (data as Record<string, unknown>)[key];
-}
-
 function readBooleanField(data: unknown, key: string): boolean | null {
-  const value = readField(data, key);
+  const value = isRecord(data) ? data[key] : undefined;
   return typeof value === "boolean" ? value : null;
 }
 
@@ -123,15 +119,11 @@ function requireBooleanField(data: unknown, key: string): boolean {
 }
 
 function readStringField(data: unknown, key: string): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const value = (data as Record<string, unknown>)[key];
+  const value = isRecord(data) ? data[key] : undefined;
   return typeof value === "string" ? value : null;
 }
 
-type ErrorGroupingFields = {
-  grouping: ReturnType<typeof computeGrouping>,
-  columns: Record<string, unknown>,
-};
+type ErrorGroupingFields = ReturnType<typeof buildErrorGroupingFields>;
 
 type GroupedErrorOccurrence = {
   event: BatchEventWireItem,
@@ -139,7 +131,7 @@ type GroupedErrorOccurrence = {
   occurrenceId: string,
 };
 
-function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<BatchSignalContext, "runtime">, groupingConfig: GroupingConfigResolution): ErrorGroupingFields {
+function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<BatchSignalContext, "runtime">, groupingConfig: GroupingConfigResolution) {
   const name = readStringField(event.data, "name") ?? "Error";
   const message = readStringField(event.data, "message") ?? "";
   const stack = readStringField(event.data, "stack");
@@ -169,7 +161,7 @@ function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<Batch
       error_culprit: grouping.culprit,
       error_frames: JSON.stringify(grouping.frames),
       error_envelope: serializeErrorEnvelope(event.data),
-      message: truncateUtf8Bytes(stripLoneSurrogatesInString(message), TELEMETRY_MAX_LOG_MESSAGE_BYTES),
+      message: truncateUtf8Bytes(stripLoneSurrogates(message), TELEMETRY_MAX_LOG_MESSAGE_BYTES),
       level,
     },
   };
@@ -185,14 +177,14 @@ export function normalizeErrorOccurrence(
   },
   batchId: string,
   ordinal: number,
-): { columns: Record<string, unknown>, issueInput: IssueBatchDelta } {
+) {
   if (event.event_type !== "$error") throw new Error("normalizeErrorOccurrence requires a $error event");
   const errorFields = buildErrorGroupingFields(event, context, resolveGroupingConfig(context.groupingConfig));
   const issueInput = collectIssueInputs([{
     event,
     grouping: errorFields.grouping,
     occurrenceId: computeOccurrenceId(batchId, ordinal),
-  }], context)[0];
+  }], context)[0] ?? throwErr("collectIssueInputs must produce one issue input for one grouped occurrence");
   return {
     columns: {
       occurrence_id: computeOccurrenceId(batchId, ordinal),
@@ -205,13 +197,14 @@ export function normalizeErrorOccurrence(
 
 function buildBaseEventRow(event: BatchEventWireItem, context: BatchSignalContext) {
   {
+    const resourceFields = context.resource === null ? null : buildTelemetryResourceFields(context.resource);
     return {
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
       data: stripLoneSurrogates(toStorableTelemetryData(event.data)),
       producer: context.producer,
       runtime: context.runtime,
-      ...(context.resource === null ? {} : buildTelemetryResourceFields(context.resource)),
+      ...resourceFields,
       project_id: context.projectId,
       branch_id: context.branchId,
       user_id: context.userId,
@@ -244,7 +237,7 @@ function buildLogRow(
     data: stripLoneSurrogates(toStorableTelemetryData(event.data)),
     level: event.event_type === "$log" ? event.level : "",
     error_envelope: "{}",
-    ...errorFields?.columns ?? {},
+    ...errorFields?.columns,
   };
 }
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DataGridColumnDef, DataGridState } from "@hexclave/dashboard-ui-components";
 import PageClient from "./page-client";
 import type { IssueListItem } from "./issues-data";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 
 
 const HASHES = ["hash-a", "hash-b", "hash-c"];
@@ -37,15 +38,21 @@ function sampleIssue(index: number, overrides: Partial<IssueListItem> = {}): Iss
   };
 }
 
-const { adminApp, queryAnalyticsMock, sendInternalAdminRequestMock } = vi.hoisted(() => {
+const { adminApp, queryAnalyticsMock, sendRequestMock } = vi.hoisted(() => {
   const queryAnalytics = vi.fn();
-  const sendInternalAdminRequest = vi.fn();
+  const sendRequest = vi.fn();
   return {
     adminApp: { projectId: "internal", queryAnalytics },
     queryAnalyticsMock: queryAnalytics,
-    sendInternalAdminRequestMock: sendInternalAdminRequest,
+    sendRequestMock: sendRequest,
   };
 });
+
+// PageClient reaches the backend through the admin app's internals symbol, so
+// the fake admin app carries a `sendRequest` mock through that same seam
+// instead of mocking @/lib/hexclave-app-internals. The symbol import cannot be
+// referenced inside vi.hoisted, so it is attached here instead.
+Object.assign(adminApp, { [hexclaveAppInternalsSymbol]: { sendRequest: sendRequestMock } });
 
 vi.mock("../../use-admin-app", () => ({
   useAdminApp: () => adminApp,
@@ -79,10 +86,6 @@ vi.mock("@/components/link", () => ({
   Link: ({ href, children, ...rest }: { href: string, children: React.ReactNode }) => (
     <a href={href} {...rest}>{children}</a>
   ),
-}));
-
-vi.mock("@/lib/hexclave-app-internals", () => ({
-  sendInternalAdminRequest: sendInternalAdminRequestMock,
 }));
 
 vi.mock("../event-sparkline", () => ({
@@ -136,7 +139,9 @@ function jsonResponse(body: unknown, ok = true): Response {
     status: ok ? 200 : 500,
     json: async () => body,
   };
-  return partial as unknown as Response;
+  // SAFETY: the page client only reads ok, status, and json() from list responses; the remaining Response surface
+  // is unused, and Response is assignable to this partial's type, which keeps the conversion a single legal cast.
+  return partial as Response;
 }
 
 function issueListBody(items: IssueListItem[]) {
@@ -157,8 +162,8 @@ function sparklineCalls() {
 }
 
 function issueListCalls() {
-  return sendInternalAdminRequestMock.mock.calls.filter(
-    ([, path]: [unknown, string]) => path.startsWith("/internal/issues?"),
+  return sendRequestMock.mock.calls.filter(
+    ([path]: [string]) => path.startsWith("/internal/issues?"),
   );
 }
 
@@ -170,12 +175,12 @@ describe("Issues page client", () => {
   afterEach(() => {
     cleanup();
     queryAnalyticsMock.mockReset();
-    sendInternalAdminRequestMock.mockReset();
+    sendRequestMock.mockReset();
   });
 
   it("renders rows before the sparklines resolve", async () => {
     const issues = [sampleIssue(0), sampleIssue(1), sampleIssue(2)];
-    sendInternalAdminRequestMock.mockResolvedValue(jsonResponse(issueListBody(issues)));
+    sendRequestMock.mockResolvedValue(jsonResponse(issueListBody(issues)));
     queryAnalyticsMock.mockImplementation(async ({ query }: { query: string }) => {
       if (query.includes(SPARKLINE_MARKER)) return await new Promise(() => {});
       return { result: [] };
@@ -195,7 +200,7 @@ describe("Issues page client", () => {
 
   it("issues exactly ONE sparkline query per page, carrying every visible hash", async () => {
     const issues = [sampleIssue(0), sampleIssue(1), sampleIssue(2)];
-    sendInternalAdminRequestMock.mockResolvedValue(jsonResponse(issueListBody(issues)));
+    sendRequestMock.mockResolvedValue(jsonResponse(issueListBody(issues)));
     queryAnalyticsMock.mockImplementation(async ({ query }: { query: string }) => {
       if (!query.includes(SPARKLINE_MARKER)) return { result: [] };
       return {
@@ -223,7 +228,7 @@ describe("Issues page client", () => {
 
   it("applies a resolve optimistically without refetching the list", async () => {
     const issues = [sampleIssue(0)];
-    sendInternalAdminRequestMock.mockImplementation(async (_app: unknown, path: string) => {
+    sendRequestMock.mockImplementation(async (path: string) => {
       if (path.startsWith("/internal/issues?")) return jsonResponse(issueListBody(issues));
       return jsonResponse({ id: "issue-0", status: "resolved" });
     });
@@ -245,7 +250,7 @@ describe("Issues page client", () => {
 
   it("reverts a failed resolve and surfaces an alert, never a toast", async () => {
     const issues = [sampleIssue(0)];
-    sendInternalAdminRequestMock.mockImplementation(async (_app: unknown, path: string) => {
+    sendRequestMock.mockImplementation(async (path: string) => {
       if (path.startsWith("/internal/issues?")) return jsonResponse(issueListBody(issues));
       return jsonResponse({ message: "nope" }, false);
     });

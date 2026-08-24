@@ -1016,6 +1016,10 @@ const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedCo
 
 const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeDefaults, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
+// Widened from the literal-keyed Record so that rendered-config lookups of arbitrary (possibly retired)
+// grouping config ids type as `| undefined` instead of pretending every string key is present.
+const errorGroupingReadableConfigIdsDefault: Record<string, { enabled: boolean } | undefined> = typedFromEntries(GROUPING_CONFIG_IDS.map(configId => [configId, { enabled: false }]));
+
 const organizationConfigDefaults = {
   rbac: {
     permissions: (key: string) => ({
@@ -1195,7 +1199,7 @@ const organizationConfigDefaults = {
   observability: {
     errorGrouping: {
       activeConfigId: GROUPING_CONFIG_IDS[0],
-      readableConfigIds: typedFromEntries(GROUPING_CONFIG_IDS.map(configId => [configId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+      readableConfigIds: errorGroupingReadableConfigIdsDefault,
     },
   },
 

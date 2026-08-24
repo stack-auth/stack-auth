@@ -26,7 +26,7 @@ import { HexclaveAssertionError, HexclaveSetupError, captureError, throwErr } fr
 import { parseJson } from "@hexclave/shared/dist/utils/json";
 import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
-import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
+import { deepPlainEquals, isRecord, omit } from "@hexclave/shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { suspend, use } from "@hexclave/shared/dist/utils/react";
 import { getTrustedParentDomain, validateRedirectUrl } from "@hexclave/shared/dist/utils/redirect-urls";
@@ -319,12 +319,12 @@ function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: strin
     throw new Error("Invalid stackauth authorization header.", { cause: e });
   }
 
-  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error("Invalid stackauth authorization payload. Expected an object.");
   }
 
-  const accessToken = Reflect.get(parsed, "accessToken");
-  const refreshToken = Reflect.get(parsed, "refreshToken");
+  const accessToken = parsed["accessToken"];
+  const refreshToken = parsed["refreshToken"];
   if (accessToken != null && typeof accessToken !== "string") {
     throw new Error("Invalid stackauth authorization payload. `accessToken` must be a string or null.");
   }

@@ -1,11 +1,11 @@
 import { globalPrismaClient, type PrismaClientTransaction } from "@/prisma-client";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import {
   buildBackgroundJobEnvelope,
   buildBackgroundJobKey,
   type BackgroundJobEnvelope,
   type BackgroundJobType,
 } from "./telemetry/contract";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type QstashFlowControl = {
   key: string;
@@ -14,15 +14,15 @@ export type QstashFlowControl = {
 
 export type QstashDelay = number | `${bigint}s` | `${bigint}m` | `${bigint}h` | `${bigint}d`;
 
-export type QstashMessage<TPayload extends Record<string, unknown>> = {
+export type QstashMessage<TPayload extends Record<string, Json>> = {
   url: string;
   body: TPayload;
   flowControl?: QstashFlowControl;
   delay?: QstashDelay;
-  job?: BackgroundJobEnvelope<Record<string, unknown>>;
+  job?: BackgroundJobEnvelope<Record<string, Json>>;
 };
 
-export type QstashOutboxMessage<TPayload extends Record<string, unknown>> = {
+export type QstashOutboxMessage<TPayload extends Record<string, Json>> = {
   jobType: BackgroundJobType;
   tenancyId: string | null;
   deduplicationKey: string;
@@ -50,29 +50,41 @@ function isBackgroundJobType(value: unknown): value is BackgroundJobType {
   }
 }
 
-export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelope<Record<string, unknown>> {
-  if (!isRecord(value)
-    || value.schemaVersion !== 1
-    || typeof value.jobId !== "string"
-    || value.jobId.length === 0
-    || !isBackgroundJobType(value.jobType)
-    || !(value.tenancyId === null || typeof value.tenancyId === "string")
-    || typeof value.deduplicationKey !== "string"
-    || value.deduplicationKey.length === 0
-    || !isRecord(value.payload)) {
+export function decodeBackgroundJobEnvelope(value: unknown): BackgroundJobEnvelope<Record<string, Json>> {
+  const envelope = asJsonObject(value, "OutgoingRequest qstashOptions.job is invalid");
+  const payload = asJsonObject(envelope.payload, "OutgoingRequest qstashOptions.job is invalid");
+  if (envelope.schemaVersion !== 1
+    || typeof envelope.jobId !== "string"
+    || envelope.jobId.length === 0
+    || !isBackgroundJobType(envelope.jobType)
+    || !(envelope.tenancyId === null || typeof envelope.tenancyId === "string")
+    || typeof envelope.deduplicationKey !== "string"
+    || envelope.deduplicationKey.length === 0) {
     throw new Error("OutgoingRequest qstashOptions.job is invalid");
   }
   return {
     schemaVersion: 1,
-    jobId: value.jobId,
-    jobType: value.jobType,
-    tenancyId: value.tenancyId,
-    deduplicationKey: value.deduplicationKey,
-    payload: value.payload,
+    jobId: envelope.jobId,
+    jobType: envelope.jobType,
+    tenancyId: envelope.tenancyId,
+    deduplicationKey: envelope.deduplicationKey,
+    payload,
   };
 }
 
-function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
+// Decoded QStash options are plain JSON objects; this checks only that the
+// value is a non-array object (with a caller-supplied failure message) so
+// field-level validation can stay at the call site where the expected schema
+// is known.
+function asJsonObject(value: unknown, failureMessage: string): Record<string, Json> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(failureMessage);
+  // SAFETY: every value decoded here originates from the OutgoingRequest
+  // "qstashOptions" jsonb column, so members can only be JSON values; the
+  // check above pins down the top level as a non-array object.
+  return value as Record<string, Json>;
+}
+
+function assertMessage(message: QstashMessage<Record<string, Json>>): void {
   if (!/^\/(?![\\/])/u.test(message.url) || /[\u0000-\u0020\u007f]/u.test(message.url)) {
     throw new Error("QStash outbox URLs must be internal relative paths");
   }
@@ -89,51 +101,49 @@ function assertMessage(message: QstashMessage<Record<string, unknown>>): void {
   }
 }
 
-export function decodeQstashMessage(value: unknown): QstashMessage<Record<string, unknown>> {
-  if (!isRecord(value)) throw new Error("OutgoingRequest qstashOptions must be a JSON object");
+export function decodeQstashMessage(value: unknown): QstashMessage<Record<string, Json>> {
+  const options = asJsonObject(value, "OutgoingRequest qstashOptions must be a JSON object");
 
-  const url = value.url;
+  const url = options.url;
   if (typeof url !== "string" || url.length === 0) {
     throw new Error("OutgoingRequest qstashOptions.url must be a non-empty string");
   }
 
-  const body = value.body === undefined ? {} : value.body;
-  if (!isRecord(body)) throw new Error("OutgoingRequest qstashOptions.body must be a JSON object");
-  const job = value.job === undefined ? undefined : decodeBackgroundJobEnvelope(value.job);
+  // Presence is tested with `in` rather than `!== undefined`: the record's
+  // values are typed Json (which jsonb guarantees), so only missing keys can
+  // yield undefined and the compiler rightly rejects undefined comparisons.
+  const body = "body" in options ? asJsonObject(options.body, "OutgoingRequest qstashOptions.body must be a JSON object") : {};
+  const job = "job" in options ? decodeBackgroundJobEnvelope(options.job) : undefined;
 
   let flowControl: QstashFlowControl | undefined;
-  if (value.flowControl !== undefined) {
-    if (!isRecord(value.flowControl)
-      || typeof value.flowControl.key !== "string"
-      || typeof value.flowControl.parallelism !== "number") {
+  if ("flowControl" in options) {
+    const rawFlowControl = asJsonObject(options.flowControl, "OutgoingRequest qstashOptions.flowControl is invalid");
+    if (typeof rawFlowControl.key !== "string" || typeof rawFlowControl.parallelism !== "number") {
       throw new Error("OutgoingRequest qstashOptions.flowControl is invalid");
     }
     flowControl = {
-      key: value.flowControl.key,
-      parallelism: value.flowControl.parallelism,
+      key: rawFlowControl.key,
+      parallelism: rawFlowControl.parallelism,
     };
   }
 
   let delay: QstashDelay | undefined;
-  if (value.delay !== undefined) {
-    if (!isQstashDelay(value.delay)) {
+  if ("delay" in options) {
+    if (!isQstashDelay(options.delay)) {
       throw new Error("OutgoingRequest qstashOptions.delay is invalid");
     }
-    delay = value.delay;
+    delay = options.delay;
   }
 
-  const message: QstashMessage<Record<string, unknown>> = {
-    url,
-    body,
-    ...(flowControl === undefined ? {} : { flowControl }),
-    ...(delay === undefined ? {} : { delay }),
-    ...(job === undefined ? {} : { job }),
-  };
+  const message: QstashMessage<Record<string, Json>> = { url, body };
+  if (flowControl !== undefined) message.flowControl = flowControl;
+  if (delay !== undefined) message.delay = delay;
+  if (job !== undefined) message.job = job;
   assertMessage(message);
   return message;
 }
 
-export async function enqueueQstashMessage<TPayload extends Record<string, unknown>>(
+export async function enqueueQstashMessage<TPayload extends Record<string, Json>>(
   options: QstashOutboxMessage<TPayload>,
   client: PrismaClientTransaction = globalPrismaClient,
 ): Promise<void> {
@@ -147,18 +157,20 @@ export async function enqueueQstashMessage<TPayload extends Record<string, unkno
     payload: options.message.body,
   });
 
+  const qstashOptions: QstashMessage<TPayload> = {
+    url: options.message.url,
+    body: options.message.body,
+    job,
+  };
+  if (options.message.flowControl !== undefined) qstashOptions.flowControl = options.message.flowControl;
+  if (options.message.delay !== undefined) qstashOptions.delay = options.message.delay;
+
   await client.$executeRaw`
     INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
     VALUES (
       gen_random_uuid(),
       NOW(),
-      ${JSON.stringify({
-        url: options.message.url,
-        body: options.message.body,
-        job,
-        ...(options.message.flowControl === undefined ? {} : { flowControl: options.message.flowControl }),
-        ...(options.message.delay === undefined ? {} : { delay: options.message.delay }),
-      })}::jsonb,
+      ${JSON.stringify(qstashOptions)}::jsonb,
       NULL,
       ${options.deduplicationKey}
     )

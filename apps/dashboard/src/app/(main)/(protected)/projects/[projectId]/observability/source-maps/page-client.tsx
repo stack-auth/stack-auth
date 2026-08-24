@@ -9,6 +9,7 @@ import {
 } from "@/components/design-components";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import {
   CheckCircleIcon,
   FileCodeIcon,
@@ -21,6 +22,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { getErrorMessage } from "../format";
 import { prepareSourceMapUpload, putPresignedArtifact } from "./upload-source-map";
 
 const ReleaseSchema = yup.object({
@@ -76,7 +78,7 @@ type UploadResult = {
   uploadStatus: "uploaded" | "already_uploaded",
 };
 
-async function readJsonOrThrow(response: Response, what: string): Promise<unknown> {
+async function readJsonOrThrow(response: Response, what: string): Promise<Json> {
   if (!response.ok) throw new HexclaveAssertionError(`${what} failed with status ${response.status}`);
   return await response.json();
 }
@@ -89,10 +91,6 @@ function selectedFilePath(file: File): string {
 function optionalTrimmed(value: string): string | null {
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export default function PageClient() {
@@ -220,7 +218,7 @@ export default function PageClient() {
       setLookupDebugId(prepared.debugId);
       setLookupRelease(release ?? "");
     } catch (caught) {
-      setUploadError(errorMessage(caught));
+      setUploadError(getErrorMessage(caught));
     } finally {
       setUploading(false);
     }
@@ -241,7 +239,7 @@ export default function PageClient() {
       setLookupResult(await ArtifactLookupSchema.validate(await readJsonOrThrow(response, "Looking up source map")));
     } catch (caught) {
       setLookupResult(null);
-      setLookupError(errorMessage(caught));
+      setLookupError(getErrorMessage(caught));
     } finally {
       setLookingUp(false);
     }

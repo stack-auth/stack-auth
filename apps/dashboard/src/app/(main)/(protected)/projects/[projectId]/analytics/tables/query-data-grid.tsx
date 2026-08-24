@@ -406,15 +406,14 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             };
           if (config == null) return [base];
           const configuredRenderCell = config.renderCell;
-          return [{
-            ...base,
-            ...(config.header == null ? {} : { header: config.header }),
-            ...(config.width == null ? {} : { width: config.width }),
-            ...(config.flex == null ? {} : { flex: config.flex }),
-            ...(configuredRenderCell == null ? {} : {
-              renderCell: ({ value, row }: { value: unknown, row: RowData }) => configuredRenderCell(value, row),
-            }),
-          }];
+          const configured: DataGridColumnDef<RowData> = { ...base };
+          if (config.header != null) configured.header = config.header;
+          if (config.width != null) configured.width = config.width;
+          if (config.flex != null) configured.flex = config.flex;
+          if (configuredRenderCell != null) {
+            configured.renderCell = ({ value, row }) => configuredRenderCell(value, row);
+          }
+          return [configured];
         }),
       [discoveredColumns, columnConfigs],
     );
@@ -459,6 +458,9 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             timeout_ms: 30000,
           });
 
+          // SAFETY: queryAnalytics rows are the deserialized JSON response
+          // body, so every column value is Json by construction; the SDK only
+          // types them unknown because it cannot know each query's schema.
           const newRows = (response.result as RowData[]).map((row, index) => ({
             ...row,
             [INTERNAL_ROW_ID_KEY]: `${offset + index}`,

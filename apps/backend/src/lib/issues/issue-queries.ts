@@ -2,6 +2,8 @@ import { getSharedClickhouseAdminClient, type ClickHouseClient } from "@/lib/cli
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   CLICKHOUSE_RANKED_SORT_FIELDS,
@@ -59,10 +61,6 @@ type WindowStats = {
 };
 
 type CursorDirection = "asc" | "desc";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function isIssueListSortField(value: unknown): value is IssueListSortField {
   return ISSUE_LIST_SORT_FIELDS.some((field) => field === value);
@@ -420,7 +418,7 @@ type OccurrenceRow = {
   event_at: string,
   message: string,
   level: string,
-  data: Record<string, unknown>,
+  data: Record<string, Json>,
   error_envelope: string,
   issue_grouping_provenance: string,
   error_frames: string,

@@ -1,3 +1,4 @@
+import { parseJson, type Json } from "@hexclave/shared/dist/utils/json";
 
 export function formatDuration(ms: number | null): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
@@ -74,11 +75,19 @@ export function formatDateFromMillis(millis: number): string {
   }).format(new Date(millis));
 }
 
-export function tryParseJson(value: unknown): unknown {
+export function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Some telemetry columns hold JSON serialized into a string column; this
+ * unwraps one level of that, leaving every non-string (and every string that
+ * isn't valid JSON) untouched.
+ */
+export function tryParseJson(value: Json): Json;
+export function tryParseJson(value: Json | undefined): Json | undefined;
+export function tryParseJson(value: Json | undefined): Json | undefined {
   if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
+  const parsed = parseJson(value);
+  return parsed.status === "ok" ? parsed.data : value;
 }

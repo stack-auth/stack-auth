@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "@/lib/utf8";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type IssueAlertEmailAction = {
   type: "email",
@@ -27,15 +29,10 @@ const MAX_TEXT_BYTES = 8 * 1024;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const HTML_CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const SAFE_INTEGRATION_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$/u;
-const TEXT_ENCODER = new TextEncoder();
 const ISSUE_ALERT_OWNER_FALLTHROUGHS: readonly IssueAlertOwnerFallthrough[] = ["active_members", "all_members", "none"];
 
 function isIssueAlertOwnerFallthrough(value: unknown): value is IssueAlertOwnerFallthrough {
   return typeof value === "string" && ISSUE_ALERT_OWNER_FALLTHROUGHS.some((candidate) => candidate === value);
-}
-
-function isObject(value: unknown): value is { readonly [key: string]: unknown } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isBoundedText(value: unknown, maximumBytes: number, options?: { allowHtmlWhitespace?: boolean }): value is string {
@@ -45,7 +42,7 @@ function isBoundedText(value: unknown, maximumBytes: number, options?: { allowHt
   return typeof value === "string"
     && value.length > 0
     && !controlPattern.test(value)
-    && TEXT_ENCODER.encode(value).byteLength <= maximumBytes;
+    && utf8ByteLength(value) <= maximumBytes;
 }
 
 function parseStringArray(value: unknown): string[] | null {
@@ -59,7 +56,7 @@ function parseStringArray(value: unknown): string[] | null {
 }
 
 function parseEmailRouting(value: unknown): IssueAlertEmailRouting | null {
-  if (!isObject(value) || typeof value.type !== "string") return null;
+  if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "team") {
     return isBoundedText(value.teamId, MAX_IDENTIFIER_BYTES) && SAFE_INTEGRATION_ID.test(value.teamId)
       ? { type: "team", teamId: value.teamId }
@@ -72,7 +69,7 @@ function parseEmailRouting(value: unknown): IssueAlertEmailRouting | null {
 }
 
 export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
-  if (!isObject(value) || typeof value.type !== "string") return null;
+  if (!isRecord(value) || typeof value.type !== "string") return null;
 
   if (value.type === "email") {
     const userIds = value.userIds === undefined ? undefined : parseStringArray(value.userIds);
@@ -83,14 +80,11 @@ export function parseIssueAlertAction(value: unknown): IssueAlertAction | null {
       || !isBoundedText(value.subject, MAX_TEXT_BYTES)
       || !isBoundedText(value.html, MAX_TEXT_BYTES, { allowHtmlWhitespace: true })) return null;
     if (value.notificationCategoryName !== undefined && !isBoundedText(value.notificationCategoryName, MAX_IDENTIFIER_BYTES)) return null;
-    return {
-      type: "email",
-      ...(userIds === undefined ? {} : { userIds }),
-      ...(routing === undefined ? {} : { routing }),
-      subject: value.subject,
-      html: value.html,
-      ...(value.notificationCategoryName === undefined ? {} : { notificationCategoryName: value.notificationCategoryName }),
-    };
+    const action: IssueAlertEmailAction = { type: "email", subject: value.subject, html: value.html };
+    if (userIds !== undefined) action.userIds = userIds;
+    if (routing !== undefined) action.routing = routing;
+    if (value.notificationCategoryName !== undefined) action.notificationCategoryName = value.notificationCategoryName;
+    return action;
   }
 
   if (value.type === "webhook"

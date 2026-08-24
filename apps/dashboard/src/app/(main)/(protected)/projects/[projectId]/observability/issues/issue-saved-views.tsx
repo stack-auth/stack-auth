@@ -17,12 +17,12 @@ import {
   DesignMenu,
 } from "@/components/design-components";
 import { Popover, PopoverContent, PopoverTrigger, Typography } from "@/components/ui";
+import { getErrorMessage } from "../format";
 import type { IssueFilters } from "./issue-filters";
 import {
   createSavedIssueSearchView,
   deleteSavedIssueSearchView,
   fetchSavedIssueSearchViews,
-  getErrorMessage,
   savedIssueSearchViewQueryIsCompatible,
   savedIssueSearchViewMutationForFilters,
   savedIssueSearchQueryToIssueFilters,

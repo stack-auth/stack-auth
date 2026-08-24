@@ -35,11 +35,16 @@ export type HexclaveElysiaContext = {
   user: AdapterUser | null,
 };
 
+/**
+ * The slice of Elysia's per-request context the adapter reads. The runtime
+ * object carries the consumer's full context; `handler()` is generic over it,
+ * so nothing beyond this slice is constrained.
+ */
 type ElysiaRequestContext = {
   request: Request,
   path?: string,
   set: { status?: number | string },
-} & Partial<HexclaveElysiaContext> & Record<string, unknown>;
+} & Partial<HexclaveElysiaContext>;
 
 export type HexclaveElysiaHandlerOptions = {
   /** Disable or customize the per-route span. @default true */

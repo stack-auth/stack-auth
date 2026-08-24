@@ -18,6 +18,7 @@ import { globalPrismaClient, rawQuery, retryTransaction } from "@/prisma-client"
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@hexclave/shared/dist/config/schema";
 import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
@@ -31,14 +32,13 @@ function assertServerAccessAllowed(accessType: "server" | "admin", level: yup.In
 }
 
 function shouldEnqueueExternalDbSync(config: unknown): boolean {
-  if (!config || typeof config !== "object") return false;
-  const configRecord = config as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(configRecord, "dbSync.externalDatabases")) {
+  if (!isRecord(config)) return false;
+  if (Object.prototype.hasOwnProperty.call(config, "dbSync.externalDatabases")) {
     return true;
   }
-  const dbSync = configRecord.dbSync;
-  if (dbSync && typeof dbSync === "object") {
-    return Object.prototype.hasOwnProperty.call(dbSync as Record<string, unknown>, "externalDatabases");
+  const dbSync = config.dbSync;
+  if (isRecord(dbSync)) {
+    return Object.prototype.hasOwnProperty.call(dbSync, "externalDatabases");
   }
   return false;
 }
@@ -296,7 +296,7 @@ export const PUT = createSmartRouteHandler({
         projectId: req.auth.tenancy.project.id,
         branchId: req.auth.tenancy.branchId,
         config: parsedConfig,
-        source: req.body.source as BranchConfigSourceApi,
+        source: req.body.source,
       });
     }
 

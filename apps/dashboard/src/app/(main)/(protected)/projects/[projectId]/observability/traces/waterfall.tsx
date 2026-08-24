@@ -336,6 +336,11 @@ export function TraceWaterfall({
     return links.filter((link) => !spanIds.has(link.ownerSpanId)).length;
   }, [links, trace.root]);
 
+  // Hand-rolled windowing instead of @tanstack/react-virtual: all row heights
+  // are fixed constants, so `computeRowOffsets`/`computeRowWindow` give exact
+  // geometry with no DOM measurement, which keeps highlight-scrolling
+  // (`rowOffsets[highlightedRowIndex]`) synchronous and unit-testable without
+  // a dedicated scroll container — the list scrolls with the surrounding page.
   const rowOffsets = useMemo(() => computeRowOffsets(rows), [rows]);
   const listRef = useRef<HTMLDivElement>(null);
   const [rowWindow, setRowWindow] = useState<RowWindow>(

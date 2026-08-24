@@ -8,6 +8,7 @@ import type {
   ErrorIngestClientReportReason,
   ErrorIngestProtocolProjection,
 } from "./error-ingest-protocol-adapter";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 
 export const ERROR_INGEST_CLIENT_REPORT_PROTOCOLS = ["otlp_logs", "otlp_traces", "sentry_envelope", "client_report"] as const;
@@ -160,10 +161,6 @@ function entriesForBucket(
   }
 }
 
-function isRecord(value: unknown): value is { readonly [key: string]: unknown } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function parseReportEntries(value: unknown, field: string): ErrorIngestClientReportEntry[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > MAX_REPORT_ROWS) throw new ErrorIngestClientReportParseError(`${field} must be an array with at most ${MAX_REPORT_ROWS} entries`);
@@ -202,11 +199,12 @@ export function parseErrorIngestClientReportRequest(value: unknown): ErrorIngest
   if (Object.values(clientReport).reduce((count, entries) => count + entries.length, 0) > MAX_REPORT_ROWS) {
     throw new ErrorIngestClientReportParseError(`Error ingest client report contains more than ${MAX_REPORT_ROWS} entries`);
   }
-  return {
+  const request: ErrorIngestClientReportRequest = {
     clientReport,
     idempotencyKey: value.idempotency_key,
-    ...(timestampMs === undefined ? {} : { timestampMs }),
   };
+  if (timestampMs !== undefined) request.timestampMs = timestampMs;
+  return request;
 }
 
 export function buildErrorIngestClientReportRows(

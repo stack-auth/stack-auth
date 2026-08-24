@@ -37,10 +37,15 @@ export type HexclaveORPCContext = {
   [hexclaveORPCSpanStarted]?: true,
 };
 
+/**
+ * The slice of oRPC's middleware options the adapter reads. The runtime
+ * objects carry the consumer's full context; everything beyond this slice
+ * passes through the `...context` spread untouched.
+ */
 type ORPCMiddlewareOpts = {
-  context: HexclaveORPCContext & Record<string, unknown>,
+  context: HexclaveORPCContext,
   path?: readonly string[],
-  next: (opts?: { context?: Record<string, unknown> }) => Promise<unknown>,
+  next: (opts?: { context?: HexclaveORPCContext }) => Promise<unknown>,
 };
 
 export type HexclaveORPCMiddlewareOptions = {
@@ -97,16 +102,21 @@ export function createHexclaveORPC(app: AdapterServerApp, options?: {
      * `handle(request, …)` call carries the per-request Hexclave context into
      * the middlewares above. Extra per-call options pass through untouched.
      */
-    wrapFetchHandler: <THandler extends { handle: (request: Request, handleOptions?: Record<string, unknown>) => unknown }>(
+    wrapFetchHandler: <THandler extends { handle: (request: Request, handleOptions?: { context?: HexclaveORPCContext }) => unknown }>(
       handler: THandler,
-      defaultOptions?: Record<string, unknown>,
+      defaultOptions?: Parameters<THandler["handle"]>[1],
     ) => {
-      return (request: Request, handleOptions?: Record<string, unknown>): ReturnType<THandler["handle"]> => {
-        const merged = { ...defaultOptions, ...handleOptions };
+      return (request: Request, handleOptions?: Parameters<THandler["handle"]>[1]): ReturnType<THandler["handle"]> => {
+        // The annotation names the one key the wrapper touches; the consumer's
+        // remaining handle options still pass through the `...merged` spread.
+        const merged: { context?: HexclaveORPCContext } = { ...defaultOptions, ...handleOptions };
+        // SAFETY: TS resolves `handler.handle(...)` through the generic
+        // constraint (returning unknown); the concrete handler returns exactly
+        // ReturnType<THandler["handle"]>, which the cast restores.
         return handler.handle(request, {
           ...merged,
           context: {
-            ...(merged.context as Record<string, unknown> | undefined) ?? {},
+            ...merged.context,
             hexclave: createRequestContext(app, request),
           },
         }) as ReturnType<THandler["handle"]>;

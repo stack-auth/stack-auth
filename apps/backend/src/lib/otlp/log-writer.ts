@@ -1,11 +1,13 @@
 import { CUSTOM_TELEMETRY_NAME_RE, isAnalyticsSystemEvent, isW3cSpanId, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
-import { computeOccurrenceId, normalizeErrorOccurrence } from "@/lib/analytics-telemetry-writers";
+import { computeOccurrenceId, normalizeErrorOccurrence, type BatchEventWireItem } from "@/lib/analytics-telemetry-writers";
 import type { IssueBatchDelta } from "@/lib/issues/issue-materialization-contract";
 import { attributesJson, dateFromUnixNano, productAttributes, scrubOtlpValue, stringAttribute, taggedValue, type OtlpTenantContext } from "./trace-writer";
 import type { CanonicalOtlpLogRecord } from "./logs";
 import { writeTelemetryDestinations, type TelemetryWriteDestination } from "@/lib/telemetry/write-plan";
+import type { ErrorIngestScrubbedValue } from "@/lib/error-ingest";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 
 type OtlpLogTenantContext = OtlpTenantContext & {
   sessionReplayId?: string | null,
@@ -26,7 +28,7 @@ function isProductEventName(eventName: string): boolean {
   return isAnalyticsSystemEvent(eventName) || CUSTOM_TELEMETRY_NAME_RE.test(eventName);
 }
 
-function rawProductData(log: CanonicalOtlpLogRecord): unknown {
+function rawProductData(log: CanonicalOtlpLogRecord): Record<string, Json> {
   return log.errorEnvelope !== null
     ? productAttributes(log.errorEnvelope.fields)
     : (() => {
@@ -35,11 +37,11 @@ function rawProductData(log: CanonicalOtlpLogRecord): unknown {
     })();
 }
 
-export function getOtlpLogPolicyData(log: CanonicalOtlpLogRecord): unknown {
+export function getOtlpLogPolicyData(log: CanonicalOtlpLogRecord): Record<string, Json> {
   return rawProductData(log);
 }
 
-function productData(log: CanonicalOtlpLogRecord): unknown {
+function productData(log: CanonicalOtlpLogRecord): ErrorIngestScrubbedValue {
   return scrubOtlpValue(log.policyScrubbedData ?? rawProductData(log), "OTLP product data");
 }
 
@@ -116,22 +118,21 @@ export function buildOtlpLogInsertPlan(logs: CanonicalOtlpLogRecord[], tenant: O
   }];
 }
 
-function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpLogTenantContext, batchId: string, ordinal: number): {
-  columns: Record<string, unknown>,
-  issueInput: IssueBatchDelta,
-} | null {
+function errorProjection(log: CanonicalOtlpLogRecord, tenant: OtlpLogTenantContext, batchId: string, ordinal: number) {
   if (stringAttribute(log.attributes, "hexclave.signal.type") !== "error" || log.eventName !== "$error") return null;
   const eventNano = log.timeUnixNano === "0" ? log.observedTimeUnixNano : log.timeUnixNano;
   const pageViewSpanId = stringAttribute(log.attributes, "hexclave.page_view.span_id");
-  const normalized = normalizeErrorOccurrence({
+  const errorEvent: BatchEventWireItem = {
     event_type: "$error",
     event_at_ms: dateFromUnixNano(eventNano, "error time").getTime(),
     data: productData(log),
-    ...log.traceId === null || log.spanId === null ? {} : { trace_id: log.traceId, span_id: log.spanId },
-    ...isW3cSpanId(pageViewSpanId)
-      ? { page_view_span_id: pageViewSpanId }
-      : {},
-  }, {
+  };
+  if (log.traceId !== null && log.spanId !== null) {
+    errorEvent.trace_id = log.traceId;
+    errorEvent.span_id = log.spanId;
+  }
+  if (isW3cSpanId(pageViewSpanId)) errorEvent.page_view_span_id = pageViewSpanId;
+  const normalized = normalizeErrorOccurrence(errorEvent, {
     runtime: tenant.userId === null ? "server" : "browser",
     serviceName: stringAttribute(log.resource.attributes, "service.name"),
     deploymentEnvironmentName: stringAttribute(log.resource.attributes, "deployment.environment.name"),
@@ -203,7 +204,7 @@ export function buildOtlpLogRows(logs: CanonicalOtlpLogRecord[], tenant: OtlpLog
       scope_attributes: attributesJson(log.scope.attributes),
       scope_dropped_attributes: log.scope.droppedAttributesCount,
       scope_schema_url: log.scope.schemaUrl,
-      ...error === null ? {} : error.columns,
+      ...error?.columns,
     };
   });
 }

@@ -8,16 +8,14 @@ import {
   type IssueAlertRulePayload,
   type IssueAlertRuleResponse,
 } from "./issue-alerts-data";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 
-const { sendInternalAdminRequestMock } = vi.hoisted(() => ({
-  sendInternalAdminRequestMock: vi.fn(),
-}));
-
-vi.mock("@/lib/hexclave-app-internals", () => ({
-  sendInternalAdminRequest: sendInternalAdminRequestMock,
-}));
-
-const adminApp = { projectId: "project-1" };
+// The data module reaches the backend through the admin app's internals
+// symbol, so the test injects a fake `sendRequest` through that same seam
+// instead of mocking the module. The real `sendInternalAdminRequest` runs,
+// which also pins the "admin" request type in the call assertions.
+const sendRequestMock = vi.fn();
+const adminApp = { projectId: "project-1", [hexclaveAppInternalsSymbol]: { sendRequest: sendRequestMock } };
 
 const rule: IssueAlertRuleResponse = {
   schemaVersion: 1,
@@ -65,18 +63,18 @@ const delivery: IssueAlertDelivery = {
 };
 
 beforeEach(() => {
-  sendInternalAdminRequestMock.mockReset();
+  sendRequestMock.mockReset();
 });
 
 describe("fetchIssueAlertRules", () => {
   it("uses the authenticated issue-alert route and validates its rule envelope", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       rules: [rule],
       truncated: false,
     }), { status: 200 }));
 
     await expect(fetchIssueAlertRules(adminApp)).resolves.toEqual({ rules: [rule], truncated: false });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, "/issues/alerts", { method: "GET" });
+    expect(sendRequestMock).toHaveBeenCalledWith("/issues/alerts", { method: "GET" }, "admin");
   });
 
   it("accepts backend-supported owner routing without rejecting the rule list", async () => {
@@ -89,7 +87,7 @@ describe("fetchIssueAlertRules", () => {
         html: "<p>Issue alert</p>",
       },
     };
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       rules: [routedRule],
       truncated: false,
     }), { status: 200 }));
@@ -98,7 +96,7 @@ describe("fetchIssueAlertRules", () => {
   });
 
   it("does not expose an upstream error body to the dashboard", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response("internal database details", { status: 502 }));
+    sendRequestMock.mockResolvedValue(new Response("internal database details", { status: 502 }));
 
     await expect(fetchIssueAlertRules(adminApp)).rejects.toThrow("Loading issue alert rules failed with status 502");
   });
@@ -106,7 +104,7 @@ describe("fetchIssueAlertRules", () => {
 
 describe("fetchIssueAlertDeliveries", () => {
   it("requests a bounded recent page and validates delivery status", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({
       deliveries: [delivery],
       truncated: true,
     }), { status: 200 }));
@@ -115,27 +113,27 @@ describe("fetchIssueAlertDeliveries", () => {
       deliveries: [delivery],
       truncated: true,
     });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       "/issues/alerts/deliveries?limit=20",
       { method: "GET" },
+      "admin",
     );
   });
 
   it("rejects an unsafe delivery page size instead of widening the query", async () => {
     await expect(fetchIssueAlertDeliveries(adminApp, 101)).rejects.toThrow("delivery limit");
-    expect(sendInternalAdminRequestMock).not.toHaveBeenCalled();
+    expect(sendRequestMock).not.toHaveBeenCalled();
   });
 });
 
 describe("replayIssueAlertDelivery", () => {
   it("posts replay for a delivery id", async () => {
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({ replayed: true }), { status: 200 }));
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({ replayed: true }), { status: 200 }));
     await expect(replayIssueAlertDelivery(adminApp, delivery.id)).resolves.toEqual({ replayed: true });
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(
-      adminApp,
+    expect(sendRequestMock).toHaveBeenCalledWith(
       `/issues/alerts/deliveries/${delivery.id}/replay`,
       { method: "POST" },
+      "admin",
     );
   });
 });
@@ -152,13 +150,13 @@ describe("saveIssueAlertRule", () => {
       action: rule.action,
     };
     const savedRule: IssueAlertRuleResponse = { ...payload, database_id: rule.database_id };
-    sendInternalAdminRequestMock.mockResolvedValue(new Response(JSON.stringify({ rule: savedRule }), { status: 200 }));
+    sendRequestMock.mockResolvedValue(new Response(JSON.stringify({ rule: savedRule }), { status: 200 }));
 
     await expect(saveIssueAlertRule(adminApp, payload)).resolves.toEqual(savedRule);
-    expect(sendInternalAdminRequestMock).toHaveBeenCalledWith(adminApp, "/issues/alerts", {
+    expect(sendRequestMock).toHaveBeenCalledWith("/issues/alerts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ rule: payload }),
-    });
+    }, "admin");
   });
 });

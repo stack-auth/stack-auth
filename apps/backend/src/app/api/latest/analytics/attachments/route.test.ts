@@ -48,12 +48,15 @@ function createFixture(storageOverrides: Partial<ErrorAttachmentObjectStorage> =
   return { service: new ErrorAttachmentService(repository, storage), records, objects };
 }
 
-const tenancy = {
+// SAFETY: the attachment routes only read tenancy.id, branchId, project.id, and the observability app gate from
+// config; the rest of the Tenancy surface is unused. Starting from an empty base means any new Tenancy dependency
+// of the routes fails loudly here instead of being silently satisfied.
+const tenancy = Object.assign({} as Tenancy, {
   id: "11111111-2222-4333-8444-555555555555",
   branchId: "main",
   project: { id: "attachment-route-test-project" },
   config: { apps: { installed: { observability: { enabled: true } } } },
-} as unknown as Tenancy;
+});
 
 function request(options: { method: "GET" | "POST", body?: unknown, params?: Record<string, string>, query?: Record<string, string> }): SmartRequest {
   return {

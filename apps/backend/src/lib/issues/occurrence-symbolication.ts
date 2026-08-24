@@ -13,8 +13,9 @@ import {
   type SymbolicatedJavaScriptFrame,
   type SymbolicationDiagnostic,
 } from "../symbolication";
-import { isRecord, scrubPublicText } from "./public-scrub";
-
+import { scrubPublicText } from "./public-scrub";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type StoredIssueFrame = {
   filename: string | null,
@@ -51,11 +52,11 @@ function metadataDiagnostic(code: MetadataDiagnosticCode, message: string): Publ
   return { code, message };
 }
 
-function hasOwn(record: Record<string, unknown>, key: string): boolean {
+function hasOwn(record: Record<string, Json>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
-function stringField(record: Record<string, unknown>, ...keys: readonly string[]): string | null {
+function stringField(record: Record<string, Json>, ...keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string") return value;
@@ -63,7 +64,7 @@ function stringField(record: Record<string, unknown>, ...keys: readonly string[]
   return null;
 }
 
-function parseStoredDebugImages(value: unknown): StoredDebugImage[] {
+function parseStoredDebugImages(value: Json | undefined): StoredDebugImage[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (!isRecord(item)) return [];
@@ -78,17 +79,17 @@ function parseStoredDebugImages(value: unknown): StoredDebugImage[] {
 }
 
 function metadataSource(
-  data: Record<string, unknown>,
+  data: Record<string, Json>,
   envelope: PublicIssueErrorEnvelope | null,
   key: string,
-): Record<string, unknown> | null {
+): Record<string, Json> | null {
   if (hasOwn(data, key)) return data;
   if (envelope !== null && hasOwn(envelope, key)) return envelope;
   return null;
 }
 
 function readSymbolicationMetadata(
-  data: Record<string, unknown>,
+  data: Record<string, Json>,
   envelope: PublicIssueErrorEnvelope | null,
 ): {
   metadata: SymbolicationMetadata | null,
@@ -154,15 +155,16 @@ export function emptyFrameSymbolication(
 }
 
 function toPublicDiagnostic(diagnostic: SymbolicationDiagnostic): PublicIssueSymbolicationDiagnostic {
-  return {
+  const publicDiagnostic: PublicIssueSymbolicationDiagnostic = {
     code: diagnostic.code,
     message: scrubPublicText(diagnostic.message),
-    ...(diagnostic.debugId === undefined ? {} : { debug_id: scrubPublicText(diagnostic.debugId) }),
-    ...(diagnostic.codeFile === undefined ? {} : { code_file: scrubPublicText(diagnostic.codeFile) }),
-    ...(diagnostic.line === undefined ? {} : { line: diagnostic.line }),
-    ...(diagnostic.column === undefined ? {} : { column: diagnostic.column }),
-    ...(diagnostic.source === undefined ? {} : { source: scrubPublicText(diagnostic.source) }),
   };
+  if (diagnostic.debugId !== undefined) publicDiagnostic.debug_id = scrubPublicText(diagnostic.debugId);
+  if (diagnostic.codeFile !== undefined) publicDiagnostic.code_file = scrubPublicText(diagnostic.codeFile);
+  if (diagnostic.line !== undefined) publicDiagnostic.line = diagnostic.line;
+  if (diagnostic.column !== undefined) publicDiagnostic.column = diagnostic.column;
+  if (diagnostic.source !== undefined) publicDiagnostic.source = scrubPublicText(diagnostic.source);
+  return publicDiagnostic;
 }
 
 function toPublicFrameSymbolication(frame: SymbolicatedJavaScriptFrame): PublicIssueFrameSymbolication {
@@ -193,7 +195,7 @@ function debugIdForFrame(frame: StoredIssueFrame, debugImages: readonly StoredDe
 
 export async function symbolicatePublicFrames(options: {
   frames: readonly StoredIssueFrame[],
-  data: Record<string, unknown>,
+  data: Record<string, Json>,
   envelope: PublicIssueErrorEnvelope | null,
   scope: { tenantId: string, projectId: string, branchId: string },
   symbolicator?: PublicIssueSymbolicator,

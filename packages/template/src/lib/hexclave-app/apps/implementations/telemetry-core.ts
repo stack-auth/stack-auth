@@ -1,6 +1,8 @@
 import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { generateOtelTraceId } from "./otel-context";
+import { runtimeGlobals } from "./runtime-globals";
 
 /**
  * Environment-independent core of the custom telemetry API: the public types
@@ -153,11 +155,11 @@ export function registerTelemetryBackgroundTask(
  */
 export function autoDetectedBackgroundTaskHook(promise: Promise<unknown>): void {
   // Untyped platform contract: Vercel publishes no types for this seam, so
-  // every step is narrowed before use — a shape change degrades to a no-op,
+  // every step is narrowed before use — a contract change degrades to a no-op,
   // never a throw into the telemetry path.
-  const holder = (globalThis as Record<symbol, unknown>)[Symbol.for("@vercel/request-context")];
-  if (typeof holder !== "object" || holder === null) return;
-  const get = (holder as { get?: unknown }).get;
+  const holder = runtimeGlobals[Symbol.for("@vercel/request-context")];
+  if (!isRecord(holder)) return;
+  const get = holder["get"];
   if (typeof get !== "function") return;
   let context: unknown;
   try {
@@ -165,8 +167,8 @@ export function autoDetectedBackgroundTaskHook(promise: Promise<unknown>): void 
   } catch {
     return;
   }
-  if (typeof context !== "object" || context === null) return;
-  const waitUntil = (context as { waitUntil?: unknown }).waitUntil;
+  if (!isRecord(context)) return;
+  const waitUntil = context["waitUntil"];
   if (typeof waitUntil !== "function") return;
   waitUntil.call(context, promise);
 }

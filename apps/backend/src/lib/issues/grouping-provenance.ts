@@ -1,4 +1,5 @@
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { isGroupingConfigId } from "./grouping-config";
 import type {
   GroupingFingerprintSource,
@@ -6,7 +7,6 @@ import type {
   GroupingHashProvenance,
   GroupingVariant,
 } from "./types";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export type DurableGroupingHashProvenance = {
   hash: string,
@@ -83,14 +83,18 @@ export function parseDurableGroupingProvenance(raw: string): DurableGroupingHash
   }
 
   return parsed.map((entry): DurableGroupingHashProvenance => {
-    if (!isRecord(entry)
-      || typeof entry.hash !== "string"
+    if (!isRecord(entry)) {
+      throw new Error("Stored grouping provenance contains a malformed entry");
+    }
+    const fingerprint = entry.fingerprint;
+    if (typeof entry.hash !== "string"
       || (entry.role !== "primary" && entry.role !== "secondary")
       || typeof entry.config_id !== "string"
       || typeof entry.variant !== "string"
-      || !isRecord(entry.fingerprint)
-      || typeof entry.fingerprint.type !== "string"
-      || typeof entry.fingerprint.source !== "string") {
+      || !isRecord(fingerprint)) {
+      throw new Error("Stored grouping provenance contains a malformed entry");
+    }
+    if (typeof fingerprint.type !== "string" || typeof fingerprint.source !== "string") {
       throw new Error("Stored grouping provenance contains a malformed entry");
     }
     return {
@@ -99,10 +103,10 @@ export function parseDurableGroupingProvenance(raw: string): DurableGroupingHash
       config_id: entry.config_id,
       variant: entry.variant,
       fingerprint: {
-        type: entry.fingerprint.type,
-        source: entry.fingerprint.source,
-        tokens: parseStringArray(entry.fingerprint.tokens, "fingerprint token"),
-        resolved_tokens: parseStringArray(entry.fingerprint.resolved_tokens, "resolved fingerprint token"),
+        type: fingerprint.type,
+        source: fingerprint.source,
+        tokens: parseStringArray(fingerprint.tokens, "fingerprint token"),
+        resolved_tokens: parseStringArray(fingerprint.resolved_tokens, "resolved fingerprint token"),
       },
     };
   });

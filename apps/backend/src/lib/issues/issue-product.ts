@@ -8,6 +8,7 @@ import {
 } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
 import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { isPrismaJsonObject } from "@/lib/prisma-json";
 import { getPrismaClientForTenancy, isPrismaError, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { createHash, randomUUID } from "node:crypto";
@@ -23,11 +24,24 @@ const ISSUE_OWNER_SOURCES = ["manual", "ownership_rule", "codeowners", "suspect_
 export type IssueOwnerSource = (typeof ISSUE_OWNER_SOURCES)[number];
 export type IssueOwnerType = "user" | "team";
 
+export const ISSUE_PRODUCT_ERROR_CODES = {
+  // The authenticated branch has no row for the referenced issue — callers use
+  // this to map the failure onto a 404 rather than a 400.
+  issueNotFoundInBranch: "issue_not_found_in_branch",
+} as const;
+
 export class IssueProductInputError extends Error {
-  constructor(message: string) {
+  public readonly code: (typeof ISSUE_PRODUCT_ERROR_CODES)[keyof typeof ISSUE_PRODUCT_ERROR_CODES] | null;
+
+  constructor(message: string, options?: { code?: (typeof ISSUE_PRODUCT_ERROR_CODES)[keyof typeof ISSUE_PRODUCT_ERROR_CODES] }) {
     super(message);
     this.name = "IssueProductInputError";
+    this.code = options?.code ?? null;
   }
+}
+
+function issueNotFoundInBranchError(): IssueProductInputError {
+  return new IssueProductInputError("Issue was not found in the authenticated branch", { code: ISSUE_PRODUCT_ERROR_CODES.issueNotFoundInBranch });
 }
 
 export type IssueProductScope = {
@@ -225,10 +239,6 @@ function activityKey(prefix: string, key: string): string {
   return `${prefix}:${digest}`;
 }
 
-function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function receiptDate(value: Prisma.JsonValue | undefined, fieldName: string): Date {
   if (typeof value !== "string") throw new IssueProductInputError(`Stored ${fieldName} receipt is invalid`);
   return assertValidDate(new Date(value), fieldName);
@@ -239,7 +249,7 @@ async function assertIssueExists(tx: PrismaClientTransaction, scope: IssueProduc
     where: { tenancyId_id: { tenancyId: scope.tenancy.id, id: scope.issueId } },
     select: { id: true },
   });
-  if (issue === null) throw new IssueProductInputError("Issue was not found in the authenticated branch");
+  if (issue === null) throw issueNotFoundInBranchError();
 }
 
 async function assertProjectUser(
@@ -360,7 +370,7 @@ export async function setIssuePriority(options: IssueProductScope & {
         AND "id" = ${options.issueId}::uuid
       FOR UPDATE
     `;
-    if (rows.length === 0) throw new IssueProductInputError("Issue was not found in the authenticated branch");
+    if (rows.length === 0) throw issueNotFoundInBranchError();
     const [current] = rows;
     const previousPriority = priorityFromPrisma(current.priority);
     const changed = previousPriority !== options.priority;
@@ -601,7 +611,7 @@ export async function setIssueSubscription(options: IssueProductScope & {
     });
     if (receipt !== null) {
       if (receipt.type !== PrismaIssueActivityType.SUBSCRIPTION_CHANGED
-        || receipt.actorUserId !== actorUserId || !isJsonObject(receipt.data)
+        || receipt.actorUserId !== actorUserId || !isPrismaJsonObject(receipt.data)
         || receipt.data.subject_type !== options.subject.type || receipt.data.subject_id !== options.subject.id
         || receipt.data.subscribed !== options.subscribed || receipt.data.reason !== (options.reason ?? null)
         || typeof receipt.data.result_is_active !== "boolean"
@@ -677,7 +687,7 @@ export async function setIssueBookmark(options: IssueProductScope & {
     });
     if (receipt !== null) {
       if (receipt.type !== PrismaIssueActivityType.BOOKMARK_CHANGED
-        || receipt.actorUserId !== actorUserId || !isJsonObject(receipt.data)
+        || receipt.actorUserId !== actorUserId || !isPrismaJsonObject(receipt.data)
         || receipt.data.user_id !== options.userId || receipt.data.bookmarked !== options.bookmarked
         || typeof receipt.data.result_changed !== "boolean") {
         throw new IssueProductInputError("idempotencyKey was already used for a different bookmark mutation");
@@ -755,7 +765,7 @@ export async function listIssueActivity(options: IssueProductScope & { limit?: n
     where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.issueId } },
     select: { id: true },
   });
-  if (issue === null) throw new IssueProductInputError("Issue was not found in the authenticated branch");
+  if (issue === null) throw issueNotFoundInBranchError();
   const rows = await prisma.$replica().issueActivity.findMany({
     where: { tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, issueId: options.issueId },
     orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: limit,
@@ -771,7 +781,7 @@ export async function loadIssueProductSnapshot(options: IssueProductScope & { li
     where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.issueId } },
     select: { priority: true, assigneeUserId: true, assignedTeamId: true },
   });
-  if (issue === null) throw new IssueProductInputError("Issue was not found in the authenticated branch");
+  if (issue === null) throw issueNotFoundInBranchError();
   const [owners, activities, comments, subscriptions, bookmarks] = await Promise.all([
     prisma.$replica().issueOwner.findMany({ where: { tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, issueId: options.issueId }, orderBy: { updatedAt: "desc" }, take: limit }),
     prisma.$replica().issueActivity.findMany({ where: { tenancyId: options.tenancy.id, projectId: options.tenancy.project.id, branchId: options.tenancy.branchId, issueId: options.issueId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: limit }),

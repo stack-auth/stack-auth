@@ -1,4 +1,6 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import type { ManagedOtelOptions, ManagedOtelRegistration } from "./otel-managed";
+import { runtimeGlobals } from "./runtime-globals";
 
 type OtelSdkModule = {
   registerManagedOtel: (options: ManagedOtelOptions) => ManagedOtelRegistration,
@@ -22,7 +24,9 @@ function describeLoadError(error: unknown): string {
 }
 
 function isOtelSdkModule(value: unknown): value is OtelSdkModule {
-  return typeof value === "object" && value !== null && typeof Reflect.get(value, "registerManagedOtel") === "function";
+  // The guard proves only that `registerManagedOtel` is callable; the precise
+  // signature is trusted because the loaded module is our own sibling build.
+  return isRecord(value) && typeof value["registerManagedOtel"] === "function";
 }
 
 function isCreateRequire(value: unknown): value is (url: string | URL) => (id: string) => unknown {
@@ -40,13 +44,13 @@ function tryRequireOtelSdkSyncAttempt(): OtelSdkLoadAttempt {
   try {
     // Read `process` untyped: the ambient Node types claim it always exists,
     // but this guard is exactly for non-Node runtimes where it doesn't.
-    const proc: unknown = Reflect.get(globalThis, "process");
-    if (proc == null || typeof proc !== "object") return { module: null, errors };
-    const getBuiltinModule = Reflect.get(proc, "getBuiltinModule");
+    const proc = runtimeGlobals["process"];
+    if (!isRecord(proc)) return { module: null, errors };
+    const getBuiltinModule = proc["getBuiltinModule"];
     if (typeof getBuiltinModule !== "function") return { module: null, errors };
-    const nodeModule = getBuiltinModule.call(proc, "module");
-    if (nodeModule == null || typeof nodeModule !== "object") return { module: null, errors };
-    const createRequire = Reflect.get(nodeModule, "createRequire");
+    const nodeModule: unknown = getBuiltinModule.call(proc, "module");
+    if (!isRecord(nodeModule)) return { module: null, errors };
+    const createRequire = nodeModule["createRequire"];
     if (!isCreateRequire(createRequire)) return { module: null, errors };
 
     const urls = [import.meta.url];

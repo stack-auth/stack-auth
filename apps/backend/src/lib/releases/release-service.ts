@@ -331,27 +331,23 @@ export class ReleaseService {
       where: { tenancyId_version: { tenancyId: fields.tenancyId, version } },
     });
     if (existing !== null) assertReleaseScope(scope, existing);
+    const create: Prisma.ReleaseUncheckedCreateInput = { ...fields, version, status };
+    if (input.ref !== undefined) create.ref = input.ref;
+    if (input.url !== undefined) create.url = input.url;
+    if (data !== undefined) create.data = data;
+    if (input.dateAdded !== undefined) create.dateAdded = input.dateAdded;
+    if (input.dateStarted !== undefined) create.dateStarted = input.dateStarted;
+    if (input.dateReleased !== undefined) create.dateReleased = input.dateReleased;
+    const update: Prisma.ReleaseUncheckedUpdateInput = { status };
+    if (input.ref !== undefined) update.ref = input.ref;
+    if (input.url !== undefined) update.url = input.url;
+    if (data !== undefined) update.data = data;
+    if (input.dateStarted !== undefined) update.dateStarted = input.dateStarted;
+    if (input.dateReleased !== undefined) update.dateReleased = input.dateReleased;
     const release = await db.release.upsert({
       where: { tenancyId_version: { tenancyId: fields.tenancyId, version } },
-      create: {
-        ...fields,
-        version,
-        status,
-        ...(input.ref === undefined ? {} : { ref: input.ref }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-        ...(data === undefined ? {} : { data }),
-        ...(input.dateAdded === undefined ? {} : { dateAdded: input.dateAdded }),
-        ...(input.dateStarted === undefined ? {} : { dateStarted: input.dateStarted }),
-        ...(input.dateReleased === undefined ? {} : { dateReleased: input.dateReleased }),
-      },
-      update: {
-        status,
-        ...(input.ref === undefined ? {} : { ref: input.ref }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-        ...(data === undefined ? {} : { data }),
-        ...(input.dateStarted === undefined ? {} : { dateStarted: input.dateStarted }),
-        ...(input.dateReleased === undefined ? {} : { dateReleased: input.dateReleased }),
-      },
+      create,
+      update,
     });
     assertReleaseScope(scope, release);
     return release;
@@ -373,14 +369,12 @@ export class ReleaseService {
     const metadata = input.metadata === undefined
       ? undefined
       : validateReleaseJson(input.metadata, "deployment metadata");
-    const mutableFields: Prisma.ReleaseDeploymentUpdateInput = {
-      environment,
-      ...(input.name === undefined ? {} : { name: input.name }),
-      ...(input.url === undefined ? {} : { url: input.url }),
-      ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
-      ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
-      ...(metadata === undefined ? {} : { metadata }),
-    };
+    const mutableFields: Prisma.ReleaseDeploymentUpdateInput = { environment };
+    if (input.name !== undefined) mutableFields.name = input.name;
+    if (input.url !== undefined) mutableFields.url = input.url;
+    if (input.startedAt !== undefined) mutableFields.startedAt = input.startedAt;
+    if (input.finishedAt !== undefined) mutableFields.finishedAt = input.finishedAt;
+    if (metadata !== undefined) mutableFields.metadata = metadata;
 
     const db = await this.resolveDatabase(scope);
     const existing = await db.releaseDeployment.findUnique({
@@ -390,19 +384,20 @@ export class ReleaseService {
       throw new ReleaseScopeInvariantError(`deploymentKey ${deploymentKey} is already attached to a different release scope`);
     }
 
+    const create: Prisma.ReleaseDeploymentUncheckedCreateInput = {
+      ...fields,
+      releaseId,
+      deploymentKey,
+      environment,
+    };
+    if (input.name !== undefined) create.name = input.name;
+    if (input.url !== undefined) create.url = input.url;
+    if (input.startedAt !== undefined) create.startedAt = input.startedAt;
+    if (input.finishedAt !== undefined) create.finishedAt = input.finishedAt;
+    if (metadata !== undefined) create.metadata = metadata;
     const deployment = await db.releaseDeployment.upsert({
       where: { tenancyId_deploymentKey: { tenancyId: fields.tenancyId, deploymentKey } },
-      create: {
-        ...fields,
-        releaseId,
-        deploymentKey,
-        environment,
-        ...(input.name === undefined ? {} : { name: input.name }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-        ...(input.startedAt === undefined ? {} : { startedAt: input.startedAt }),
-        ...(input.finishedAt === undefined ? {} : { finishedAt: input.finishedAt }),
-        ...(metadata === undefined ? {} : { metadata }),
-      },
+      create,
       update: {},
     });
     if (deployment.projectId !== fields.projectId
@@ -435,6 +430,21 @@ export class ReleaseService {
     validateOptionalDate(input.committedAt, "committedAt");
 
     const db = await this.resolveDatabase(scope);
+    const create: Prisma.ReleaseCommitUncheckedCreateInput = {
+      ...fields,
+      releaseId,
+      repository,
+      commitSha,
+      position: input.position,
+    };
+    const update: Prisma.ReleaseCommitUncheckedUpdateInput = { position: input.position };
+    for (const target of [create, update]) {
+      if (input.message !== undefined) target.message = input.message;
+      if (input.authorName !== undefined) target.authorName = input.authorName;
+      if (input.authorEmail !== undefined) target.authorEmail = input.authorEmail;
+      if (input.committedAt !== undefined) target.committedAt = input.committedAt;
+      if (input.url !== undefined) target.url = input.url;
+    }
     return await db.releaseCommit.upsert({
       where: {
         tenancyId_releaseId_repository_commitSha: {
@@ -444,26 +454,8 @@ export class ReleaseService {
           commitSha,
         },
       },
-      create: {
-        ...fields,
-        releaseId,
-        repository,
-        commitSha,
-        position: input.position,
-        ...(input.message === undefined ? {} : { message: input.message }),
-        ...(input.authorName === undefined ? {} : { authorName: input.authorName }),
-        ...(input.authorEmail === undefined ? {} : { authorEmail: input.authorEmail }),
-        ...(input.committedAt === undefined ? {} : { committedAt: input.committedAt }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-      },
-      update: {
-        position: input.position,
-        ...(input.message === undefined ? {} : { message: input.message }),
-        ...(input.authorName === undefined ? {} : { authorName: input.authorName }),
-        ...(input.authorEmail === undefined ? {} : { authorEmail: input.authorEmail }),
-        ...(input.committedAt === undefined ? {} : { committedAt: input.committedAt }),
-        ...(input.url === undefined ? {} : { url: input.url }),
-      },
+      create,
+      update,
     });
   }
 
@@ -490,26 +482,22 @@ export class ReleaseService {
         manifestSha256,
       },
     };
-    return await db.releaseArtifact.upsert({
-      where,
-      create: {
-        ...fields,
-        releaseId,
-        manifestSha256,
-        status,
-        ...(input.dist === undefined ? {} : { dist: input.dist }),
-        ...(input.environment === undefined ? {} : { environment: input.environment }),
-        ...(input.manifestObjectKey === undefined ? {} : { manifestObjectKey: input.manifestObjectKey }),
-        ...(input.finalizedAt === undefined ? {} : { finalizedAt: input.finalizedAt }),
-      },
-      update: {
-        ...(status === PrismaReleaseArtifactStatus.FINALIZED ? { status: PrismaReleaseArtifactStatus.FINALIZED } : {}),
-        ...(input.dist === undefined ? {} : { dist: input.dist }),
-        ...(input.environment === undefined ? {} : { environment: input.environment }),
-        ...(input.manifestObjectKey === undefined ? {} : { manifestObjectKey: input.manifestObjectKey }),
-        ...(input.finalizedAt === undefined ? {} : { finalizedAt: input.finalizedAt }),
-      },
-    });
+    const create: Prisma.ReleaseArtifactUncheckedCreateInput = {
+      ...fields,
+      releaseId,
+      manifestSha256,
+      status,
+    };
+    const update: Prisma.ReleaseArtifactUncheckedUpdateInput = {};
+    // Finalization is one-way: a repeated upsert never demotes FINALIZED back to REGISTERED.
+    if (status === PrismaReleaseArtifactStatus.FINALIZED) update.status = PrismaReleaseArtifactStatus.FINALIZED;
+    for (const target of [create, update]) {
+      if (input.dist !== undefined) target.dist = input.dist;
+      if (input.environment !== undefined) target.environment = input.environment;
+      if (input.manifestObjectKey !== undefined) target.manifestObjectKey = input.manifestObjectKey;
+      if (input.finalizedAt !== undefined) target.finalizedAt = input.finalizedAt;
+    }
+    return await db.releaseArtifact.upsert({ where, create, update });
   }
 
   public async upsertArtifactDebugId(
@@ -546,36 +534,28 @@ export class ReleaseService {
         debugId,
       },
     };
-    return await db.releaseArtifactDebugId.upsert({
-      where,
-      create: {
-        ...fields,
-        releaseArtifactId,
-        debugId,
-        codeFile,
-        sourceMapFile: input.sourceMapFile,
-        sourceMapInline: input.sourceMapInline,
-        bundleSha256,
-        bundleBytes: input.bundleBytes,
-        sourceMapSha256,
-        sourceMapBytes: input.sourceMapBytes,
-        sourceMapGzippedBytes: input.sourceMapGzippedBytes,
-        ...(input.bundleObjectKey === undefined ? {} : { bundleObjectKey: input.bundleObjectKey }),
-        ...(input.sourceMapObjectKey === undefined ? {} : { sourceMapObjectKey: input.sourceMapObjectKey }),
-      },
-      update: {
-        codeFile,
-        sourceMapFile: input.sourceMapFile,
-        sourceMapInline: input.sourceMapInline,
-        bundleSha256,
-        bundleBytes: input.bundleBytes,
-        sourceMapSha256,
-        sourceMapBytes: input.sourceMapBytes,
-        sourceMapGzippedBytes: input.sourceMapGzippedBytes,
-        ...(input.bundleObjectKey === undefined ? {} : { bundleObjectKey: input.bundleObjectKey }),
-        ...(input.sourceMapObjectKey === undefined ? {} : { sourceMapObjectKey: input.sourceMapObjectKey }),
-      },
-    });
+    const mutableFields = {
+      codeFile,
+      sourceMapFile: input.sourceMapFile,
+      sourceMapInline: input.sourceMapInline,
+      bundleSha256,
+      bundleBytes: input.bundleBytes,
+      sourceMapSha256,
+      sourceMapBytes: input.sourceMapBytes,
+      sourceMapGzippedBytes: input.sourceMapGzippedBytes,
+    };
+    const create: Prisma.ReleaseArtifactDebugIdUncheckedCreateInput = {
+      ...fields,
+      releaseArtifactId,
+      debugId,
+      ...mutableFields,
+    };
+    const update: Prisma.ReleaseArtifactDebugIdUncheckedUpdateInput = { ...mutableFields };
+    for (const target of [create, update]) {
+      if (input.bundleObjectKey !== undefined) target.bundleObjectKey = input.bundleObjectKey;
+      if (input.sourceMapObjectKey !== undefined) target.sourceMapObjectKey = input.sourceMapObjectKey;
+    }
+    return await db.releaseArtifactDebugId.upsert({ where, create, update });
   }
 
   public async lookupArtifactDebugId(
@@ -589,22 +569,21 @@ export class ReleaseService {
     if (input.environment !== undefined) validateText(input.environment, "environment", ENVIRONMENT_MAX_BYTES);
 
     const db = await this.resolveDatabase(scope);
+    const artifactFilter: Prisma.ReleaseArtifactWhereInput = {
+      tenancyId: fields.tenancyId,
+      projectId: fields.projectId,
+      branchId: fields.branchId,
+    };
+    if (input.dist !== undefined) artifactFilter.dist = input.dist;
+    if (input.environment !== undefined) artifactFilter.environment = input.environment;
+    if (releaseVersion !== undefined) artifactFilter.release = { is: { tenancyId: fields.tenancyId, version: releaseVersion } };
     const rows = await db.releaseArtifactDebugId.findMany({
       where: {
         tenancyId: fields.tenancyId,
         projectId: fields.projectId,
         branchId: fields.branchId,
         debugId,
-        releaseArtifact: {
-          is: {
-            tenancyId: fields.tenancyId,
-            projectId: fields.projectId,
-            branchId: fields.branchId,
-            ...(input.dist === undefined ? {} : { dist: input.dist }),
-            ...(input.environment === undefined ? {} : { environment: input.environment }),
-            ...(releaseVersion === undefined ? {} : { release: { is: { tenancyId: fields.tenancyId, version: releaseVersion } } }),
-          },
-        },
+        releaseArtifact: { is: artifactFilter },
       },
       orderBy: { createdAt: "desc" },
       take: LOOKUP_LIMIT,

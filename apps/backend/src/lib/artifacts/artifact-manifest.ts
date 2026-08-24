@@ -1,6 +1,6 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { createHash } from "node:crypto";
 import { ArtifactServiceError } from "./artifact-errors";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 export const ARTIFACT_MANIFEST_SCHEMA_VERSION = 1 as const;
 

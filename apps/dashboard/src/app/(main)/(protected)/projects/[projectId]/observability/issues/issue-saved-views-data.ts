@@ -1,5 +1,7 @@
 import { yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { getErrorMessage } from "../format";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
 import {
   isObservabilityTimeRangeHours,
@@ -65,11 +67,7 @@ const savedIssueSearchViewMutationSchema = yup.object({
   query: savedIssueSearchQuerySchema,
 }).defined();
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function readJsonOrThrow(response: Response, operation: string): Promise<unknown> {
+async function readJsonOrThrow(response: Response, operation: string): Promise<Json> {
   if (!response.ok) {
     throw new HexclaveAssertionError(`${operation} failed with status ${response.status}`);
   }
@@ -94,7 +92,10 @@ export function issueFiltersToSavedIssueSearchQuery(filters: IssueFilters): Save
 export function savedIssueSearchQueryToIssueFilters(query: SavedIssueSearchQuery): IssueFilters {
   const params = new URLSearchParams();
   const filters = query.filters;
-  params.set("status", filters.status ?? "all");
+  // Omit (rather than defaulting to "all") so absent status falls back to
+  // parseIssueStatusFilter's DEFAULT_ISSUE_FILTERS.status — saved queries must
+  // fail closed to the issue-list default, not silently widen to all statuses.
+  if (filters.status !== undefined) params.set("status", filters.status);
   if (filters.hours !== undefined) params.set("range", filters.hours);
   if (filters.service !== undefined && filters.service !== "") {
     params.set("service", serviceIdentityToSelectValue({ namespace: "", name: filters.service }));
@@ -167,5 +168,3 @@ export function savedIssueSearchViewQueryIsCompatible(query: SavedIssueSearchQue
     && isObservabilityTimeRangeHours(rawHours)
     && (handled === undefined || handled === "true" || handled === "false" || handled === "1" || handled === "0");
 }
-
-export { getErrorMessage };

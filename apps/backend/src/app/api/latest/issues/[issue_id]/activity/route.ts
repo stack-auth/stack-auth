@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { resolveIssueIdentity } from "@/lib/issues/issue-identity";
 import { IssueProductInputError, listIssueActivity, type IssueActivityRecord } from "@/lib/issues/issue-product";
 import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
@@ -23,7 +24,9 @@ function serializeActivityRecord(activity: IssueActivityRecord): IssueActivityRe
   };
 }
 
-function toSharedJson(value: unknown, fieldName: string): Json {
+// Prisma's JsonObject values are optional (`undefined` can hide inside), so a stored
+// activity payload is not statically a shared Json value; the runtime check closes that gap.
+function toSharedJson(value: Prisma.JsonValue, fieldName: string): Json {
   if (!isJsonSerializable(value)) {
     throw new HexclaveAssertionError(`Issue ${fieldName} contains a non-JSON value`, { value });
   }

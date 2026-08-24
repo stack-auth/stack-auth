@@ -73,6 +73,11 @@ export function getLogsQuery(
   if (level != null && !LOG_LEVELS.includes(level)) {
     throw new Error(`Unknown log level: ${level}`);
   }
+  const params: Record<string, string | number> = {};
+  if (service != null) {
+    params.serviceNamespace = service.namespace;
+    params.serviceName = service.name;
+  }
   const levelExpression = "coalesce(nullIf(e.level, ''), nullIf(lowerUTF8(e.severity_text), ''), '')";
   const levelCondition = level == null ? "" : `\n  AND ${levelExpression} = '${level}'`;
   const serviceCondition = service == null ? "" : `
@@ -100,12 +105,7 @@ FROM default.logs AS e
 LEFT JOIN default.users AS u ON toString(u.id) = e.user_id
 WHERE e.event_at >= now64(3) - INTERVAL ${hours} HOUR${levelCondition}${serviceCondition}
 `,
-    params: {
-      ...(service == null ? {} : {
-        serviceNamespace: service.namespace,
-        serviceName: service.name,
-      }),
-    },
+    params,
   };
 }
 

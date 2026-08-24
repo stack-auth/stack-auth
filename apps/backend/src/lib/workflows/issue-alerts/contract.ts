@@ -1,4 +1,4 @@
-import { scrubErrorIngestPayload, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload, type ErrorIngestScrubbedRecord, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 import { type PrismaClientTransaction } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { deterministicWorkflowUuid, enqueueWorkflowEvent, type EnqueueWorkflowEventOptions } from "@/lib/workflows/events";
@@ -130,33 +130,27 @@ export type IssueAlertWorkflowEnqueueResult =
     byteLength: number,
   };
 
-type ScrubbedObject = { [key: string]: ErrorIngestScrubbedValue };
-
-function isScrubbedObject(value: ErrorIngestScrubbedValue | undefined): value is ScrubbedObject {
-  return value !== undefined && typeof value === "object" && !Array.isArray(value) && value !== null;
-}
-
-function getField(object: ScrubbedObject, key: string): ErrorIngestScrubbedValue | undefined {
+function getField(object: ErrorIngestScrubbedRecord, key: string): ErrorIngestScrubbedValue | undefined {
   return object[key];
 }
 
-function getRequiredString(object: ScrubbedObject, key: string): string | null {
+function getRequiredString(object: ErrorIngestScrubbedRecord, key: string): string | null {
   const value = getField(object, key);
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function getNullableString(object: ScrubbedObject, key: string): string | null | undefined {
+function getNullableString(object: ErrorIngestScrubbedRecord, key: string): string | null | undefined {
   const value = getField(object, key);
   if (value === null) return null;
   return typeof value === "string" ? value : undefined;
 }
 
-function getRequiredNumber(object: ScrubbedObject, key: string): number | null {
+function getRequiredNumber(object: ErrorIngestScrubbedRecord, key: string): number | null {
   const value = getField(object, key);
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getStringArray(object: ScrubbedObject, key: string, allowEmpty: boolean): readonly string[] | null {
+function getStringArray(object: ErrorIngestScrubbedRecord, key: string, allowEmpty: boolean): readonly string[] | null {
   const value = getField(object, key);
   if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > ISSUE_ALERT_WORKFLOW_MAX_RECIPIENTS) return null;
   const result: string[] = [];
@@ -252,9 +246,28 @@ function buildRawPayload(
   match: IssueAlertMatch,
   routingResolution?: OwnershipRoutingResolution,
   recipientEmails?: readonly string[],
-): Record<string, unknown> {
+): IssueAlertWorkflowEventPayload {
   const signal: IssueAlertSignal = match.signal;
-  const emailAction = match.action.type === "email" ? renderIssueAlertEmailAction(match) : null;
+  let action: IssueAlertWorkflowAction;
+  if (match.action.type === "email") {
+    const emailAction = renderIssueAlertEmailAction(match);
+    const email: IssueAlertWorkflowEmailAction = {
+      type: "email",
+      subject: emailAction.subject,
+      html: emailAction.html,
+    };
+    if (match.action.userIds === undefined) {
+      email.user_ids = routingResolution?.recipients.map((recipient) => recipient.userId) ?? [];
+      if (routingResolution !== undefined) email.routing_resolution = routingResolution.metadata;
+    } else {
+      email.user_ids = match.action.userIds;
+      if (recipientEmails !== undefined && recipientEmails.length > 0) email.emails = recipientEmails;
+    }
+    if (match.action.notificationCategoryName !== undefined) email.notification_category_name = match.action.notificationCategoryName;
+    action = email;
+  } else {
+    action = { type: "webhook", integration_id: match.action.integrationId };
+  }
   return {
     schema_version: ISSUE_ALERT_WORKFLOW_PAYLOAD_VERSION,
     kind: "issue_alert",
@@ -275,26 +288,7 @@ function buildRawPayload(
     deduplication_key: match.deduplicationKey,
     cooldown_key: match.cooldownKey,
     cooldown_seconds: match.cooldown.durationSeconds,
-    action: match.action.type === "email"
-      ? {
-        type: "email",
-        ...(match.action.userIds === undefined
-          ? {
-            user_ids: routingResolution?.recipients.map((recipient) => recipient.userId) ?? [],
-            ...(routingResolution === undefined ? {} : { routing_resolution: routingResolution.metadata }),
-          }
-          : {
-            user_ids: match.action.userIds,
-            ...(recipientEmails === undefined || recipientEmails.length === 0 ? {} : { emails: recipientEmails }),
-          }),
-        subject: emailAction?.subject ?? throwErr("Issue alert email rendering requires an email action"),
-        html: emailAction?.html ?? throwErr("Issue alert email rendering requires an email action"),
-        ...(match.action.notificationCategoryName === undefined ? {} : { notification_category_name: match.action.notificationCategoryName }),
-      }
-      : {
-        type: "webhook",
-        integration_id: match.action.integrationId,
-      },
+    action,
   };
 }
 
@@ -329,12 +323,12 @@ export function buildIssueAlertWorkflowPayload(
       scrubbed: scrubbed.truncated,
     };
   }
-  if (!isScrubbedObject(scrubbed.value)) {
+  if (!isErrorIngestScrubbedRecord(scrubbed.value)) {
     return { status: "drop", reason: "invalid_payload", byteLength: scrubbed.byteLength, scrubbed: scrubbed.truncated };
   }
 
   const actionValue = getField(scrubbed.value, "action");
-  if (!isScrubbedObject(actionValue)) {
+  if (!isErrorIngestScrubbedRecord(actionValue)) {
     return { status: "drop", reason: "invalid_payload", byteLength: scrubbed.byteLength, scrubbed: scrubbed.truncated };
   }
 
@@ -417,15 +411,16 @@ export function buildIssueAlertWorkflowPayload(
         return { status: "drop", reason: "invalid_payload", byteLength: scrubbed.byteLength, scrubbed: scrubbed.truncated };
       }
     }
-    action = {
+    const emailWorkflowAction: IssueAlertWorkflowEmailAction = {
       type: "email",
       user_ids: userIds,
-      ...(emails === undefined ? {} : { emails }),
-      ...(parsedRoutingResolution === undefined || parsedRoutingResolution === null ? {} : { routing_resolution: parsedRoutingResolution }),
       subject,
       html,
-      ...(notificationCategoryName === undefined || notificationCategoryName === null ? {} : { notification_category_name: notificationCategoryName }),
     };
+    if (emails !== undefined) emailWorkflowAction.emails = emails;
+    if (parsedRoutingResolution !== undefined && parsedRoutingResolution !== null) emailWorkflowAction.routing_resolution = parsedRoutingResolution;
+    if (notificationCategoryName !== undefined && notificationCategoryName !== null) emailWorkflowAction.notification_category_name = notificationCategoryName;
+    action = emailWorkflowAction;
   } else if (actionType === "webhook") {
     if (integrationId === null) {
       return { status: "drop", reason: "invalid_payload", byteLength: scrubbed.byteLength, scrubbed: scrubbed.truncated };

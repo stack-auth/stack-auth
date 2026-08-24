@@ -7,7 +7,7 @@ import {
   yupUnion,
 } from "@hexclave/shared/dist/schema-fields";
 import type { IssueAlertRuleResponse } from "./api";
-import type { IssueAlertPredicate, IssueAlertRuleFilters, IssueAlertScalar, IssueAlertTagFilter } from "./types";
+import type { IssueAlertPredicate, IssueAlertRuleFilters, IssueAlertScalar, IssueAlertTagFilter, IssueAlertValueOperator } from "./types";
 import type { IssueAlertAction, IssueAlertEmailRouting } from "./destinations";
 
 
@@ -197,20 +197,26 @@ export const IssueAlertDeliveryListResponseSchema = yupObject({
 }).defined();
 
 function serializeIssueAlertTagFilter(filter: IssueAlertTagFilter) {
-  return {
+  const serialized: { key: string, operator: IssueAlertValueOperator, value?: string | string[] } = {
     key: filter.key,
     operator: filter.operator,
-    ...(filter.value === undefined ? {} : { value: typeof filter.value === "string" ? filter.value : [...filter.value] }),
   };
+  if (filter.value !== undefined) serialized.value = typeof filter.value === "string" ? filter.value : [...filter.value];
+  return serialized;
 }
 
 function serializeIssueAlertFilters(filters: IssueAlertRuleFilters) {
-  return {
-    ...(filters.projectIds === undefined ? {} : { projectIds: [...filters.projectIds] }),
-    ...(filters.environments === undefined ? {} : { environments: [...filters.environments] }),
-    ...(filters.releases === undefined ? {} : { releases: [...filters.releases] }),
-    ...(filters.tags === undefined ? {} : { tags: filters.tags.map(serializeIssueAlertTagFilter) }),
-  };
+  const serialized: {
+    projectIds?: string[],
+    environments?: string[],
+    releases?: string[],
+    tags?: ReturnType<typeof serializeIssueAlertTagFilter>[],
+  } = {};
+  if (filters.projectIds !== undefined) serialized.projectIds = [...filters.projectIds];
+  if (filters.environments !== undefined) serialized.environments = [...filters.environments];
+  if (filters.releases !== undefined) serialized.releases = [...filters.releases];
+  if (filters.tags !== undefined) serialized.tags = filters.tags.map(serializeIssueAlertTagFilter);
+  return serialized;
 }
 
 function isScalarArray(value: IssueAlertScalar | readonly IssueAlertScalar[]): value is readonly IssueAlertScalar[] {
@@ -244,12 +250,18 @@ function serializeIssueAlertPredicate(predicate: IssueAlertPredicate) {
       };
     }
     case "attribute": {
-      return {
+      const serialized: {
+        type: "attribute",
+        path: string,
+        operator: IssueAlertValueOperator,
+        value?: IssueAlertScalar | IssueAlertScalar[],
+      } = {
         type: predicate.type,
         path: predicate.path,
         operator: predicate.operator,
-        ...(predicate.value === undefined ? {} : { value: isScalarArray(predicate.value) ? [...predicate.value] : predicate.value }),
       };
+      if (predicate.value !== undefined) serialized.value = isScalarArray(predicate.value) ? [...predicate.value] : predicate.value;
+      return serialized;
     }
   }
 }
@@ -264,29 +276,47 @@ function serializeIssueAlertAction(action: IssueAlertAction) {
   if (action.type === "webhook") {
     return { type: action.type, integrationId: action.integrationId };
   }
-  return {
-    type: action.type,
-    ...(action.userIds === undefined ? {} : { userIds: [...action.userIds] }),
-    ...(action.routing === undefined ? {} : { routing: serializeIssueAlertEmailRouting(action.routing) }),
-    subject: action.subject,
-    html: action.html,
-    ...(action.notificationCategoryName === undefined ? {} : { notificationCategoryName: action.notificationCategoryName }),
-  };
+  const serialized: {
+    type: "email",
+    subject: string,
+    html: string,
+    userIds?: string[],
+    routing?: ReturnType<typeof serializeIssueAlertEmailRouting>,
+    notificationCategoryName?: string,
+  } = { type: action.type, subject: action.subject, html: action.html };
+  if (action.userIds !== undefined) serialized.userIds = [...action.userIds];
+  if (action.routing !== undefined) serialized.routing = serializeIssueAlertEmailRouting(action.routing);
+  if (action.notificationCategoryName !== undefined) serialized.notificationCategoryName = action.notificationCategoryName;
+  return serialized;
 }
 
 export function serializeIssueAlertRuleResponse(rule: IssueAlertRuleResponse) {
-  return {
+  const conditions: {
+    all?: ReturnType<typeof serializeIssueAlertPredicate>[],
+    any?: ReturnType<typeof serializeIssueAlertPredicate>[],
+  } = {};
+  if (rule.conditions.all !== undefined) conditions.all = rule.conditions.all.map(serializeIssueAlertPredicate);
+  if (rule.conditions.any !== undefined) conditions.any = rule.conditions.any.map(serializeIssueAlertPredicate);
+  const serialized: {
+    schemaVersion: number,
+    id: string,
+    version: number,
+    enabled: boolean,
+    filters?: ReturnType<typeof serializeIssueAlertFilters>,
+    conditions: typeof conditions,
+    cooldown: { durationSeconds: number, keyBy: IssueAlertRuleResponse["cooldown"]["keyBy"] },
+    action: ReturnType<typeof serializeIssueAlertAction>,
+    database_id: string,
+  } = {
     schemaVersion: rule.schemaVersion,
     id: rule.id,
     version: rule.version,
     enabled: rule.enabled,
-    ...(rule.filters === undefined ? {} : { filters: serializeIssueAlertFilters(rule.filters) }),
-    conditions: {
-      ...(rule.conditions.all === undefined ? {} : { all: rule.conditions.all.map(serializeIssueAlertPredicate) }),
-      ...(rule.conditions.any === undefined ? {} : { any: rule.conditions.any.map(serializeIssueAlertPredicate) }),
-    },
+    conditions,
     cooldown: { durationSeconds: rule.cooldown.durationSeconds, keyBy: rule.cooldown.keyBy },
     action: serializeIssueAlertAction(rule.action),
     database_id: rule.database_id,
   };
+  if (rule.filters !== undefined) serialized.filters = serializeIssueAlertFilters(rule.filters);
+  return serialized;
 }

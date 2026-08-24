@@ -24,7 +24,11 @@ function makeApp(overrides?: { user?: unknown | null }) {
   const user = overrides && "user" in overrides ? overrides.user : FAKE_USER;
   const withSpan = vi.fn(async (_type: string, _options: unknown, fn: (span: unknown) => unknown) => await fn({ spanId: "span-1" }));
   const getUser = vi.fn(async () => user);
-  return { app: { withSpan, getUser } as unknown as AdapterServerApp, withSpan, getUser };
+  // SAFETY: the adapters only call app.withSpan(type, options, fn) and app.getUser({ tokenStore, or: "return-null" }),
+  // so a two-method fixture is sufficient; starting from an empty base means any new StackServerApp dependency of the
+  // adapters fails loudly here instead of being silently mocked.
+  const app = Object.assign({} as AdapterServerApp, { withSpan, getUser });
+  return { app, withSpan, getUser };
 }
 
 describe("TanStack Start adapter: serverFn", () => {

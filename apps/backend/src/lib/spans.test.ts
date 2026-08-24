@@ -5,10 +5,18 @@ import type { ClickHouseClient } from "./clickhouse";
 const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SPAN_ROOT = "1111111111111111";
 
+function fakeInsertOnlyClient() {
+  const insert = vi.fn(async () => {});
+  // SAFETY: the span insert helpers only call client.insert and ignore its result, so a client fixture carrying
+  // just that method is sufficient; starting from an empty base means any new ClickHouseClient dependency of the
+  // code under test fails loudly here instead of being silently mocked.
+  const client = Object.assign({} as ClickHouseClient, { insert });
+  return { insert, client };
+}
+
 describe("insertSessionReplaySpans", () => {
   it("materializes refresh-token -> replay -> segment using scalar W3C parents", async () => {
-    const insert = vi.fn(async () => {});
-    const client = { insert } as unknown as ClickHouseClient;
+    const { insert, client } = fakeInsertOnlyClient();
     const replayStartedAt = new Date("2026-01-01T00:00:00.000Z");
     const replayLastEventAt = new Date("2026-01-01T00:05:00.000Z");
     const segmentStartedAt = new Date("2026-01-01T00:01:00.000Z");
@@ -54,16 +62,14 @@ describe("insertSessionReplaySpans", () => {
 
 describe("insert guards", () => {
   it("does not call insert when given an empty row list", async () => {
-    const insert = vi.fn(async () => {});
-    const client = { insert } as unknown as ClickHouseClient;
+    const { insert, client } = fakeInsertOnlyClient();
     await insertSpans(client, []);
     await insertSpanLinks(client, []);
     expect(insert).not.toHaveBeenCalled();
   });
 
   it("deduplicates dependent trace views when a span batch is retried", async () => {
-    const insert = vi.fn(async () => {});
-    const client = { insert } as unknown as ClickHouseClient;
+    const { insert, client } = fakeInsertOnlyClient();
     const row = {
       trace_id: TRACE_A,
       span_id: SPAN_ROOT,

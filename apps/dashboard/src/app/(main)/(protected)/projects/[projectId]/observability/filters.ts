@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from "react";
 import type { StackAdminApp } from "@hexclave/next";
+import type { RowData } from "../analytics/shared";
 import { parseServiceIdentityRow, type ServiceIdentity } from "./service-identity";
 
 
@@ -58,13 +59,22 @@ export function useServiceIdentityLoader(adminApp: StackAdminApp<false>, query: 
   }, [adminApp, query]);
 }
 
-export function queryObservability(adminApp: StackAdminApp<false>, options: { query: string, params: Record<string, unknown> }) {
-  return adminApp.queryAnalytics({
+export type ObservabilityQueryParams = Record<string, string | number | readonly string[]>;
+
+export async function queryObservability(
+  adminApp: StackAdminApp<false>,
+  options: { query: string, params: ObservabilityQueryParams },
+): Promise<{ result: RowData[], query_id: string }> {
+  const response = await adminApp.queryAnalytics({
     query: options.query,
     params: options.params,
     include_all_branches: false,
     timeout_ms: 30000,
   });
+  // SAFETY: queryAnalytics hands back the deserialized JSON response body, so
+  // every column value is a Json by construction. The SDK types the columns as
+  // unknown only because it cannot know each query's result schema.
+  return response as { result: RowData[], query_id: string };
 }
 
 export function replaceLocationSearch(params: URLSearchParams): void {

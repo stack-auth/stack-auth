@@ -1,9 +1,10 @@
+import { utf8ByteLength } from "@/lib/utf8";
 import { createHash } from "node:crypto";
 import type { IssueBatchApplyOutcome } from "../issue-store";
 import type { IssueBatchDelta } from "../issue-materialization-contract";
-import { scrubErrorIngestPayload } from "@/lib/error-ingest";
-import type { IssueAlertLevel, IssueAlertScalar, IssueAlertSignal, IssueAlertStatus } from "./types";
+import { isErrorIngestScrubbedRecord, scrubErrorIngestPayload, type ErrorIngestScrubbedRecord, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import type { IssueAlertLevel, IssueAlertScalar, IssueAlertSignal, IssueAlertStatus } from "./types";
 
 const MAX_SIGNAL_MAP_ENTRIES = 100;
 const MAX_SIGNAL_KEY_BYTES = 256;
@@ -54,7 +55,7 @@ function isScalar(value: unknown): value is IssueAlertScalar {
 }
 
 function boundedKey(value: string): string | null {
-  const bytes = new TextEncoder().encode(value).byteLength;
+  const bytes = utf8ByteLength(value);
   return value.length > 0 && bytes <= MAX_SIGNAL_KEY_BYTES ? value : null;
 }
 
@@ -63,15 +64,15 @@ const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 function boundedIdentifierOrNull(value: string | null): string | null {
   if (value === null || value.length === 0) return null;
   if (CONTROL_CHARACTER_PATTERN.test(value)) return null;
-  return new TextEncoder().encode(value).byteLength <= MAX_SIGNAL_KEY_BYTES ? value : null;
+  return utf8ByteLength(value) <= MAX_SIGNAL_KEY_BYTES ? value : null;
 }
 
 function boundedString(value: string): string | null {
-  const bytes = new TextEncoder().encode(value).byteLength;
+  const bytes = utf8ByteLength(value);
   return value.length > 0 && bytes <= MAX_SIGNAL_STRING_BYTES ? value : null;
 }
 
-function addScalar(map: Map<string, IssueAlertScalar>, key: string, value: unknown): void {
+function addScalar(map: Map<string, IssueAlertScalar>, key: string, value: ErrorIngestScrubbedValue): void {
   if (map.size >= MAX_SIGNAL_MAP_ENTRIES || map.has(key)) return;
   const safeKey = boundedKey(key);
   if (safeKey === null || !isScalar(value)) return;
@@ -79,8 +80,8 @@ function addScalar(map: Map<string, IssueAlertScalar>, key: string, value: unkno
   map.set(safeKey, value);
 }
 
-function addRecordScalars(map: Map<string, IssueAlertScalar>, prefix: string, value: unknown): void {
-  if (!isRecord(value)) return;
+function addRecordScalars(map: Map<string, IssueAlertScalar>, prefix: string, value: ErrorIngestScrubbedValue | undefined): void {
+  if (!isErrorIngestScrubbedRecord(value)) return;
   for (const [key, child] of Object.entries(value)) {
     if (map.size >= MAX_SIGNAL_MAP_ENTRIES) return;
     const safeKey = boundedKey(key);
@@ -90,32 +91,28 @@ function addRecordScalars(map: Map<string, IssueAlertScalar>, prefix: string, va
       addScalar(map, fullKey, child);
       continue;
     }
-    if (isRecord(child)) addRecordScalars(map, fullKey, child);
+    if (isErrorIngestScrubbedRecord(child)) addRecordScalars(map, fullKey, child);
   }
 }
 
-function parseEnvelope(value: unknown): Record<string, unknown> {
+function signalEnvelope(value: unknown): ErrorIngestScrubbedRecord {
+  let envelope: unknown = value;
   if (typeof value === "string") {
     try {
-      const parsed: unknown = JSON.parse(value);
-      return isRecord(parsed) ? parsed : {};
+      envelope = JSON.parse(value);
     } catch (error) {
-      if (error instanceof SyntaxError) return {};
-      throw error;
+      if (!(error instanceof SyntaxError)) throw error;
+      envelope = {};
     }
   }
-  return isRecord(value) ? value : {};
-}
-
-function signalEnvelope(value: unknown): Record<string, unknown> {
-  const scrubbed = scrubErrorIngestPayload(parseEnvelope(value), {
+  const scrubbed = scrubErrorIngestPayload(isRecord(envelope) ? envelope : {}, {
     maxDepth: 6,
     maxPayloadBytes: 256 * 1024,
     maxStringBytes: MAX_SIGNAL_STRING_BYTES,
     maxKeyBytes: MAX_SIGNAL_KEY_BYTES,
     maxCollectionEntries: MAX_SIGNAL_MAP_ENTRIES,
   });
-  return isRecord(scrubbed.value) ? scrubbed.value : {};
+  return isErrorIngestScrubbedRecord(scrubbed.value) ? scrubbed.value : {};
 }
 
 function eventOccurrenceId(outcome: IssueBatchApplyOutcome, input: IssueBatchDelta, batchId: string | undefined): string {
@@ -140,7 +137,7 @@ function status(value: LoadedIssueStatus): IssueAlertStatus {
 function readTagsAndAttributes(value: unknown): { tags: Map<string, string>, attributes: Map<string, IssueAlertScalar> } {
   const envelope = signalEnvelope(value);
   const tags = new Map<string, string>();
-  if (isRecord(envelope.tags)) {
+  if (isErrorIngestScrubbedRecord(envelope.tags)) {
     for (const [key, tag] of Object.entries(envelope.tags)) {
       if (tags.size >= MAX_SIGNAL_MAP_ENTRIES) break;
       if (typeof tag !== "string" || boundedString(tag) === null) continue;

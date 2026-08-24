@@ -77,7 +77,7 @@ export function buildIssueAlertFrequencyCountsQuery(windows: readonly number[]):
       `;
 }
 
-async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | null): Promise<unknown> {
+async function loadOccurrenceEnvelope(tenancy: Tenancy, occurrenceId: string | null): Promise<string | undefined> {
   if (occurrenceId === null) return undefined;
   const result = await getSharedClickhouseAdminClient().query({
     query: `

@@ -1,4 +1,4 @@
-import { isDateValue, parseClickHouseDate } from "../../analytics/shared";
+import { isDateValue, parseClickHouseDate, type RowData } from "../../analytics/shared";
 import type { ServiceIdentity } from "../service-identity";
 import { getBucketGranularity, type BucketGranularity } from "../bucket-granularity";
 
@@ -52,7 +52,7 @@ WITH FILL
   };
 }
 
-export function parseTraceVolumeRows(rows: Record<string, unknown>[]): TraceVolumeBucket[] {
+export function parseTraceVolumeRows(rows: RowData[]): TraceVolumeBucket[] {
   return rows.map((row) => {
     const bucketStart = row.bucket_start;
     const traceCount = typeof row.trace_count === "number"

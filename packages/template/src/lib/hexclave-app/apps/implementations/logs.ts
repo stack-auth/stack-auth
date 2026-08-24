@@ -61,6 +61,8 @@ export function createLogger(deps: CreateLoggerDeps): Logger {
       console.warn("Hexclave analytics: app.logger is unavailable in this environment (analytics disabled or unsupported); logs will be dropped");
     }
   };
+  // SAFETY: Object.fromEntries types its result with plain string keys; the
+  // entries are built from LOG_LEVELS, so every LogLevel method is present.
   return Object.fromEntries(LOG_LEVELS.map((level) => [level, (message: string, data?: Record<string, unknown>) => log(level, message, data)])) as Logger;
 }
 
@@ -97,6 +99,9 @@ type ConsoleCaptureGlobalState = {
 const CONSOLE_CAPTURE_STATE_KEY = Symbol.for("hexclave.analytics.console-capture.v2");
 
 function getConsoleCaptureState(): ConsoleCaptureGlobalState {
+  // SAFETY: the symbol slot is owned exclusively by this module (only written
+  // below), so a present value is a ConsoleCaptureGlobalState; the widened
+  // view only declares that owned, possibly-absent slot.
   const holder = globalThis as { [CONSOLE_CAPTURE_STATE_KEY]?: ConsoleCaptureGlobalState };
   holder[CONSOLE_CAPTURE_STATE_KEY] ??= {
     sinksByIdentity: new Map(),
@@ -210,7 +215,7 @@ export function installConsoleCapture(opts: {
           return;
         }
         const errorArg = args.find((arg): arg is Error => arg instanceof Error);
-        let errorExtras: Record<string, unknown> = {};
+        let errorExtras: { error_name: string, error_fingerprint: string } | undefined;
         if (errorArg !== undefined) {
           const normalized = normalizeCapturedError(errorArg);
           const errorMessage = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);

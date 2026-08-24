@@ -1,10 +1,13 @@
+import { utf8ByteLength } from "@/lib/utf8";
 import { getErrorAttachmentEventId } from "@/lib/attachments/attachment-event-id";
+import { isErrorIngestScrubbedRecord, type ErrorIngestScrubbedRecord, type ErrorIngestScrubbedValue } from "@/lib/error-ingest";
 import {
-  isRecord,
   scrubPublicOptionalText,
   scrubPublicRecord,
   scrubPublicText,
 } from "@/lib/issues/public-scrub";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import type {
   PublicSearchAttachment,
   PublicSearchFilters,
@@ -59,12 +62,12 @@ export type PublicSearchIssueRow = {
   updatedAt: Date,
 };
 
-function readString(record: Record<string, unknown>, key: string): string | null {
+function readString(record: ErrorIngestScrubbedRecord, key: string): string | null {
   const value = record[key];
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function readBoolean(record: Record<string, unknown>, key: string): boolean | null {
+function readBoolean(record: ErrorIngestScrubbedRecord, key: string): boolean | null {
   const value = record[key];
   return typeof value === "boolean" ? value : null;
 }
@@ -73,9 +76,12 @@ function readFiniteNonNegativeInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-function parseJson(value: string): unknown {
+function parseJson(value: string): Json {
   try {
-    return JSON.parse(value);
+    // JSON.parse is typed as `any`, but a successful parse can only produce
+    // JSON values, so binding it to Json is exact rather than a widening.
+    const parsed: Json = JSON.parse(value);
+    return parsed;
   } catch (error) {
     if (error instanceof SyntaxError) return null;
     throw error;
@@ -94,8 +100,8 @@ function bodyMessage(rawBody: string): string | null {
 
 const PUBLIC_SEARCH_ERROR_ENVELOPE_MAX_BYTES = 256 * 1024;
 
-function storedErrorEnvelope(raw: string | null): Record<string, unknown> {
-  if (raw === null || raw === "" || new TextEncoder().encode(raw).byteLength > PUBLIC_SEARCH_ERROR_ENVELOPE_MAX_BYTES) return {};
+function storedErrorEnvelope(raw: string | null): ErrorIngestScrubbedRecord {
+  if (raw === null || raw === "" || utf8ByteLength(raw) > PUBLIC_SEARCH_ERROR_ENVELOPE_MAX_BYTES) return {};
   const parsed = parseJson(raw);
   return scrubPublicRecord(parsed);
 }
@@ -186,7 +192,7 @@ function sourceLink(value: unknown): PublicSearchSourceLink | null {
     : link;
 }
 
-function sourceLinks(rawFrames: string, ...metadataRecords: readonly Record<string, unknown>[]): PublicSearchSourceLink[] {
+function sourceLinks(rawFrames: string, ...metadataRecords: readonly ErrorIngestScrubbedRecord[]): PublicSearchSourceLink[] {
   const links: PublicSearchSourceLink[] = [];
   const seen = new Set<string>();
   const add = (link: PublicSearchSourceLink | null): void => {
@@ -204,22 +210,23 @@ function sourceLinks(rawFrames: string, ...metadataRecords: readonly Record<stri
 
   for (const metadata of metadataRecords) {
     const debugMeta = metadata.debug_meta;
-    if (isRecord(debugMeta) && Array.isArray(debugMeta.images)) {
+    if (isErrorIngestScrubbedRecord(debugMeta) && Array.isArray(debugMeta.images)) {
       for (const image of debugMeta.images.slice(0, 20)) add(sourceLink(image));
     }
   }
   return links;
 }
 
-function matchedTag(filters: PublicSearchFilters, ...metadataRecords: readonly Record<string, unknown>[]): PublicSearchTag | null {
+function matchedTag(filters: PublicSearchFilters, ...metadataRecords: readonly ErrorIngestScrubbedRecord[]): PublicSearchTag | null {
   if (filters.tagKey === null || filters.tagValue === null) return null;
-  let rawValue: unknown;
+  let rawValue: ErrorIngestScrubbedValue | undefined;
   for (const metadata of metadataRecords) {
     const rawTags = metadata.tags;
-    if (!isRecord(rawTags)) continue;
-    const candidate = rawTags[filters.tagKey];
-    if (candidate !== undefined) {
-      rawValue = candidate;
+    if (!isErrorIngestScrubbedRecord(rawTags)) continue;
+    // Presence is tested with `in`: scrubbed records carry no undefined
+    // values, so only a missing key can produce one.
+    if (filters.tagKey in rawTags) {
+      rawValue = rawTags[filters.tagKey];
       break;
     }
   }
@@ -278,8 +285,8 @@ export function toPublicSearchOccurrence(
   const dataHandled = readBoolean(data, "handled");
   const envelopeRuntime = envelope.runtime;
   const dataRuntime = data.runtime;
-  const envelopeService = isRecord(envelopeRuntime) ? readString(envelopeRuntime, "service_name") : null;
-  const dataService: string | null = isRecord(dataRuntime) ? readString(dataRuntime, "service_name") : null;
+  const envelopeService = isErrorIngestScrubbedRecord(envelopeRuntime) ? readString(envelopeRuntime, "service_name") : null;
+  const dataService: string | null = isErrorIngestScrubbedRecord(dataRuntime) ? readString(dataRuntime, "service_name") : null;
   const service = row.service_name === null || row.service_name === ""
     ? envelopeService ?? dataService
     : row.service_name;

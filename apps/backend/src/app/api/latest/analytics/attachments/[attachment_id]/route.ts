@@ -1,8 +1,8 @@
 import { createProductionErrorAttachmentService, ErrorAttachmentNotFoundError } from "@/lib/attachments";
 import { validateErrorAttachmentScope } from "@/lib/attachments/attachment-contract";
+import { assertObservabilityEnabled } from "@/lib/issues/observability-gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { SmartResponse } from "@/route-handlers/smart-response";
-import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
@@ -20,7 +20,7 @@ export const GET = createSmartRouteHandler({
   }).defined(),
   response: yupMixed<SmartResponse>().defined(),
   async handler({ auth, params }) {
-    if (!auth.tenancy.config.apps.installed.observability?.enabled) throw new KnownErrors.ObservabilityNotEnabled();
+    assertObservabilityEnabled(auth.tenancy);
     const service = await createProductionErrorAttachmentService(auth.tenancy);
     try {
       const result = await service.download(

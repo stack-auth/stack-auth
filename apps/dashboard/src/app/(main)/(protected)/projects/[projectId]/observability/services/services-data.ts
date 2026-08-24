@@ -5,6 +5,7 @@ import {
   type ServiceIdentity,
 } from "../service-identity";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import type { RowData } from "../../analytics/shared";
 import { isObservabilityTimeRangeHours, type ObservabilityTimeRangeHours } from "../filters";
 import { getBucketGranularity, type BucketGranularity } from "../bucket-granularity";
 
@@ -251,7 +252,7 @@ LIMIT 500
   };
 }
 
-function requiredNumber(row: Record<string, unknown>, key: string): number {
+function requiredNumber(row: RowData, key: string): number {
   const value = row[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`Analytics ${key} must be a finite number`);
@@ -259,7 +260,7 @@ function requiredNumber(row: Record<string, unknown>, key: string): number {
   return value;
 }
 
-function optionalNumber(row: Record<string, unknown>, key: string): number | null {
+function optionalNumber(row: RowData, key: string): number | null {
   const value = row[key];
   if (value == null) return null;
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -268,7 +269,7 @@ function optionalNumber(row: Record<string, unknown>, key: string): number | nul
   return value;
 }
 
-function requiredString(row: Record<string, unknown>, key: string): string {
+function requiredString(row: RowData, key: string): string {
   const value = row[key];
   if (typeof value !== "string" || value === "") {
     throw new Error(`Analytics ${key} must be a non-empty string`);
@@ -276,7 +277,7 @@ function requiredString(row: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function optionalString(row: Record<string, unknown>, key: string): string | null {
+function optionalString(row: RowData, key: string): string | null {
   const value = row[key];
   if (value == null) return null;
   if (typeof value !== "string" || value === "") {
@@ -285,7 +286,7 @@ function optionalString(row: Record<string, unknown>, key: string): string | nul
   return value;
 }
 
-export function parseServiceSummaryRow(row: Record<string, unknown>): ServiceSummary {
+export function parseServiceSummaryRow(row: RowData): ServiceSummary {
   return {
     identity: parseServiceIdentityRow(row),
     spanCount: requiredNumber(row, "span_count"),
@@ -304,7 +305,7 @@ export function parseServiceSummaryRow(row: Record<string, unknown>): ServiceSum
   };
 }
 
-export function parseServiceDependencyRow(row: Record<string, unknown>): ServiceDependency {
+export function parseServiceDependencyRow(row: RowData): ServiceDependency {
   return {
     source: parseServiceIdentityRow({
       service_namespace: row.source_service_namespace,
@@ -332,7 +333,7 @@ export function parseServiceTimestamp(value: string): Date {
 }
 
 export function buildServiceTimelines(
-  rows: readonly Record<string, unknown>[],
+  rows: readonly RowData[],
   hours: ServiceTimeRangeHours,
   nowMs: number,
 ): Map<string, ServiceTimeline> {

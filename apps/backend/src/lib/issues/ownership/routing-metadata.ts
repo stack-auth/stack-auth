@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "@/lib/utf8";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import type {
   OwnershipDecisionTrace,
   OwnershipOwnerSource,
@@ -48,14 +50,10 @@ export type OwnershipRoutingResolution = {
   metadata: OwnershipRoutingMetadata,
 };
 
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0
     && !CONTROL_CHARACTER_PATTERN.test(value)
-    && new TextEncoder().encode(value).byteLength <= OWNERSHIP_ROUTING_METADATA_MAX_IDENTIFIER_BYTES;
+    && utf8ByteLength(value) <= OWNERSHIP_ROUTING_METADATA_MAX_IDENTIFIER_BYTES;
 }
 
 function isBoolean(value: unknown): value is boolean {
@@ -110,7 +108,7 @@ function isFallthrough(value: unknown): value is "active_members" | "all_members
 }
 
 function parseTarget(value: unknown): OwnershipRoutingTargetMetadata | null {
-  if (!isObject(value) || !isString(value.type)) return null;
+  if (!isRecord(value) || !isString(value.type)) return null;
   if (value.type === "team") {
     return isString(value.team_id) ? { type: "team", team_id: value.team_id } : null;
   }
@@ -120,7 +118,7 @@ function parseTarget(value: unknown): OwnershipRoutingTargetMetadata | null {
 }
 
 function parseTraceEntry(value: unknown): OwnershipRoutingTraceEntry | null {
-  if (!isObject(value)
+  if (!isRecord(value)
     || !isStage(value.stage)
     || !isDecision(value.decision)
     || !isTraceCode(value.code)) return null;
@@ -134,29 +132,31 @@ function parseTraceEntry(value: unknown): OwnershipRoutingTraceEntry | null {
   if (targetType !== undefined && !isTargetType(targetType)) return null;
   if (ownerSource !== undefined && !isOwnerSource(ownerSource)) return null;
   if (count !== undefined && !isCount(count)) return null;
-  return {
+  const entry: OwnershipRoutingTraceEntry = {
     stage: value.stage,
     decision: value.decision,
     code: value.code,
-    ...(participantType === undefined ? {} : { participant_type: participantType }),
-    ...(participantId === undefined ? {} : { participant_id: participantId }),
-    ...(targetType === undefined ? {} : { target_type: targetType }),
-    ...(ownerSource === undefined ? {} : { owner_source: ownerSource }),
-    ...(count === undefined ? {} : { count }),
   };
+  if (participantType !== undefined) entry.participant_type = participantType;
+  if (participantId !== undefined) entry.participant_id = participantId;
+  if (targetType !== undefined) entry.target_type = targetType;
+  if (ownerSource !== undefined) entry.owner_source = ownerSource;
+  if (count !== undefined) entry.count = count;
+  return entry;
 }
 
 function toTraceEntry(value: OwnershipDecisionTrace): OwnershipRoutingTraceEntry {
-  return {
+  const entry: OwnershipRoutingTraceEntry = {
     stage: value.stage,
     decision: value.decision,
     code: value.code,
-    ...(value.participantType === undefined ? {} : { participant_type: value.participantType }),
-    ...(value.participantId === undefined ? {} : { participant_id: value.participantId }),
-    ...(value.targetType === undefined ? {} : { target_type: value.targetType }),
-    ...(value.ownerSource === undefined ? {} : { owner_source: value.ownerSource }),
-    ...(value.count === undefined ? {} : { count: value.count }),
   };
+  if (value.participantType !== undefined) entry.participant_type = value.participantType;
+  if (value.participantId !== undefined) entry.participant_id = value.participantId;
+  if (value.targetType !== undefined) entry.target_type = value.targetType;
+  if (value.ownerSource !== undefined) entry.owner_source = value.ownerSource;
+  if (value.count !== undefined) entry.count = value.count;
+  return entry;
 }
 
 export function buildOwnershipRoutingMetadata(
@@ -177,7 +177,7 @@ export function buildOwnershipRoutingMetadata(
 }
 
 export function parseOwnershipRoutingMetadata(value: unknown): OwnershipRoutingMetadata | null {
-  if (!isObject(value)
+  if (!isRecord(value)
     || value.schema_version !== OWNERSHIP_ROUTING_METADATA_SCHEMA_VERSION
     || !isString(value.status)
     || !isString(value.reason)

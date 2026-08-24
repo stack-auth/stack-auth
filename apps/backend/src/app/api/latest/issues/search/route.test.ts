@@ -7,9 +7,6 @@ vi.mock("@/route-handlers/smart-route-handler", () => ({
     return { overloads: new Map([[undefined, definition]]) };
   },
 }));
-vi.mock("@/lib/issues/observability-gate", () => ({
-  assertObservabilityEnabled: vi.fn(),
-}));
 vi.mock("@/prisma-client", () => ({
   getPrismaClientForTenancy: vi.fn(),
 }));

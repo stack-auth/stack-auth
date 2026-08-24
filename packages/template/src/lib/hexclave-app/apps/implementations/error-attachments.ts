@@ -1,3 +1,4 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import type {
   ErrorAttachmentInput,
   ErrorAttachmentMetadata,
@@ -196,17 +197,29 @@ function parseAttachmentRetryAfter(header: string | null): number | null {
   return Math.min(Math.max(targetTime - Date.now(), 0), ATTACHMENT_RETRY_MAX_DELAY_MS);
 }
 
-function toUploadBody(request: ErrorAttachmentUploadRequest): Record<string, unknown> {
+/** The JSON body of one attachment upload call, matching the backend's wire contract. */
+type ErrorAttachmentUploadBody = {
+  event_id: ErrorAttachmentUploadRequest["eventId"],
+  occurrence_id?: string,
+  idempotency_key?: string,
+  filename: string,
+  content_type: string,
+  attachment_type: string,
+  data_base64: string,
+};
+
+function toUploadBody(request: ErrorAttachmentUploadRequest): ErrorAttachmentUploadBody {
   const input = normalizeErrorAttachmentInput(request.attachment);
-  return {
+  const body: ErrorAttachmentUploadBody = {
     event_id: request.eventId,
-    ...input.occurrenceId === undefined ? {} : { occurrence_id: input.occurrenceId },
-    ...input.idempotencyKey === undefined ? {} : { idempotency_key: input.idempotencyKey },
     filename: input.filename,
     content_type: input.contentType ?? DEFAULT_CONTENT_TYPE,
     attachment_type: input.attachmentType ?? DEFAULT_ATTACHMENT_TYPE,
     data_base64: encodeBase64(input.data),
   };
+  if (input.occurrenceId !== undefined) body.occurrence_id = input.occurrenceId;
+  if (input.idempotencyKey !== undefined) body.idempotency_key = input.idempotencyKey;
+  return body;
 }
 
 function parseUploadResponse(value: unknown): ErrorAttachmentUploadResult {
@@ -302,10 +315,6 @@ function encodeBase64(data: string | Uint8Array): string {
   }
   if (typeof globalThis.btoa !== "function") throw new Error("Hexclave error attachment upload requires btoa");
   return globalThis.btoa(binary);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown): string {

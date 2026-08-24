@@ -20,6 +20,7 @@ import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { AnalyticsEventLimitBanner } from "../../analytics/shared";
+import { getErrorMessage } from "../format";
 import { getBucketGranularity } from "../bucket-granularity";
 import {
   ALL_SERVICES_SELECT_VALUE,
@@ -204,7 +205,7 @@ export default function PageClient() {
       if (pendingStatusCountRevisionsRef.current.get(issue.id) === countsRevisionRef.current) {
         setCounts((current) => adjustIssueStatusCounts(current, status, from));
       }
-      setStatusError(error instanceof Error ? error.message : String(error));
+      setStatusError(getErrorMessage(error));
     } finally {
       pendingStatusIssueIdsRef.current.delete(issue.id);
       pendingStatusCountRevisionsRef.current.delete(issue.id);
@@ -213,6 +214,11 @@ export default function PageClient() {
 
   const bucketLabel = getBucketGranularity(filters.hours).label;
 
+  // Mirror of `gridData.rows`. This is not redundant state: `cellContext`
+  // (needed to build the columns that `gridData` itself consumes) requires
+  // `sparklines`, while `useIssueSparklines` needs rows. The state+effect pair
+  // breaks that hook-ordering cycle; the hook keys its cache by issue-hash
+  // strings so the extra render pass stays cheap.
   const [gridRows, setGridRows] = useState<readonly IssueListItem[]>([]);
   const sparklines = useIssueSparklines(adminApp, filters.hours, gridRows);
 
@@ -256,12 +262,12 @@ export default function PageClient() {
   });
 
   useEffect(() => {
-    setGridRows(gridData.rows);
+    const reconciled = reconcileIssueStatusOverrides(overridesRef.current, gridData.rows);
+    if (reconciled !== overridesRef.current) setOverrides(reconciled);
   }, [gridData.rows]);
 
   useEffect(() => {
-    const reconciled = reconcileIssueStatusOverrides(overridesRef.current, gridData.rows);
-    if (reconciled !== overridesRef.current) setOverrides(reconciled);
+    setGridRows(gridData.rows);
   }, [gridData.rows]);
 
   const reload = useCallback(() => {
@@ -296,7 +302,7 @@ export default function PageClient() {
       clearIssueSelection();
       reload();
     } catch (error) {
-      setBulkStatusError(error instanceof Error ? error.message : String(error));
+      setBulkStatusError(getErrorMessage(error));
     } finally {
       setBulkStatusBusy(null);
     }
@@ -312,7 +318,7 @@ export default function PageClient() {
       clearIssueSelection();
       reload();
     } catch (error) {
-      setMergeError(error instanceof Error ? error.message : String(error));
+      setMergeError(getErrorMessage(error));
     } finally {
       setMergeBusy(false);
     }

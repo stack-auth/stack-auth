@@ -1,3 +1,5 @@
+import type { RowData } from "../analytics/shared";
+
 export type ServiceIdentity = {
   namespace: string,
   name: string,
@@ -52,7 +54,7 @@ export function selectValueToServiceIdentity(value: string): ServiceIdentity | n
   return identity;
 }
 
-export function parseServiceIdentityRow(row: Record<string, unknown>): ServiceIdentity {
+export function parseServiceIdentityRow(row: RowData): ServiceIdentity {
   const namespaceValue = row.service_namespace;
   const nameValue = row.service_name;
   if (namespaceValue != null && typeof namespaceValue !== "string") {
@@ -67,7 +69,7 @@ export function parseServiceIdentityRow(row: Record<string, unknown>): ServiceId
   };
 }
 
-export function serviceIdentitiesFromTraceRow(row: Record<string, unknown>): ServiceIdentity[] {
+export function serviceIdentitiesFromTraceRow(row: RowData): ServiceIdentity[] {
   const namespaces = row.trace_service_namespaces;
   const names = row.trace_service_names;
   if (!Array.isArray(namespaces) || !Array.isArray(names) || namespaces.length !== names.length) {

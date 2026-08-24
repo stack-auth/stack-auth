@@ -20,7 +20,7 @@ import {
   type IssueEventField,
   type IssueExceptionValue,
 } from "./issue-event";
-import { formatAbsoluteTimeFromMillis, formatRelativeTimeFromMillis } from "../format";
+import { formatAbsoluteTimeFromMillis, formatRelativeTimeFromMillis, getErrorMessage } from "../format";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { IssueDetailResponse, IssueListItem, IssueOccurrence, IssuePriority } from "./issues-data";
 import { LogLevelChip } from "../log-level";
@@ -45,7 +45,7 @@ function ownerSourceLabel(source: string): string {
 }
 
 function stackFrameView(frame: IssueExceptionValue["frames"][number]): StackFrameView {
-  return {
+  const view: StackFrameView = {
     filename: frame.filename,
     function: frame.function,
     module: frame.module,
@@ -53,10 +53,11 @@ function stackFrameView(frame: IssueExceptionValue["frames"][number]): StackFram
     lineno: frame.lineno,
     colno: frame.colno,
     in_app: frame.in_app,
-    ...(frame.debug_id === undefined ? {} : { debug_id: frame.debug_id }),
-    ...(frame.context === undefined ? {} : { context: frame.context }),
     symbolication: frame.symbolication,
   };
+  if (frame.debug_id !== undefined) view.debug_id = frame.debug_id;
+  if (frame.context !== undefined) view.context = frame.context;
+  return view;
 }
 
 function startTriageAction(action: () => Promise<void>): void {
@@ -241,7 +242,7 @@ function GroupingSection({
       setConfirmOpen(false);
       setSelectedHashes([]);
     } catch (error) {
-      setUnmergeError(error instanceof Error ? error.message : String(error));
+      setUnmergeError(getErrorMessage(error));
     } finally {
       setUnmergeBusy(false);
     }
@@ -494,7 +495,7 @@ export function IssueProductSection({
       await onAddComment(body);
       setCommentDraft("");
     } catch (error) {
-      setCommentError(error instanceof Error ? error.message : String(error));
+      setCommentError(getErrorMessage(error));
     } finally {
       setCommentSaving(false);
     }

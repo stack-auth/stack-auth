@@ -65,9 +65,10 @@ import { assertErrorAttachmentDeliveryConfigured, deliverErrorAttachments, getEr
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
-  return value !== null
-    && (typeof value === "object" || typeof value === "function")
-    && typeof Reflect.get(value, "then") === "function";
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return false;
+  // SAFETY: probing for the thenable protocol; reading a possibly-absent
+  // `then` as unknown claims nothing about the value.
+  return typeof (value as { then?: unknown }).then === "function";
 }
 
 export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId> {

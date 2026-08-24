@@ -1,6 +1,7 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from "@clickhouse/client";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 
 // Re-exported so other modules can hold a typed ClickHouse client (e.g. to
 // thread a single warmed client through helpers) without taking a direct
@@ -11,12 +12,16 @@ export type { ClickHouseClient } from "@clickhouse/client";
 // representable in JS strings but rejected by ClickHouse's JSON parser.
 // The client-side event tracker can produce these when .substring() truncates
 // text in the middle of a surrogate pair (e.g. emoji characters).
-export function stripLoneSurrogates(value: unknown): unknown {
+// The string overload lets callers sanitizing a single string keep the string
+// type without re-narrowing the result.
+export function stripLoneSurrogates(value: string): string;
+export function stripLoneSurrogates(value: Json): Json;
+export function stripLoneSurrogates(value: Json): Json {
   if (typeof value === "string") {
     return value.toWellFormed();
   }
   if (Array.isArray(value)) {
-    return value.map(stripLoneSurrogates);
+    return value.map((entry) => stripLoneSurrogates(entry));
   }
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(

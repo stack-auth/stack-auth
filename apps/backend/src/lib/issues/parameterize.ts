@@ -1,5 +1,6 @@
 
 import { truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 
 const MAX_MESSAGE_BYTES = 8 * 1024;
 
@@ -44,10 +45,9 @@ export function parameterizeMessage(message: string): string {
   const bounded = truncateUtf8Bytes(message, MAX_MESSAGE_BYTES);
   return bounded.replace(PARAMETERIZE_RE, (match, ...args) => {
     const groups: unknown = args.at(-1);
-    if (typeof groups !== "object" || groups === null) return match;
+    if (!isRecord(groups)) return match;
     for (const [name, placeholder] of PLACEHOLDERS) {
-      const value: unknown = Reflect.get(groups, name);
-      if (typeof value === "string") return placeholder;
+      if (typeof groups[name] === "string") return placeholder;
     }
     return match;
   });

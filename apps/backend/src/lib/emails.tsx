@@ -1,6 +1,6 @@
 import { globalPrismaClient } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
-import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
+import { EmailOutboxCreatedWith, type Prisma } from '@/generated/prisma/client';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
@@ -56,24 +56,27 @@ export async function sendEmailToMany(options: {
     throw new HexclaveAssertionError("Email idempotency keys must contain 1-256 characters");
   }
   await globalPrismaClient.emailOutbox.createMany({
-    data: options.recipients.map((recipient, recipientIndex) => ({
-      ...(options.idempotencyKey === undefined ? {} : {
-        id: emailOutboxIdForIdempotencyKey(options.tenancy.id, options.idempotencyKey, recipientIndex),
-      }),
-      tenancyId: options.tenancy.id,
-      tsxSource: options.tsxSource,
-      themeId: options.themeId,
-      isHighPriority: options.isHighPriority,
-      createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-      emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
-      emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
-      to: serializeRecipient(recipient)!,
-      extraRenderVariables: options.extraVariables,
-      scheduledAt: options.scheduledAt,
-      shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
-      overrideSubject: options.overrideSubject,
-      overrideNotificationCategoryId: options.overrideNotificationCategoryId,
-    })),
+    data: options.recipients.map((recipient, recipientIndex) => {
+      const row: Prisma.EmailOutboxCreateManyInput = {
+        tenancyId: options.tenancy.id,
+        tsxSource: options.tsxSource,
+        themeId: options.themeId,
+        isHighPriority: options.isHighPriority,
+        createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+        emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
+        emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
+        to: serializeRecipient(recipient)!,
+        extraRenderVariables: options.extraVariables,
+        scheduledAt: options.scheduledAt,
+        shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
+        overrideSubject: options.overrideSubject,
+        overrideNotificationCategoryId: options.overrideNotificationCategoryId,
+      };
+      if (options.idempotencyKey !== undefined) {
+        row.id = emailOutboxIdForIdempotencyKey(options.tenancy.id, options.idempotencyKey, recipientIndex);
+      }
+      return row;
+    }),
     skipDuplicates: options.idempotencyKey !== undefined,
   });
 

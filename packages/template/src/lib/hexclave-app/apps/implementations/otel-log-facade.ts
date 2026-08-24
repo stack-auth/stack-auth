@@ -1,5 +1,6 @@
 import { context, createTraceState, ROOT_CONTEXT, trace, TraceFlags, type Context } from "@opentelemetry/api";
 import { logs, SeverityNumber, type AnyValue, type AnyValueMap } from "@opentelemetry/api-logs";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import type { LogLevel } from "@hexclave/shared/dist/utils/analytics-wire";
 import type { LogEmitItem } from "./logs";
 
@@ -11,7 +12,7 @@ const SEVERITY_NUMBERS = new Map<LogLevel, SeverityNumber>([
   ["error", SeverityNumber.ERROR],
 ]);
 
-function objectEntriesToAnyValueMap(value: object): AnyValueMap {
+function objectEntriesToAnyValueMap(value: Record<string, unknown>): AnyValueMap {
   const result: AnyValueMap = {};
   for (const [key, child] of Object.entries(value)) {
     if (typeof child === "function" || child === undefined) continue;
@@ -27,11 +28,11 @@ function toOtelAnyValue(value: unknown, key = ""): AnyValue | undefined {
   if (Array.isArray(value)) {
     return Array.from(value, (entry, index) => toOtelAnyValue(entry, String(index)) ?? null);
   }
-  if (typeof value === "object") {
-    const toJson: unknown = Reflect.get(value, "toJSON");
+  if (isRecord(value)) {
+    const toJson = value["toJSON"];
     if (typeof toJson === "function") {
-      const jsonValue: unknown = Reflect.apply(toJson, value, [key]);
-      return jsonValue !== null && typeof jsonValue === "object" && !Array.isArray(jsonValue) && !(jsonValue instanceof Uint8Array)
+      const jsonValue: unknown = toJson.call(value, key);
+      return isRecord(jsonValue) && !(jsonValue instanceof Uint8Array)
         ? objectEntriesToAnyValueMap(jsonValue)
         : toOtelAnyValue(jsonValue);
     }

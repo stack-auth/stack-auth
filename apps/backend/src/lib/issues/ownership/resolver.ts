@@ -1,3 +1,4 @@
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import {
   OWNERSHIP_RESOLVER_MAX_IDENTIFIER_BYTES,
   OWNERSHIP_RESOLVER_MAX_ISSUE_OWNERS,
@@ -86,10 +87,6 @@ class TraceBuilder {
   }
 }
 
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function parseIdentifier(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value) return null;
   if (CONTROL_CHARACTER_PATTERN.test(value)) return null;
@@ -98,7 +95,7 @@ function parseIdentifier(value: unknown): string | null {
 }
 
 function parseScope(value: unknown): OwnershipScope | null {
-  if (!isObject(value)) return null;
+  if (!isRecord(value)) return null;
   const tenancyId = parseIdentifier(value.tenancyId);
   const projectId = parseIdentifier(value.projectId);
   const branchId = parseIdentifier(value.branchId);
@@ -137,7 +134,7 @@ function parseOwnerSource(value: unknown): OwnershipOwnerSource | null {
 }
 
 function parseTarget(value: unknown): OwnershipTarget | null {
-  if (!isObject(value) || typeof value.type !== "string") return null;
+  if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "member") {
     const userId = parseIdentifier(value.userId);
     return userId === null ? null : { type: "member", userId };
@@ -154,7 +151,7 @@ function parseTarget(value: unknown): OwnershipTarget | null {
 }
 
 function parseMember(value: unknown): OwnershipMemberInput | null {
-  if (!isObject(value)) return null;
+  if (!isRecord(value)) return null;
   const scope = parseScope(value.scope);
   const userId = parseIdentifier(value.userId);
   const lastActiveAt = parseTimestamp(value.lastActiveAt);
@@ -165,7 +162,7 @@ function parseMember(value: unknown): OwnershipMemberInput | null {
 }
 
 function parseTeam(value: unknown): OwnershipTeamInput | null {
-  if (!isObject(value) || !Array.isArray(value.memberUserIds) || value.memberUserIds.length > OWNERSHIP_RESOLVER_MAX_TEAM_MEMBER_REFERENCES) return null;
+  if (!isRecord(value) || !Array.isArray(value.memberUserIds) || value.memberUserIds.length > OWNERSHIP_RESOLVER_MAX_TEAM_MEMBER_REFERENCES) return null;
   const scope = parseScope(value.scope);
   const teamId = parseIdentifier(value.teamId);
   if (scope === null || teamId === null) return null;
@@ -179,7 +176,7 @@ function parseTeam(value: unknown): OwnershipTeamInput | null {
 }
 
 function parseIssueOwner(value: unknown): OwnershipIssueOwnerInput | null {
-  if (!isObject(value)) return null;
+  if (!isRecord(value)) return null;
   const scope = parseScope(value.scope);
   const source = parseOwnerSource(value.source);
   if (scope === null || source === null || (value.type !== "user" && value.type !== "team")) return null;
@@ -193,7 +190,7 @@ function parseIssueOwner(value: unknown): OwnershipIssueOwnerInput | null {
 }
 
 function validateInput(value: unknown): InputValidation {
-  if (!isObject(value) || value.schemaVersion !== OWNERSHIP_RESOLVER_SCHEMA_VERSION) {
+  if (!isRecord(value) || value.schemaVersion !== OWNERSHIP_RESOLVER_SCHEMA_VERSION) {
     return { status: "error", reason: "invalid_input" };
   }
   const scope = parseScope(value.scope);

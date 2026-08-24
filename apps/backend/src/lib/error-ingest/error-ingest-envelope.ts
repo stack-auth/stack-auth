@@ -6,10 +6,14 @@ import {
 import { parseErrorIngestClientReportRequest, type ErrorIngestClientReportRequest } from "./error-ingest-client-reports";
 import { createErrorIngestItemOutcome, type ErrorIngestItemOutcome, type ErrorIngestItemType } from "./error-ingest-outcomes";
 import {
+  isErrorIngestScrubbedRecord,
   scrubErrorIngestPayload,
   type ErrorIngestScrubbedValue,
 } from "./error-ingest-scrubber";
 import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { utf8ByteLength } from "@/lib/utf8";
 
 const TEXT_ENCODER = new TextEncoder();
 const EVENT_ID_RE = /^[0-9a-f]{32}$/u;
@@ -141,18 +145,8 @@ export class ErrorIngestEnvelopeError extends Error {
   }
 }
 
-type RecordValue = { readonly [key: string]: unknown };
-
-function isRecord(value: unknown): value is RecordValue {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isScrubbedRecord(value: ErrorIngestScrubbedValue): value is { [key: string]: ErrorIngestScrubbedValue } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function byteLength(value: string): number {
-  return TEXT_ENCODER.encode(value).byteLength;
+  return utf8ByteLength(value);
 }
 
 function validateLimits(overrides: Partial<ErrorIngestEnvelopeLimits> | undefined): ErrorIngestEnvelopeLimits {
@@ -185,7 +179,7 @@ function parseJsonLine(
   start: number,
   maxBytes: number,
   context: string,
-): { value: RecordValue, nextOffset: number } {
+): { value: Readonly<Record<string, unknown>>, nextOffset: number } {
   const newline = nextNewline(bytes, start);
   if (newline < 0) throw new ErrorIngestEnvelopeError("malformed", `${context} is missing its newline`);
   const line = bytes.subarray(start, newline);
@@ -239,7 +233,7 @@ function validateDsn(value: unknown): void {
   }
 }
 
-function assertAllowedKeys(value: RecordValue, allowedKeys: ReadonlySet<string>, context: string): void {
+function assertAllowedKeys(value: Readonly<Record<string, unknown>>, allowedKeys: ReadonlySet<string>, context: string): void {
   for (const key of Object.keys(value)) {
     if (SECRET_KEY_RE.test(key)) {
       throw new ErrorIngestEnvelopeError("secret_metadata", `${context} contains secret-bearing metadata`);
@@ -250,7 +244,7 @@ function assertAllowedKeys(value: RecordValue, allowedKeys: ReadonlySet<string>,
   }
 }
 
-function parseEnvelopeHeader(value: RecordValue, limits: ErrorIngestEnvelopeLimits): ErrorIngestEnvelopeHeader {
+function parseEnvelopeHeader(value: Readonly<Record<string, unknown>>, limits: ErrorIngestEnvelopeLimits): ErrorIngestEnvelopeHeader {
   assertAllowedKeys(value, new Set(["event_id", "sent_at", "sdk", "trace", "dsn"]), "Envelope header");
   const eventId = value.event_id === undefined ? null : validateEventId(value.event_id, "Envelope event_id");
   const sentAt = safeOptionalText(value.sent_at, "Envelope sent_at", limits.maxHeaderTextBytes);
@@ -299,9 +293,12 @@ function parseEnvelopeHeader(value: RecordValue, limits: ErrorIngestEnvelopeLimi
 
 function scrubEventPayload(value: unknown, limits: ErrorIngestEnvelopeLimits): ErrorIngestScrubbedValue {
   const scrubbed = scrubErrorIngestPayload(value, {
-    maxPayloadBytes: Math.min(limits.maxEventPayloadBytes, 256 * 1024),
+    // Trust the validated limit: item framing above already rejected payloads
+    // larger than limits.maxEventPayloadBytes, so clamping it here would only
+    // create an inconsistency between the two checks.
+    maxPayloadBytes: limits.maxEventPayloadBytes,
   });
-  if (scrubbed.value === undefined || !isScrubbedRecord(scrubbed.value)) {
+  if (scrubbed.value === undefined || !isErrorIngestScrubbedRecord(scrubbed.value)) {
     throw new ErrorIngestEnvelopeError("malformed", "Event payload is not a bounded JSON object");
   }
   return scrubbed.value;
@@ -320,7 +317,7 @@ function transactionText(
 }
 
 function transactionRecordField(value: ErrorIngestScrubbedValue | undefined, key: string): ErrorIngestScrubbedValue | undefined {
-  return value !== undefined && isScrubbedRecord(value) ? value[key] : undefined;
+  return isErrorIngestScrubbedRecord(value) ? value[key] : undefined;
 }
 
 function transactionRecord(
@@ -328,7 +325,7 @@ function transactionRecord(
   name: string,
 ): { [key: string]: ErrorIngestScrubbedValue } | null {
   if (value === undefined || value === null) return null;
-  if (!isScrubbedRecord(value)) throw new ErrorIngestEnvelopeError("malformed", `${name} must be an object`);
+  if (!isErrorIngestScrubbedRecord(value)) throw new ErrorIngestEnvelopeError("malformed", `${name} must be an object`);
   return value;
 }
 
@@ -373,7 +370,7 @@ function parseTransactionSpan(
   transaction: { traceId: string, spanId: string },
   limits: ErrorIngestEnvelopeLimits,
 ): ErrorIngestEnvelopeTransactionSpan {
-  if (!isRecord(value) || !isScrubbedRecord(scrubbedValue)) {
+  if (!isRecord(value) || !isErrorIngestScrubbedRecord(scrubbedValue)) {
     throw new ErrorIngestEnvelopeError("malformed", `Transaction span ${index} must be an object`);
   }
   const traceId = transactionId(value.trace_id, `Transaction span ${index} trace_id`, /^[0-9a-f]{32}$/u, isW3cTraceId);
@@ -443,7 +440,7 @@ function transactionId(value: unknown, name: string, pattern: RegExp, validator:
 }
 
 function parseTransactionMetadata(
-  rawTransaction: RecordValue,
+  rawTransaction: Readonly<Record<string, unknown>>,
   envelopeHeader: ErrorIngestEnvelopeHeader,
   limits: ErrorIngestEnvelopeLimits,
 ): ErrorIngestEnvelopeTransactionMetadata {
@@ -490,10 +487,13 @@ function parseTransactionMetadata(
   }
 
   const scrubbedResult = scrubErrorIngestPayload(rawTransaction, {
-    maxPayloadBytes: Math.min(limits.maxEventPayloadBytes, 256 * 1024),
+    // Same as scrubEventPayload: trust the validated limit — the transaction
+    // item was already size-checked against limits.maxEventPayloadBytes during
+    // framing.
+    maxPayloadBytes: limits.maxEventPayloadBytes,
     maxCollectionEntries: Math.max(100, limits.maxTransactionSpanCount + 1),
   });
-  if (scrubbedResult.value === undefined || !isScrubbedRecord(scrubbedResult.value)) {
+  if (scrubbedResult.value === undefined || !isErrorIngestScrubbedRecord(scrubbedResult.value)) {
     throw new ErrorIngestEnvelopeError("malformed", "Transaction payload is not a bounded JSON object");
   }
   const scrubbed = scrubbedResult.value;
@@ -565,16 +565,18 @@ function parseClientReportPayload(
     "filtered_events",
     "filtered_sampling_events",
   ];
-  const normalized: Record<string, unknown> = { idempotency_key: idempotencyKey };
-  if (value.timestamp !== undefined) normalized.timestamp = value.timestamp;
-  for (const field of fields) {
-    const entries = value[field];
-    if (entries === undefined) {
-      normalized[field] = [];
-    } else {
-      normalized[field] = entries;
-    }
-  }
+  // Staging value for the canonical client-report parser: absent categories
+  // are defaulted to [] on the wire, everything else stays unparsed for
+  // parseErrorIngestClientReportRequest to validate. An explicitly-undefined
+  // timestamp reads the same as an absent one there.
+  const normalized = {
+    idempotency_key: idempotencyKey,
+    timestamp: value.timestamp,
+    discarded_events: value.discarded_events === undefined ? [] : value.discarded_events,
+    rate_limited_events: value.rate_limited_events === undefined ? [] : value.rate_limited_events,
+    filtered_events: value.filtered_events === undefined ? [] : value.filtered_events,
+    filtered_sampling_events: value.filtered_sampling_events === undefined ? [] : value.filtered_sampling_events,
+  };
   try {
     const parsed = parseErrorIngestClientReportRequest(normalized);
     const entryCount = fields.reduce((count, field) => count + parsed.clientReport[field].length, 0);
@@ -589,7 +591,7 @@ function parseClientReportPayload(
 }
 
 function parseAttachmentMetadata(
-  header: RecordValue,
+  header: Readonly<Record<string, unknown>>,
   payload: Uint8Array,
   eventId: string | null,
   limits: ErrorIngestEnvelopeLimits,
@@ -642,6 +644,9 @@ function scrubAttachmentPayload(
   if (typeof output !== "string") {
     throw new ErrorIngestEnvelopeError("malformed", "Attachment payload could not be serialized safely");
   }
+  // TextEncoder (not utf8ByteLength/Buffer) is intentional here: we need the
+  // encoded bytes themselves, and untrusted input may contain lone surrogates
+  // that must be encoded with standard U+FFFD replacement semantics.
   const scrubbedBytes = TEXT_ENCODER.encode(output);
   if (scrubbedBytes.byteLength > limits.maxItemPayloadBytes) {
     throw new ErrorIngestEnvelopeError("payload_too_large", "Scrubbed attachment payload exceeds its byte limit");
@@ -649,10 +654,13 @@ function scrubAttachmentPayload(
   return scrubbedBytes;
 }
 
-function payloadAsJson(payload: Uint8Array, context: string): unknown {
+function payloadAsJson(payload: Uint8Array, context: string): Json {
   const text = decodeUtf8(payload, context);
   try {
-    return JSON.parse(text);
+    // JSON.parse output is Json by construction; the annotation replaces the
+    // `any` the lib signature would otherwise leak.
+    const parsed: Json = JSON.parse(text);
+    return parsed;
   } catch {
     throw new ErrorIngestEnvelopeError("malformed", `${context} is not valid JSON`);
   }
@@ -745,7 +753,9 @@ export function parseErrorIngestEnvelope(
         safeOptionalText(itemHeader.content_type, "Event content_type", limits.maxContentTypeBytes);
         const rawEvent = payloadAsJson(payload, "Event payload");
         if (!isRecord(rawEvent)) throw new ErrorIngestEnvelopeError("malformed", "Event payload must be an object");
-        const payloadEventId = rawEvent.event_id === undefined ? null : validateEventId(rawEvent.event_id, "Event event_id");
+        // A parsed-JSON record can never hold an `undefined` value, so key
+        // presence is the precise "was event_id sent" check.
+        const payloadEventId = "event_id" in rawEvent ? validateEventId(rawEvent.event_id, "Event event_id") : null;
         if (header.eventId !== null && payloadEventId !== null && header.eventId !== payloadEventId) {
           throw new ErrorIngestEnvelopeError("malformed", "Envelope and event event_id values disagree");
         }

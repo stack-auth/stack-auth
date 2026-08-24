@@ -17,6 +17,7 @@ import { type AdminUserProjectsCrud, type ProjectsCrud } from '@hexclave/shared/
 import { DayInterval } from '@hexclave/shared/dist/utils/dates';
 import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
+import { type Json } from '@hexclave/shared/dist/utils/json';
 import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -1599,7 +1600,7 @@ function buildTokenRefreshClickhouseRow(options: {
   eventAt: Date,
   ipAddress: string,
   location: (typeof sessionActivityLocations)[number],
-}): Record<string, unknown> {
+}): Record<string, Json> {
   const { projectId, userId, refreshTokenId, eventAt, ipAddress, location } = options;
   return {
     event_type: '$token-refresh',
@@ -1644,7 +1645,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   const userIds = Array.from(userEmailToId.values());
   console.log(`Seeding session activity events for ${userIds.length} users...`);
 
-  const clickhouseRows: Array<Record<string, unknown>> = [];
+  const clickhouseRows: Array<Record<string, Json>> = [];
 
   const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
   const shouldSeedClickhouse = clickhouseUrl !== '';
@@ -1716,8 +1717,8 @@ async function seedBulkSignupsAndActivity(options: {
   console.log(`[seed-activity] Target: ${count} users across ${days} days in project "${tenancy.project.id}" branch "${tenancy.branchId}"`);
 
   const dayOffsets = distributeBulkSignups(count, days, rand, now);
-  const clickhouseRows: Array<Record<string, unknown>> = [];
-  const pageViewSpanRows: Array<Record<string, unknown>> = [];
+  const clickhouseRows: Array<Record<string, Json>> = [];
+  const pageViewSpanRows: Array<Record<string, Json>> = [];
 
   let created = 0;
   let updated = 0;
@@ -2023,11 +2024,11 @@ async function seedBulkSignupsAndActivity(options: {
   // Large batches: ClickHouse ingests tens of thousands of rows per insert
   // happily, so a bigger batch means far fewer HTTP round-trips.
   const BATCH = 10_000;
-  const clickhouseBatches: Array<Array<Record<string, unknown>>> = [];
+  const clickhouseBatches: Array<Array<Record<string, Json>>> = [];
   for (let i = 0; i < clickhouseRows.length; i += BATCH) {
     clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH));
   }
-  const pageViewSpanBatches: Array<Array<Record<string, unknown>>> = [];
+  const pageViewSpanBatches: Array<Array<Record<string, Json>>> = [];
   for (let i = 0; i < pageViewSpanRows.length; i += BATCH) {
     pageViewSpanBatches.push(pageViewSpanRows.slice(i, i + BATCH));
   }
@@ -2503,7 +2504,7 @@ async function seedDummyAnalyticsMirrorTables(options: {
 
   // Synchronous insert (no async_insert) so the rows are immediately queryable
   // when the dashboard loads the overview right after project creation.
-  const insertTable = async (table: string, values: Array<Record<string, unknown>>) => {
+  const insertTable = async (table: string, values: Array<Record<string, Json>>) => {
     if (values.length === 0) {
       return;
     }
@@ -2801,7 +2802,7 @@ async function seedDummySessionReplays({
   const rand = deterministicPrng(seedFromString(`session-replays:${tenancyId}`));
 
   const seeds: Prisma.SessionReplayCreateManyInput[] = [];
-  const clickhouseRows: Array<Record<string, unknown>> = [];
+  const clickhouseRows: Array<Record<string, Json>> = [];
   for (let i = 0; i < targetSessionReplayCount; i++) {
     const startedAt = new Date(twoWeeksAgo.getTime() + rand() * windowMs);
     const durationMs = 10_000 + Math.floor(rand() * (20 * 60 * 1000)); // 10s..20m

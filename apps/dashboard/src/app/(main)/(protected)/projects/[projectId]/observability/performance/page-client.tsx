@@ -16,7 +16,6 @@ import {
 import { Link } from "@/components/link";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   ArrowClockwiseIcon,
   ArrowUpRightIcon,
@@ -29,7 +28,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
+  Bar,
   CartesianGrid,
+  ComposedChart,
   Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
@@ -45,10 +46,13 @@ import {
   fetchPerformanceMetrics,
   fetchPerformancePageModel,
   formatWebVitalValue,
+  getPerformanceMetricChartDomain,
   isPerformanceMetricType,
   PERFORMANCE_TIME_RANGES,
   rankPageInsights,
+  selectAvailableTimelineMetric,
   sumPageBehavior,
+  sortPerformancePages,
   webVitalByKey,
   webVitalRating,
   WEB_VITAL_METRICS,
@@ -56,6 +60,7 @@ import {
   type PagePerformance,
   type PerformanceMetricCatalogEntry,
   type PerformanceMetricResponse,
+  type PerformancePageSort,
   type PerformanceTimeRangeHours,
   type PerformanceTimelineBucket,
   type PerformanceVitalsOverview,
@@ -75,11 +80,28 @@ function formatMetricValue(value: number | null, unit: string): string {
   return unit === "" ? formatted : `${formatted} ${unit}`;
 }
 
-function formatUnixNano(value: string): string {
+function formatMetricAxisValue(value: number, unit: string): string {
+  const formatted = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 }).format(value);
+  return unit === "" ? formatted : `${formatted} ${unit}`;
+}
+
+function unixNanoToMilliseconds(value: string): number {
   if (!/^\d+$/.test(value)) throw new Error(`Cannot format invalid metric timestamp: ${value}`);
   const milliseconds = Number(BigInt(value) / BigInt(1_000_000));
   if (!Number.isSafeInteger(milliseconds)) throw new Error(`Metric timestamp is outside the supported display range: ${value}`);
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(milliseconds));
+  return milliseconds;
+}
+
+function formatUnixNano(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(
+    new Date(unixNanoToMilliseconds(value)),
+  );
+}
+
+function formatMetricBucketLabel(value: string, hours: PerformanceTimeRangeHours): string {
+  const date = new Date(unixNanoToMilliseconds(value));
+  if (hours <= 24) return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function metricSelectorValue(entry: PerformanceMetricCatalogEntry): string {
@@ -269,7 +291,9 @@ function VitalsTimelineChart({
     value: metricKey === "lcp" ? bucket.lcpP75 : bucket.inpP75,
     views: bucket.views,
   }));
-  const hasValues = chartData.some((point) => point.value != null);
+  const valueCount = chartData.filter((point) => point.value != null).length;
+  const hasValues = valueCount > 0;
+  const domain = getPerformanceMetricChartDomain(chartData.map((point) => point.value), false);
 
   return (
     <DesignAnalyticsCard
@@ -328,6 +352,7 @@ function VitalsTimelineChart({
                 minTickGap={28}
               />
               <YAxis
+                domain={domain}
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -350,6 +375,8 @@ function VitalsTimelineChart({
                 strokeWidth={1.5}
                 fill="url(#performance-vital-fill)"
                 connectNulls={false}
+                dot={valueCount <= 24 ? { r: 2, fill: color, strokeWidth: 0 } : false}
+                activeDot={{ r: 4 }}
                 isAnimationActive={false}
               />
             </AreaChart>
@@ -471,8 +498,6 @@ function InsightsRow({
   );
 }
 
-type PageSort = "views" | "slowest" | "friction";
-
 const PAGE_GRID_CLASS = "grid grid-cols-[minmax(10rem,1.5fr)_4.5rem_5.5rem_5.5rem_4.5rem_5.5rem_4.5rem_4.25rem_4.25rem]";
 
 function VitalCell({ metricKey, value, samples }: { metricKey: WebVitalMetricKey, value: number | null, samples: number }) {
@@ -502,8 +527,8 @@ function PagesTable({
   pages: readonly PagePerformance[],
   search: string,
   onSearch: (value: string) => void,
-  sort: PageSort,
-  onSort: (sort: PageSort) => void,
+  sort: PerformancePageSort,
+  onSort: (sort: PerformancePageSort) => void,
   selectedPath: string | null,
   onSelectPath: (path: string) => void,
 }) {
@@ -512,26 +537,7 @@ function PagesTable({
     const matched = needle === ""
       ? [...pages]
       : pages.filter((page) => page.path.toLowerCase().includes(needle));
-    matched.sort((left, right) => {
-      switch (sort) {
-        case "views": {
-          return right.views - left.views || stringCompare(left.path, right.path);
-        }
-        case "slowest": {
-          return (right.lcpP75 ?? -1) - (left.lcpP75 ?? -1) || right.views - left.views || stringCompare(left.path, right.path);
-        }
-        case "friction": {
-          const leftFriction = left.rageClicks * 3 + left.deadClicks * 2;
-          const rightFriction = right.rageClicks * 3 + right.deadClicks * 2;
-          return rightFriction - leftFriction || right.views - left.views || stringCompare(left.path, right.path);
-        }
-        default: {
-          const exhaustive: never = sort;
-          throw new Error(`Unknown page sort: ${exhaustive}`);
-        }
-      }
-    });
-    return matched;
+    return sortPerformancePages(matched, sort);
   }, [pages, search, sort]);
 
   return (
@@ -647,39 +653,88 @@ function PagesTable({
 
 function MetricSeries({ response, metric }: { response: PerformanceMetricResponse, metric: PerformanceMetricCatalogEntry }) {
   const showsPointVolume = metric.supports_numeric_aggregation === false;
-  const chartValues = response.series
-    .map((point) => showsPointVolume ? point.point_count : point.numeric_value)
-    .filter((value): value is number => value !== null);
-  const minimum = showsPointVolume ? 0 : chartValues.length === 0 ? 0 : Math.min(...chartValues);
-  const maximum = chartValues.length === 0 ? 1 : Math.max(...chartValues);
-  const span = maximum - minimum || 1;
+  const color = getDesignChartColor(showsPointVolume ? "orange" : "cyan");
+  const chartData = response.series.map((point) => ({
+    label: formatMetricBucketLabel(point.bucket_start_unix_nano, response.window.hours),
+    fullLabel: formatUnixNano(point.bucket_start_unix_nano),
+    value: showsPointVolume ? point.point_count : point.numeric_value,
+  }));
+  const domain = getPerformanceMetricChartDomain(
+    chartData.map((point) => point.value),
+    showsPointVolume,
+  );
+  const hasValues = chartData.some((point) => point.value !== null);
+  const valueLabel = showsPointVolume ? "Points" : "Average";
 
   return (
     <div className="space-y-3">
-      <div className="flex h-28 items-end gap-1 rounded-xl bg-foreground/[0.025] px-3 py-4" aria-label={`${metric.metric_name} ${showsPointVolume ? "point volume" : "metric series"}`}>
-        {response.series.length === 0 ? (
-          <div className="flex h-28 w-full items-center justify-center text-xs text-muted-foreground">No points in this window.</div>
-        ) : response.series.map((point) => {
-          const value = point.numeric_value;
-          const height = showsPointVolume
-            ? Math.max(8, (point.point_count / Math.max(maximum, 1)) * 92 + 8)
-            : value === null ? 6 : Math.max(8, ((value - minimum) / span) * 92 + 8);
-          const title = showsPointVolume
-            ? `${formatUnixNano(point.bucket_start_unix_nano)} · ${point.point_count.toLocaleString()} points in bucket`
-            : `${formatUnixNano(point.bucket_start_unix_nano)} · ${formatMetricValue(value, metric.metric_unit)}`;
-          return (
-            <div
-              key={point.bucket_start_unix_nano}
-              className={cn("group relative min-w-0 flex-1 rounded-t-sm", showsPointVolume ? "bg-orange-400/60" : "bg-cyan-500/70")}
-              style={{ height: `${height}%`, minHeight: "0.375rem" }}
-              title={title}
-            >
-              {point.exemplar != null && (
-                <span className="absolute -top-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-purple-500 ring-2 ring-background" aria-label="Trace exemplar" />
+      <div
+        className="h-40 rounded-xl bg-foreground/[0.025] p-2"
+        aria-label={`${metric.metric_name} ${showsPointVolume ? "point volume" : "metric series"}`}
+      >
+        {!hasValues ? (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No points in this window.</div>
+        ) : (
+          <DesignChartContainer
+            config={{ value: { label: valueLabel, color } }}
+            maxHeight={144}
+            className="h-full w-full aspect-auto"
+          >
+            <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="performance-metric-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0.03} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                minTickGap={28}
+              />
+              <YAxis
+                domain={domain}
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                width={52}
+                tickFormatter={(value: number) => showsPointVolume
+                  ? formatCount(value)
+                  : formatMetricAxisValue(value, metric.metric_unit)}
+              />
+              <RechartsTooltip
+                cursor={{ stroke: "hsl(var(--border))" }}
+                content={
+                  <DesignChartTooltipContent
+                    labelFormatter={(_label, payload) => {
+                      const fullLabel = payload[0]?.payload?.fullLabel;
+                      return typeof fullLabel === "string" ? fullLabel : "";
+                    }}
+                    indicator={showsPointVolume ? "line" : "dot"}
+                  />
+                }
+              />
+              {showsPointVolume ? (
+                <Bar dataKey="value" fill={color} fillOpacity={0.7} radius={[3, 3, 0, 0]} maxBarSize={24} isAnimationActive={false} />
+              ) : (
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={color}
+                  strokeWidth={1.5}
+                  fill="url(#performance-metric-fill)"
+                  connectNulls={false}
+                  dot={chartData.length <= 48 ? { r: 2, fill: color, strokeWidth: 0 } : false}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
               )}
-            </div>
-          );
-        })}
+            </ComposedChart>
+          </DesignChartContainer>
+        )}
       </div>
       <p className="text-[11px] text-muted-foreground">
         {showsPointVolume ? "Point volume per bucket" : "Average value per bucket"}
@@ -823,7 +878,7 @@ function PerformancePageClient() {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<PageSort>("views");
+  const [sort, setSort] = useState<PerformancePageSort>("views");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [timelineMetric, setTimelineMetric] = useState<"lcp" | "inp">("lcp");
   const requestSequence = useRef(0);
@@ -849,6 +904,7 @@ function PerformancePageClient() {
       setOverview(model.overview);
       setPages(model.pages);
       setTimeline(model.timeline);
+      setTimelineMetric((current) => selectAvailableTimelineMetric(model.timeline, current));
       setSelectedPath((current) => current != null && model.pages.some((page) => page.path === current) ? current : null);
     } catch (caught) {
       if (sequence === requestSequence.current) {

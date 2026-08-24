@@ -1,3 +1,5 @@
+import type { Json } from "@hexclave/shared/dist/utils/json";
+
 export type TelemetryBatchId = string;
 
 export type TelemetryScope = {
@@ -23,7 +25,7 @@ export type BackgroundJobType =
   | "external-db-sync"
   | "telemetry-materialization";
 
-export type BackgroundJobEnvelope<TPayload extends Record<string, unknown>> = {
+export type BackgroundJobEnvelope<TPayload extends Record<string, Json>> = {
   schemaVersion: 1;
   jobId: string;
   jobType: BackgroundJobType;
@@ -32,7 +34,7 @@ export type BackgroundJobEnvelope<TPayload extends Record<string, unknown>> = {
   payload: TPayload;
 };
 
-export function buildBackgroundJobEnvelope<TPayload extends Record<string, unknown>>(options: {
+export function buildBackgroundJobEnvelope<TPayload extends Record<string, Json>>(options: {
   jobType: BackgroundJobType,
   jobId: string,
   tenancyId: string | null,

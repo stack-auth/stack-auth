@@ -24,7 +24,9 @@ import {
   type IssueUnmergeResponse,
 } from "@hexclave/shared/dist/interface/admin-issues";
 import * as yup from "yup";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { sendInternalAdminRequest } from "@/lib/hexclave-app-internals";
+import type { RowData } from "../../analytics/shared";
 import { getBucketGranularity } from "../bucket-granularity";
 import { isObservabilityTimeRangeHours, type ObservabilityTimeRangeHours } from "../filters";
 import { parseServiceIdentityRow, type ServiceIdentity } from "../service-identity";
@@ -118,7 +120,7 @@ LIMIT 500
 export type IssueSparklineBucket = { bucketMs: number, occurrences: number };
 export type IssueFacets = { services: ServiceIdentity[], environments: string[] };
 
-export function parseClickHouseUtc(value: unknown, key: string): number {
+export function parseClickHouseUtc(value: Json | undefined, key: string): number {
   if (typeof value !== "string") {
     throw new HexclaveAssertionError(`Expected ${key} to be a ClickHouse timestamp string`);
   }
@@ -129,7 +131,7 @@ export function parseClickHouseUtc(value: unknown, key: string): number {
   return millis;
 }
 
-function toCount(value: unknown, key: string): number {
+function toCount(value: Json | undefined, key: string): number {
   const count = typeof value === "string" ? Number(value) : value;
   if (typeof count !== "number" || !Number.isFinite(count)) {
     throw new HexclaveAssertionError(`Expected ${key} to be a count, got ${String(value)}`);
@@ -138,7 +140,7 @@ function toCount(value: unknown, key: string): number {
 }
 
 export function parseIssueSparklineRows(
-  rows: readonly Record<string, unknown>[],
+  rows: readonly RowData[],
   requestedHashes: readonly string[],
   hours: ObservabilityTimeRangeHours,
   nowMs: number,
@@ -176,7 +178,7 @@ export function parseIssueSparklineRows(
   return byHash;
 }
 
-export function parseIssueFacetRows(rows: readonly Record<string, unknown>[]): IssueFacets {
+export function parseIssueFacetRows(rows: readonly RowData[]): IssueFacets {
   const services = new Map<string, ServiceIdentity>();
   const environments = new Set<string>();
   for (const row of rows) {
@@ -210,7 +212,7 @@ export function buildIssueListQueryString(request: IssueListRequest): string {
   return params.toString();
 }
 
-async function readJsonOrThrow(response: Response, what: string): Promise<unknown> {
+async function readJsonOrThrow(response: Response, what: string): Promise<Json> {
   if (!response.ok) {
     throw new HexclaveAssertionError(`${what} failed with status ${response.status}`);
   }

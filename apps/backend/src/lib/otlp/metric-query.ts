@@ -302,13 +302,14 @@ export async function queryOtlpMetrics(options: {
     : catalog.find((entry) => entry.metric_name === options.request.metricName
       && (requestedType === null || entry.metric_type === requestedType));
   if (selected === undefined && options.request.metricName != null) {
+    const entryParams: typeof query_params & { metricName: string, metricType?: string } = {
+      ...query_params,
+      metricName: options.request.metricName,
+    };
+    if (requestedType !== null) entryParams.metricType = requestedType;
     const entryResult = await client.query({
       query: buildOtlpMetricCatalogEntryQuery(requestedType !== null),
-      query_params: {
-        ...query_params,
-        metricName: options.request.metricName,
-        ...requestedType === null ? {} : { metricType: requestedType },
-      },
+      query_params: entryParams,
       format: "JSONEachRow",
     });
     selected = parseOtlpMetricCatalogRows(await entryResult.json<RawCatalogRow>()).at(0);

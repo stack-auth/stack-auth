@@ -40,6 +40,7 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { typedKeys } from "@hexclave/shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -460,7 +461,7 @@ function AppNavItem({
         external: navItem.external,
         match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
       }));
-    const childItems = (Object.keys(ALL_APPS) as AppId[])
+    const childItems = typedKeys(ALL_APPS)
       .filter((candidateId) => getParentAppId(candidateId) === appId)
       .flatMap((candidateId) => {
         const childFrontend = ALL_APPS_FRONTEND[candidateId];
@@ -747,7 +748,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const pathname = usePathname();
   const childAppBreadcrumb = useMemo(() => {
     const currentUrl = new URL(pathname, DUMMY_ORIGIN);
-    for (const appId of Object.keys(ALL_APPS) as AppId[]) {
+    for (const appId of typedKeys(ALL_APPS)) {
       const parentAppId = getParentAppId(appId);
       const appFrontend = ALL_APPS_FRONTEND[appId];
       if (parentAppId == null || !hasNavigationItems(appFrontend)) continue;
