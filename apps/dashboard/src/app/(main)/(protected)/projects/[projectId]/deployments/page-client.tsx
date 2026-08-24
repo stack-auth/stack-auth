@@ -5,7 +5,8 @@ import { getAppStageLabel } from "@/lib/apps-utils";
 import { cn } from "@/components/ui";
 import type { AdminDeploymentJson } from "@hexclave/next";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -35,6 +36,27 @@ export default function PageClient() {
   // to a moment in time across EVERY source and needs their deployments to resolve it.
   const [deployments, setDeployments] = useState<AdminDeploymentJson[]>([]);
   const isOpen = openDeploymentId !== null && openDeployment !== null;
+
+  // `hexclave deploy` prints a link to the deployment it just ran, so the CLI's
+  // last line is one click from the build log. The deployment has to be OPENED
+  // from the list rather than fetched here, because the list owns the poll that
+  // keeps it fresh — so this waits for the first load and opens the match.
+  const searchParams = useSearchParams();
+  const linkedDeploymentId = searchParams.get("deploymentId");
+  // Applied once. Without the guard every poll would reopen the linked
+  // deployment, and a user who clicked "All deployments" could never leave it.
+  const appliedLink = useRef(false);
+  const handleDeploymentsLoaded = (loaded: AdminDeploymentJson[]) => {
+    setDeployments(loaded);
+    if (appliedLink.current || linkedDeploymentId === null) return;
+    appliedLink.current = true;
+    // A link to a deployment this project no longer has just lands on the list,
+    // which is the honest thing to show and needs no error of its own.
+    const match = loaded.find((deployment) => deployment.id === linkedDeploymentId);
+    if (match === undefined) return;
+    setOpenDeploymentId(match.id);
+    setOpenDeployment(match);
+  };
 
   return (
     <AppEnabledGuard appId="deploy">
@@ -73,7 +95,7 @@ export default function PageClient() {
               setOpenDeployment(deployment);
             }}
             onOpenDeploymentChange={setOpenDeployment}
-            onDeploymentsLoaded={setDeployments}
+            onDeploymentsLoaded={handleDeploymentsLoaded}
           />
         </div>
 

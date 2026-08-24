@@ -4,7 +4,8 @@ import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
 import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { type ReadonlyURLSearchParams, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
   BuildLogsContent,
@@ -47,9 +48,25 @@ const TABS: { id: PanelTabId, label: string }[] = [
   { id: "settings", label: "Settings" },
 ];
 
+const PANEL_TAB_IDS = new Set<string>(TABS.map((tab) => tab.id));
+
+/**
+ * The tab a `hexclave deploy` link asked for, or Overview.
+ *
+ * Checked against THIS service so that the panel only applies to the service
+ * the link named — selecting a sibling afterwards is a fresh look at it, not a
+ * continuation of the link.
+ */
+function linkedTabFor(searchParams: URLSearchParams | ReadonlyURLSearchParams, serviceId: string): PanelTabId {
+  if (searchParams.get("serviceId") !== serviceId) return "overview";
+  const panel = searchParams.get("panel");
+  return panel !== null && PANEL_TAB_IDS.has(panel) ? panel as PanelTabId : "overview";
+}
+
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const { service, services, project, refresh } = props;
-  const [tab, setTab] = useState<PanelTabId>("overview");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<PanelTabId>(() => linkedTabFor(searchParams, service.id));
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -57,8 +74,14 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
 
-  // When a different service is selected, jump back to Overview.
+  // When a different service is selected, jump back to Overview. Guarded on the
+  // PREVIOUS id rather than firing on mount too: this pane is what a deep link
+  // opens on Build logs, and an unguarded effect would reset that before the
+  // user ever saw it.
+  const previousServiceId = useRef(service.id);
   useEffect(() => {
+    if (previousServiceId.current === service.id) return;
+    previousServiceId.current = service.id;
     setTab("overview");
   }, [service.id]);
 

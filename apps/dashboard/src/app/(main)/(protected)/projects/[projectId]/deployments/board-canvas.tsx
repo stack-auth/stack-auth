@@ -5,6 +5,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import type { AdminDeploymentJson, AdminDeploymentServiceJson } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { FileTsIcon, MinusIcon, PlusIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import {
@@ -99,6 +100,12 @@ export function BoardCanvas({ deployment, deployments }: {
   }, [refresh]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The service a `hexclave deploy` link names, opened once the board knows its
+  // services. Applied once: after that the board is the user's to navigate, and
+  // re-applying on every render would pin them to the linked node.
+  const searchParams = useSearchParams();
+  const linkedServiceId = searchParams.get("serviceId");
+  const appliedLink = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
   // In-session drag positions, keyed by service id, on top of the
@@ -131,6 +138,18 @@ export function BoardCanvas({ deployment, deployments }: {
         return override != null ? { ...service, x: override.x, y: override.y } : service;
       });
   }, [apiServices, hexclaveApiHost, positionOverrides, scope]);
+
+  useEffect(() => {
+    if (appliedLink.current || linkedServiceId === null || services === null) return;
+    const match = services.find((service) => service.id === linkedServiceId);
+    // Not found YET is not the same as not found: the board fills its services
+    // in from two sources, so give up only once there is a board to look in.
+    if (services.length === 0) return;
+    appliedLink.current = true;
+    // A link to a service this deployment does not have leaves the map open,
+    // which is the right place to be when the named one is gone.
+    if (match !== undefined) setSelectedId(match.id);
+  }, [linkedServiceId, services]);
 
   const selected = services?.find((s) => s.id === selectedId) ?? null;
   const connections = useMemo(() => deriveConnections(services ?? []), [services]);

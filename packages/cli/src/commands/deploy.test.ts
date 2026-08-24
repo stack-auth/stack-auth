@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateDeploymentConfig, importConfigModule, importDeployModule, resolveDeployFilePath, type ServicesFunctionContext } from "../lib/deployment-config.js";
-import { collectPublicUrls, collectRequiredSecretKeys, packageAndUploadSource, resolveConfigPushPath } from "./deploy.js";
+import { collectPublicUrls, collectRequiredSecretKeys, deploymentDashboardUrl, firstFailedService, packageAndUploadSource, resolveConfigPushPath, type ServiceDeployResult } from "./deploy.js";
 
 const TEST_AUTH = {
   apiUrl: "https://api.example.com",
@@ -237,5 +237,64 @@ describe("collectRequiredSecretKeys", () => {
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { A: secret("k", "v") } },
     }));
     expect(collectRequiredSecretKeys(services)).toEqual([]);
+  });
+});
+
+describe("the dashboard link a deploy prints", () => {
+  const base = { dashboardUrl: "https://app.hexclave.com", projectId: "proj-1", deploymentId: "dep-1" };
+
+  it("opens the deployment when no service is named", () => {
+    expect(deploymentDashboardUrl(base))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("opens a service's build log when one failed", () => {
+    // The whole point: a failed deploy's last line is one click from the log.
+    expect(deploymentDashboardUrl({ ...base, serviceId: "web", buildLogs: true }))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1&serviceId=web&panel=build-logs");
+  });
+
+  it("names the service but not the build log when nothing was built", () => {
+    // An all-prebuilt deploy starts no builder, so that tab has nothing in it.
+    expect(deploymentDashboardUrl({ ...base, serviceId: "db", buildLogs: false }))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1&serviceId=db");
+  });
+
+  it("survives a configured dashboard URL with a trailing slash", () => {
+    // Printed, never fetched — it must not throw on whatever is configured.
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/" }))
+      .toBe("https://app.example.com/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("escapes ids rather than pasting them into the URL", () => {
+    expect(deploymentDashboardUrl({ ...base, projectId: "a/b", deploymentId: "d e", serviceId: "s&t", buildLogs: true }))
+      .toBe("https://app.hexclave.com/projects/a%2Fb/deployments?deploymentId=d+e&serviceId=s%26t&panel=build-logs");
+  });
+});
+
+describe("which service a failed deploy points at", () => {
+  const result = (serviceId: string, status: ServiceDeployResult["status"]): [string, ServiceDeployResult] =>
+    [serviceId, { serviceId, status, url: null, error: null }];
+
+  it("is the FIRST failure in deploy order, not the last", () => {
+    // A level's failure skips everything after it, so later failures are
+    // consequences and the first is the cause.
+    const results = new Map([result("db", "deployed"), result("api", "failed"), result("web", "failed")]);
+    expect(firstFailedService(["db", "api", "web"], results)).toBe("api");
+  });
+
+  it("is null when every service deployed", () => {
+    const results = new Map([result("db", "deployed"), result("web", "deployed")]);
+    expect(firstFailedService(["db", "web"], results)).toBeNull();
+  });
+
+  it("ignores a service that was skipped rather than failed", () => {
+    // "skipped" means an earlier level failed first; that service has no log.
+    const results = new Map([result("db", "deployed"), result("web", "skipped")]);
+    expect(firstFailedService(["db", "web"], results)).toBeNull();
+  });
+
+  it("is null when the deploy set names a service with no result at all", () => {
+    expect(firstFailedService(["web"], new Map())).toBeNull();
   });
 });

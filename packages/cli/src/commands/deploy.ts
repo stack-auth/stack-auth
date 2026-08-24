@@ -163,6 +163,44 @@ export function collectPublicUrls(deploySet: string[], services: Map<string, Eva
   });
 }
 
+/**
+ * Where to read this deployment in the dashboard.
+ *
+ * The deployments page keeps its selection in the URL, so this can open the
+ * exact thing a reader wants: the deployment's service map, or one service's
+ * build log. `panel` is the dashboard's own tab id, not a name invented here.
+ */
+export function deploymentDashboardUrl(options: {
+  dashboardUrl: string,
+  projectId: string,
+  deploymentId: string,
+  /** The service to open. Null opens the deployment's service map instead. */
+  serviceId?: string | null,
+  /** Whether to land on that service's build log rather than its overview. */
+  buildLogs?: boolean,
+}): string {
+  // Configured dashboard URLs are unvalidated and may carry a trailing slash;
+  // this is printed, never fetched, so it must not throw on a malformed one.
+  const base = options.dashboardUrl.replace(/\/+$/, "");
+  const params = new URLSearchParams({ deploymentId: options.deploymentId });
+  if (options.serviceId != null && options.serviceId !== "") {
+    params.set("serviceId", options.serviceId);
+    if (options.buildLogs === true) params.set("panel", "build-logs");
+  }
+  return `${base}/projects/${encodeURIComponent(options.projectId)}/deployments?${params.toString()}`;
+}
+
+/**
+ * The service whose build log the reader is about to go looking for: the first
+ * one that failed, in the order the deploy applied them. Null when none did.
+ *
+ * The FIRST rather than every one, because a level's failure skips everything
+ * after it — later failures are consequences, and the first is the cause.
+ */
+export function firstFailedService(deploySet: string[], results: Map<string, ServiceDeployResult>): string | null {
+  return deploySet.find((serviceId) => results.get(serviceId)?.status === "failed") ?? null;
+}
+
 export type ServiceDeployResult = {
   serviceId: string,
   status: "deployed" | "failed" | "skipped" | "pending" | "building" | "deploying",
@@ -534,9 +572,25 @@ export function registerDeployCommand(program: Command) {
       // try/finally: the deployment row exists from here on, and a client that
       // dies leaves it reading as in-flight forever — so whatever happens, the
       // server has to be told this client has stopped.
+      // Known from the moment the deployment row exists, because every exit from
+      // here on should be able to hand it over — including the ones that throw.
+      const deploymentUrlBase = deploymentDashboardUrl({
+        dashboardUrl: auth.dashboardUrl,
+        projectId: auth.projectId,
+        deploymentId,
+      });
       let outcome: { status: string, error: string | null, services: ServiceDeployResult[] };
       try {
         outcome = await waitForDeployment({ auth, authHeaders, deploymentId });
+      } catch (error) {
+        // A client that stopped waiting has not stopped the DEPLOYMENT: it is
+        // still there, still has a log, and is exactly what the user now needs
+        // to go and look at. Printed before rethrowing so the link survives an
+        // error the caller sees as a failure.
+        console.error("");
+        console.error("The deployment is still in the dashboard:");
+        console.error(`  ${deploymentUrlBase}`);
+        throw error;
       } finally {
         // Best-effort, and deliberately swallowing: this is bookkeeping, so a
         // failure here must not replace the real deploy error the caller needs
@@ -563,9 +617,33 @@ export function registerDeployCommand(program: Command) {
         console.error("Public URLs:");
         for (const publicUrl of publicUrls) console.error(`  ${publicUrl.serviceId}: ${publicUrl.url}`);
       }
+
+      // Printed whatever happened. A failed deploy is the obvious case — the
+      // build log is the next thing anyone asks for, and this is how they reach
+      // it without being told where to click — but a green one has a log worth
+      // reading too, and the link is also the shareable name of what just ran.
+      // `panel=build-logs` only when a builder actually ran: an all-prebuilt
+      // deploy has no log, so pointing at that tab would open an empty one.
+      const failedService = firstFailedService(deploySet, results);
+      const deploymentUrl = failedService === null
+        ? deploymentUrlBase
+        : deploymentDashboardUrl({
+          dashboardUrl: auth.dashboardUrl,
+          projectId: auth.projectId,
+          deploymentId,
+          serviceId: failedService,
+          buildLogs: buildsFromSource,
+        });
+      console.error("");
+      console.error(failedService != null && buildsFromSource
+        ? `Build logs for ${failedService}:`
+        : "View this deployment:");
+      console.error(`  ${deploymentUrl}`);
+
       console.log(JSON.stringify({
         deploymentId,
         deploymentSourceId: sourceId,
+        deploymentUrl,
         status: outcome.status,
         error: outcome.error,
         publicUrls,
