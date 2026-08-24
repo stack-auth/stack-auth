@@ -83,7 +83,15 @@ export async function runClickhouseMigrations() {
   })));
 
   await Promise.all([
-    ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
+    // events and clickmap_events predate this migration and hold production
+    // data with no retention policy. Retroactively applying the 90-day TTL
+    // here would irreversibly delete everything older than the window on the
+    // first boot after deploy, and a rollback could not bring it back. Held
+    // back until retention is decided as its own change; the tables new in
+    // this migration keep the TTL from their CREATE statements because they
+    // start empty.
+    // ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
+    // ensureTableTtl(client, { database: "analytics_internal", table: "clickmap_events", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "event_at" }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "spans", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "page_views", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "started_at" }),
@@ -92,7 +100,6 @@ export async function runClickhouseMigrations() {
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_services", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "metrics", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_writes", ttlDays: SPAN_WRITES_TTL_DAYS }),
-    ensureTableTtl(client, { database: "analytics_internal", table: "clickmap_events", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "event_at" }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
       table: "events",
