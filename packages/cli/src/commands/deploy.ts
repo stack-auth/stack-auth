@@ -6,6 +6,7 @@ import { getInternalUser } from "../lib/app.js";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
+import { uploadSource } from "../lib/source-upload.js";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, hasDeployFile, importConfigModule, importDeployModule, resolveDeployFilePath, type EvaluatedService } from "../lib/deployment-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
@@ -135,34 +136,6 @@ async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<R
   }
 }
 
-async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8Array): Promise<void> {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(uploadUrl);
-  } catch {
-    throw new CliError("The Hexclave API returned an invalid object-storage upload URL.");
-  }
-  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
-    throw new CliError("The Hexclave API returned an upload URL with an unsupported protocol.");
-  }
-  const response = await fetch(parsedUrl, {
-    method: "PUT",
-    headers: {
-      // This header is signed into the R2/S3 URL and must match exactly.
-      "content-type": contentType,
-      "content-length": bytes.length.toString(),
-    },
-    // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
-    // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
-    // bytes of a shared buffer.
-    body: new Uint8Array(bytes).slice().buffer,
-  });
-  if (!response.ok) {
-    const responseBody = await response.text();
-    throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);
-  }
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -258,7 +231,13 @@ export async function packageAndUploadSource(options: {
     throw new CliError(`The packaged source is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.dockerignore — build outputs and large assets shouldn't be uploaded.`);
   }
   console.error("Uploading source...");
-  await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);
+  await uploadSource({
+    uploadUrl: upload.upload_url,
+    contentType: upload.content_type,
+    bytes: packaged.tarballGzipped,
+    // The slot's own expiry is the upload's deadline — see source-upload.ts.
+    expiresAtMillis: typeof upload.expires_at_millis === "number" ? upload.expires_at_millis : null,
+  });
   return upload.id;
 }
 
