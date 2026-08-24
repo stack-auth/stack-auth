@@ -1,0 +1,51 @@
+apps/backend/src/lib/issues/occurrence-projection.ts
+  s_d5052abc8e52ed::t_4e6c15f708302f 257,260,262,264-270
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_d5052abc8e52ed::t_b0731aa8dc3b4b 233,237
+apps/backend/prisma/schema.prisma
+  s_fdcae4d726929a::t_6db9e67469a4ce 1242
+  s_5990e2c340a374::t_205db46d3e4bd0 3708
+apps/backend/prisma/migrations/20260811000000_add_observability/tests/issue-product-metadata-schema-and-constraints.ts
+  s_5990e2c340a374::t_c35396feeb04e9 42-50
+apps/backend/prisma/migrations/20260811000000_add_observability/migration.sql
+  s_5990e2c340a374::t_0067fd2850102b 643-646
+  s_fdcae4d726929a::t_0b6c5de3b1bdd7 42
+apps/backend/src/lib/session-replays.tsx
+  s_fdcae4d726929a::t_76d21a5294041b 28,33-34,36-38,40-41,43-45
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_d5052abc8e52ed::t_da6e1f964ca864 314-317,321
+  s_d5052abc8e52ed::t_13189da49b7d0e 8
+  s_fdcae4d726929a::t_b5378265a5feb2 294-303,305-313,318-320,322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "061c029d6ae8c7fcdf343f3c967d80d9b2c51188",
+  "prompts": {},
+  "sessions": {
+    "s_5990e2c340a374": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3f6857fd-9c05-4aac-8d81-0fb9c071ef3e",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d5052abc8e52ed": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6e95cbab-e0f7-4d70-a908-da7d18428030",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fdcae4d726929a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "10e01054-baf0-4ce7-9846-ee2fe8ded0cd",
+        "model": "cursor-grok-4.6-xhigh-fast"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
