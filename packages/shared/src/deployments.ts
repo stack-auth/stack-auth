@@ -45,8 +45,21 @@ export const MAX_DEPLOYMENT_SOURCE_ID_LENGTH = 63;
 // every source-built service is built from it. A service's slice is the subtree
 // under its `root_directory`.
 
-/** How many file entries a manifest may carry. */
-export const MAX_SOURCE_MANIFEST_ENTRIES = 500;
+/**
+ * How many file entries a manifest may carry.
+ *
+ * High enough that the listing is the WHOLE tree for essentially any real
+ * source: node_modules and build output are excluded before packaging, and what
+ * survives is source, which is thousands of files at the top end rather than
+ * tens of thousands. The dashboard shows every entry, so this is the number that
+ * decides whether it is showing everything.
+ *
+ * The cost is a JSON column: ~90 bytes an entry, so ~180 KB before Postgres
+ * compresses it — and paths in one tree share nearly all their prefixes, which
+ * TOAST squashes hard. Worth it to be able to say "these are the files" rather
+ * than "these are some of them".
+ */
+export const MAX_SOURCE_MANIFEST_ENTRIES = 2000;
 export const MAX_SOURCE_MANIFEST_PATH_LENGTH = 1024;
 
 export type DeploymentSourceManifest = {

@@ -399,8 +399,12 @@ export function SourceContent({ manifest, service, isHexclave }: {
   const scopeLabel = rootDirectory == null || rootDirectory === "" || rootDirectory === "." ? "the deploy file's directory" : rootDirectory;
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-4">
-      <div className="space-y-2">
+    // A column rather than one scrolling block, so the file list can take every
+    // pixel the totals and the footnote do not and scroll inside itself. The
+    // listing is the point of this tab; it should not be a short window under a
+    // header that scrolls away with it.
+    <div className="flex h-full flex-col gap-4 p-4">
+      <div className="shrink-0 space-y-2">
         <SectionLabel>Uploaded for this deploy</SectionLabel>
         {/* The deployment's totals, not this service's: one deploy uploads ONE
             tree and every source-built service is built from it, so the number
@@ -416,36 +420,47 @@ export function SourceContent({ manifest, service, isHexclave }: {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <SectionLabel>Largest files under {scopeLabel}</SectionLabel>
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="shrink-0 space-y-1">
+          <SectionLabel>Files under {scopeLabel}</SectionLabel>
+          {entries.length > 0 && (
+            // Largest first is worth saying out loud: it is what makes the first
+            // row the answer to "why is this upload so big", and it is not the
+            // order a file listing is usually read in.
+            <p className="text-[11px] text-muted-foreground">
+              {entries.length.toLocaleString()} file{entries.length === 1 ? "" : "s"}, largest first.
+            </p>
+          )}
+        </div>
         {entries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
             {truncated
-              ? <>None of this deploy&apos;s largest files are under {scopeLabel}. The listing keeps only the biggest {manifest.entries.length.toLocaleString()} of {manifest.file_count.toLocaleString()} files.</>
+              ? <>None of the {manifest.entries.length.toLocaleString()} files this listing kept are under {scopeLabel}.</>
               : <>Nothing was packaged under {scopeLabel}.</>}
           </div>
         ) : (
-          <>
-            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
-              {entries.map((entry) => (
-                <div key={entry.path} className="flex items-center justify-between gap-3 border-b border-border/40 bg-foreground/[0.02] px-2.5 py-1.5 last:border-b-0">
-                  {/* Right-truncated would hide the filename, which is the part
-                      that identifies the row; the title carries the full path. */}
-                  <span className="truncate font-mono text-[11px]" dir="rtl" title={entry.path}>{entry.path}</span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(entry.bytes)}</span>
-                </div>
-              ))}
-            </div>
-            {truncated && (
-              <p className="text-[11px] text-muted-foreground">
-                Largest {manifest.entries.length.toLocaleString()} of {manifest.file_count.toLocaleString()} files; the rest are smaller than every file listed.
-              </p>
-            )}
-          </>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+            {entries.map((entry) => (
+              <div key={entry.path} className="flex items-center justify-between gap-3 border-b border-border/40 bg-foreground/[0.02] px-2.5 py-1.5 last:border-b-0">
+                {/* Right-truncated would hide the filename, which is the part
+                    that identifies the row; the title carries the full path. */}
+                <span className="truncate font-mono text-[11px]" dir="rtl" title={entry.path}>{entry.path}</span>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(entry.bytes)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {truncated && (
+          // Only ever shown for a tree past the cap, which is far larger than
+          // any ordinary source. Said anyway: a listing that silently stopped
+          // short would be read as "these are the files".
+          <p className="shrink-0 text-[11px] text-muted-foreground">
+            This deploy packaged {manifest.file_count.toLocaleString()} files, more than the listing can hold. The {manifest.entries.length.toLocaleString()} largest are kept; the rest are smaller than every file shown.
+          </p>
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="shrink-0 text-[11px] text-muted-foreground">
         This is what <span className="font-mono">hexclave deploy</span> packaged after your <span className="font-mono">.gitignore</span> and <span className="font-mono">.dockerignore</span> rules. Anything here that shouldn&apos;t be uploaded belongs in one of them.
       </p>
     </div>
