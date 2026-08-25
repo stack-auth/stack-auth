@@ -36,6 +36,26 @@ async function inFreshWorkflowsProject<T>(fn: () => Promise<T>): Promise<T> {
   return await fn();
 }
 
+async function setWorkflowPaused(expect: any, workflowId: string, isPaused: boolean) {
+  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}`, {
+    method: "PATCH",
+    accessType: "admin",
+    body: { is_paused: isPaused },
+  });
+  expect(response).toMatchObject({ status: 200, body: { workflow_id: workflowId, is_paused: isPaused } });
+  return response.body as { is_paused: boolean, paused_at_millis: number | null };
+}
+
+async function createUser(expect: any, email: string) {
+  const response = await niceBackendFetch("/api/v1/users", {
+    method: "POST",
+    accessType: "server",
+    body: { primary_email: email },
+  });
+  expect(response.status).toBe(201);
+  return response.body.id as string;
+}
+
 describe("multi-tenancy", () => {
   it("serves every workflows route for an ordinary project", async ({ expect }) => {
     // Workflows are available to any project. Like every other app, the API is
@@ -644,6 +664,98 @@ export default workflow("${invalidTriggerId}", { on: [customEvent("contains whit
       });
       expect(invalidTriggerResponse.status).toBe(400);
       expect(JSON.stringify(invalidTriggerResponse.body)).toContain("must not contain whitespace");
+    });
+  });
+});
+
+describe("pausing", () => {
+  it("creates no runs while paused, and does not replay dropped events after resuming", { timeout: 240_000 }, async ({ expect }) => {
+    await inFreshWorkflowsProject(async () => {
+      const workflowId = randomSlug("e2e-pause");
+      // A second, never-paused workflow on the same trigger. The outbox is
+      // global and drained oldest-first, so "no run appeared after N ticks" on
+      // its own can just mean the engine never got to the event. Waiting for
+      // the control to run proves the engine DID process it — while the target
+      // was paused — which is the thing under test.
+      const controlWorkflowId = randomSlug("e2e-pause-control");
+      const userCreatedSource = (id: string) => `import { workflow } from "@hexclave/workflows";
+export default workflow("${id}", {
+  on: ["user.created"],
+  runKey: (event) => "user:" + event.data.id,
+}, async (event, step) => {
+  await step.run("snapshot-email", () => event.data.primary_email);
+});
+`;
+      await createWorkflow(expect, workflowId, userCreatedSource(workflowId));
+      await createWorkflow(expect, controlWorkflowId, userCreatedSource(controlWorkflowId));
+
+      const pauseResult = await setWorkflowPaused(expect, workflowId, true);
+      expect(pauseResult.paused_at_millis).toEqual(expect.any(Number));
+      const pausedListResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+      expect(pausedListResponse.body.workflows.find((workflow: any) => workflow.id === workflowId)).toMatchObject({ is_paused: true });
+      expect(pausedListResponse.body.workflows.find((workflow: any) => workflow.id === controlWorkflowId)).toMatchObject({ is_paused: false });
+
+      // A user created while the workflow is paused creates no run for it.
+      const pausedEmail = `${randomSlug("wf-paused")}@example.com`;
+      await createUser(expect, pausedEmail);
+      await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(controlWorkflowId);
+        return runs.find((r) => r.trigger_summary === pausedEmail) ?? null;
+      }, { timeoutMs: 120_000 });
+      expect((await listRuns(workflowId)).runs).toEqual([]);
+
+      await setWorkflowPaused(expect, workflowId, false);
+      const resumedListResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+      expect(resumedListResponse.body.workflows.find((workflow: any) => workflow.id === workflowId)).toMatchObject({ is_paused: false, paused_at_millis: null });
+
+      // Events enqueued after the resume dispatch normally.
+      const resumedEmail = `${randomSlug("wf-resumed")}@example.com`;
+      const resumedUserId = await createUser(expect, resumedEmail);
+      const run = await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(workflowId);
+        return runs.find((r) => r.trigger_summary === resumedEmail && r.state === "completed") ?? null;
+      }, { timeoutMs: 120_000 });
+      expect(run).toMatchObject({ trigger_type: "user.created", run_key: `user:${resumedUserId}` });
+
+      // The event dropped during the pause is gone for good: the resumed run
+      // is the only one that ever existed for this workflow.
+      const { runs } = await listRuns(workflowId);
+      expect(runs.map((run) => run.trigger_summary)).toEqual([resumedEmail]);
+
+      await retireWorkflow(expect, workflowId);
+      await retireWorkflow(expect, controlWorkflowId);
+    });
+  });
+
+  // TODO(workflows-pause): two behaviours still uncovered here, both needing a
+  // slow test — (1) a schedule-triggered workflow paused across several cron
+  // ticks must resume without materializing the interval it slept through
+  // (the cursor fast-forward in setWorkflowPaused), and (2) a run already
+  // in flight must keep executing to completion after a pause.
+  it("is idempotent and 404s for unknown workflows", { timeout: 180_000 }, async ({ expect }) => {
+    await inFreshWorkflowsProject(async () => {
+      const workflowId = randomSlug("e2e-pause-idem");
+      await createWorkflow(expect, workflowId, `import { workflow, customEvent } from "@hexclave/workflows";
+export default workflow("${workflowId}", { on: [customEvent("ping")] }, async () => {});
+`);
+
+      // Re-pausing keeps the original pausedAt so "paused 3 days ago" does not
+      // reset itself on every repeated call.
+      const first = await setWorkflowPaused(expect, workflowId, true);
+      const second = await setWorkflowPaused(expect, workflowId, true);
+      expect(second.paused_at_millis).toBe(first.paused_at_millis);
+
+      await setWorkflowPaused(expect, workflowId, false);
+      await setWorkflowPaused(expect, workflowId, false);
+
+      const missingResponse = await niceBackendFetch(`/api/v1/internal/workflows/${randomSlug("e2e-nonexistent")}`, {
+        method: "PATCH",
+        accessType: "admin",
+        body: { is_paused: true },
+      });
+      expect(missingResponse.status).toBe(404);
+
+      await retireWorkflow(expect, workflowId);
     });
   });
 });

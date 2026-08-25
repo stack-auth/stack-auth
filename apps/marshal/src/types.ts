@@ -110,6 +110,15 @@ export type DeploymentTarget = {
   // Relative to the ROOT of the upload; absent = the builder auto-detects the
   // build with Railpack (https://railpack.com).
   dockerfile_path?: string,
+  // An ALREADY-BUILT image to run instead of building one. Mutually exclusive
+  // with the two fields above: a target either takes part in the deployment's
+  // build or it does not.
+  //
+  // Stored as the author wrote it, normalized but NOT resolved: a tag reaches
+  // the machine config as a tag and Fly resolves it when it pulls. A target with
+  // an image starts "pending" rather than "building": there is nothing to wait
+  // for.
+  image?: string,
   // The spec to apply once the image exists; its `source` is filled in with what
   // the build produced.
   spec: Omit<ServiceSpec, "source">,
@@ -126,6 +135,12 @@ export type DeploymentServiceState = {
   status: DeploymentServiceStatus,
   revision: string | null,
   url: string | null,
+  // The digest-pinned image this service was applied with, once it has been —
+  // what a built target pushed, or what a prebuilt target's reference resolved
+  // to. Null until the apply happens. Reported because the tag an author writes
+  // and the bytes that run are different facts, and only the second one explains
+  // a bad deploy.
+  image: string | null,
   error: string | null,
 };
 
@@ -199,8 +214,13 @@ export type StoredDeployment = Omit<Deployment, "services"> & {
   targets: DeploymentTarget[],
   // Per-target state, keyed by service key.
   services: Record<string, DeploymentServiceState>,
-  // The image each target's build pushed, keyed by service key; filled in by the
-  // build-completion webhook.
+  // The image each target will run, keyed by service key. Targets that name a
+  // prebuilt image are here from the moment the deployment is created (nothing
+  // has to resolve first); the rest are filled in by the build-completion
+  // webhook, which MERGES into this rather than replacing it.
+  //
+  // What a target will RUN, which for a tag is not the same as which bytes it
+  // ran — that is reported per service in `services`, from what Fly resolved.
   images: Record<string, string>,
   // Set for real Fly builds so live logs can be proxied from the builder machine and the
   // lazy backstop can detect a dead builder. Null for mock builds.
@@ -208,8 +228,9 @@ export type StoredDeployment = Omit<Deployment, "services"> & {
   builder_machine_id: string | null,
   // The upload the build consumed, kept for diagnostics; the bytes themselves are
   // copied to a deployment-specific object and the original is deleted once the
-  // build owns its copy.
-  upload_id: string,
+  // build owns its copy. Null when every target names a prebuilt image: nothing
+  // is built, so nothing was uploaded.
+  upload_id: string | null,
 };
 
 export type ReconciliationLease = {

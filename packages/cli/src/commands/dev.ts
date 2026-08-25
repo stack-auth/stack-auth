@@ -964,7 +964,8 @@ export function registerDevCommand(program: Command) {
         const deployModule = await importDeployModule(deployFilePath);
         const { services } = evaluateDeploymentConfig({
           deployFilePath,
-          idExport: deployModule.id,
+          deploymentGroupIdExport: deployModule.deploymentGroupId,
+          legacyIdExport: deployModule.legacyId,
           deployExport: deployModule.deploy,
           mode: "dev",
         });

@@ -1,5 +1,6 @@
 import { runAgentBrowserCommand, withAgentBrowserSandbox } from "@agent-browser/sandbox/vercel";
 import type { NetworkPolicy } from "@vercel/sandbox";
+import type { SandboxSession } from "eve/sandbox";
 
 /**
  * Renders a page in a real (headless Chromium) browser inside an ephemeral,
@@ -25,6 +26,7 @@ export type BrowsePageResult = {
 };
 
 const SNAPSHOT_CHAR_CAP = 20_000;
+const CURL_FALLBACK_BODY_BYTE_CAP = 2_000_000;
 
 // Wall-time caps, enforced server-side by the sandbox `timeout` option (the VM
 // auto-terminates even if this process dies mid-call). With a pre-built
@@ -57,10 +59,11 @@ const BROWSE_NETWORK_POLICY: NetworkPolicy = {
 };
 
 /**
- * Whether the runtime has credentials to create Vercel Sandboxes: either the
- * explicit token triple (local dev) or an OIDC token (automatic on Vercel
- * deployments). Callers should check this before browsing so the failure mode
- * is a clear "unavailable" error instead of an opaque SDK auth error.
+ * Whether the runtime is configured to create Vercel Sandboxes. Local
+ * development must expose an explicit token because it has no Vercel request
+ * context. A deployed Vercel Function is different: Vercel supplies OIDC in
+ * the request context, so the Sandbox SDK—not this environment-only probe—must
+ * perform the credential check there.
  */
 export function isBrowseSandboxAvailable(): boolean {
   const env = process.env;
@@ -73,10 +76,151 @@ export function isBrowseSandboxAvailable(): boolean {
     ? configuredBackend
     : env.VERCEL != null && env.VERCEL.length > 0 ? "vercel" : "docker";
   if (backend !== "vercel") return false;
+  // In a deployed Vercel Function, the OIDC token is available to the SDK via
+  // the incoming request context rather than process.env. Do not reject the
+  // call before withAgentBrowserSandbox() can use that runtime credential.
+  if (env.VERCEL != null && env.VERCEL.length > 0) return true;
   const hasTokenTriple = [env.VERCEL_TOKEN, env.VERCEL_TEAM_ID, env.VERCEL_PROJECT_ID]
     .every((value) => value != null && value.length > 0);
   const hasOidcToken = env.VERCEL_OIDC_TOKEN != null && env.VERCEL_OIDC_TOKEN.length > 0;
   return hasTokenTriple || hasOidcToken;
+}
+
+function isCurlFallbackSandboxSafe(): boolean {
+  const configuredBackend = process.env.HEXCLAVE_GROWTH_SANDBOX_BACKEND;
+  const backend = configuredBackend != null && configuredBackend.length > 0
+    ? configuredBackend
+    : process.env.VERCEL != null && process.env.VERCEL.length > 0 ? "vercel" : "docker";
+  // The website-research Vercel sandbox has a subnet denylist that applies to
+  // DNS results and redirects. Its local Docker backend is allow-all, so the
+  // literal-IP URL preflight alone is not enough to safely curl an untrusted
+  // hostname there.
+  return backend === "vercel";
+}
+
+type CurlFallbackSandbox = Pick<SandboxSession, "readBinaryFile" | "removePath" | "run">;
+
+function decodeHtmlEntities(value: string): string {
+  const namedEntities = new Map([
+    ["amp", "&"],
+    ["apos", "'"],
+    ["gt", ">"],
+    ["lt", "<"],
+    ["nbsp", " "],
+    ["quot", "\""],
+  ]);
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entityText, entityName: string) => {
+    if (entityName.startsWith("#x")) {
+      const codePoint = Number.parseInt(entityName.slice(2), 16);
+      return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10FFFF ? String.fromCodePoint(codePoint) : entityText;
+    }
+    if (entityName.startsWith("#")) {
+      const codePoint = Number.parseInt(entityName.slice(1), 10);
+      return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10FFFF ? String.fromCodePoint(codePoint) : entityText;
+    }
+    return namedEntities.get(entityName.toLowerCase()) ?? entityText;
+  });
+}
+
+/**
+ * Turns a curl-fetched HTML document into a compact, model-readable fallback.
+ * This is deliberately not presented as a rendered browser snapshot: scripts
+ * and styles are removed, block boundaries become newlines, and the result is
+ * labelled so the researcher knows client-rendered content may be missing.
+ */
+export function extractCurlFallbackPage(html: string, requestedUrl: string, finalUrl: string): BrowsePageResult {
+  const titleMatch = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  const title = decodeHtmlEntities(titleMatch?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() ?? "");
+  const visibleText = decodeHtmlEntities(html
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<(script|style|noscript|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--([\s\S]*?)-->/g, " ")
+    .replace(/<\/(?:article|aside|blockquote|div|footer|form|h[1-6]|header|li|main|nav|ol|p|section|table|tr|ul)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " "))
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+  const fallbackNotice = `[curl fallback: Chromium was unavailable; this is static HTML from ${requestedUrl} and may omit client-rendered content.]`;
+  const fullSnapshot = `${fallbackNotice}\n${visibleText}`;
+  const snapshotText = fullSnapshot.length > SNAPSHOT_CHAR_CAP
+    ? `${fullSnapshot.slice(0, SNAPSHOT_CHAR_CAP)}\n… [snapshot truncated at ${SNAPSHOT_CHAR_CAP} characters]`
+    : fullSnapshot;
+  return { finalUrl, title, snapshotText };
+}
+
+/**
+ * Fetches a public page through the website-research subagent's SSRF-hardened
+ * Eve sandbox. The URL is passed through the process environment instead of
+ * interpolated into the shell command, so arbitrary URL characters cannot
+ * become shell syntax. This is the automatic fallback when the separate
+ * Chromium sandbox cannot be created.
+ */
+export async function fetchPageWithCurl(options: {
+  readonly url: string,
+  readonly requestId: string,
+  readonly sandbox: CurlFallbackSandbox,
+}): Promise<BrowsePageResult> {
+  const validatedUrl = validateBrowseUrl(options.url);
+  const safeRequestId = options.requestId.replace(/[^A-Za-z0-9_-]/g, "_");
+  const outputPath = `/workspace/browse-page-${safeRequestId}.untracked.html`;
+  try {
+    const result = await options.sandbox.run({
+      command: "curl --silent --show-error --location --compressed --fail-with-body --max-time 30 --max-filesize 2000000 --output \"$HEXCLAVE_BROWSE_OUTPUT_PATH\" --write-out '%{url_effective}' -- \"$HEXCLAVE_BROWSE_URL\"",
+      env: {
+        HEXCLAVE_BROWSE_OUTPUT_PATH: outputPath,
+        HEXCLAVE_BROWSE_URL: validatedUrl.toString(),
+      },
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`curl fallback failed with exit code ${result.exitCode}: ${result.stderr.trim() || "no error detail"}`);
+    }
+    const body = await options.sandbox.readBinaryFile({ path: outputPath });
+    if (body == null) throw new Error("curl fallback completed without producing a response body.");
+    const html = new TextDecoder().decode(body.slice(0, CURL_FALLBACK_BODY_BYTE_CAP));
+    const finalUrl = result.stdout.trim() || validatedUrl.toString();
+    return extractCurlFallbackPage(html, validatedUrl.toString(), finalUrl);
+  } finally {
+    await options.sandbox.removePath({ path: outputPath, force: true, recursive: false });
+  }
+}
+
+/** Only credential/setup failures should switch rendering engines. Navigation
+ * and page errors still surface normally so a broken target is not mistaken
+ * for a successful static fetch. */
+export function isBrowserSandboxCredentialError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "VercelOidcContextError"
+    || error.name === "LocalOidcContextError"
+    || /Could not get credentials from OIDC context|Missing credentials parameters to access the Vercel API|Browser sandbox is unavailable outside a Vercel deployment or its credentials are missing/.test(error.message);
+}
+
+export async function browsePageWithCurlFallback(options: {
+  readonly url: string,
+  readonly requestId: string,
+  readonly getSandbox: () => Promise<CurlFallbackSandbox>,
+}): Promise<BrowsePageResult> {
+  const curlFallback = async (): Promise<BrowsePageResult> => await fetchPageWithCurl({
+    url: options.url,
+    requestId: options.requestId,
+    sandbox: await options.getSandbox(),
+  });
+  if (!isBrowseSandboxAvailable()) {
+    if (!isCurlFallbackSandboxSafe()) {
+      throw new Error(
+        "Browser sandbox is unavailable and the current Eve sandbox does not enforce the subnet firewall required for a safe curl fallback.",
+      );
+    }
+    return await curlFallback();
+  }
+  try {
+    return await browsePage({ url: options.url, screenshot: false });
+  } catch (error) {
+    if (!isBrowserSandboxCredentialError(error)) throw error;
+    if (!isCurlFallbackSandboxSafe()) throw error;
+    return await curlFallback();
+  }
 }
 
 class BrowseUrlValidationError extends Error {
@@ -145,10 +289,9 @@ export function validateBrowseUrl(rawUrl: string): URL {
  * Open `url` in a fresh browser microVM and return the rendered page's title,
  * final URL (after redirects), and interactive accessibility snapshot.
  *
- * `screenshot: true` additionally returns a base64 PNG of the viewport. Note
- * that eve 0.27.0 tool results are text/JSON-only (no image parts reach the
- * model), so tools built on this should pass `screenshot: false` today — the
- * flag exists for callers that can deliver images elsewhere (e.g. artifacts).
+ * `screenshot: true` additionally returns a base64 PNG of the viewport. The
+ * screenshot artifact tool sends these bytes directly to the backend rather
+ * than placing a large base64 payload in the model's context.
  *
  * One sandbox per call, torn down in the helper's `finally`: agent tool calls
  * are independent model turns and eve gives us no cross-call lifecycle hook to
