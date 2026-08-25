@@ -1,11 +1,13 @@
-import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, buildSourceManifest, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { getInternalUser } from "../lib/app.js";
+import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
+import { uploadSource } from "../lib/source-upload.js";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, hasDeployFile, importConfigModule, importDeployModule, resolveDeployFilePath, type EvaluatedService } from "../lib/deployment-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
@@ -135,34 +137,6 @@ async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<R
   }
 }
 
-async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8Array): Promise<void> {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(uploadUrl);
-  } catch {
-    throw new CliError("The Hexclave API returned an invalid object-storage upload URL.");
-  }
-  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
-    throw new CliError("The Hexclave API returned an upload URL with an unsupported protocol.");
-  }
-  const response = await fetch(parsedUrl, {
-    method: "PUT",
-    headers: {
-      // This header is signed into the R2/S3 URL and must match exactly.
-      "content-type": contentType,
-      "content-length": bytes.length.toString(),
-    },
-    // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
-    // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
-    // bytes of a shared buffer.
-    body: new Uint8Array(bytes).slice().buffer,
-  });
-  if (!response.ok) {
-    const responseBody = await response.text();
-    throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);
-  }
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -190,6 +164,54 @@ export function collectPublicUrls(deploySet: string[], services: Map<string, Eva
   });
 }
 
+/**
+ * Where to read this deployment in the dashboard.
+ *
+ * The deployments page keeps its selection in the URL, so this can open the
+ * exact thing a reader wants: the deployment's service map, or one service's
+ * build log. `panel` is the dashboard's own tab id, not a name invented here.
+ */
+export function deploymentDashboardUrl(options: {
+  dashboardUrl: string,
+  projectId: string,
+  deploymentId: string,
+  /** The service to open. Null opens the deployment's service map instead. */
+  serviceId?: string | null,
+  /** Whether to land on that service's build log rather than its overview. */
+  buildLogs?: boolean,
+}): string {
+  const params = new URLSearchParams({ deploymentId: options.deploymentId });
+  if (options.serviceId != null && options.serviceId !== "") {
+    params.set("serviceId", options.serviceId);
+    if (options.buildLogs === true) params.set("panel", "build-logs");
+  }
+  const route = `/projects/${encodeURIComponent(options.projectId)}/deployments`;
+  // Built through URL, not interpolated: a configured base carrying a query or
+  // fragment would otherwise swallow the whole route into it and the link would
+  // not navigate anywhere. Same shape as onboardingUrlFor in lib/app.ts, which
+  // solved this first — including the fallback, because a configured dashboard
+  // URL is unvalidated and this is printed, never fetched, so it must not throw.
+  const parsed = createUrlIfValid(options.dashboardUrl);
+  if (parsed == null) {
+    return `${options.dashboardUrl.replace(/\/+$/, "")}${route}?${params.toString()}`;
+  }
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, "")}${route}`;
+  parsed.search = params.toString();
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+/**
+ * The service whose build log the reader is about to go looking for: the first
+ * one that failed, in the order the deploy applied them. Null when none did.
+ *
+ * The FIRST rather than every one, because a level's failure skips everything
+ * after it — later failures are consequences, and the first is the cause.
+ */
+export function firstFailedService(deploySet: string[], results: Map<string, ServiceDeployResult>): string | null {
+  return deploySet.find((serviceId) => results.get(serviceId)?.status === "failed") ?? null;
+}
+
 export type ServiceDeployResult = {
   serviceId: string,
   status: "deployed" | "failed" | "skipped" | "pending" | "building" | "deploying",
@@ -208,11 +230,15 @@ export async function packageAndUploadSource(options: {
   authHeaders: () => Promise<Record<string, string>>,
   sourceRoot: string,
   services: Map<string, EvaluatedService>,
-}): Promise<string> {
+}): Promise<{ uploadId: string, manifest: DeploymentSourceManifest }> {
   const { auth, authHeaders, sourceRoot, services } = options;
   const packaged = packageSourceDirectory(sourceRoot);
 
   for (const service of services.values()) {
+    // A service that names an already-built image is not built from this tree at
+    // all, so neither the Dockerfile pre-flight nor the Railpack note below
+    // applies to it — and a stray Dockerfile beside it is not a mistake.
+    if (service.definition.image !== undefined) continue;
     const dockerfilePath = service.definition.dockerfile_path;
     if (dockerfilePath === undefined) {
       // No dockerfilePath means Railpack auto-detection — an existing Dockerfile is
@@ -254,8 +280,20 @@ export async function packageAndUploadSource(options: {
     throw new CliError(`The packaged source is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.dockerignore — build outputs and large assets shouldn't be uploaded.`);
   }
   console.error("Uploading source...");
-  await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);
-  return upload.id;
+  await uploadSource({
+    uploadUrl: upload.upload_url,
+    contentType: upload.content_type,
+    bytes: packaged.tarballGzipped,
+    // The slot's own expiry is the upload's deadline — see source-upload.ts.
+    expiresAtMillis: typeof upload.expires_at_millis === "number" ? upload.expires_at_millis : null,
+  });
+  // Recorded with the deployment because the tarball is not: the build consumes
+  // it and it is deleted, so a listing of what went in is the only thing left
+  // to answer "why was this upload 39 MB" after the fact.
+  return {
+    uploadId: upload.id,
+    manifest: buildSourceManifest({ files: packaged.files, compressedBytes: packaged.tarballGzipped.length }),
+  };
 }
 
 /**
@@ -358,13 +396,16 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
 /**
  * What this deploy ships: a deploy file when there is one, otherwise the config
  * file, for a project small enough to keep its services there. The config file
- * has no `id` export, so its deployments belong to a source named after the file
- * itself — which is what lets them coexist with the deploy files of other
- * repositories deploying into the same project.
+ * has no `deploymentGroupId` export, so its deployments belong to a group named
+ * after the file itself — which is what lets them coexist with the deploy files
+ * of other repositories deploying into the same project.
  */
 async function resolveDeploySource(deployFileOption: string | undefined, cwd: string): Promise<{
   path: string,
-  idExport: unknown,
+  deploymentGroupIdExport: unknown,
+  // The deploy file's `id` export, if it still uses that old name. Only a deploy
+  // file can have one; the config file's group id is the file name.
+  legacyIdExport?: unknown,
   deployExport: unknown,
 }> {
   if (deployFileOption == null || deployFileOption === "") {
@@ -375,13 +416,13 @@ async function resolveDeploySource(deployFileOption: string | undefined, cwd: st
     if (configPath !== null && !hasDeployFile(cwd)) {
       const configModule = await importConfigModule(configPath);
       if (configModule.deploy !== undefined) {
-        return { path: configPath, idExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deployExport: configModule.deploy };
+        return { path: configPath, deploymentGroupIdExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deployExport: configModule.deploy };
       }
     }
   }
   const deployFilePath = resolveDeployFilePath(deployFileOption, cwd);
   const deployModule = await importDeployModule(deployFilePath);
-  return { path: deployFilePath, idExport: deployModule.id, deployExport: deployModule.deploy };
+  return { path: deployFilePath, deploymentGroupIdExport: deployModule.deploymentGroupId, legacyIdExport: deployModule.legacyId, deployExport: deployModule.deploy };
 }
 
 export function registerDeployCommand(program: Command) {
@@ -399,12 +440,13 @@ export function registerDeployCommand(program: Command) {
       const authHeaders = await buildAuthHeadersFactory(auth);
 
       // A deploy file if there is one; otherwise the config file, for a project
-      // that keeps its services there. The config file has no `id` export, so
-      // its deployments belong to a source named after the file itself.
+      // that keeps its services there. The config file has no `deploymentGroupId`
+      // export, so its deployments belong to a group named after the file itself.
       const deploySource = await resolveDeploySource(opts.deployFile, process.cwd());
       const { sourceId, services } = evaluateDeploymentConfig({
         deployFilePath: deploySource.path,
-        idExport: deploySource.idExport,
+        deploymentGroupIdExport: deploySource.deploymentGroupIdExport,
+        legacyIdExport: deploySource.legacyIdExport,
         deployExport: deploySource.deployExport,
         mode: "deploy",
       });
@@ -500,16 +542,38 @@ export function registerDeployCommand(program: Command) {
       }
 
       // ONE upload for the whole deployment source, and one build of every
-      // service from it.
+      // service from it — but only if anything is actually built. A deploy set
+      // that is entirely prebuilt images has nothing to send: no packaging, no
+      // upload, and no builder machine on the other end.
+      //
+      // Keyed on the DEPLOY SET rather than on the whole file, so
+      // `hexclave deploy --service-id database` skips the upload even in a repo
+      // whose other services are built from source.
+      // Resolved explicitly rather than with `?.`: a deploy-set id that is not a
+      // known service is impossible (the set comes from `services`), and letting
+      // it read as "source-built" would package an upload for nothing and defer
+      // the real error to the API. Same shape as the two other lookups here.
+      const buildsFromSource = deploySet.some((serviceId) => (services.get(serviceId) ?? (() => {
+        throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
+      })()).definition.image === undefined);
       const sourceRoot = path.dirname(deploySource.path);
-      const uploadId = await packageAndUploadSource({ auth, authHeaders, sourceRoot, services });
+      // Undefined for an all-prebuilt deploy: nothing is packaged, so there is
+      // no upload and no manifest to report.
+      const packagedSource = buildsFromSource
+        ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services })
+        : undefined;
 
       console.error("Starting deployment...");
       const deploymentResponse = await deployApiFetch(auth, authHeaders, "/deployments/deployments", {
         method: "POST",
         jsonBody: {
           source_id: sourceId,
-          upload_id: uploadId,
+          // Omitted entirely when nothing is built from source; the backend
+          // requires it exactly when at least one service needs a build.
+          ...(packagedSource === undefined ? {} : {
+            upload_id: packagedSource.uploadId,
+            source_manifest: packagedSource.manifest,
+          }),
           definition_sync_id: definitionSyncId,
           levels,
           // The `secret()` defaults ride along with the deploy instead of being
@@ -529,14 +593,30 @@ export function registerDeployCommand(program: Command) {
         throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
       }
       const deploymentId = deploymentResponse.id;
-      console.error(`Deployment #${deploymentResponse.number} started. Waiting for the remote build...`);
+      console.error(`Deployment #${deploymentResponse.number} started. ${buildsFromSource ? "Waiting for the remote build..." : "Nothing to build — waiting for the services to come up..."}`);
 
       // try/finally: the deployment row exists from here on, and a client that
       // dies leaves it reading as in-flight forever — so whatever happens, the
       // server has to be told this client has stopped.
+      // Known from the moment the deployment row exists, because every exit from
+      // here on should be able to hand it over — including the ones that throw.
+      const deploymentUrlBase = deploymentDashboardUrl({
+        dashboardUrl: auth.dashboardUrl,
+        projectId: auth.projectId,
+        deploymentId,
+      });
       let outcome: { status: string, error: string | null, services: ServiceDeployResult[] };
       try {
         outcome = await waitForDeployment({ auth, authHeaders, deploymentId });
+      } catch (error) {
+        // A client that stopped waiting has not stopped the DEPLOYMENT: it is
+        // still there, still has a log, and is exactly what the user now needs
+        // to go and look at. Printed before rethrowing so the link survives an
+        // error the caller sees as a failure.
+        console.error("");
+        console.error("The deployment is still in the dashboard:");
+        console.error(`  ${deploymentUrlBase}`);
+        throw error;
       } finally {
         // Best-effort, and deliberately swallowing: this is bookkeeping, so a
         // failure here must not replace the real deploy error the caller needs
@@ -557,15 +637,49 @@ export function registerDeployCommand(program: Command) {
         const result = results.get(serviceId) ?? { serviceId, status: "pending" as const, url: null, error: null };
         console.error(`  ${serviceId}: ${result.status}${result.url != null ? ` — ${result.url}` : ""}${result.error != null ? ` — ${result.error}` : ""}`);
       }
+      // Printed whatever happened. A failed deploy is the obvious case — the
+      // build log is the next thing anyone asks for, and this is how they reach
+      // it without being told where to click — but a green one has a log worth
+      // reading too, and the link is also the shareable name of what just ran.
+      //
+      // BEFORE collectPublicUrls, which throws when a deploy-set service has no
+      // outcome at all (a canceled deploy, or one that failed before every
+      // service got a row — the loop above has a `?? pending` fallback for
+      // exactly that). Printed after it, the one deploy most in need of the link
+      // was the one that never got it.
+      const failedService = firstFailedService(deploySet, results);
+      // Per-SERVICE, not per-deploy: `buildsFromSource` is true if ANY service
+      // builds from source, so a mixed deploy whose PREBUILT service failed
+      // would link to a build-logs tab holding a sibling's log — which never
+      // mentions the failed service. Worse than not linking to the tab at all.
+      const failedServiceBuilt = failedService !== null
+        && services.get(failedService)?.definition.image === undefined;
+      const deploymentUrl = failedService === null
+        ? deploymentUrlBase
+        : deploymentDashboardUrl({
+          dashboardUrl: auth.dashboardUrl,
+          projectId: auth.projectId,
+          deploymentId,
+          serviceId: failedService,
+          buildLogs: failedServiceBuilt,
+        });
+      console.error("");
+      console.error(failedServiceBuilt
+        ? `Build logs for ${failedService}:`
+        : "View this deployment:");
+      console.error(`  ${deploymentUrl}`);
+
       const publicUrls = collectPublicUrls(deploySet, services, results);
       if (publicUrls.length > 0) {
         console.error("");
         console.error("Public URLs:");
         for (const publicUrl of publicUrls) console.error(`  ${publicUrl.serviceId}: ${publicUrl.url}`);
       }
+
       console.log(JSON.stringify({
         deploymentId,
         deploymentSourceId: sourceId,
+        deploymentUrl,
         status: outcome.status,
         error: outcome.error,
         publicUrls,

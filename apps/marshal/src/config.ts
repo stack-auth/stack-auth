@@ -156,13 +156,20 @@ export function flyVolumeName(volumeId: string): string {
 }
 export const MACHINE_GUEST = { cpu_kind: "shared", cpus: 1, memory_mb: 512 };
 export const BUILDER_GUEST = { cpu_kind: "shared", cpus: 2, memory_mb: 2048 };
-// Railpack builds get a bigger machine: every builder is ephemeral (no image cache), the
-// railpack-builder base image is large, and the machine rootfs is an overlayfs — which
-// forces buildkit onto the slow native (full-copy) snapshotter unless /var/lib/buildkit is
-// backed by tmpfs (see buildHarnessScript). The RAM here is what backs that tmpfs; real-Fly
-// QA measured the default guest timing out at 15 minutes on base-image extraction alone.
-export const RAILPACK_BUILDER_GUEST = { cpu_kind: "performance", cpus: 2, memory_mb: 8192 };
-export const RAILPACK_BUILDKIT_TMPFS_SIZE = "6g";
+// Railpack builds get a bigger machine: every builder is ephemeral (no image cache) and the
+// railpack-builder base image is large — real-Fly QA measured the default guest timing out at
+// 15 minutes on base-image extraction alone. The CPUs are what buy that back.
+//
+// The RAM has to cover TWO things at once, which is what the first sizing of it got wrong:
+// the tmpfs holding buildkit's snapshot store (below) AND the build process itself. At 8g
+// with a 6g tmpfs there were ~2g left, and a Next 16 app with ~1.1g of node_modules either
+// filled the store (ENOSPC) or was OOM-killed at ~1.3g RSS. 16g is the ceiling for two
+// performance CPUs (Fly allows 8g per CPU), and splits ~10/6 between the two.
+export const RAILPACK_BUILDER_GUEST = { cpu_kind: "performance", cpus: 2, memory_mb: 16384 };
+// A cap, not a reservation — unused tmpfs pages cost nothing. Sized so the store cannot fill
+// before the guest's remaining ~6g is what limits the build, since ENOSPC from inside a
+// buildkit step is a far more confusing failure than running out of memory.
+export const RAILPACK_BUILDKIT_TMPFS_SIZE = "10g";
 export const BUILDER_IMAGE = "moby/buildkit:v0.23.2";
 // Railpack (https://railpack.com) builds services that don't declare a Dockerfile: the CLI
 // analyzes the source and emits a build plan that its BuildKit frontend executes. CLI and

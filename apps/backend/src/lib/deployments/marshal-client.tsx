@@ -108,8 +108,13 @@ export type MarshalDeploymentTarget = {
   service_key: string,
   root_directory?: string,
   dockerfile_path?: string,
+  // An already-built image to run, instead of building one from the upload.
+  // Mutually exclusive with the two fields above. The runtime resolves the
+  // reference to a digest and applies it — this target enters no build.
+  image?: string,
   // The spec to apply once this target's image exists. Its `source` is filled in
-  // by the runtime with the image the build produced.
+  // by the runtime with the image the build produced (or with the digest the
+  // reference above resolved to).
   spec: Omit<MarshalServiceSpec, "source">,
 };
 
@@ -146,6 +151,9 @@ export type MarshalDeployment = {
     status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
     revision: string | null,
     url: string | null,
+    // The digest-pinned image the apply actually ran, once it has happened. The
+    // tag an author writes and the bytes that run are different facts.
+    image: string | null,
     error: string | null,
   }[],
 };
@@ -251,7 +259,9 @@ export class MarshalClient {
   //
   // Returns as soon as the deployment is accepted; poll getDeployment.
   async startSourceDeployment(ns: string, sourceId: string, body: {
-    upload_id: string,
+    // Omitted when every target names an already-built image: nothing is built,
+    // so the runtime needs no source archive and starts no builder machine.
+    upload_id?: string,
     targets: MarshalDeploymentTarget[],
     // Service keys grouped into dependency levels: everything in one level is
     // applied concurrently, and a level starts only once the previous one has

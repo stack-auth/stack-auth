@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateDeploymentConfig, importConfigModule, importDeployModule, resolveDeployFilePath, type ServicesFunctionContext } from "../lib/deployment-config.js";
-import { collectPublicUrls, collectRequiredSecretKeys, packageAndUploadSource, resolveConfigPushPath } from "./deploy.js";
+import { collectPublicUrls, collectRequiredSecretKeys, deploymentDashboardUrl, firstFailedService, packageAndUploadSource, resolveConfigPushPath, type ServiceDeployResult } from "./deploy.js";
 
 const TEST_AUTH = {
   apiUrl: "https://api.example.com",
@@ -50,12 +50,13 @@ describe("deploy command helpers", () => {
     const dir = makeTempDir();
     const deployFilePath = path.join(dir, "hexclave.deploy.ts");
     const configFilePath = path.join(dir, "hexclave.config.ts");
-    fs.writeFileSync(deployFilePath, 'export const id = "source"; export const deploy = () => ({ services: {} });');
+    fs.writeFileSync(deployFilePath, 'export const deploymentGroupId = "source"; export const deploy = () => ({ services: {} });');
     fs.writeFileSync(configFilePath, "export const config = {}; export const deploy = () => ({ services: {} });");
 
     const deployModule = await importDeployModule(deployFilePath);
     const configModule = await importConfigModule(configFilePath);
-    expect(deployModule.id).toBe("source");
+    expect(deployModule.deploymentGroupId).toBe("source");
+    expect(deployModule.legacyId).toBeUndefined();
     expect(deployModule.deploy).toBeTypeOf("function");
     expect(configModule.deploy).toBeTypeOf("function");
   });
@@ -81,7 +82,7 @@ describe("deploy command helpers", () => {
   it("returns one final URL for each successfully deployed public service", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } } },
         worker: { type: "serverless", ports: { 3001: { protocol: "http" } } },
@@ -102,7 +103,7 @@ describe("deploy command helpers", () => {
     // number, and would otherwise appear nowhere the author looks.
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         // Declared high-first on purpose: the holder is the lowest port NUMBER,
         // not whichever key was written first.
@@ -126,7 +127,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>no dockerfile</h1>");
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "Dockerfile" },
       } }),
@@ -153,7 +154,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "apps", "web", "index.html"), "<h1>hi</h1>");
     const servicesOf = (rootDirectory: string) => evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory, dockerfilePath: "Dockerfile" },
       } }),
@@ -183,7 +184,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } } },
       } }),
@@ -207,7 +208,7 @@ describe("deploy command helpers", () => {
 describe("collectRequiredSecretKeys", () => {
   const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateDeploymentConfig({
     deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-    idExport: "test-source",
+    deploymentGroupIdExport: "test-source",
     deployExport: (ctx: ServicesFunctionContext) => ({ services: definition(ctx) }),
     mode: "deploy",
   }).services.values()];
@@ -237,5 +238,79 @@ describe("collectRequiredSecretKeys", () => {
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { A: secret("k", "v") } },
     }));
     expect(collectRequiredSecretKeys(services)).toEqual([]);
+  });
+});
+
+describe("the dashboard link a deploy prints", () => {
+  const base = { dashboardUrl: "https://app.hexclave.com", projectId: "proj-1", deploymentId: "dep-1" };
+
+  it("opens the deployment when no service is named", () => {
+    expect(deploymentDashboardUrl(base))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("opens a service's build log when one failed", () => {
+    // The whole point: a failed deploy's last line is one click from the log.
+    expect(deploymentDashboardUrl({ ...base, serviceId: "web", buildLogs: true }))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1&serviceId=web&panel=build-logs");
+  });
+
+  it("names the service but not the build log when nothing was built", () => {
+    // An all-prebuilt deploy starts no builder, so that tab has nothing in it.
+    expect(deploymentDashboardUrl({ ...base, serviceId: "db", buildLogs: false }))
+      .toBe("https://app.hexclave.com/projects/proj-1/deployments?deploymentId=dep-1&serviceId=db");
+  });
+
+  it("survives a configured dashboard URL with a trailing slash", () => {
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/" }))
+      .toBe("https://app.example.com/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("keeps a base path, and does not let a query or fragment swallow the route", () => {
+    // REGRESSION: interpolating the configured base put the whole route inside
+    // its query string, so the link navigated nowhere. Same failure lib/app.ts's
+    // onboardingUrlFor already guarded against.
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/console" }))
+      .toBe("https://app.example.com/console/projects/proj-1/deployments?deploymentId=dep-1");
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/console?tenant=one#settings" }))
+      .toBe("https://app.example.com/console/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("falls back rather than throwing on a dashboard URL that is not a URL", () => {
+    // Configured values are unvalidated, and this is printed, never fetched.
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "not-a-url" }))
+      .toBe("not-a-url/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("escapes ids rather than pasting them into the URL", () => {
+    expect(deploymentDashboardUrl({ ...base, projectId: "a/b", deploymentId: "d e", serviceId: "s&t", buildLogs: true }))
+      .toBe("https://app.hexclave.com/projects/a%2Fb/deployments?deploymentId=d+e&serviceId=s%26t&panel=build-logs");
+  });
+});
+
+describe("which service a failed deploy points at", () => {
+  const result = (serviceId: string, status: ServiceDeployResult["status"]): [string, ServiceDeployResult] =>
+    [serviceId, { serviceId, status, url: null, error: null }];
+
+  it("is the FIRST failure in deploy order, not the last", () => {
+    // A level's failure skips everything after it, so later failures are
+    // consequences and the first is the cause.
+    const results = new Map([result("db", "deployed"), result("api", "failed"), result("web", "failed")]);
+    expect(firstFailedService(["db", "api", "web"], results)).toBe("api");
+  });
+
+  it("is null when every service deployed", () => {
+    const results = new Map([result("db", "deployed"), result("web", "deployed")]);
+    expect(firstFailedService(["db", "web"], results)).toBeNull();
+  });
+
+  it("ignores a service that was skipped rather than failed", () => {
+    // "skipped" means an earlier level failed first; that service has no log.
+    const results = new Map([result("db", "deployed"), result("web", "skipped")]);
+    expect(firstFailedService(["db", "web"], results)).toBeNull();
+  });
+
+  it("is null when the deploy set names a service with no result at all", () => {
+    expect(firstFailedService(["web"], new Map())).toBeNull();
   });
 });

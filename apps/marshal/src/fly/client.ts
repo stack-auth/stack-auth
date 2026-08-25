@@ -25,6 +25,21 @@ export type FlyMachine = {
   state: string,
   region: string,
   instance_id: string,
+  // What Fly RESOLVED the machine's image to. Present on create, update and
+  // list. A spec may name a tag, and this is the digest that tag pointed at when
+  // Fly pulled it — the only place the running bytes are recorded, since Marshal
+  // does not resolve images itself.
+  //
+  // Only `digest` is used, and only through pinToDigest. `registry`/`repository`
+  // describe Fly's own fetch, not the author's reference: a Docker Hub image
+  // reports `docker-hub-mirror.fly.io` (smoke-verified). The digest of a
+  // multi-platform image is the linux/amd64 manifest, not the index.
+  image_ref?: {
+    registry?: string,
+    repository?: string,
+    tag?: string,
+    digest?: string,
+  },
   config: {
     image: string,
     env?: Record<string, string>,
