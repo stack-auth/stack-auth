@@ -53,8 +53,9 @@ export function serviceOutcomeMeta(status: AdminDeploymentServiceOutcomeJson["st
     case "deployed": { return { label: "Deployed", color: "green", icon: CheckCircleIcon, spin: false }; }
     case "failed": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
     // The deploy never reached it — its build failed, or something it depends
-    // on did.
-    case "skipped": { return { label: "Skipped", color: "orange", icon: ProhibitIcon, spin: false }; }
+    // on did. Named after the cause ("Build failed") rather than the effect
+    // ("Skipped"), which told a reader nothing about why nothing shipped.
+    case "skipped": { return { label: "Build failed", color: "orange", icon: ProhibitIcon, spin: false }; }
   }
 }
 

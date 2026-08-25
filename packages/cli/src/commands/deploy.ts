@@ -6,6 +6,7 @@ import { getInternalUser } from "../lib/app.js";
 import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
+import { followBuildLogs, type FollowBuildLogsOptions } from "../lib/build-logs.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
 import { uploadSource } from "../lib/source-upload.js";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, hasDeployFile, importConfigModule, importDeployModule, resolveDeployFilePath, type EvaluatedService } from "../lib/deployment-config.js";
@@ -21,6 +22,10 @@ const RUN_POLL_INTERVAL_MS = 3_000;
 // builder's own hard timeout is 15 minutes.
 const RUN_POLL_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+// How long the deploy waits for the build-log follower to finish writing after
+// the deployment itself is done. Bounded so a wedged log stream can only ever
+// delay the summary, never withhold it.
+const BUILD_LOG_DRAIN_TIMEOUT_MS = 15_000;
 
 export type DeployOptions = {
   serviceId?: string,
@@ -32,6 +37,9 @@ export type DeployOptions = {
   // into one project — so a deploy must not silently publish whichever config
   // file happens to sit next to the deploy file.
   configPush?: boolean,
+  // Commander's `--no-build-logs`: undefined/true stream the remote build's
+  // output into this terminal, false leaves the deploy reporting status only.
+  buildLogs?: boolean,
 };
 
 /**
@@ -139,6 +147,45 @@ async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<R
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+/**
+ * Awaits `promise`, giving up after `ms`. The timer is cleared either way, so
+ * winning the race doesn't leave a pending timeout holding the process open for
+ * the rest of the window.
+ */
+async function awaitAtMost(promise: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+  const timeout = new Promise<void>((resolvePromise) => {
+    timer = setTimeout(resolvePromise, ms);
+  });
+  try {
+    await Promise.race([promise, timeout]);
+  } finally {
+    // Cleared whichever side won: a pending timer would otherwise hold the
+    // event loop open for the rest of the window after a fast drain.
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * followBuildLogs, with any failure of the log stream ITSELF reduced to a
+ * warning. Wrapped rather than left bare because this promise is only awaited
+ * once the deploy is over: an unhandled rejection in the meantime would be
+ * reported as a crash, and a build log that cannot be read is a degraded
+ * deploy, never a failed one.
+ */
+async function followBuildLogsSafely(options: FollowBuildLogsOptions): Promise<void> {
+  try {
+    await followBuildLogs(options);
+  } catch (error) {
+    console.error(`Warning: stopped streaming the build logs (${errorMessage(error)}). They are still readable in the dashboard.`);
+  }
+}
+
+/** The build-log endpoint for one deployment. */
+export function deploymentBuildLogsUrl(apiUrl: string, deploymentId: string): string {
+  return `${apiUrl.replace(/\/$/, "")}/api/latest/deployments/deployments/${encodeURIComponent(deploymentId)}/logs`;
 }
 
 export function collectPublicUrls(deploySet: string[], services: Map<string, EvaluatedService>, results: Map<string, ServiceDeployResult>) {
@@ -434,6 +481,7 @@ export function registerDeployCommand(program: Command) {
     .option("--config-push", "Also push the project config file's `config` export to the project before deploying")
     .option("--config-file <path>", "Path to the project config file for --config-push (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
+    .option("--no-build-logs", "Don't stream the remote build's output; report service status only")
     .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.\nSecrets: values for secret() env vars are read from the dashboard (Project Settings > Secrets); the deploy fails up front and lists every secret that still needs a value there.")
     .action(async (opts: DeployOptions) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
@@ -595,6 +643,32 @@ export function registerDeployCommand(program: Command) {
       const deploymentId = deploymentResponse.id;
       console.error(`Deployment #${deploymentResponse.number} started. ${buildsFromSource ? "Waiting for the remote build..." : "Nothing to build — waiting for the services to come up..."}`);
 
+      // Stream the remote build's output into this terminal while it runs. A
+      // deploy is mostly one long remote build, and until now the only way to
+      // see what it was doing was to open the dashboard — which is no help at
+      // all in CI, where the build output IS the reason the job failed.
+      //
+      // Skipped when nothing is built from source (an all-prebuilt deploy has
+      // no builder and no log), and opt-out via --no-build-logs for callers that
+      // only want the status lines.
+      const streamBuildLogs = buildsFromSource && opts.buildLogs !== false;
+      // Flipped the moment the deployment reaches a terminal state, which is
+      // what bounds the follower: the build cannot still be producing output
+      // once the deploy is over.
+      let deploymentFinished = false;
+      const buildLogsAbort = new AbortController();
+      const buildLogsFollower = streamBuildLogs
+        ? followBuildLogsSafely({
+          url: deploymentBuildLogsUrl(auth.apiUrl, deploymentId),
+          getAuthHeaders: authHeaders,
+          isDeploymentFinished: () => deploymentFinished,
+          // Build output goes to stderr with everything else the deploy reports,
+          // so stdout stays exactly the JSON summary and nothing more.
+          write: (line) => console.error(line),
+          signal: buildLogsAbort.signal,
+        })
+        : null;
+
       // try/finally: the deployment row exists from here on, and a client that
       // dies leaves it reading as in-flight forever — so whatever happens, the
       // server has to be told this client has stopped.
@@ -607,7 +681,21 @@ export function registerDeployCommand(program: Command) {
       });
       let outcome: { status: string, error: string | null, services: ServiceDeployResult[] };
       try {
-        outcome = await waitForDeployment({ auth, authHeaders, deploymentId });
+        // Nested so the build log always finishes writing BEFORE anything else
+        // is printed: the outer catch's dashboard link and the summary below
+        // both describe the log, and either one landing in the middle of it
+        // would read as part of the build's own output.
+        try {
+          outcome = await waitForDeployment({ auth, authHeaders, deploymentId });
+        } finally {
+          deploymentFinished = true;
+          if (buildLogsFollower !== null) {
+            await awaitAtMost(buildLogsFollower, BUILD_LOG_DRAIN_TIMEOUT_MS);
+            // Whether it drained or timed out, it must not write again — a line
+            // arriving after the summary would attach itself to the wrong thing.
+            buildLogsAbort.abort();
+          }
+        }
       } catch (error) {
         // A client that stopped waiting has not stopped the DEPLOYMENT: it is
         // still there, still has a log, and is exactly what the user now needs
