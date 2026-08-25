@@ -261,9 +261,24 @@ describe("the dashboard link a deploy prints", () => {
   });
 
   it("survives a configured dashboard URL with a trailing slash", () => {
-    // Printed, never fetched — it must not throw on whatever is configured.
     expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/" }))
       .toBe("https://app.example.com/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("keeps a base path, and does not let a query or fragment swallow the route", () => {
+    // REGRESSION: interpolating the configured base put the whole route inside
+    // its query string, so the link navigated nowhere. Same failure lib/app.ts's
+    // onboardingUrlFor already guarded against.
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/console" }))
+      .toBe("https://app.example.com/console/projects/proj-1/deployments?deploymentId=dep-1");
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "https://app.example.com/console?tenant=one#settings" }))
+      .toBe("https://app.example.com/console/projects/proj-1/deployments?deploymentId=dep-1");
+  });
+
+  it("falls back rather than throwing on a dashboard URL that is not a URL", () => {
+    // Configured values are unvalidated, and this is printed, never fetched.
+    expect(deploymentDashboardUrl({ ...base, dashboardUrl: "not-a-url" }))
+      .toBe("not-a-url/projects/proj-1/deployments?deploymentId=dep-1");
   });
 
   it("escapes ids rather than pasting them into the URL", () => {

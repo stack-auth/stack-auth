@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deploymentStateForApply } from "./services.js";
+import { deploymentStateForApply, reportedDigest } from "./services.js";
 import type { ServiceState } from "./types.js";
 
 // The image the spec named. Every outcome reports one — including a failure,
@@ -103,5 +103,33 @@ describe("the deployment outcome of one service's apply", () => {
       .toMatchObject({ status: "failed", error: "a connection could not be resolved" });
     expect(deploymentStateForApply("web", IMAGE, { revision: "r1", imageRef: null, state: state({ status: "failed" }) }))
       .toMatchObject({ status: "failed", error: "web failed to deploy" });
+  });
+});
+
+describe("the digest Fly reports for a machine", () => {
+  const machine = (imageRef: unknown) => ({ image_ref: imageRef } as Parameters<typeof reportedDigest>[0]);
+  const digest = `sha256:${"c".repeat(64)}`;
+
+  it("is the digest when Fly reports one", () => {
+    expect(reportedDigest(machine({ digest }))).toBe(digest);
+  });
+
+  it("is null when Fly reports no image_ref, or no digest in it", () => {
+    expect(reportedDigest(machine(undefined))).toBeNull();
+    expect(reportedDigest(machine({ registry: "docker-hub-mirror.fly.io" }))).toBeNull();
+  });
+
+  it("is null for an EMPTY digest, which a null check alone would let through", () => {
+    // REGRESSION: `image_ref.digest` is optional and typed as a plain string, so
+    // "" is inside its declared type — and `?? null` is nullish-only. It reached
+    // pinToDigest and was recorded as `docker.io/library/redis@`: an image
+    // reference, stored as what ran, naming nothing.
+    expect(reportedDigest(machine({ digest: "" }))).toBeNull();
+  });
+
+  it("is null for anything that is not a sha256 digest", () => {
+    expect(reportedDigest(machine({ digest: "latest" }))).toBeNull();
+    expect(reportedDigest(machine({ digest: "sha256:nothex" }))).toBeNull();
+    expect(reportedDigest(machine({ digest: `sha512:${"c".repeat(128)}` }))).toBeNull();
   });
 });

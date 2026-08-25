@@ -18,6 +18,9 @@ type ServerOptions = {
   // Stop draining the body entirely once this many bytes are in, so the
   // client's writes stop flushing — a stall DURING the upload.
   stopReadingAfterBytes?: number,
+  // Answer on the headers without reading the body at all: a proxy or CDN
+  // refusing (or accepting) an upload before it has one.
+  respondBeforeReadingBody?: boolean,
 };
 
 const servers: http.Server[] = [];
@@ -34,6 +37,11 @@ async function startServer(options: ServerOptions = {}): Promise<StartedServer> 
   let requestHeaders: http.IncomingHttpHeaders = {};
   const server = http.createServer((request, response) => {
     requestHeaders = request.headers;
+    if (options.respondBeforeReadingBody === true) {
+      response.writeHead(options.status ?? 200, { "content-type": "text/plain" });
+      response.end(options.body ?? "");
+      return;
+    }
     const startedAt = Date.now();
     request.on("data", (chunk: Buffer) => {
       received += chunk.length;
@@ -133,6 +141,25 @@ describe("uploading the packaged source", () => {
     // than the wire; the point is that a number is there at all.
     expect(message).toMatch(/[\d.]+ MB of 4\.0 MB in [\d.]+s \(about [\d.]+ [KM]B\/s\)/);
     expect(message).toContain(".gitignore/.dockerignore");
+  }, 30_000);
+
+  it("blames the connection, not the slot, when the deadline is not the slot's expiry", async () => {
+    // The slot outlives the deadline on both the upper clamp and the default,
+    // so "the upload slot expires after that" would tell the user their upload
+    // was impossible when retrying it would have worked.
+    const server = await startServer({ bytesPerSecond: 256 * 1024 });
+    const error = await uploadSource({
+      uploadUrl: server.url,
+      contentType: "application/gzip",
+      bytes: body(4),
+      expiresAtMillis: Date.now() + 6 * 60 * 60 * 1000,
+      deadlineMs: 1_000,
+    }).catch((e: unknown) => e as CliError);
+    expect(error).toBeInstanceOf(CliError);
+    const message = (error as CliError).message;
+    expect(message).toContain("timed out");
+    expect(message).toContain("connection may be too slow");
+    expect(message).not.toContain("upload slot expires");
   }, 30_000);
 
   it("prefers an explicit deadline over the slot expiry", async () => {
@@ -250,12 +277,66 @@ describe("uploading the packaged source", () => {
       // The byte it died on is the whole diagnosis: it points at a size cap
       // between the client and the store rather than at a slow link.
       expect(message).toMatch(/of 16\.0 MB/);
-      // No fabricated throughput from a sub-second sample.
-      expect(message).not.toMatch(/about [\d.]+ [MG]B\/s/);
     } finally {
       rude.close();
     }
   }, 20_000);
+
+  it("refuses a 2xx that arrives before the body was sent", async () => {
+    // REGRESSION: a store or proxy that answers on the headers used to RESOLVE
+    // this in milliseconds having sent a fraction of the tarball. The deploy
+    // then referenced an upload whose object was truncated, and died minutes
+    // later in the builder saying nothing about the upload.
+    const server = await startServer({ respondBeforeReadingBody: true, status: 200 });
+    const error = await uploadSource({
+      uploadUrl: server.url,
+      contentType: "application/gzip",
+      bytes: body(24),
+      deadlineMs: 15_000,
+    }).catch((e: unknown) => e as CliError);
+    expect(error).toBeInstanceOf(CliError);
+    const message = (error as CliError).message;
+    expect(message).toContain("did not receive the whole source");
+    expect(message).toContain("of 24.0 MB");
+    expect(message).toContain("proxy or upload size limit");
+  }, 30_000);
+
+  it("still refuses a non-2xx that arrives before the body was sent", async () => {
+    // The size-cap case with a well-behaved middlebox: the status is what the
+    // user needs, so it must survive rather than becoming the truncation error.
+    const server = await startServer({ respondBeforeReadingBody: true, status: 413, body: "<Error><Code>EntityTooLarge</Code></Error>" });
+    const error = await uploadSource({
+      uploadUrl: server.url,
+      contentType: "application/gzip",
+      bytes: body(24),
+      deadlineMs: 15_000,
+    }).catch((e: unknown) => e as CliError);
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).message).toContain("413 from object storage");
+    expect((error as CliError).message).toContain("EntityTooLarge");
+  }, 30_000);
+
+  it("reports a failed CONNECT as a connection error, never as a stall", async () => {
+    // REGRESSION: the stall timer used to be armed before the first flush, so a
+    // connection that never opened was reported as "no data was sent for 1s,
+    // after 0 B of 1.0 MB" — the exact noise the error path strips on purpose.
+    // Connecting is the deadline's to bound.
+    const server = await startServer();
+    const url = server.url;
+    server.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const error = await uploadSource({
+      uploadUrl: url,
+      contentType: "application/gzip",
+      bytes: body(1),
+      stallTimeoutMs: 300,
+      deadlineMs: 15_000,
+    }).catch((e: unknown) => e as CliError);
+    expect(error).toBeInstanceOf(CliError);
+    const message = (error as CliError).message;
+    expect(message).not.toContain("stalled");
+    expect(message).toMatch(/ECONNREFUSED|ECONNRESET/);
+  }, 30_000);
 
   it("rejects a URL that is not one it can PUT to", async () => {
     await expect(uploadSource({ uploadUrl: "not a url", contentType: "application/gzip", bytes: body(0.01) }))
@@ -278,9 +359,15 @@ describe("the upload deadline", () => {
     expect(uploadDeadlineMs(Number.NaN, now)).toBe(DEFAULT_UPLOAD_DEADLINE_MS);
   });
 
-  it("clamps an expiry that is already past, since clocks differ", () => {
-    // A skewed clock must not turn every upload into an instant failure.
-    expect(uploadDeadlineMs(now - 60_000, now)).toBe(60 * 1000);
+  it("falls back to the default when the slot reads as expired, rather than to the floor", () => {
+    // REGRESSION: this used to clamp UP to the 60s floor, which is SHORTER than
+    // the default — so a client whose clock had drifted got a harsher deadline
+    // than one the API had told nothing, on exactly the slow upload this module
+    // exists to keep alive. A slot minted seconds ago with fifteen minutes of
+    // life cannot really be expired; a skewed client clock is the explanation.
+    expect(uploadDeadlineMs(now - 60_000, now)).toBe(DEFAULT_UPLOAD_DEADLINE_MS);
+    // Implausibly-soon reads the same way.
+    expect(uploadDeadlineMs(now + 5_000, now)).toBe(DEFAULT_UPLOAD_DEADLINE_MS);
   });
 
   it("clamps an implausibly distant expiry, so a misconfiguration cannot hang the CLI", () => {

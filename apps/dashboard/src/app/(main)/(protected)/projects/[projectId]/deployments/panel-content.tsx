@@ -375,11 +375,54 @@ function EmptyPanel({ children }: { children: React.ReactNode }) {
  * questions a large or surprising upload provokes — which files are big, and did
  * my .gitignore/.dockerignore actually exclude what I meant.
  */
-export function SourceContent({ manifest, service, isHexclave }: {
-  manifest: DeploymentSourceManifest | null,
+/** One deployment's source manifest, fetched on demand. See SourceContent. */
+function useSourceManifest(project: AdminProject, deploymentId: string | null) {
+  const [manifest, setManifest] = useState<DeploymentSourceManifest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (deploymentId == null) {
+      setManifest(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setManifest(null);
+    setError(null);
+    setLoading(true);
+    runAsynchronously(async () => {
+      try {
+        const deployment = await project.getDeployment(deploymentId);
+        if (!cancelled) setManifest(deployment.source_manifest);
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, deploymentId]);
+
+  return { manifest, error, loading };
+}
+
+export function SourceContent({ deploymentId, project, service, isHexclave }: {
+  // Read on demand rather than taken from the open deployment: the listing the
+  // board is built from is polled every few seconds and deliberately omits the
+  // manifest, which is per-deployment and can hold thousands of files. Fetched
+  // HERE, so only a reader who opens this tab pays for it.
+  deploymentId: string | null,
+  project: AdminProject,
   service: BoardService,
   isHexclave: boolean,
 }) {
+  const skip = isHexclave || service.api?.image != null || deploymentId == null;
+  const { manifest, error, loading } = useSourceManifest(project, skip ? null : deploymentId);
+
   if (isHexclave) {
     return <EmptyPanel>The Hexclave service is deployed for you from no source of yours, so this deploy packaged nothing for it.</EmptyPanel>;
   }
@@ -389,6 +432,15 @@ export function SourceContent({ manifest, service, isHexclave }: {
   // service.
   if (service.api?.image != null) {
     return <EmptyPanel>This service runs an already-built image, so no source is packaged or uploaded for it.</EmptyPanel>;
+  }
+  if (deploymentId == null) {
+    return <EmptyPanel>This service has not been deployed yet, so nothing has been packaged for it.</EmptyPanel>;
+  }
+  if (loading) {
+    return <div className="flex h-full items-center justify-center"><Spinner /></div>;
+  }
+  if (error != null) {
+    return <EmptyPanel>Could not load the source listing: {error}</EmptyPanel>;
   }
   if (manifest === null) {
     return <EmptyPanel>This deploy recorded no source listing. Deploys made before the CLI started reporting one, and deploys that built nothing, have none.</EmptyPanel>;

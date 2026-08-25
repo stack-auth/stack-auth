@@ -3,9 +3,7 @@
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
 import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
-import type { DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { XIcon } from "@phosphor-icons/react";
-import { type ReadonlyURLSearchParams, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
@@ -32,11 +30,10 @@ type ServiceDetailPaneProps = {
   // Whether that deploy produced a build log at all. An all-prebuilt deploy
   // starts no builder, so there is nothing to fetch.
   hasBuildLogs: boolean,
-  // What that deploy packaged and uploaded — one listing for the whole
-  // deployment, since one upload feeds every source-built service. Null when it
-  // packaged nothing, or predates the manifest.
-  sourceManifest: DeploymentSourceManifest | null,
   outcome: AdminDeploymentServiceOutcomeJson | null,
+  // The panel a `hexclave deploy` link named, when this is the service it named.
+  // Null for every other case, which is Overview.
+  initialTab: string | null,
   onClose: () => void,
   refresh: () => Promise<void>,
 };
@@ -60,22 +57,24 @@ const TABS: { id: PanelTabId, label: string }[] = [
 const PANEL_TAB_IDS = new Set<string>(TABS.map((tab) => tab.id));
 
 /**
- * The tab a `hexclave deploy` link asked for, or Overview.
+ * Whether a string names one of the tabs above.
  *
- * Checked against THIS service so that the panel only applies to the service
- * the link named — selecting a sibling afterwards is a fresh look at it, not a
- * continuation of the link.
+ * A predicate rather than a `Set.has` plus a cast: `Set<string>.has` does not
+ * narrow, so the cast was doing the work and would have kept compiling if the
+ * union and the set ever disagreed.
  */
-function linkedTabFor(searchParams: URLSearchParams | ReadonlyURLSearchParams, serviceId: string): PanelTabId {
-  if (searchParams.get("serviceId") !== serviceId) return "overview";
-  const panel = searchParams.get("panel");
-  return panel !== null && PANEL_TAB_IDS.has(panel) ? panel as PanelTabId : "overview";
+function isPanelTabId(value: string): value is PanelTabId {
+  return PANEL_TAB_IDS.has(value);
+}
+
+/** The tab a `hexclave deploy` link asked for, or Overview. */
+export function linkedTab(panel: string | null | undefined): PanelTabId {
+  return panel != null && isPanelTabId(panel) ? panel : "overview";
 }
 
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const { service, services, project, refresh } = props;
-  const searchParams = useSearchParams();
-  const [tab, setTab] = useState<PanelTabId>(() => linkedTabFor(searchParams, service.id));
+  const [tab, setTab] = useState<PanelTabId>(() => linkedTab(props.initialTab));
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -101,7 +100,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "source": { return <SourceContent manifest={props.sourceManifest} service={service} isHexclave={isHexclave} />; }
+      case "source": { return <SourceContent deploymentId={props.deploymentId} project={project} service={service} isHexclave={isHexclave} />; }
       case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} hasBuildLogs={props.hasBuildLogs} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }

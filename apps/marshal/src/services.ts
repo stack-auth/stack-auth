@@ -12,7 +12,7 @@ import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
 import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
-import { pinToDigest, validateImageRef } from "./image-ref.js";
+import { isImageDigest, pinToDigest, validateImageRef } from "./image-ref.js";
 import { portEntries, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
@@ -21,6 +21,13 @@ const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // on a service that declares several.
 const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)(?::([0-9]{1,5}))?$/;
 const SERVICE_KEY_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/;
+// Keys that cannot be used as an object key, which is what a service key IS
+// here — specs, images and outcomes are all records keyed by it. `__proto__` is
+// the one that breaks: `record["__proto__"] = value` invokes the prototype
+// setter and stores nothing, so the value vanishes between the write and the
+// Object.hasOwn read. Refused here as well as in the product's own id rules,
+// because this is the last line before the runtime.
+const RESERVED_SERVICE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,62}$/;
 // A bound on one deployment, not a platform limit: a deploy file declaring more
 // services than this is far likelier to be a mistake than a real source, and every
@@ -74,6 +81,7 @@ export function validateSourceId(sourceId: string): string {
 
 export function validateServiceKey(key: string): string {
   if (!SERVICE_KEY_REGEX.test(key)) throw badRequest(`invalid service key ${JSON.stringify(key)}`);
+  if (RESERVED_SERVICE_KEYS.has(key)) throw badRequest(`service key ${JSON.stringify(key)} is reserved and cannot be used`);
   return key;
 }
 
@@ -708,6 +716,21 @@ function mountsDiffer(a: { volume: string, path: string }[], b: { volume: string
 }
 
 /**
+ * The digest Fly reports for a machine, or null when it reports nothing usable.
+ *
+ * VALIDATED, not merely null-checked. `image_ref.digest` is optional and typed
+ * as a plain string, so an empty or malformed one is inside its declared type —
+ * and `??` is nullish-only, so `""` would sail past a null check and compose
+ * into `docker.io/library/redis@`: a reference recorded as "what ran" that names
+ * nothing. The null the callers already handle is the right answer for anything
+ * that is not a digest.
+ */
+export function reportedDigest(machine: FlyMachine): string | null {
+  const digest = machine.image_ref?.digest;
+  return digest !== undefined && isImageDigest(digest) ? digest : null;
+}
+
+/**
  * Rolls the service's machines onto `imageRef`, and reports the image Fly says
  * slot 0 is actually running.
  *
@@ -800,7 +823,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     // stays down forever. Autostoppable slots are meant to be stopped, so leave those.
     const pinned = slot < pinnedMachineCount(stored.spec);
     if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash && (existingStarted || !pinned)) {
-      if (slot === 0) runningDigest = existing.image_ref?.digest ?? null;
+      if (slot === 0) runningDigest = reportedDigest(existing);
       continue;
     }
     if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash) {
@@ -813,7 +836,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         // Already booting / raced — the wait below arbitrates.
       }
       await fly.waitForMachineState(appName, existing.id, "started", { instanceId: existing.instance_id, totalTimeoutSeconds: 120 });
-      if (slot === 0) runningDigest = existing.image_ref?.digest ?? null;
+      if (slot === 0) runningDigest = reportedDigest(existing);
       continue;
     }
     if (existing !== undefined) {
@@ -832,7 +855,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         }
       }
       await fly.waitForMachineState(appName, updated.id, "started", { instanceId: updated.instance_id, totalTimeoutSeconds: 120 });
-      if (slot === 0) runningDigest = updated.image_ref?.digest ?? null;
+      if (slot === 0) runningDigest = reportedDigest(updated);
     } else {
       await lease.assertOwned();
       const created = await fly.createMachine(appName, {
@@ -841,7 +864,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         config: desired,
       });
       await fly.waitForMachineState(appName, created.id, "started", { instanceId: created.instance_id, totalTimeoutSeconds: 120 });
-      if (slot === 0) runningDigest = created.image_ref?.digest ?? null;
+      if (slot === 0) runningDigest = reportedDigest(created);
     }
   }
   for (const machine of [...bySlot.values(), ...extras]) {
@@ -1122,7 +1145,12 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
     //     build has already run.
     // An author who wants none of that writes a digest, which is fixed by
     // definition. `pinToDigest` records which bytes actually ran either way.
-    const prebuiltImages: Record<string, string> = {};
+    // Prototype-less: a service key is author-chosen and `__proto__` passes the
+    // id rules, but `{}["__proto__"] = ref` invokes the prototype setter instead
+    // of creating an own property — so the image would vanish and the deploy
+    // would fail with "no image was built for __proto__". `lookup` already reads
+    // through Object.hasOwn; this makes the WRITE agree with it.
+    const prebuiltImages: Record<string, string> = Object.create(null);
     for (const target of prebuiltTargets) {
       prebuiltImages[target.service_key] = validateImageRef(target.image, `target ${target.service_key} image`).canonical;
     }
@@ -1389,7 +1417,8 @@ export async function completeBuild(options: {
  */
 function parseBuildImages(metadataJson: string | null, deployment: StoredDeployment): Record<string, string> {
   const config = getConfig();
-  const images: Record<string, string> = {};
+  // Prototype-less for the same reason as prebuiltImages: see startSourceDeployment.
+  const images: Record<string, string> = Object.create(null);
   let parsed: unknown;
   try {
     parsed = metadataJson === null ? null : JSON.parse(metadataJson);

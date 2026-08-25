@@ -3,6 +3,7 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { getInternalUser } from "../lib/app.js";
+import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
@@ -179,15 +180,25 @@ export function deploymentDashboardUrl(options: {
   /** Whether to land on that service's build log rather than its overview. */
   buildLogs?: boolean,
 }): string {
-  // Configured dashboard URLs are unvalidated and may carry a trailing slash;
-  // this is printed, never fetched, so it must not throw on a malformed one.
-  const base = options.dashboardUrl.replace(/\/+$/, "");
   const params = new URLSearchParams({ deploymentId: options.deploymentId });
   if (options.serviceId != null && options.serviceId !== "") {
     params.set("serviceId", options.serviceId);
     if (options.buildLogs === true) params.set("panel", "build-logs");
   }
-  return `${base}/projects/${encodeURIComponent(options.projectId)}/deployments?${params.toString()}`;
+  const route = `/projects/${encodeURIComponent(options.projectId)}/deployments`;
+  // Built through URL, not interpolated: a configured base carrying a query or
+  // fragment would otherwise swallow the whole route into it and the link would
+  // not navigate anywhere. Same shape as onboardingUrlFor in lib/app.ts, which
+  // solved this first — including the fallback, because a configured dashboard
+  // URL is unvalidated and this is printed, never fetched, so it must not throw.
+  const parsed = createUrlIfValid(options.dashboardUrl);
+  if (parsed == null) {
+    return `${options.dashboardUrl.replace(/\/+$/, "")}${route}?${params.toString()}`;
+  }
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, "")}${route}`;
+  parsed.search = params.toString();
+  parsed.hash = "";
+  return parsed.toString();
 }
 
 /**
@@ -622,20 +633,23 @@ export function registerDeployCommand(program: Command) {
         const result = results.get(serviceId) ?? { serviceId, status: "pending" as const, url: null, error: null };
         console.error(`  ${serviceId}: ${result.status}${result.url != null ? ` — ${result.url}` : ""}${result.error != null ? ` — ${result.error}` : ""}`);
       }
-      const publicUrls = collectPublicUrls(deploySet, services, results);
-      if (publicUrls.length > 0) {
-        console.error("");
-        console.error("Public URLs:");
-        for (const publicUrl of publicUrls) console.error(`  ${publicUrl.serviceId}: ${publicUrl.url}`);
-      }
-
       // Printed whatever happened. A failed deploy is the obvious case — the
       // build log is the next thing anyone asks for, and this is how they reach
       // it without being told where to click — but a green one has a log worth
       // reading too, and the link is also the shareable name of what just ran.
-      // `panel=build-logs` only when a builder actually ran: an all-prebuilt
-      // deploy has no log, so pointing at that tab would open an empty one.
+      //
+      // BEFORE collectPublicUrls, which throws when a deploy-set service has no
+      // outcome at all (a canceled deploy, or one that failed before every
+      // service got a row — the loop above has a `?? pending` fallback for
+      // exactly that). Printed after it, the one deploy most in need of the link
+      // was the one that never got it.
       const failedService = firstFailedService(deploySet, results);
+      // Per-SERVICE, not per-deploy: `buildsFromSource` is true if ANY service
+      // builds from source, so a mixed deploy whose PREBUILT service failed
+      // would link to a build-logs tab holding a sibling's log — which never
+      // mentions the failed service. Worse than not linking to the tab at all.
+      const failedServiceBuilt = failedService !== null
+        && services.get(failedService)?.definition.image === undefined;
       const deploymentUrl = failedService === null
         ? deploymentUrlBase
         : deploymentDashboardUrl({
@@ -643,13 +657,20 @@ export function registerDeployCommand(program: Command) {
           projectId: auth.projectId,
           deploymentId,
           serviceId: failedService,
-          buildLogs: buildsFromSource,
+          buildLogs: failedServiceBuilt,
         });
       console.error("");
-      console.error(failedService != null && buildsFromSource
+      console.error(failedServiceBuilt
         ? `Build logs for ${failedService}:`
         : "View this deployment:");
       console.error(`  ${deploymentUrl}`);
+
+      const publicUrls = collectPublicUrls(deploySet, services, results);
+      if (publicUrls.length > 0) {
+        console.error("");
+        console.error("Public URLs:");
+        for (const publicUrl of publicUrls) console.error(`  ${publicUrl.serviceId}: ${publicUrl.url}`);
+      }
 
       console.log(JSON.stringify({
         deploymentId,

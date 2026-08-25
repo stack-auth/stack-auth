@@ -1328,7 +1328,12 @@ function marshalDeploymentStatus(deployment: MarshalDeployment): DeploymentStatu
 
 function outcomesFromMarshal(deployment: MarshalDeployment, plannedServiceIds: string[]): Record<string, DeploymentServiceOutcome> {
   const byKey = new Map(deployment.services.map((service) => [service.service_key, service]));
-  const outcomes: Record<string, DeploymentServiceOutcome> = {};
+  // Prototype-less: a service id is author-chosen and `__proto__` passes the id
+  // rules, but `{}["__proto__"] = outcome` invokes the prototype setter instead
+  // of creating an own property. parseStoredOutcomes reads with Object.entries,
+  // so the outcome vanished between the two and the service showed as forever
+  // "pending" no matter what the runtime reported.
+  const outcomes: Record<string, DeploymentServiceOutcome> = Object.create(null);
   for (const serviceId of plannedServiceIds) {
     const reported = byKey.get(serviceId);
     if (reported === undefined) {
@@ -1555,6 +1560,17 @@ const DEPLOYMENT_STATUS_TO_API = {
   CANCELED: "canceled",
 } satisfies Record<DeploymentStatus, DeploymentApiShape["status"]>;
 
+/**
+ * `full` includes the source manifest; `summary` omits it.
+ *
+ * The manifest is per-deployment and can hold MAX_SOURCE_MANIFEST_ENTRIES files,
+ * and the dashboard polls the LIST endpoint every few seconds while a deploy is
+ * in flight. Shipping every manifest in every page of that poll costs orders of
+ * magnitude more than the listing itself, to populate a tab the reader may never
+ * open — so only the single-deployment read carries it.
+ */
+export type DeploymentApiDetail = "full" | "summary";
+
 export function deploymentToApiShape(deployment: {
   id: string,
   number: number,
@@ -1567,9 +1583,9 @@ export function deploymentToApiShape(deployment: {
   hasBuildLogs: boolean,
   plannedServiceIds: Prisma.JsonValue,
   services: Prisma.JsonValue,
-  sourceManifest?: Prisma.JsonValue,
+  sourceManifest: Prisma.JsonValue | null,
   source: { sourceId: string },
-}): DeploymentApiShape {
+}, detail: DeploymentApiDetail = "full"): DeploymentApiShape {
   const outcomes = parseStoredOutcomes(deployment.services);
   const plannedServiceIds = parsePlannedServiceIds(deployment.plannedServiceIds);
   // Union, planned order first: an outcome whose service is missing from the
@@ -1592,7 +1608,7 @@ export function deploymentToApiShape(deployment: {
     // Parsed rather than passed through: it comes out of a JSON column, so a row
     // written by an older client must degrade to "no manifest" instead of
     // reaching the dashboard as some other shape.
-    source_manifest: parseSourceManifest(deployment.sourceManifest ?? null),
+    source_manifest: detail === "full" ? parseSourceManifest(deployment.sourceManifest) : null,
     services: serviceIds.map((serviceId) => {
       const outcome = outcomes.get(serviceId) ?? { status: "pending" as const };
       return {

@@ -914,6 +914,28 @@ describe("deploys against the Marshal runtime", () => {
     expect(deployment.source_manifest).toBe(null);
   });
 
+  it("refuses `__proto__` as a service id, at the door", async ({ expect }) => {
+    // REGRESSION: it used to be accepted, and then broke silently everywhere a
+    // service id keys a record — `images[key] = ref` invokes the prototype
+    // setter instead of creating an own property, so the deploy failed with "no
+    // image was built for __proto__"; and Prisma's JSON serializer drops the key
+    // outright, so the outcome stayed "pending" whatever the runtime reported.
+    // The storage layer cannot represent it, so the honest fix is to say so on
+    // the request that introduces it rather than mid-deploy.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      // A COMPUTED key: `{ __proto__: ... }` in an object literal sets the
+      // prototype rather than adding a property, so the literal form would send
+      // an empty record. The same hazard, one layer up.
+      body: { source_id: "proto-src", services: { ["__proto__"]: { type: "server", ports: {}, min_instances: 0, image: "postgres:16", env: {} } } },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("reserved");
+  });
+
   it("refuses an upload for a deployment that builds nothing", async ({ expect }) => {
     await Project.createAndSwitch();
     await InternalApiKey.createAndSetProjectKeys();

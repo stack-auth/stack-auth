@@ -106,6 +106,9 @@ export type AdminDeploymentJson = {
   // is built from it — a service's slice is the subtree under its
   // `root_directory`. Null when nothing was packaged (every service ran an
   // already-built image) and on deployments from before this was recorded.
+  //
+  // Also null on the deployments LIST, which omits it: it is per-deployment and
+  // the list is polled. Read one deployment to get its manifest.
   source_manifest: DeploymentSourceManifest | null,
   // Every service the deploy intended to ship, in the order it applied them.
   services: AdminDeploymentServiceOutcomeJson[],

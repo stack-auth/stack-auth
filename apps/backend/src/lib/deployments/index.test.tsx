@@ -133,8 +133,29 @@ describe("deploymentToApiShape", () => {
     hasBuildLogs: true,
     plannedServiceIds: ["web", "api"],
     services: { web: { status: "deployed", url: "https://web.example.com" } },
+    sourceManifest: null,
     source: { sourceId: "backend" },
     ...overrides,
+  });
+
+  it("returns the source manifest on a full read and omits it on a summary", () => {
+    // The manifest is per-deployment and the LIST endpoint is polled every few
+    // seconds while a deploy is in flight; shipping every manifest in every page
+    // of that poll costs far more than the listing itself, for a tab the reader
+    // may never open.
+    const manifest = { file_count: 1, total_bytes: 10, compressed_bytes: 4, entries: [{ path: "a.txt", bytes: 10 }] };
+    expect(deploymentRow({ sourceManifest: manifest }).source_manifest).toEqual(manifest);
+    expect(deploymentToApiShape({
+      id: "dep-1", number: 7, status: "BUILDING", triggeredBy: "cli", createdAt: new Date(1000),
+      finishedAt: null, error: null, marshalBuildId: "build-1", hasBuildLogs: true,
+      plannedServiceIds: ["web"], services: {}, sourceManifest: manifest, source: { sourceId: "backend" },
+    }, "summary").source_manifest).toBeNull();
+  });
+
+  it("reports no manifest for a row that never recorded one", () => {
+    expect(deploymentRow().source_manifest).toBeNull();
+    // A shape this server does not recognise loses the listing, not the deploy.
+    expect(deploymentRow({ sourceManifest: { file_count: "many" } }).source_manifest).toBeNull();
   });
 
   it("offers build logs only when a build actually ran", () => {

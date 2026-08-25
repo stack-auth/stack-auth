@@ -110,18 +110,42 @@ export function buildSourceManifest(options: {
 export function parseSourceManifest(value: unknown): DeploymentSourceManifest | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const number = (key: string) => typeof record[key] === "number" && Number.isFinite(record[key]) ? record[key] as number : null;
-  const fileCount = number("file_count");
-  const totalBytes = number("total_bytes");
-  const compressedBytes = number("compressed_bytes");
+  // Counts and sizes, so a negative or fractional one is not a number this
+  // describes anything with — and the UI states all three as facts about the
+  // deploy ("N files", "X on disk").
+  const count = (key: string) => {
+    const candidate = record[key];
+    return typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+  };
+  const fileCount = count("file_count");
+  const totalBytes = count("total_bytes");
+  const compressedBytes = count("compressed_bytes");
   if (fileCount === null || totalBytes === null || compressedBytes === null) return null;
   if (!Array.isArray(record.entries)) return null;
+  // Deduplicated by path: nothing upstream guarantees uniqueness (a client may
+  // send duplicates, and buildSourceManifest's own path truncation can make two
+  // long paths collide), and the dashboard keys its rows on the path.
+  const seen = new Set<string>();
   const entries = record.entries.flatMap((entry): { path: string, bytes: number }[] => {
     if (typeof entry !== "object" || entry === null) return [];
     const candidate = entry as Record<string, unknown>;
-    if (typeof candidate.path !== "string" || typeof candidate.bytes !== "number" || !Number.isFinite(candidate.bytes)) return [];
+    if (typeof candidate.path !== "string" || candidate.path === "") return [];
+    if (typeof candidate.bytes !== "number" || !Number.isInteger(candidate.bytes) || candidate.bytes < 0) return [];
+    // Bounded HERE, not only in buildSourceManifest — this is the function the
+    // server gates writes with, and the client-side cap binds nothing that
+    // reaches the database. Dropped rather than truncated: a truncated path is
+    // a path that names a different file, and it is what makes two rows collide.
+    if (candidate.path.length > MAX_SOURCE_MANIFEST_PATH_LENGTH) return [];
+    if (seen.has(candidate.path)) return [];
+    seen.add(candidate.path);
     return [{ path: candidate.path, bytes: candidate.bytes }];
-  }).slice(0, MAX_SOURCE_MANIFEST_ENTRIES);
+  })
+    // Re-established rather than trusted: the dashboard tells the reader the
+    // listing is largest-first and that anything dropped was smaller than every
+    // row shown. Both are claims about ORDER, and the order arrived from a
+    // client. Sorting here makes them true by construction.
+    .sort((a, b) => b.bytes - a.bytes || stringCompare(a.path, b.path))
+    .slice(0, MAX_SOURCE_MANIFEST_ENTRIES);
   return { file_count: fileCount, total_bytes: totalBytes, compressed_bytes: compressedBytes, entries };
 }
 
@@ -1476,4 +1500,55 @@ import.meta.vitest?.test("sourceManifestEntriesForService reports truncation as 
   expect(sourceManifestEntriesForService(manifest, "web").truncated).toBe(true);
   const small = buildSourceManifest({ files: [{ path: "web/a", bytes: 1 }], compressedBytes: 1 });
   expect(sourceManifestEntriesForService(small, "web").truncated).toBe(false);
+});
+
+import.meta.vitest?.test("parseSourceManifest bounds path length, which the CLI-side cap does not", ({ expect }) => {
+  // REGRESSION: MAX_SOURCE_MANIFEST_PATH_LENGTH was applied only in
+  // buildSourceManifest — the CLI. This is the function the server gates writes
+  // with, so an API client could store 2000 entries of arbitrarily long paths in
+  // a JSON column that nothing prunes.
+  const long = "a".repeat(MAX_SOURCE_MANIFEST_PATH_LENGTH + 1);
+  const parsed = parseSourceManifest({
+    file_count: 2, total_bytes: 2, compressed_bytes: 1,
+    entries: [{ path: long, bytes: 1 }, { path: "ok.txt", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "ok.txt", bytes: 1 }]);
+});
+
+import.meta.vitest?.test("parseSourceManifest re-establishes largest-first order", ({ expect }) => {
+  // The dashboard states "largest first" and "the rest are smaller than every
+  // file shown" — claims about order, on data that arrived from a client.
+  const parsed = parseSourceManifest({
+    file_count: 3, total_bytes: 60, compressed_bytes: 20,
+    entries: [{ path: "a", bytes: 10 }, { path: "b", bytes: 50 }, { path: "c", bytes: 1 }],
+  });
+  expect(parsed?.entries.map((entry) => entry.bytes)).toEqual([50, 10, 1]);
+});
+
+import.meta.vitest?.test("parseSourceManifest keeps the LARGEST when a client overflows the cap", ({ expect }) => {
+  // Sorting has to happen before the slice, or the cap would keep whichever
+  // entries the client happened to send first.
+  const entries = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 10 }, (_, index) => ({ path: `f${index}`, bytes: index }));
+  const parsed = parseSourceManifest({ file_count: entries.length, total_bytes: 1, compressed_bytes: 1, entries });
+  expect(parsed?.entries).toHaveLength(MAX_SOURCE_MANIFEST_ENTRIES);
+  expect(parsed?.entries[0]?.bytes).toBe(entries.length - 1);
+});
+
+import.meta.vitest?.test("parseSourceManifest drops duplicate paths, which the dashboard keys on", ({ expect }) => {
+  const parsed = parseSourceManifest({
+    file_count: 2, total_bytes: 3, compressed_bytes: 1,
+    entries: [{ path: "dup", bytes: 2 }, { path: "dup", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "dup", bytes: 2 }]);
+});
+
+import.meta.vitest?.test("parseSourceManifest refuses negative and fractional totals", ({ expect }) => {
+  // They render as facts about the deploy: "-1 B on disk" is not one.
+  expect(parseSourceManifest({ file_count: 1, total_bytes: -1, compressed_bytes: 1, entries: [] })).toBeNull();
+  expect(parseSourceManifest({ file_count: 1.5, total_bytes: 1, compressed_bytes: 1, entries: [] })).toBeNull();
+  const parsed = parseSourceManifest({
+    file_count: 1, total_bytes: 1, compressed_bytes: 1,
+    entries: [{ path: "a", bytes: -5 }, { path: "b", bytes: 1.5 }, { path: "c", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "c", bytes: 1 }]);
 });

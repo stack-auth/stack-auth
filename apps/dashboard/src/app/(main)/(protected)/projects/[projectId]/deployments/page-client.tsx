@@ -5,7 +5,8 @@ import { getAppStageLabel } from "@/lib/apps-utils";
 import { cn } from "@/components/ui";
 import type { AdminDeploymentJson } from "@hexclave/next";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/components/router";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -42,20 +43,50 @@ export default function PageClient() {
   // from the list rather than fetched here, because the list owns the poll that
   // keeps it fresh — so this waits for the first load and opens the match.
   const searchParams = useSearchParams();
-  const linkedDeploymentId = searchParams.get("deploymentId");
-  // Applied once. Without the guard every poll would reopen the linked
-  // deployment, and a user who clicked "All deployments" could never leave it.
+  const router = useRouter();
+  const pathname = usePathname();
+  // Captured on the FIRST render, before the params are stripped below. The
+  // components that consume `serviceId` and `panel` mount only once a deployment
+  // is open, so reading the URL from inside them would race the strip — they take
+  // these as props instead.
+  const [linked] = useState(() => ({
+    deploymentId: searchParams.get("deploymentId"),
+    serviceId: searchParams.get("serviceId"),
+    panel: searchParams.get("panel"),
+  }));
+  const linkedDeploymentId = linked.deploymentId;
+  // CONSUMED, not just applied-once. A ref guard alone was not enough: it lives
+  // on a mount, and the components below it are conditionally rendered — so
+  // clicking "All deployments" unmounted the board, reset its guard, and left
+  // `serviceId` in the URL to be re-applied to the next deployment the user
+  // opened. Stripping the params after the first read is what actually makes
+  // the link a one-time instruction, and it is what keeps a browser reload from
+  // yanking the user back into it too.
   const appliedLink = useRef(false);
+  const consumeLinkParams = () => {
+    if (linked.deploymentId === null && linked.serviceId === null) return;
+    const remaining = new URLSearchParams(searchParams.toString());
+    for (const key of ["deploymentId", "serviceId", "panel"]) remaining.delete(key);
+    const query = remaining.toString();
+    // `replace`, so Back goes where the user came from rather than back into
+    // the link they just consumed.
+    router.replace(query === "" ? pathname : `${pathname}?${query}`);
+  };
   const handleDeploymentsLoaded = (loaded: AdminDeploymentJson[]) => {
     setDeployments(loaded);
     if (appliedLink.current || linkedDeploymentId === null) return;
     appliedLink.current = true;
-    // A link to a deployment this project no longer has just lands on the list,
-    // which is the honest thing to show and needs no error of its own.
+    // A link to a deployment this project no longer has — or one older than the
+    // page the list loads — lands on the list, which is the honest thing to show
+    // and needs no error of its own.
     const match = loaded.find((deployment) => deployment.id === linkedDeploymentId);
-    if (match === undefined) return;
-    setOpenDeploymentId(match.id);
-    setOpenDeployment(match);
+    if (match !== undefined) {
+      setOpenDeploymentId(match.id);
+      setOpenDeployment(match);
+    }
+    // Cleared either way: a link that found nothing has still been acted on, and
+    // leaving it in the URL would re-fire it on the next deployment opened.
+    consumeLinkParams();
   };
 
   return (
@@ -103,7 +134,14 @@ export default function PageClient() {
             contents are absolutely positioned, so it has to be a direct child of PageLayout's
             flex column — inside a plain block wrapper the `flex-1` resolves against nothing
             and the board collapses to zero height. */}
-        {isOpen && <BoardCanvas deployment={openDeployment} deployments={deployments} />}
+        {isOpen && (
+          <BoardCanvas
+            deployment={openDeployment}
+            deployments={deployments}
+            linkedServiceId={linked.serviceId}
+            linkedPanel={linked.panel}
+          />
+        )}
       </PageLayout>
     </AppEnabledGuard>
   );

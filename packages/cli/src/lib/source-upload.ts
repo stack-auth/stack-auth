@@ -76,11 +76,35 @@ export type UploadSourceOptions = {
   deadlineMs?: number,
 };
 
-/** The deadline to enforce, in ms from now, clamped to something sane. */
+/**
+ * The deadline to enforce, in ms from now.
+ *
+ * A slot that reads as already expired — or as expiring implausibly soon — is
+ * almost always a skewed CLIENT clock, not a dead slot: the slot is minted
+ * seconds before the upload with fifteen minutes of life. So that case falls
+ * back to the default rather than to the floor. Clamping it to the floor was
+ * worse than useless: a laptop resumed from suspend got a SIXTY-SECOND deadline,
+ * shorter than if the API had said nothing at all, on exactly the slow upload
+ * this module exists to keep alive.
+ */
 export function uploadDeadlineMs(expiresAtMillis: number | null | undefined, now: number): number {
   if (typeof expiresAtMillis !== "number" || !Number.isFinite(expiresAtMillis)) return DEFAULT_UPLOAD_DEADLINE_MS;
   const remaining = expiresAtMillis - now;
-  return Math.min(MAX_UPLOAD_DEADLINE_MS, Math.max(MIN_UPLOAD_DEADLINE_MS, remaining));
+  if (remaining < MIN_UPLOAD_DEADLINE_MS) return DEFAULT_UPLOAD_DEADLINE_MS;
+  return Math.min(MAX_UPLOAD_DEADLINE_MS, remaining);
+}
+
+/**
+ * Whether the deadline really is the moment the slot dies.
+ *
+ * Only then may a timeout claim the slot expired. On the other two paths — the
+ * upper clamp, and the default when the API said nothing — the slot outlives the
+ * deadline, and saying otherwise tells the user their upload was impossible when
+ * retrying it would have worked.
+ */
+function deadlineIsSlotExpiry(expiresAtMillis: number | null | undefined, now: number, deadlineMs: number): boolean {
+  if (typeof expiresAtMillis !== "number" || !Number.isFinite(expiresAtMillis)) return false;
+  return expiresAtMillis - now === deadlineMs;
 }
 
 export function formatBytes(bytes: number): string {
@@ -142,10 +166,18 @@ export async function uploadSource(options: UploadSourceOptions): Promise<void> 
   }
 
   const total = bytes.byteLength;
-  const startedAt = Date.now();
-  const deadlineMs = options.deadlineMs ?? uploadDeadlineMs(options.expiresAtMillis, startedAt);
+  // Two clocks on purpose. The DEADLINE is derived from a wall-clock instant the
+  // server chose (`expires_at_millis`), so it has to be compared against the
+  // wall clock. Everything measured here is a duration, so it uses the monotonic
+  // one: an upload may legitimately run for fifteen minutes, which is ample room
+  // for an NTP step or a resume-from-suspend to invent a negative elapsed time.
+  const deadlineWallClock = Date.now();
+  const deadlineMs = options.deadlineMs ?? uploadDeadlineMs(options.expiresAtMillis, deadlineWallClock);
+  const slotExpiryIsTheDeadline = options.deadlineMs === undefined
+    && deadlineIsSlotExpiry(options.expiresAtMillis, deadlineWallClock, deadlineMs);
+  const startedAt = performance.now();
   const stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
-  const elapsed = () => Date.now() - startedAt;
+  const elapsed = () => performance.now() - startedAt;
   // Bytes the stream has confirmed it flushed, not bytes handed to write() —
   // the difference is a socket buffer, and overstating progress in a timeout
   // message is exactly the wrong direction.
@@ -165,7 +197,9 @@ export async function uploadSource(options: UploadSourceOptions): Promise<void> 
     let deadlineTimer: NodeJS.Timeout | undefined = setTimeout(() => {
       fail(new CliError([
         `Uploading the packaged source timed out after ${formatDuration(deadlineMs)}: ${progressSummary(sent, total, elapsed())}.`,
-        `The upload slot expires after that, so a slower upload cannot finish. ${TOO_LARGE_HINT}`,
+        slotExpiryIsTheDeadline
+          ? `The upload slot expires after that, so a slower upload cannot finish. ${TOO_LARGE_HINT}`
+          : `Your connection may be too slow for a source this size. ${TOO_LARGE_HINT}`,
       ].join("\n")));
     }, deadlineMs);
     // Never let the deadline hold the event loop open on its own; the request
@@ -221,6 +255,15 @@ export async function uploadSource(options: UploadSourceOptions): Promise<void> 
       ));
     });
 
+    // Backstop. Everything above settles on `error` or `response`; if the socket
+    // were ever to close without either, the promise would stay pending with
+    // both timers unref'd and nothing else on the loop — so node would exit 0
+    // with no output, and a deploy that uploaded nothing would read as success.
+    // No known path reaches this; that is exactly why it is cheap to keep.
+    request.on("close", () => {
+      fail(new CliError(`The source upload connection closed unexpectedly after ${progressSummary(sent, total, elapsed())}. Check your network connection and try again.`));
+    });
+
     request.on("response", (response) => {
       const status = response.statusCode ?? 0;
       const ok = status >= 200 && status < 300;
@@ -238,7 +281,23 @@ export async function uploadSource(options: UploadSourceOptions): Promise<void> 
       });
       response.on("end", () => {
         if (ok) {
-          settle(resolve);
+          // A 2xx is only a success if the store has the WHOLE body. A proxy or
+          // CDN that answers on headers — an upload cap, a misrouted request —
+          // otherwise resolves this in milliseconds having sent a fraction of
+          // the tarball, and the deploy carries on against a truncated archive
+          // that fails minutes later in the builder, saying nothing about the
+          // upload. Destroyed rather than left to the agent pool: the request
+          // was never ended, so the socket is not reusable.
+          if (!bodyWritten || sent < total) {
+            fail(new CliError(
+              `The object store answered ${status} after only ${progressSummary(sent, total, elapsed())} — it did not receive the whole source. Check for a proxy or upload size limit between you and the object store, then try again.`,
+            ));
+            return;
+          }
+          settle(() => {
+            request.destroy();
+            resolve();
+          });
           return;
         }
         const body = Buffer.concat(chunks).toString("utf-8").slice(0, 1000);
@@ -273,7 +332,10 @@ export async function uploadSource(options: UploadSourceOptions): Promise<void> 
         request.once("drain", writeNext);
       }
     }
-    armStall();
+    // NOT armed before the first flush: until then nothing has been sent, and a
+    // connection that never opens would be reported as a stall "after 0 B of
+    // 39.0 MB" — the exact noise the request-error path above strips on purpose.
+    // Connecting is the deadline's to bound, not the stall timer's.
     writeNext();
   });
 }

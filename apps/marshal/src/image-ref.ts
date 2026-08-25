@@ -38,7 +38,7 @@ export type ImageRef = {
 };
 
 /** Whether a string is a well-formed sha256 digest. */
-function isImageDigest(value: string): boolean {
+export function isImageDigest(value: string): boolean {
   return DIGEST_REGEX.test(value);
 }
 

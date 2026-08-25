@@ -71,7 +71,11 @@ export const GET = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { items: refreshed.map((deployment) => deploymentToApiShape(deployment)) },
+      // "summary": the listing omits each deployment's source manifest. The
+      // dashboard polls this every few seconds while a deploy is in flight, and
+      // only the deployment a reader actually opens needs the file list — which
+      // the single-deployment GET carries.
+      body: { items: refreshed.map((deployment) => deploymentToApiShape(deployment, "summary")) },
     };
   },
 });
