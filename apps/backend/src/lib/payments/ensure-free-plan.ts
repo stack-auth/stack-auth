@@ -24,7 +24,9 @@ import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/object
  *     if the team already owns a plan in the same product line.
  */
 
-async function getInternalBillingTenancy(): Promise<Tenancy> {
+// Exported for `free-plan-regrant-sweep.ts`, which needs the same tenancy to
+// scope its query before delegating each candidate team back to this file.
+export async function getInternalBillingTenancy(): Promise<Tenancy> {
   const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
   if (tenancy == null) {
     throw new HexclaveAssertionError("Internal billing tenancy not found");
