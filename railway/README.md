@@ -153,6 +153,33 @@ two spellings of one setting disagree**. Set one spelling per setting, not both.
 | `HEXCLAVE_RAILWAY_CRON_TIMEOUT_MS` | Per-firing timeout. Defaults to 840000 (14 minutes). |
 | `HEXCLAVE_RAILWAY_HEALTH_PATH` | Health endpoint path. Defaults to `/__railway/health`. |
 
+## Running a second service against the same database
+
+A staging copy or a test service pointing at an already-populated database needs
+two extra settings, both learned the hard way:
+
+- `HEXCLAVE_SKIP_SEED_SCRIPT=true` — see the note above.
+- `HEXCLAVE_RAILWAY_DISABLE_CRON=true` — otherwise both services run the full
+  schedule against the same rows. The scheduled jobs claim work by writing
+  progress markers, so two schedulers produce `poller-stale-outgoing-requests`
+  recovery errors as each cleans up rows the other was mid-way through. Exactly
+  one service in a project should run cron.
+
+## Log volume
+
+The backend logs a structured line per request, and the scheduled jobs are
+verbose. On a busy replica this exceeds Railway's cap and Railway starts dropping
+messages:
+
+```
+Railway rate limit of 500 logs/sec reached for replica, update your application
+to reduce the logging rate. Messages dropped: 2415
+```
+
+Dropped messages are lost, not buffered, so a burst can swallow the very errors
+you are trying to read. If you hit this while debugging, temporarily disable cron
+on the service to quiet the largest source.
+
 ## Replicas
 
 The entrypoint runs migrations and the seed script on every start, so scaling
