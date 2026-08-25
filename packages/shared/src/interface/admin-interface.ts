@@ -398,6 +398,19 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
+  async setWorkflowPaused(workflowId: string, isPaused: boolean): Promise<{ is_paused: boolean, paused_at_millis: number | null }> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ is_paused: isPaused }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async deleteWorkflow(workflowId: string): Promise<void> {
     await this.sendAdminRequest(
       urlString`/internal/workflows/${workflowId}`,

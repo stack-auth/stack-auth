@@ -41,7 +41,7 @@ export const POST = createSmartRouteHandler({
     if (auth.tenancy.config.apps.installed["feature-flags"]?.enabled !== true) throw new StatusError(StatusError.BadRequest, "Feature flags are not enabled for this project.");
     const config = await withActiveExperimentRuns(
       auth.tenancy,
-      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {}),
+      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags),
     );
     const version = createFeatureFlagsBootstrap(config).configVersion;
     const context: FeatureFlagEvaluationContext = { distinctId: body.distinct_id ?? body.user_id, userId: body.user_id, teamId: body.team_id, context: body.context, user: body.user, team: body.team, segments: new Set(Object.keys(body.segments ?? {})) };

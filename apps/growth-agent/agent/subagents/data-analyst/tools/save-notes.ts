@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { jsonObjectSchema } from "#lib/json-payload.ts";
 import { growthCategorySchema, growthTagsSchema } from "#lib/growth-taxonomy.ts";
-import { growthDocumentInputSchema } from "#lib/growth-document.ts";
+import { GROWTH_DOCUMENT_AUTHORING_GUIDE, growthDocumentInputSchema } from "#lib/growth-document.ts";
 import { saveNotes } from "#lib/hexclave-client.ts";
 
 // Per-subagent wrapper (ids from the task message, see save-findings.ts). Notes are the trend lane
@@ -10,7 +10,7 @@ import { saveNotes } from "#lib/hexclave-client.ts";
 // its description is direction over time. The finding `kind` that marks a note is pinned server-side,
 // so nothing here can drop a note into the findings lane by mistake.
 export default defineTool({
-  description: "Record a trend or pattern you found in the project's data (batch up to 20 per call). A note is different from a finding: a finding states something that is true right now, a note states how something has been MOVING — a metric trending up or down over weeks, a recurring weekly or seasonal shape, a channel steadily gaining or losing share, a cohort behaving differently from the ones before it, or a step change with a visible before and after. Every note must cite the actual numbers and the time window they cover, from queries you ran in this session. Put the machine-readable series or comparison in `data`. Do not write a note for a single day's value with nothing to compare it to, and do not put recommendations here — those belong in the report's action items. Use the exact project_id, branch_id, and run_id you were given in your task message.",
+  description: `Record a trend or pattern you found in the project's data (batch up to 20 per call). A note is different from a finding: a finding states something that is true right now, a note states how something has been MOVING — a metric trending up or down over weeks, a recurring weekly or seasonal shape, a channel steadily gaining or losing share, a cohort behaving differently from the ones before it, or a step change with a visible before and after. Every note must cite the actual numbers and the time window they cover, from queries you ran in this session. Put the machine-readable series or comparison in data. ${GROWTH_DOCUMENT_AUTHORING_GUIDE} Do not write a note for a single day's value with nothing to compare it to, and do not put recommendations here — those belong in the report's action items. Use the exact project_id, branch_id, and run_id you were given in your task message.`,
   inputSchema: z.object({
     project_id: z.string().min(1),
     branch_id: z.string().min(1),

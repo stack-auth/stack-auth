@@ -2,6 +2,7 @@
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { formatGrowthRelativeTime } from "@/lib/growth/growth-format";
+import { GrowthApiError } from "@/lib/growth/growth-api";
 import {
   deleteGrowthAdminInterviewQuestion,
   getGrowthAdminInterview,
@@ -34,6 +35,14 @@ type CardState =
   | { status: "loading" }
   | { status: "error", message: string }
   | { status: "loaded", interview: GrowthAdminInterview };
+
+const NO_INTERVIEW_MESSAGE = "This project has no interview to review yet.";
+
+function interviewLoadErrorMessage(error: unknown): string {
+  return error instanceof GrowthApiError && error.statusCode === 404
+    ? NO_INTERVIEW_MESSAGE
+    : error instanceof Error ? error.message : String(error);
+}
 
 /** Serialized so a draft can be compared against what the server holds without a deep-equal helper. */
 function optionsKey(options: GrowthAdminInterviewOption[]): string {
@@ -180,7 +189,7 @@ export function GrowthAdminInterviewCard(props: { app: object, projectId: string
       setState({ status: "loaded", interview: await getGrowthAdminInterview(props.app, props.projectId) });
     } catch (error) {
       captureError("growth-admin-interview-load", error);
-      setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
+      setState({ status: "error", message: interviewLoadErrorMessage(error) });
     }
   }, [props.app, props.projectId]);
 

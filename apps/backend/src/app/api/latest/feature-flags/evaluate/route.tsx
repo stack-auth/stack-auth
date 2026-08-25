@@ -135,7 +135,7 @@ export const POST = createSmartRouteHandler({
 
     const config = await withActiveExperimentRuns(
       auth.tenancy,
-      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {}),
+      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags),
     );
     const bootstrap = createFeatureFlagsBootstrap(config);
     const trustedCaller = auth.type !== "client";

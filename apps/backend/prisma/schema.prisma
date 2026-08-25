@@ -2082,6 +2082,9 @@ model AskHexclaveCall {
   response      String @db.Text
   reason        String @db.Text
   userPrompt    String @db.Text
+  context       String? @db.Text
+  user          String? @db.Text
+  project       String? @db.Text
 
   requestIp         String?
   requestIpSource   String?
@@ -2480,8 +2483,8 @@ model FeatureFlagExposureReceipt {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([projectId, eventId], name: "FeatureFlagExposureReceipt_project_event_key")
-  @@unique([projectId, evaluationId], name: "FeatureFlagExposureReceipt_project_evaluation_key")
+  @@unique([projectId, eventId], map: "FeatureFlagExposureReceipt_project_event_key")
+  @@unique([projectId, evaluationId], map: "FeatureFlagExposureReceipt_project_evaluation_key")
   @@index([ingestionNonce], name: "FeatureFlagExposureReceipt_ingestionNonce_idx")
   @@index([processingStartedAt], name: "FeatureFlagExposureReceipt_processingStartedAt_idx")
   @@index([createdAt], name: "FeatureFlagExposureReceipt_createdAt_idx")
@@ -2509,7 +2512,7 @@ model AnalyticsEventBatchReceipt {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([projectId, branchId, batchId], name: "AnalyticsEventBatchReceipt_project_branch_batch_key")
+  @@unique([projectId, branchId, batchId], map: "AnalyticsEventBatchReceipt_project_branch_batch_key")
   @@index([processingStartedAt], name: "AnalyticsEventBatchReceipt_processingStartedAt_idx")
   @@index([createdAt], name: "AnalyticsEventBatchReceipt_createdAt_idx")
 }
@@ -2878,6 +2881,17 @@ model WorkflowDefinition {
   // is the only writer of versions, and it updates this in the same
   // transaction that inserts the version row.
   latestVersion Int
+
+  // Pause state. While `pausedAt` is set the workflow accepts no new runs:
+  // matching events are still consumed from the outbox, they just do not
+  // dispatch to this definition. In-flight runs are untouched — pausing
+  // stops the intake, it does not halt work already underway.
+  //
+  // The gate is evaluated when the engine processes an event, not against the
+  // event's own timestamp, so an event enqueued moments before a resume can
+  // still dispatch if no tick reached it while the workflow was paused. That
+  // boundary is deliberately approximate.
+  pausedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

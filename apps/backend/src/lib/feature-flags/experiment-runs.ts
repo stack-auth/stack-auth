@@ -155,7 +155,7 @@ function deriveMetric(metric: FeatureFlagMetric | undefined, path: string): {
 }
 
 async function deriveExperimentConfig(options: { tenancy: Tenancy, experimentId: string }): Promise<ExperimentConfig> {
-  const featureFlags = parseFeatureFlagsConfig(options.tenancy.config.featureFlags ?? {});
+  const featureFlags = parseFeatureFlagsConfig(options.tenancy.config.featureFlags);
   const definition = featureFlags.experiments?.[options.experimentId];
   if (definition === undefined || definition.archived === true) {
     throw new StatusError(StatusError.BadRequest, "Experiment definition does not exist or is archived in the current branch config");

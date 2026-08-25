@@ -44,7 +44,7 @@ export const GET = createSmartRouteHandler({
     }
     const config = await withActiveExperimentRuns(
       auth.tenancy,
-      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {}),
+      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags),
     );
     const bootstrap = createFeatureFlagsBootstrap(config);
     const etag = `"${bootstrap.configVersion}"`;

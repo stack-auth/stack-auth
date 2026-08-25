@@ -3,8 +3,9 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const DISCORD_WEBHOOK_HOSTS = new Set(["discord.com", "discordapp.com"]);
+const MAX_CONTENT_LENGTH = 2_000;
 const MAX_FIELD_LENGTH = 1_000;
-const MAX_DESCRIPTION_LENGTH = 3_500;
+const MAX_QUESTION_CONTENT_LENGTH = 500;
 
 function truncate(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
@@ -15,6 +16,12 @@ function truncate(value: string, maxLength: number): string {
 
 function formatTransport(transport: AskHexclaveRequestMetadata["transport"]): string {
   return transport === "skill-ask" ? "Skill /ask" : "MCP ask_hexclave";
+}
+
+function formatMessageBody(question: string, response: string): string {
+  const formattedQuestion = `**${truncate(question, MAX_QUESTION_CONTENT_LENGTH)}**`;
+  const responseMaxLength = MAX_CONTENT_LENGTH - formattedQuestion.length - 2;
+  return `${formattedQuestion}\n\n${truncate(response, responseMaxLength)}`;
 }
 
 function getDiscordWebhookUrl(): string | null {
@@ -53,16 +60,19 @@ export function buildAskHexclaveDiscordPayload(options: {
   response: string,
   reason: string,
   userPrompt: string,
+  context: string | null,
+  user: string | null,
+  project: string | null,
   requestMetadata: AskHexclaveRequestMetadata,
   modelId: string,
   stepCount: number,
   durationMs: number,
 }): {
   content: string,
+  allowed_mentions: { parse: [] },
   embeds: Array<{
     title: string,
     color: number,
-    description: string,
     fields: Array<{ name: string, value: string, inline?: boolean }>,
   }>,
 } {
@@ -74,14 +84,19 @@ export function buildAskHexclaveDiscordPayload(options: {
       : `${options.requestMetadata.requestIp} (${options.requestMetadata.requestIpSource})`;
 
   return {
-    content: `**Ask Hexclave** · ${transportLabel}`,
+    content: formatMessageBody(options.question, options.response),
+    // Question and answer are user-controlled message content. Keep them from
+    // notifying Discord users or roles when they contain mention syntax.
+    allowed_mentions: { parse: [] },
     embeds: [{
-      title: truncate(options.question, 250),
+      title: `Ask Hexclave · ${transportLabel}`,
       color: options.requestMetadata.transport === "skill-ask" ? 0x3B82F6 : 0x8B5CF6,
-      description: truncate(options.response, MAX_DESCRIPTION_LENGTH),
       fields: [
         { name: "Reason", value: truncate(options.reason || "—", MAX_FIELD_LENGTH) },
         { name: "Original user prompt", value: truncate(options.userPrompt || "—", MAX_FIELD_LENGTH) },
+        { name: "Context", value: truncate(options.context ?? "—", MAX_FIELD_LENGTH) },
+        { name: "User", value: truncate(options.user ?? "—", MAX_FIELD_LENGTH) },
+        { name: "Project", value: truncate(options.project ?? "—", MAX_FIELD_LENGTH) },
         { name: "Transport", value: transportLabel, inline: true },
         { name: "Duration", value: `${options.durationMs.toLocaleString()} ms`, inline: true },
         { name: "Steps", value: String(options.stepCount), inline: true },
@@ -106,6 +121,9 @@ export async function sendAskHexclaveDiscordNotification(options: {
   response: string,
   reason: string,
   userPrompt: string,
+  context: string | null,
+  user: string | null,
+  project: string | null,
   requestMetadata: AskHexclaveRequestMetadata,
   modelId: string,
   stepCount: number,

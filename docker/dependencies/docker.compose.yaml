@@ -241,13 +241,17 @@ services:
       context: ./freestyle-mock
       dockerfile: Dockerfile
     image: freestyle-mock
+    # The mock is stateless apart from its module-cache volume, so restart it
+    # automatically if a process failure occurs during CI.
+    restart: unless-stopped
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22:8080"       # POST http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}19/execute/v1/script
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
       HOST_ON_HOST: host.docker.internal
-      HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT: "4"
+      HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT: "16"
+      HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES: "6"
       HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED: "true"
       HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ORIGINS: "http://host.docker.internal:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
     read_only: true
@@ -257,7 +261,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 1g
+    mem_limit: 2g
     cpus: 4
     pids_limit: 512
     volumes:
