@@ -9,12 +9,22 @@
 //
 // Two properties of the backend's log endpoint shape everything below:
 //
-//   * It REPLAYS the whole log on every request. So resuming means skipping the
-//     lines already written rather than passing a cursor — the endpoint has no
-//     cursor to pass.
 //   * It stops following after a few minutes and closes, expecting the client
 //     to re-request. A build longer than that cap is therefore several requests
 //     stitched together here, which the reader must never notice.
+//   * Each request restarts with NO cursor, and for a build that is still
+//     running that means the stream reopens wherever Fly's logs API window
+//     happens to begin — NOT at line 1. (Only a finished deployment replays in
+//     full, from the durable log Marshal persists to the bucket.) So a
+//     reconnect lands the reader somewhere in the middle of what they have
+//     already seen, and by an amount that is not knowable in advance.
+//
+// That second point is why resuming is done by CONTENT rather than by counting:
+// there is no cursor to pass, and "skip the N lines I already printed" is wrong
+// the moment the window slides. Instead the follower re-synchronises — it holds
+// the reconnected stream back until it recognises the tail of what it last
+// printed, and starts printing again at the line after it. Verified against a
+// real Fly build: an index-based skip reprinted fourteen lines there.
 
 import { errorMessage } from "./errors.js";
 
@@ -27,6 +37,21 @@ const RETRY_INTERVAL_MS = 2_000;
 // itself keeps running either way — losing the log tail must never fail a
 // deploy that succeeded.
 const MAX_CONSECUTIVE_FAILURES = 5;
+// How many trailing printed lines a reconnected stream has to reproduce before
+// the follower believes it has found its place. One line is not enough — build
+// output repeats itself ("#7 pushing layers"), and a false match would silently
+// skip everything up to the wrong copy. Eight consecutive identical lines is not
+// something a build emits by accident.
+const RESYNC_ANCHOR_LINES = 8;
+// The printed tail kept for that comparison. Comfortably larger than the overlap
+// any single reconnect has shown, and bounded so a long build's history cannot
+// grow without limit.
+const RESYNC_TAIL_LINES = 512;
+// If a reconnected stream produces this many lines without ever matching the
+// anchor, the overlap is assumed gone (the window advanced past what was
+// printed) and the held lines are released. Better a visible gap or a few
+// repeats than silently swallowing the rest of the build.
+const RESYNC_MAX_HELD_LINES = 5_000;
 
 // The backend's own stream markers, emitted INTO the log body (the response has
 // already begun, so it has no other way to say these things). They are not
@@ -72,9 +97,13 @@ export async function followBuildLogs(options: FollowBuildLogsOptions): Promise<
   const fetchImpl = options.fetchImpl ?? fetch;
   const wait = options.waitImpl ?? defaultWait;
   const warn = options.warn ?? ((message: string) => console.error(message));
-  // How many build-log lines have been written. Because every request replays
-  // from the start, this doubles as the number of lines to skip on the next one.
-  let writtenLineCount = 0;
+  // The tail of what has been printed, newest last. This is what a reconnected
+  // stream is matched against to find where it should resume.
+  const printedTail: string[] = [];
+  const recordPrinted = (line: string) => {
+    printedTail.push(line);
+    if (printedTail.length > RESYNC_TAIL_LINES) printedTail.splice(0, printedTail.length - RESYNC_TAIL_LINES);
+  };
   let consecutiveFailures = 0;
   // Once the deployment is terminal the build cannot still be producing output,
   // so exactly ONE more pass runs — enough to pick up a tail that landed between
@@ -124,11 +153,20 @@ export async function followBuildLogs(options: FollowBuildLogsOptions): Promise<
     }
     consecutiveFailures = 0;
 
-    let seenLineCount = 0;
-    // Held on an object rather than in two `let` flags: they are written from
+    // Held on an object rather than in plain `let` flags: they are written from
     // inside handleLine, and TypeScript keeps narrowing plain locals to their
     // initializer across a closure it cannot see run.
-    const pass = { timedOut: false, endedUnexpectedly: false };
+    const pass = {
+      timedOut: false,
+      endedUnexpectedly: false,
+      // Nothing printed yet means nothing to re-synchronise against, so the very
+      // first stream prints from its first line.
+      resyncing: printedTail.length > 0,
+      // Lines withheld while looking for the anchor. Every one of them is a line
+      // the reader has already seen — unless the anchor never turns up, in which
+      // case they are released rather than lost.
+      held: [] as string[],
+    };
     const handleLine = (line: string) => {
       if (line === STREAM_TIMEOUT_MARKER) {
         // Swallowed on purpose: the reconnect is transparent, so telling the
@@ -141,10 +179,33 @@ export async function followBuildLogs(options: FollowBuildLogsOptions): Promise<
         pass.endedUnexpectedly = true;
         return;
       }
-      seenLineCount += 1;
-      if (seenLineCount <= writtenLineCount) return;
-      writtenLineCount = seenLineCount;
-      options.write(line);
+      if (!pass.resyncing) {
+        recordPrinted(line);
+        options.write(line);
+        return;
+      }
+      pass.held.push(line);
+      // Compare as much context as both sides can offer: the overlap can be
+      // shorter than the anchor (a stream that reopens only a few lines back),
+      // and demanding the full anchor would then never match at all.
+      const anchorLength = Math.min(RESYNC_ANCHOR_LINES, pass.held.length, printedTail.length);
+      const heldTail = pass.held.slice(pass.held.length - anchorLength).join("\n");
+      const printedTailEnd = printedTail.slice(printedTail.length - anchorLength).join("\n");
+      if (heldTail === printedTailEnd) {
+        // Caught up: everything held is history, and the next line is new.
+        pass.resyncing = false;
+        pass.held = [];
+        return;
+      }
+      if (pass.held.length >= RESYNC_MAX_HELD_LINES) {
+        warn(`Warning: could not line the reconnected build log up with what was already printed; some lines may repeat or be missing.`);
+        pass.resyncing = false;
+        for (const heldLine of pass.held) {
+          recordPrinted(heldLine);
+          options.write(heldLine);
+        }
+        pass.held = [];
+      }
     };
 
     try {
@@ -160,8 +221,26 @@ export async function followBuildLogs(options: FollowBuildLogsOptions): Promise<
       continue;
     }
 
+    // The response ended while still looking for the anchor. Usually that means
+    // everything it produced was history and there is simply nothing new to show
+    // — but it can also mean the window moved past what was printed, in which
+    // case the held lines are the only copy of that part of the build. Told
+    // apart by whether the last held line is anywhere in the printed history:
+    // if it is not, this stream had genuinely moved on.
+    if (pass.resyncing && pass.held.length > 0) {
+      const lastHeld = pass.held[pass.held.length - 1];
+      if (!printedTail.includes(lastHeld)) {
+        warn("Warning: the build log stream skipped ahead; some earlier lines may be missing from this output.");
+        for (const heldLine of pass.held) {
+          recordPrinted(heldLine);
+          options.write(heldLine);
+        }
+      }
+      pass.held = [];
+    }
+
     // Timed out: the build is still going, so pick straight back up rather than
-    // waiting — the replay is fast and the reader is mid-build.
+    // waiting — the reconnect resumes where this one left off.
     if (pass.timedOut) continue;
     if (pass.endedUnexpectedly) {
       await wait(RETRY_INTERVAL_MS);

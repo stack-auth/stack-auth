@@ -70,9 +70,54 @@ describe("followBuildLogs", () => {
     expect(lines).toEqual(["step one", "step two"]);
   });
 
+  it("resumes correctly when the reconnected stream reopens MID-history, not at line 1", async () => {
+    // The case a real Fly build hit. Each request restarts with no cursor, so a
+    // still-running build reopens wherever Fly's log window begins — here at
+    // line 3, not line 1. Counting printed lines and skipping that many would
+    // reprint 3..6; the anchor match is what makes it resume at 7.
+    const { lines, done, callCount } = follow({
+      responses: [
+        textStreamResponse([`line 1\nline 2\nline 3\nline 4\nline 5\nline 6\n${STREAM_TIMEOUT_MARKER}\n`]),
+        textStreamResponse(["line 3\nline 4\nline 5\nline 6\nline 7\nline 8\n"]),
+      ],
+    });
+    await done;
+    expect(lines).toEqual(["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8"]);
+    expect(callCount()).toBe(2);
+  });
+
+  it("releases held lines when the window advanced past everything printed", async () => {
+    // No overlap at all: the reconnected stream starts after the last printed
+    // line. Those lines are the only copy there is, so they must be printed —
+    // with a warning, because the gap between line 2 and line 40 is real.
+    const { lines, warnings, done } = follow({
+      responses: [
+        textStreamResponse([`line 1\nline 2\n${STREAM_TIMEOUT_MARKER}\n`]),
+        textStreamResponse(["line 40\nline 41\n"]),
+      ],
+    });
+    await done;
+    expect(lines).toEqual(["line 1", "line 2", "line 40", "line 41"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("skipped ahead");
+  });
+
+  it("does not re-anchor on a repeated line, which build output is full of", async () => {
+    // "#7 pushing layers" style repetition: a one-line anchor would match the
+    // FIRST copy and swallow everything after it. The multi-line anchor doesn't.
+    const { lines, done } = follow({
+      responses: [
+        textStreamResponse([`prep\nsame\nsame\nsame\nalpha\nbravo\n${STREAM_TIMEOUT_MARKER}\n`]),
+        textStreamResponse(["prep\nsame\nsame\nsame\nalpha\nbravo\ncharlie\n"]),
+      ],
+    });
+    await done;
+    expect(lines).toEqual(["prep", "same", "same", "same", "alpha", "bravo", "charlie"]);
+  });
+
   it("skips the replay when the stream times out and it re-requests", async () => {
-    // The endpoint replays the WHOLE log on every request, so the second pass
-    // must re-emit nothing that the first one already wrote.
+    // A finished deployment DOES replay in full (it is served from the durable
+    // log), so the second pass must re-emit nothing the first one already wrote.
     const { lines, warnings, done, callCount } = follow({
       responses: [
         textStreamResponse([`line 1\nline 2\n${STREAM_TIMEOUT_MARKER}\n`]),
@@ -86,9 +131,9 @@ describe("followBuildLogs", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("does not count the server's stream markers toward the replay offset", async () => {
-    // Regression guard: markers are not replayed, so counting them would drop
-    // one real line per reconnect.
+  it("never treats the server's stream markers as build output", async () => {
+    // Markers are not part of the log, so they must not be printed and must not
+    // become part of the anchor the next reconnect matches against.
     const { lines, done } = follow({
       responses: [
         textStreamResponse([`line 1\n${STREAM_ERROR_MARKER}\n`]),
