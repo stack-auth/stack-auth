@@ -1,5 +1,6 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
+import { markPromoCodeRedemptionApplied, voidExpiredOrFailedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { claimStripeEvent, markStripeEventFailed, markStripeEventProcessed } from "@/lib/stripe-webhook-events";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { listPermissions } from "@/lib/permissions";
@@ -236,6 +237,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
     });
     await bulldozerWriteOneTimePurchase(upsertedPurchase);
+    await markPromoCodeRedemptionApplied({
+      prisma,
+      tenancyId: tenancy.id,
+      redemptionId: metadata.promoCodeRedemptionId || null,
+      stripePaymentIntentId,
+      oneTimePurchaseId: upsertedPurchase.id,
+    });
 
     const recipients = await getPaymentRecipients({
       tenancy,
@@ -269,6 +277,14 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
+    if (metadata.promoCodeRedemptionId) {
+      await voidExpiredOrFailedPromoCodeRedemption({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: metadata.promoCodeRedemptionId,
+        reason: "stripe_payment_intent_failed",
+      });
+    }
     if (!metadata.customerId || !metadata.customerType) {
       throw new HexclaveAssertionError("Missing customer metadata for one-time purchase failure", { event });
     }
@@ -302,6 +318,25 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       recipients,
       templateType: "payment_failed",
       extraVariables,
+    });
+  }
+  else if (event.type === "payment_intent.canceled" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
+    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    const metadata = paymentIntent.metadata;
+    const accountId = event.account;
+    if (!accountId) {
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
+    }
+    if (!metadata.promoCodeRedemptionId) {
+      return;
+    }
+    const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    await voidExpiredOrFailedPromoCodeRedemption({
+      prisma,
+      tenancyId: tenancy.id,
+      redemptionId: metadata.promoCodeRedemptionId,
+      reason: "stripe_payment_intent_canceled",
     });
   }
   else if (event.type === "charge.dispute.created") {

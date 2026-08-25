@@ -2,6 +2,7 @@ import { SubscriptionStatus } from "@/generated/prisma/client";
 import { assertFreeTrialAllowedForPurchase, getClientSecretFromStripeSubscription, getEffectiveFreeTrial, getStripeTrialPeriodDays, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
+import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -12,7 +13,9 @@ import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe
 import { moneyAmountSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
-import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import Stripe from "stripe";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
@@ -45,6 +48,12 @@ export const POST = createSmartRouteHandler({
           exampleValue: 1
         }
       }),
+      promo_code: yupString().optional().meta({
+        openapiField: {
+          description: "Optional promo code to apply to the purchase. Discounts are validated and computed on the server.",
+          exampleValue: "PROMO-SUMMER",
+        },
+      }),
     }),
   }),
   response: yupObject({
@@ -66,7 +75,7 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ body }) {
-    const { full_code, price_id, quantity } = body;
+    const { full_code, price_id, quantity, promo_code } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {
@@ -78,6 +87,7 @@ export const POST = createSmartRouteHandler({
     if (data.stripeAccountId == null || data.stripeCustomerId == null) {
       throw new StatusError(400, "This purchase link is no longer valid. Please request a new one and try again.");
     }
+    const stripeCustomerId = data.stripeCustomerId;
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
     const { selectedPrice, conflictingSubscriptions } = await validatePurchaseSession({
@@ -123,19 +133,129 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
     }
 
+    // Validate free-trial configuration before reserving a promo redemption so
+    // an invalid purchase cannot consume redemption capacity.
+    const effectiveFreeTrial = getEffectiveFreeTrial(data.product, selectedPrice);
+    assertFreeTrialAllowedForPurchase(selectedPrice, effectiveFreeTrial);
+    const trialPeriodDays = effectiveFreeTrial != null ? getStripeTrialPeriodDays(effectiveFreeTrial) : undefined;
+    const shouldExpectSetupIntent = effectiveFreeTrial != null;
+
     const productVersionId = await upsertProductVersion({
       prisma,
       tenancyId: tenancy.id,
       productId: data.productId ?? null,
       productJson: data.product,
     });
+    const promoRedemption = promo_code ? await reservePromoCodeRedemption({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
+      priceId: price_id,
+      selectedPrice,
+      quantity,
+      productVersionId,
+      promoCode: promo_code,
+    }) : null;
+    const originalAmountStripeUnits = unitAmountStripeUnits * quantity;
+    const effectiveAmountStripeUnits = promoRedemption?.finalAmountUsdCents ?? originalAmountStripeUnits;
+    const isForeverFreeAfterPromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "forever";
+    const requiresSetupAfterFirstInvoicePromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "first_invoice";
 
-    // Price-level freeTrial preferred; product-level is transitional fallback
-    // while product-level freeTrial is being deprecated.
-    const effectiveFreeTrial = getEffectiveFreeTrial(data.product, selectedPrice);
-    assertFreeTrialAllowedForPurchase(selectedPrice, effectiveFreeTrial);
-    const trialPeriodDays = effectiveFreeTrial != null ? getStripeTrialPeriodDays(effectiveFreeTrial) : undefined;
-    const shouldExpectSetupIntent = effectiveFreeTrial != null;
+    const promoStripeIdempotencyKey = (operation: string, redemption: ReservedPromoCodeRedemption) =>
+      `promo:${tenancy.id}:${codeId}:${redemption.redemptionId}:${operation}`;
+
+    const isAmbiguousStripeFailure = (error: unknown) =>
+      error instanceof Stripe.errors.StripeConnectionError
+      || error instanceof Stripe.errors.StripeAPIError
+      || error instanceof Stripe.errors.StripeRateLimitError
+      || error instanceof Stripe.errors.StripeIdempotencyError;
+
+    const captureAmbiguousStripePromoFailure = (location: string, error: unknown, redemption: ReservedPromoCodeRedemption, couponId: string | null) => {
+      captureError(location, new HexclaveAssertionError("Ambiguous Stripe failure while processing promo subscription checkout; preserving local promo state for reconciliation.", {
+        tenancyId: tenancy.id,
+        redemptionId: redemption.redemptionId,
+        promoCodeId: redemption.promoCodeId,
+        couponId,
+        cause: error,
+      }));
+    };
+
+    const createPromoCoupon = async (redemption: ReservedPromoCodeRedemption) => {
+      const coupon = await stripe.coupons.create(createStripeCouponParamsForPromoCode({
+        quote: redemption,
+        promoCode: promo_code ?? "",
+      }), { idempotencyKey: promoStripeIdempotencyKey("coupon-create", redemption) });
+      return coupon.id;
+    };
+
+    const voidPromoRedemptionAfterSubscriptionFailure = async (redemption: ReservedPromoCodeRedemption | null, reason: string) => {
+      if (!redemption) return;
+      const voidResult = await Result.fromPromise(voidExpiredOrFailedPromoCodeRedemption({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: redemption.redemptionId,
+        reason,
+      }));
+      if (voidResult.status === "error") {
+        captureError("promo-redemption-subscription-failure-void-failed", voidResult.error);
+      }
+    };
+
+    const runSubscriptionWithPromoCouponCleanup = async <T extends Stripe.Subscription>(options: {
+      redemption: ReservedPromoCodeRedemption | null,
+      failureReason: string,
+      operation: "subscription-create" | "subscription-update",
+      run: (couponId: string | null, idempotencyKey: string | undefined) => Promise<T>,
+    }): Promise<T> => {
+      let couponId: string | null = null;
+      if (options.redemption) {
+        const couponResult = await Result.fromPromise(createPromoCoupon(options.redemption));
+        if (couponResult.status === "error") {
+          if (isAmbiguousStripeFailure(couponResult.error)) {
+            captureAmbiguousStripePromoFailure("promo-stripe-coupon-create-ambiguous", couponResult.error, options.redemption, null);
+          } else {
+            await voidPromoRedemptionAfterSubscriptionFailure(options.redemption, options.failureReason);
+          }
+          throw couponResult.error;
+        }
+        couponId = couponResult.data;
+      }
+      const result = await Result.fromPromise(options.run(
+        couponId,
+        options.redemption ? promoStripeIdempotencyKey(options.operation, options.redemption) : undefined,
+      ));
+      if (result.status === "ok") return result.data;
+      if (options.redemption && isAmbiguousStripeFailure(result.error)) {
+        captureAmbiguousStripePromoFailure("promo-stripe-subscription-ambiguous", result.error, options.redemption, couponId);
+        throw result.error;
+      }
+      if (couponId) {
+        const deleteResult = await Result.fromPromise(stripe.coupons.del(couponId));
+        if (deleteResult.status === "error") captureError("promo-stripe-coupon-cleanup-failed", deleteResult.error);
+      }
+      await voidPromoRedemptionAfterSubscriptionFailure(options.redemption, options.failureReason);
+      throw result.error;
+    };
+
+    const finishSubscriptionResponse = async (subscription: Stripe.Subscription, expectsSetupIntent: boolean) => {
+      if (isFreePrice || isForeverFreeAfterPromo) {
+        await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+        return { statusCode: 200, bodyType: "json" as const, body: {} };
+      }
+      const clientSecretResult = getClientSecretFromStripeSubscription(subscription, expectsSetupIntent);
+      await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+      return {
+        statusCode: 200,
+        bodyType: "json" as const,
+        body: {
+          client_secret: clientSecretResult.clientSecret,
+          stripe_intent_type: clientSecretResult.type,
+        },
+      };
+    };
 
     if (conflictingSubscriptions.length > 0) {
       const conflicting = conflictingSubscriptions[0];
@@ -144,6 +264,7 @@ export const POST = createSmartRouteHandler({
         const existingItem = existingStripeSub.items.data[0];
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
+          const selectedInterval = selectedPrice.interval;
           const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
           // TODO(default-plans): $0 subs currently piggyback on the Stripe
           // subscription lifecycle. Once default plans land, free subs should be
@@ -153,57 +274,50 @@ export const POST = createSmartRouteHandler({
           // Do not attach trial_period_days on in-place subscription updates
           // (plan switch / conflict replace): re-trialing an existing customer
           // is usually wrong. Trials only apply when creating a new Stripe sub.
-          const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
-            payment_behavior: 'default_incomplete',
-            payment_settings: { save_default_payment_method: 'on_subscription' },
-            // Expand nested objects so we get client_secret fields (otherwise
-            // Stripe returns id strings for pending_setup_intent / latest_invoice).
-            expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
-            items: [{
-              id: existingItem.id,
-              price_data: {
-                currency: "usd",
-                unit_amount: unitAmountStripeUnits,
-                product: product.id,
-                recurring: {
-                  interval_count: selectedPrice.interval![0],
-                  interval: selectedPrice.interval![1],
+          const updated = await runSubscriptionWithPromoCouponCleanup({
+            redemption: promoRedemption,
+            failureReason: "stripe_subscription_update_failed",
+            operation: "subscription-update",
+            run: async (couponId, idempotencyKey) => await stripe.subscriptions.update(conflicting.stripeSubscriptionId ?? throwErr("Expected conflicting Stripe subscription id"), {
+              payment_behavior: 'default_incomplete',
+              payment_settings: { save_default_payment_method: 'on_subscription' },
+              // Expand nested objects so we get client_secret fields (otherwise
+              // Stripe returns id strings for pending_setup_intent / latest_invoice).
+              expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
+              items: [{
+                id: existingItem.id,
+                price_data: {
+                  currency: "usd",
+                  unit_amount: unitAmountStripeUnits,
+                  product: product.id,
+                  recurring: {
+                    interval_count: selectedInterval[0],
+                    interval: selectedInterval[1],
+                  },
                 },
+                quantity,
+              }],
+              metadata: {
+                productId: data.productId ?? null,
+                productVersionId,
+                priceId: price_id,
+                ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
               },
-              quantity,
-            }],
-            metadata: {
-              productId: data.productId ?? null,
-              productVersionId,
-              priceId: price_id,
-            },
-            ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
+              ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+              ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
+            }, idempotencyKey ? { idempotencyKey } : undefined),
           });
-          if (isFreePrice) {
-            // Stripe activates $0 subs synchronously (status=active, invoice=paid)
-            // and produces no PaymentIntent / confirmation_secret, so we have
-            // nothing to hand to Stripe Elements. The DB row is written when
-            // the `invoice.paid` webhook lands, exactly like paid purchases
-            // after card confirmation.
-            await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-            return { statusCode: 200, bodyType: "json", body: {} };
+          if (promoRedemption) {
+            await attachStripeSubscriptionToPromoRedemption({
+              prisma,
+              tenancyId: tenancy.id,
+              redemptionId: promoRedemption.redemptionId,
+              stripeSubscriptionId: updated.id,
+            });
           }
-          // Extract the client secret BEFORE revoking the code: if Stripe
-          // returns a malformed sub (no secret), we throw 500 here and the
-          // customer can retry with the same code. Revoking first would burn
-          // the code on every transient Stripe anomaly.
-          // Conflict updates never start a new trial (see comment above).
-          const clientSecretUpdated = getClientSecretFromStripeSubscription(updated, false);
-          const stripeIntentType: "payment" | "setup" = clientSecretUpdated.type;
-          await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-          return {
-            statusCode: 200,
-            bodyType: "json",
-            body: {
-              client_secret: clientSecretUpdated.clientSecret,
-              stripe_intent_type: stripeIntentType,
-            },
-          };
+          // Conflict updates never start a configured free trial, but a 100%
+          // first-invoice promo still needs a SetupIntent for future renewals.
+          return await finishSubscriptionResponse(updated, requiresSetupAfterFirstInvoicePromo);
         } else {
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
         }
@@ -227,7 +341,25 @@ export const POST = createSmartRouteHandler({
     }
     // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
-      const amountCents = unitAmountStripeUnits * Math.max(1, quantity);
+      const amountCents = effectiveAmountStripeUnits;
+      if (promoRedemption && amountCents <= 0) {
+        await voidExpiredOrFailedPromoCodeRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          reason: "discounted_one_time_total_zero",
+        });
+        throw new StatusError(400, "Promo code discounts this one-time purchase below the minimum charge amount.");
+      }
+      if (promoRedemption && amountCents < minOneTimeStripeUnits) {
+        await voidExpiredOrFailedPromoCodeRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          reason: "discounted_one_time_total_below_stripe_minimum",
+        });
+        throw new StatusError(400, `Discounted one-time total must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum).`);
+      }
       const applicationFeeAmount = computeApplicationFeeAmount({
         amountStripeUnits: amountCents,
         projectId: tenancy.project.id,
@@ -246,9 +378,18 @@ export const POST = createSmartRouteHandler({
           purchaseKind: "ONE_TIME",
           tenancyId: data.tenancyId,
           priceId: price_id,
+          ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
         },
         ...(applicationFeeAmount > 0 ? { application_fee_amount: applicationFeeAmount } : {}),
       });
+      if (promoRedemption) {
+        await attachStripePaymentIntentToPromoRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          stripePaymentIntentId: paymentIntent.id,
+        });
+      }
       const clientSecret = paymentIntent.client_secret;
       if (typeof clientSecret !== "string") {
         throwErr(500, "No client secret returned from Stripe for payment intent");
@@ -263,6 +404,7 @@ export const POST = createSmartRouteHandler({
         },
       };
     }
+    const subscriptionInterval = selectedPrice.interval;
 
     const product = await stripe.products.create({
       name: data.product.displayName ?? "Subscription",
@@ -280,59 +422,48 @@ export const POST = createSmartRouteHandler({
     // Free trials: pass trial_period_days so the first invoice is $0 and
     // Stripe attaches pending_setup_intent for card collection instead of a
     // PaymentIntent. Charge happens automatically when the trial ends.
-    const created = await stripe.subscriptions.create({
-      customer: data.stripeCustomerId,
-      payment_behavior: 'default_incomplete',
-      payment_settings: { save_default_payment_method: 'on_subscription' },
-      // Expand nested objects so we get client_secret fields (otherwise
-      // Stripe returns id strings for pending_setup_intent / latest_invoice).
-      expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
-      items: [{
-        price_data: {
-          currency: "usd",
-          unit_amount: unitAmountStripeUnits,
-          product: product.id,
-          recurring: {
-            interval_count: selectedPrice.interval![0],
-            interval: selectedPrice.interval![1],
+    const created = await runSubscriptionWithPromoCouponCleanup({
+      redemption: promoRedemption,
+      failureReason: "stripe_subscription_create_failed",
+      operation: "subscription-create",
+      run: async (couponId, idempotencyKey) => await stripe.subscriptions.create({
+        customer: stripeCustomerId,
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        // Expand nested objects so we get client_secret fields (otherwise
+        // Stripe returns id strings for pending_setup_intent / latest_invoice).
+        expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
+        items: [{
+          price_data: {
+            currency: "usd",
+            unit_amount: unitAmountStripeUnits,
+            product: product.id,
+            recurring: {
+              interval_count: subscriptionInterval[0],
+              interval: subscriptionInterval[1],
+            },
           },
+          quantity,
+        }],
+        metadata: {
+          productId: data.productId ?? null,
+          productVersionId,
+          priceId: price_id,
+          ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
         },
-        quantity,
-      }],
-      metadata: {
-        productId: data.productId ?? null,
-        productVersionId,
-        priceId: price_id,
-      },
-      ...(trialPeriodDays !== undefined ? { trial_period_days: trialPeriodDays } : {}),
-      ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
+        ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+        ...(trialPeriodDays !== undefined ? { trial_period_days: trialPeriodDays } : {}),
+        ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
+      }, idempotencyKey ? { idempotencyKey } : undefined),
     });
-    if (isFreePrice) {
-      // Free+$0 freeTrial is rejected above. Stripe activates remaining $0
-      // subs synchronously (status=active, invoice=paid) with no PaymentIntent
-      // / confirmation_secret, so we have nothing to hand to Stripe Elements.
-      // The DB row is written when the `invoice.paid` webhook lands.
-      await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {},
-      };
+    if (promoRedemption) {
+      await attachStripeSubscriptionToPromoRedemption({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: promoRedemption.redemptionId,
+        stripeSubscriptionId: created.id,
+      });
     }
-    // Extract the client secret BEFORE revoking the code: if Stripe returns a
-    // malformed sub (no secret), we throw 500 here and the customer can retry
-    // with the same code. Revoking first would burn the code on every
-    // transient Stripe anomaly.
-    const clientSecretResult = getClientSecretFromStripeSubscription(created, shouldExpectSetupIntent);
-    const stripeIntentType: "payment" | "setup" = clientSecretResult.type;
-    await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: {
-        client_secret: clientSecretResult.clientSecret,
-        stripe_intent_type: stripeIntentType,
-      },
-    };
+    return await finishSubscriptionResponse(created, shouldExpectSetupIntent || requiresSetupAfterFirstInvoicePromo);
   }
 });

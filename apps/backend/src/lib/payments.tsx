@@ -795,4 +795,3 @@ import.meta.vitest?.describe("free trial helpers", (test) => {
     expect(payment).toEqual({ type: "payment", clientSecret: "pi_test_secret" });
   });
 });
-
