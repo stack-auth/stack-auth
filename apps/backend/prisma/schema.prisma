@@ -2669,6 +2669,18 @@ model Deployment {
   // source build, which is exactly what true means.
   hasBuildLogs Boolean @default(true)
 
+  // What this deploy PACKAGED: `{ file_count, total_bytes, compressed_bytes,
+  // entries: [{ path, bytes }] }` (see DeploymentSourceManifest in
+  // packages/shared/src/deployments). A listing, never contents — the tarball
+  // itself is consumed by the build and deleted, so this is what survives it to
+  // answer "why was my upload this big, and did my .dockerignore work".
+  //
+  // Null for an all-prebuilt deploy (nothing was packaged) and for every row
+  // written before the manifest existed. Capped at MAX_SOURCE_MANIFEST_ENTRIES
+  // files, largest first, so the column stays small on a repository with tens of
+  // thousands of files.
+  sourceManifest Json?
+
   // The service ids this deploy INTENDED to ship, in dependency order, as a
   // JSON string array — kept separately from the outcomes below because a
   // service can fail before it has an outcome at all.

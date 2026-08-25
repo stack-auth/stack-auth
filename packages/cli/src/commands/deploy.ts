@@ -1,4 +1,4 @@
-import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, buildSourceManifest, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
@@ -219,7 +219,7 @@ export async function packageAndUploadSource(options: {
   authHeaders: () => Promise<Record<string, string>>,
   sourceRoot: string,
   services: Map<string, EvaluatedService>,
-}): Promise<string> {
+}): Promise<{ uploadId: string, manifest: DeploymentSourceManifest }> {
   const { auth, authHeaders, sourceRoot, services } = options;
   const packaged = packageSourceDirectory(sourceRoot);
 
@@ -276,7 +276,13 @@ export async function packageAndUploadSource(options: {
     // The slot's own expiry is the upload's deadline — see source-upload.ts.
     expiresAtMillis: typeof upload.expires_at_millis === "number" ? upload.expires_at_millis : null,
   });
-  return upload.id;
+  // Recorded with the deployment because the tarball is not: the build consumes
+  // it and it is deleted, so a listing of what went in is the only thing left
+  // to answer "why was this upload 39 MB" after the fact.
+  return {
+    uploadId: upload.id,
+    manifest: buildSourceManifest({ files: packaged.files, compressedBytes: packaged.tarballGzipped.length }),
+  };
 }
 
 /**
@@ -536,7 +542,9 @@ export function registerDeployCommand(program: Command) {
         throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
       })()).definition.image === undefined);
       const sourceRoot = path.dirname(deploySource.path);
-      const uploadId = buildsFromSource
+      // Undefined for an all-prebuilt deploy: nothing is packaged, so there is
+      // no upload and no manifest to report.
+      const packagedSource = buildsFromSource
         ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services })
         : undefined;
 
@@ -547,7 +555,10 @@ export function registerDeployCommand(program: Command) {
           source_id: sourceId,
           // Omitted entirely when nothing is built from source; the backend
           // requires it exactly when at least one service needs a build.
-          ...(uploadId === undefined ? {} : { upload_id: uploadId }),
+          ...(packagedSource === undefined ? {} : {
+            upload_id: packagedSource.uploadId,
+            source_manifest: packagedSource.manifest,
+          }),
           definition_sync_id: definitionSyncId,
           levels,
           // The `secret()` defaults ride along with the deploy instead of being

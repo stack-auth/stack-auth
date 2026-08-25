@@ -1,5 +1,6 @@
 import * as yup from "yup";
 import type { EnvironmentConfigOverrideOverride } from "../config/schema";
+import type { DeploymentSourceManifest } from "../deployments";
 import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type ConfigAgentRunApi, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
@@ -100,6 +101,12 @@ export type AdminDeploymentJson = {
   error: string | null,
   // Whether the build produced a log to read (see getDeploymentBuildLogs).
   has_build_logs: boolean,
+  // What this deploy PACKAGED: paths and sizes, never contents. One manifest per
+  // deployment, because a deploy uploads one tree and every source-built service
+  // is built from it — a service's slice is the subtree under its
+  // `root_directory`. Null when nothing was packaged (every service ran an
+  // already-built image) and on deployments from before this was recorded.
+  source_manifest: DeploymentSourceManifest | null,
   // Every service the deploy intended to ship, in the order it applied them.
   services: AdminDeploymentServiceOutcomeJson[],
 };

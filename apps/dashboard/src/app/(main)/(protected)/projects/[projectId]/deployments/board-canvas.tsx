@@ -463,6 +463,7 @@ export function BoardCanvas({ deployment, deployments }: {
             // deploy ran an already-built image. Distinct from "not deployed
             // yet", so the Build logs tab can say which it is.
             hasBuildLogs={deployment.has_build_logs}
+            sourceManifest={deployment.source_manifest ?? null}
             outcome={outcomeByServiceId.get(selected.id) ?? null}
             onClose={() => setSelectedId(null)}
             refresh={refresh}

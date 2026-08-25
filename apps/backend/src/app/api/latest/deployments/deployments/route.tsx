@@ -2,7 +2,7 @@ import { assertGlobalDeploymentCapacity, assertMinInstancesAllowedByPlan, create
 import { getMarshalDeploymentsConfigOrNull } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentSecretDefaultsSchema, type DeploymentServiceDefinition } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentSecretDefaultsSchema, parseSourceManifest, type DeploymentServiceDefinition } from "@hexclave/shared/dist/deployments";
 import type { MarshalEnvValue } from "@/lib/deployments/marshal-client";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
@@ -109,6 +109,12 @@ export const POST = createSmartRouteHandler({
       // service id and then by env var key. Request-scoped: used only to fill
       // secrets that have no stored value, and never written to the database.
       secret_defaults: yupMixed().optional(),
+      // A listing of what the client packaged (paths and sizes, never contents),
+      // recorded with the deployment because the tarball itself is consumed by
+      // the build and deleted. Optional and validated leniently by
+      // parseSourceManifest: it is a debugging aid, so a client that sends a
+      // shape this server does not recognise loses the listing, not the deploy.
+      source_manifest: yupMixed().optional(),
       triggered_by: yupString().optional(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
@@ -255,6 +261,7 @@ export const POST = createSmartRouteHandler({
         sourceRowId: source.id,
         triggeredBy: body.triggered_by ?? auth.type,
         plannedServiceIds,
+        sourceManifest: parseSourceManifest(body.source_manifest),
       });
     }, { level: "serializable" });
     await prisma.deployment.update({

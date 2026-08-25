@@ -3,6 +3,7 @@
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
 import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
+import type { DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { XIcon } from "@phosphor-icons/react";
 import { type ReadonlyURLSearchParams, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +13,7 @@ import {
   DomainsContent,
   OverviewContent,
   SettingsContent,
+  SourceContent,
   VariablesContent,
 } from "./panel-content";
 import { STATUS_META, getAccentClasses } from "./variants";
@@ -30,6 +32,10 @@ type ServiceDetailPaneProps = {
   // Whether that deploy produced a build log at all. An all-prebuilt deploy
   // starts no builder, so there is nothing to fetch.
   hasBuildLogs: boolean,
+  // What that deploy packaged and uploaded — one listing for the whole
+  // deployment, since one upload feeds every source-built service. Null when it
+  // packaged nothing, or predates the manifest.
+  sourceManifest: DeploymentSourceManifest | null,
   outcome: AdminDeploymentServiceOutcomeJson | null,
   onClose: () => void,
   refresh: () => Promise<void>,
@@ -38,10 +44,13 @@ type ServiceDetailPaneProps = {
 // No "Deployments" tab listing every past run of this service: the page is already scoped to
 // ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
 // instead — the thing you actually open a failed service to read.
-type PanelTabId = "overview" | "build-logs" | "variables" | "domains" | "settings";
+type PanelTabId = "overview" | "source" | "build-logs" | "variables" | "domains" | "settings";
 
+// Source sits before Build logs because that is the order the deploy happened
+// in: what was packaged, then what the builder made of it.
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "source", label: "Source" },
   { id: "build-logs", label: "Build logs" },
   { id: "variables", label: "Variables" },
   { id: "domains", label: "Domains" },
@@ -92,6 +101,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
+      case "source": { return <SourceContent manifest={props.sourceManifest} service={service} isHexclave={isHexclave} />; }
       case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} hasBuildLogs={props.hasBuildLogs} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }

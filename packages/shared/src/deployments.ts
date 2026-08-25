@@ -13,6 +13,7 @@
 import * as yup from "yup";
 import { MAX_PROJECT_SECRET_KEY_LENGTH, PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "./schema-fields";
+import { stringCompare } from "./utils/strings";
 
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -30,6 +31,106 @@ export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // they appear in no reference, so nothing has to parse them.
 export const DEPLOYMENT_SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/;
 export const MAX_DEPLOYMENT_SOURCE_ID_LENGTH = 63;
+
+// ---------------------------------------------------------------------------
+// Source manifest
+//
+// What a deploy PACKAGED, recorded so a reader can answer "why is my upload
+// this big, and did my .gitignore/.dockerignore do what I meant" without
+// guessing. It is a listing, not the source: paths and sizes only, never
+// contents. The tarball itself is consumed by the build and deleted, on purpose
+// — this is what survives it.
+//
+// One manifest per DEPLOYMENT, not per service: a deploy uploads one tree and
+// every source-built service is built from it. A service's slice is the subtree
+// under its `root_directory`.
+
+/** How many file entries a manifest may carry. */
+export const MAX_SOURCE_MANIFEST_ENTRIES = 500;
+export const MAX_SOURCE_MANIFEST_PATH_LENGTH = 1024;
+
+export type DeploymentSourceManifest = {
+  /** Every file packaged, including the ones `entries` had no room for. */
+  file_count: number,
+  /** Their total size before compression. */
+  total_bytes: number,
+  /** What was actually uploaded, after tar + gzip. */
+  compressed_bytes: number,
+  /**
+   * The largest files, biggest first, capped at MAX_SOURCE_MANIFEST_ENTRIES.
+   *
+   * Largest-first rather than a truncated alphabetical walk, because the cap
+   * then only ever drops files too small to be anyone's problem — the question
+   * this answers is which files are big.
+   */
+  entries: { path: string, bytes: number }[],
+};
+
+/**
+ * The manifest for a packaged tree, capped. `paths` and `sizes` come from the
+ * packager, which already holds every entry it wrote.
+ */
+export function buildSourceManifest(options: {
+  files: { path: string, bytes: number }[],
+  compressedBytes: number,
+}): DeploymentSourceManifest {
+  const files = options.files;
+  const entries = [...files]
+    .sort((a, b) => b.bytes - a.bytes || stringCompare(a.path, b.path))
+    .slice(0, MAX_SOURCE_MANIFEST_ENTRIES)
+    .map((file) => ({ path: file.path.slice(0, MAX_SOURCE_MANIFEST_PATH_LENGTH), bytes: file.bytes }));
+  return {
+    file_count: files.length,
+    total_bytes: files.reduce((total, file) => total + file.bytes, 0),
+    compressed_bytes: options.compressedBytes,
+    entries,
+  };
+}
+
+/**
+ * Parses a stored manifest, or null when there is none / it is not one.
+ *
+ * Tolerant on purpose: this is a debugging aid read out of a JSON column, and a
+ * row written by an older client (or hand-edited) must degrade to "no manifest"
+ * rather than break the deployment it belongs to.
+ */
+export function parseSourceManifest(value: unknown): DeploymentSourceManifest | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const number = (key: string) => typeof record[key] === "number" && Number.isFinite(record[key]) ? record[key] as number : null;
+  const fileCount = number("file_count");
+  const totalBytes = number("total_bytes");
+  const compressedBytes = number("compressed_bytes");
+  if (fileCount === null || totalBytes === null || compressedBytes === null) return null;
+  if (!Array.isArray(record.entries)) return null;
+  const entries = record.entries.flatMap((entry): { path: string, bytes: number }[] => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const candidate = entry as Record<string, unknown>;
+    if (typeof candidate.path !== "string" || typeof candidate.bytes !== "number" || !Number.isFinite(candidate.bytes)) return [];
+    return [{ path: candidate.path, bytes: candidate.bytes }];
+  }).slice(0, MAX_SOURCE_MANIFEST_ENTRIES);
+  return { file_count: fileCount, total_bytes: totalBytes, compressed_bytes: compressedBytes, entries };
+}
+
+/**
+ * The manifest entries belonging to one service, and whether the listing is
+ * complete for it.
+ *
+ * `rootDirectory` is the service's own subtree of the shared upload; null or
+ * "." means the whole tree. Paths are posix and relative to the upload root.
+ */
+export function sourceManifestEntriesForService(
+  manifest: DeploymentSourceManifest,
+  rootDirectory: string | null,
+): { entries: { path: string, bytes: number }[], truncated: boolean } {
+  const normalized = (rootDirectory ?? ".").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  const prefix = normalized === "" || normalized === "." ? "" : `${normalized}/`;
+  const entries = prefix === "" ? manifest.entries : manifest.entries.filter((entry) => entry.path.startsWith(prefix));
+  // Truncated is a property of the whole manifest, not of this slice: once the
+  // cap dropped files, no subtree can claim to be complete.
+  return { entries, truncated: manifest.file_count > manifest.entries.length };
+}
+
 // The source id of deployments declared in hexclave.config.ts, which has no `id`
 // export of its own. Named after the file so the dashboard can show where those
 // services came from without a special case.
@@ -1286,3 +1387,80 @@ import.meta.vitest?.test("deploymentSecretDefaultsSchema accepts env-var-keyed d
 // matches under exactOptionalPropertyTypes only if the shapes agree).
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _assertEnvVarSchemaMatchesType: DeploymentEnvVarDefinition = undefined as unknown as yup.InferType<typeof deploymentEnvVarSchema>;
+
+import.meta.vitest?.test("buildSourceManifest keeps the LARGEST files when it has to drop some", ({ expect }) => {
+  // Largest-first is the whole point of the cap: the question a manifest answers
+  // is which files are big, so truncation must only ever drop ones too small to
+  // be anyone's problem.
+  const files = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 50 }, (_, index) => ({ path: `f${index}.bin`, bytes: index }));
+  const manifest = buildSourceManifest({ files, compressedBytes: 1234 });
+  expect(manifest.file_count).toBe(files.length);
+  expect(manifest.entries).toHaveLength(MAX_SOURCE_MANIFEST_ENTRIES);
+  expect(manifest.entries[0]).toEqual({ path: `f${files.length - 1}.bin`, bytes: files.length - 1 });
+  // The totals cover every file, including the ones with no room in `entries`.
+  expect(manifest.total_bytes).toBe(files.reduce((total, file) => total + file.bytes, 0));
+  expect(manifest.compressed_bytes).toBe(1234);
+});
+
+import.meta.vitest?.test("buildSourceManifest is deterministic when sizes tie", ({ expect }) => {
+  // Two deploys of one tree must produce the same listing, or a diff of them is
+  // noise. Ties break on path.
+  const files = [{ path: "b.txt", bytes: 10 }, { path: "a.txt", bytes: 10 }, { path: "c.txt", bytes: 99 }];
+  expect(buildSourceManifest({ files, compressedBytes: 1 }).entries.map((entry) => entry.path))
+    .toEqual(["c.txt", "a.txt", "b.txt"]);
+});
+
+import.meta.vitest?.test("parseSourceManifest refuses anything that is not one", ({ expect }) => {
+  // It is read out of a JSON column, so it degrades to "no manifest" rather than
+  // breaking the deployment it belongs to.
+  expect(parseSourceManifest(null)).toBeNull();
+  expect(parseSourceManifest(undefined)).toBeNull();
+  expect(parseSourceManifest("{}")).toBeNull();
+  expect(parseSourceManifest([])).toBeNull();
+  expect(parseSourceManifest({ file_count: 1, total_bytes: 2 })).toBeNull();
+  expect(parseSourceManifest({ file_count: 1, total_bytes: 2, compressed_bytes: 3 })).toBeNull();
+});
+
+import.meta.vitest?.test("parseSourceManifest drops malformed entries but keeps the manifest", ({ expect }) => {
+  const parsed = parseSourceManifest({
+    file_count: 3,
+    total_bytes: 30,
+    compressed_bytes: 10,
+    entries: [{ path: "a", bytes: 20 }, { path: "b" }, { bytes: 5 }, null, { path: "c", bytes: "big" }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "a", bytes: 20 }]);
+  // The totals are the manifest's own claim and survive a bad entry.
+  expect(parsed?.file_count).toBe(3);
+});
+
+import.meta.vitest?.test("sourceManifestEntriesForService slices the shared upload by root directory", ({ expect }) => {
+  const manifest = buildSourceManifest({
+    files: [
+      { path: "web/app/page.tsx", bytes: 100 },
+      { path: "web/public/hero.png", bytes: 900 },
+      { path: "api/main.go", bytes: 400 },
+      { path: "README.md", bytes: 10 },
+    ],
+    compressedBytes: 500,
+  });
+  expect(sourceManifestEntriesForService(manifest, "web").entries.map((entry) => entry.path))
+    .toEqual(["web/public/hero.png", "web/app/page.tsx"]);
+  // The authored spellings of "the whole tree" all mean the whole tree.
+  for (const root of [null, ".", "./", ""]) {
+    expect(sourceManifestEntriesForService(manifest, root).entries).toHaveLength(4);
+  }
+  // "./web/" is the same subtree as "web".
+  expect(sourceManifestEntriesForService(manifest, "./web/").entries).toHaveLength(2);
+  // A prefix must match a whole path SEGMENT: "web" is not "website".
+  expect(sourceManifestEntriesForService(manifest, "webs").entries).toHaveLength(0);
+});
+
+import.meta.vitest?.test("sourceManifestEntriesForService reports truncation as the manifest's, not the slice's", ({ expect }) => {
+  // Once the cap dropped files, no subtree can claim to be a complete listing —
+  // the dropped ones could have been anywhere.
+  const files = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 1 }, (_, index) => ({ path: `web/f${index}.bin`, bytes: index + 1 }));
+  const manifest = buildSourceManifest({ files, compressedBytes: 1 });
+  expect(sourceManifestEntriesForService(manifest, "web").truncated).toBe(true);
+  const small = buildSourceManifest({ files: [{ path: "web/a", bytes: 1 }], compressedBytes: 1 });
+  expect(sourceManifestEntriesForService(small, "web").truncated).toBe(false);
+});

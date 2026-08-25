@@ -3,7 +3,7 @@
 import { DesignBadge, DesignButton, DesignInput } from "@/components/design-components";
 import { CopyButton, Label, Spinner, cn } from "@/components/ui";
 import type { AdminDeploymentDomainJson, AdminDeploymentServiceJson, AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
-import { deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { deploymentPortOwnsStandardPorts, parseConnectionValue, sourceManifestEntriesForService, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowClockwiseIcon,
@@ -346,6 +346,110 @@ function useDeploymentBuildLogs(project: AdminProject, deploymentId: string | nu
   }, [project, deploymentId, reloadCounter]);
 
   return { logs, error, reload: () => setReloadCounter((c) => c + 1) };
+}
+
+// ---------------------------------------------------------------------------
+// Source
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What this deploy PACKAGED and sent, for this service's subtree.
+ *
+ * Paths and sizes, never contents: the uploaded tarball is consumed by the build
+ * and deleted, so a listing is what survives it. It exists to answer the two
+ * questions a large or surprising upload provokes — which files are big, and did
+ * my .gitignore/.dockerignore actually exclude what I meant.
+ */
+export function SourceContent({ manifest, service, isHexclave }: {
+  manifest: DeploymentSourceManifest | null,
+  service: BoardService,
+  isHexclave: boolean,
+}) {
+  if (isHexclave) {
+    return <EmptyPanel>The Hexclave service is deployed for you from no source of yours, so this deploy packaged nothing for it.</EmptyPanel>;
+  }
+  // A service that names an image is not built from the upload at all. Said
+  // before the manifest is checked, because "nothing was packaged" and "this
+  // service has no source" are different facts and only one is about this
+  // service.
+  if (service.api?.image != null) {
+    return <EmptyPanel>This service runs an already-built image, so no source is packaged or uploaded for it.</EmptyPanel>;
+  }
+  if (manifest === null) {
+    return <EmptyPanel>This deploy recorded no source listing. Deploys made before the CLI started reporting one, and deploys that built nothing, have none.</EmptyPanel>;
+  }
+
+  const rootDirectory = service.api?.root_directory ?? null;
+  const { entries, truncated } = sourceManifestEntriesForService(manifest, rootDirectory);
+  const scopeLabel = rootDirectory == null || rootDirectory === "" || rootDirectory === "." ? "the deploy file's directory" : rootDirectory;
+
+  return (
+    <div className="h-full space-y-4 overflow-y-auto p-4">
+      <div className="space-y-2">
+        <SectionLabel>Uploaded for this deploy</SectionLabel>
+        {/* The deployment's totals, not this service's: one deploy uploads ONE
+            tree and every source-built service is built from it, so the number
+            that explains a slow or rejected upload belongs to the deploy. */}
+        <div className="rounded-xl bg-foreground/[0.03] p-3 text-xs ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">{manifest.file_count.toLocaleString()} file{manifest.file_count === 1 ? "" : "s"}</span>
+            <span className="font-mono">{formatFileSize(manifest.compressed_bytes)} sent</span>
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {formatFileSize(manifest.total_bytes)} on disk, compressed to {formatFileSize(manifest.compressed_bytes)}. Every service of this deploy is built from this one upload.
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <SectionLabel>Largest files under {scopeLabel}</SectionLabel>
+        {entries.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+            {truncated
+              ? <>None of this deploy&apos;s largest files are under {scopeLabel}. The listing keeps only the biggest {manifest.entries.length.toLocaleString()} of {manifest.file_count.toLocaleString()} files.</>
+              : <>Nothing was packaged under {scopeLabel}.</>}
+          </div>
+        ) : (
+          <>
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+              {entries.map((entry) => (
+                <div key={entry.path} className="flex items-center justify-between gap-3 border-b border-border/40 bg-foreground/[0.02] px-2.5 py-1.5 last:border-b-0">
+                  {/* Right-truncated would hide the filename, which is the part
+                      that identifies the row; the title carries the full path. */}
+                  <span className="truncate font-mono text-[11px]" dir="rtl" title={entry.path}>{entry.path}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(entry.bytes)}</span>
+                </div>
+              ))}
+            </div>
+            {truncated && (
+              <p className="text-[11px] text-muted-foreground">
+                Largest {manifest.entries.length.toLocaleString()} of {manifest.file_count.toLocaleString()} files; the rest are smaller than every file listed.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        This is what <span className="font-mono">hexclave deploy</span> packaged after your <span className="font-mono">.gitignore</span> and <span className="font-mono">.dockerignore</span> rules. Anything here that shouldn&apos;t be uploaded belongs in one of them.
+      </p>
+    </div>
+  );
 }
 
 export function BuildLogsContent({ deploymentId, hasBuildLogs, outcome, project, isHexclave }: {

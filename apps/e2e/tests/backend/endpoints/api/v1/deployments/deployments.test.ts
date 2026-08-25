@@ -866,6 +866,54 @@ describe("deploys against the Marshal runtime", () => {
     expect(webApp.machines[0].env.DATABASE_HOST).toMatch(/\.flycast$/);
   });
 
+  it("records what the deploy packaged, and reports it back with the deployment", { timeout: 120_000 }, async ({ expect }) => {
+    // The uploaded tarball is consumed by the build and deleted, so this listing
+    // is the only thing left to answer "why was my upload this big, and did my
+    // .dockerignore work". It is stored as the client reports it — the client is
+    // what packaged the tree — and read back on the deployment.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("web");
+    const { definitionSyncId, sourceId, uploadId } = await syncServiceAndUpload(serviceId);
+    const manifest = {
+      file_count: 3,
+      total_bytes: 6_500,
+      compressed_bytes: 2_100,
+      entries: [
+        { path: "web/public/hero.png", bytes: 6_000 },
+        { path: "web/src/index.ts", bytes: 480 },
+        { path: "web/Dockerfile", bytes: 20 },
+      ],
+    };
+    const deploymentId = await startDeploy({
+      sourceId,
+      uploadId,
+      definitionSyncId,
+      levels: [[serviceId]],
+      extraBody: { source_manifest: manifest },
+    });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    expect(deployment.source_manifest).toEqual(manifest);
+  });
+
+  it("stores no manifest rather than a false one when the client reports nothing usable", async ({ expect }) => {
+    // A debugging aid must degrade to "not recorded" rather than 400 a deploy or
+    // store a shape the dashboard cannot read.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("web");
+    const { definitionSyncId, sourceId, uploadId } = await syncServiceAndUpload(serviceId);
+    const deploymentId = await startDeploy({
+      sourceId,
+      uploadId,
+      definitionSyncId,
+      levels: [[serviceId]],
+      extraBody: { source_manifest: { file_count: 2, entries: "not an array" } },
+    });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    expect(deployment.source_manifest).toBe(null);
+  });
+
   it("refuses an upload for a deployment that builds nothing", async ({ expect }) => {
     await Project.createAndSwitch();
     await InternalApiKey.createAndSetProjectKeys();

@@ -50,6 +50,7 @@ import {
   DeploymentPorts,
   DeploymentServiceDefinition,
   DeploymentServiceType,
+  DeploymentSourceManifest,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
   SERVICE_OUTPUT_KEYS,
@@ -57,6 +58,7 @@ import {
   deploymentPortEntry,
   formatConnectionValue,
   parseConnectionValue,
+  parseSourceManifest,
   soleHttpDeploymentPort,
   standardPortsHolderPort,
 } from "@hexclave/shared/dist/deployments";
@@ -1152,6 +1154,10 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
   sourceRowId: string,
   triggeredBy: string,
   plannedServiceIds: string[],
+  // What the client packaged, or null when it packaged nothing (an all-prebuilt
+  // deploy). Stored as given: it is a listing the client already computed while
+  // building the tarball, and re-deriving it would mean inflating the archive.
+  sourceManifest?: DeploymentSourceManifest | null,
 }): Promise<{ id: string, number: number }> {
   const latest = await prisma.deployment.findFirst({
     where: { tenancyId: tenancy.id },
@@ -1165,6 +1171,9 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
       number: (latest?.number ?? 0) + 1,
       triggeredBy: options.triggeredBy,
       plannedServiceIds: options.plannedServiceIds,
+      // Undefined rather than null when absent, so Prisma leaves the column
+      // NULL — "not recorded", which is what it means.
+      ...(options.sourceManifest == null ? {} : { sourceManifest: options.sourceManifest }),
       services: Object.fromEntries(options.plannedServiceIds.map((serviceId) => [serviceId, { status: "pending" }])),
     },
     select: { id: true, number: true },
@@ -1487,6 +1496,9 @@ export type DeploymentApiShape = {
   finished_at_millis: number | null,
   error: string | null,
   has_build_logs: boolean,
+  // What this deploy packaged, or null when it packaged nothing (every service
+  // ran an already-built image) and on rows written before it was recorded.
+  source_manifest: DeploymentSourceManifest | null,
   services: {
     service_id: string,
     status: DeploymentServiceOutcome["status"],
@@ -1555,6 +1567,7 @@ export function deploymentToApiShape(deployment: {
   hasBuildLogs: boolean,
   plannedServiceIds: Prisma.JsonValue,
   services: Prisma.JsonValue,
+  sourceManifest?: Prisma.JsonValue,
   source: { sourceId: string },
 }): DeploymentApiShape {
   const outcomes = parseStoredOutcomes(deployment.services);
@@ -1576,6 +1589,10 @@ export function deploymentToApiShape(deployment: {
     // Both halves matter: a deployment the runtime never accepted has no log to
     // fetch, and one that built nothing produced no log to fetch.
     has_build_logs: deployment.marshalBuildId !== null && deployment.hasBuildLogs,
+    // Parsed rather than passed through: it comes out of a JSON column, so a row
+    // written by an older client must degrade to "no manifest" instead of
+    // reaching the dashboard as some other shape.
+    source_manifest: parseSourceManifest(deployment.sourceManifest ?? null),
     services: serviceIds.map((serviceId) => {
       const outcome = outcomes.get(serviceId) ?? { status: "pending" as const };
       return {
