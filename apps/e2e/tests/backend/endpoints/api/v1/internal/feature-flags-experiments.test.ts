@@ -83,7 +83,6 @@ function featureFlagsConfig(options?: {
     },
     experiments: {
       [EXPERIMENT_ID]: experiment,
-      [SECOND_EXPERIMENT_ID]: { ...experiment, key: "my-second-experiment" },
     },
   };
 }
@@ -350,11 +349,26 @@ describe("experiment run lifecycle transitions", () => {
     await createProjectWithAnalytics();
 
     const firstCreateRes = await createRun();
-    const secondCreateRes = await createRun(validExperimentConfig(), SECOND_EXPERIMENT_ID);
     expect(firstCreateRes.status).toBe(201);
-    expect(secondCreateRes.status).toBe(201);
     expect((await transitionRun(firstCreateRes.body.id, "start")).status).toBe(200);
 
+    // Config forbids two non-archived definitions on the same flag, so the
+    // successor is published only after the predecessor is archived. The first
+    // run stays RUNNING, which is what the active-flag unique index guards.
+    const published = featureFlagsConfig();
+    await Project.updateConfig({
+      apps: { installed: { analytics: { enabled: true }, "feature-flags": { enabled: true } } },
+      featureFlags: {
+        ...published,
+        experiments: {
+          [EXPERIMENT_ID]: { ...published.experiments[EXPERIMENT_ID], archived: true },
+          [SECOND_EXPERIMENT_ID]: { ...published.experiments[EXPERIMENT_ID], key: "my-second-experiment" },
+        },
+      },
+    });
+
+    const secondCreateRes = await createRun(validExperimentConfig(), SECOND_EXPERIMENT_ID);
+    expect(secondCreateRes.status).toBe(201);
     const secondStartRes = await transitionRun(secondCreateRes.body.id, "start", {}, SECOND_EXPERIMENT_ID);
     expect(secondStartRes.status).toBe(409);
     expect(secondStartRes.body).toBe("Another active run already targets this experiment or feature flag");

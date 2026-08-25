@@ -220,7 +220,9 @@ export const POST = createSmartRouteHandler({
       // local balance read: without it, distinct idempotency keys can both see
       // the same credits and overdraw. The lock is narrow and the read does no
       // Prisma work, keeping the critical section bounded to one local call.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+      // pg_advisory_xact_lock returns void; $queryRaw would fail Prisma's row
+      // deserializer with "column of type 'void'".
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
       if (idempotentChangeId !== undefined) {
         const existing = await tx.itemQuantityChange.findUnique({
           where: { tenancyId_id: { tenancyId: tenancy.id, id: idempotentChangeId } },

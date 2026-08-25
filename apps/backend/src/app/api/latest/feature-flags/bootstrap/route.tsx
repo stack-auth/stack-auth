@@ -48,11 +48,14 @@ export const GET = createSmartRouteHandler({
     );
     const bootstrap = createFeatureFlagsBootstrap(config);
     const etag = `"${bootstrap.configVersion}"`;
+    // no-transform keeps the validator header: in-process gzip otherwise
+    // strips ETag because it would describe the uncompressed bytes.
+    const cacheControl = "no-store, max-age=0, no-transform";
     if (ifNoneMatchContains(headers["if-none-match"] ?? [], bootstrap.configVersion)) {
       return {
         statusCode: 304,
         bodyType: "response",
-        body: new Response(null, { status: 304, headers: { etag } }),
+        body: new Response(null, { status: 304, headers: { etag, "cache-control": cacheControl } }),
       };
     }
     return {
@@ -62,7 +65,7 @@ export const GET = createSmartRouteHandler({
         config: bootstrap.config,
         flag_ids_by_key: bootstrap.flagIdsByKey,
         config_version: bootstrap.configVersion,
-      }, { status: 200, headers: { etag } }),
+      }, { status: 200, headers: { etag, "cache-control": cacheControl } }),
     };
   },
 });

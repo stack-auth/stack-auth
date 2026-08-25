@@ -3683,7 +3683,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
   }
   // END_PLATFORM
-
   // IF_PLATFORM react-like
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
