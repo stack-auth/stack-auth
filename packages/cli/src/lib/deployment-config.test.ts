@@ -12,7 +12,7 @@ function evaluate(servicesExport: unknown, mode: "deploy" | "dev" = "deploy") {
   const deployExport = (context: ServicesFunctionContext) => ({
     services: typeof servicesExport === "function" ? (servicesExport as (ctx: ServicesFunctionContext) => unknown)(context) : servicesExport,
   });
-  return evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport: "test-source", deployExport, mode });
+  return evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, deploymentGroupIdExport: "test-source", deployExport, mode });
 }
 
 describe("evaluateDeploymentConfig (deploy mode)", () => {
@@ -540,18 +540,33 @@ describe("service types", () => {
 });
 
 describe("the deployment envelope", () => {
-  const evaluateExports = (idExport: unknown, deployExport: unknown) =>
-    () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, idExport, deployExport, mode: "deploy" });
+  const evaluateExports = (deploymentGroupIdExport: unknown, deployExport: unknown) =>
+    () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, deploymentGroupIdExport, deployExport, mode: "deploy" });
 
-  it("requires an id export naming the deployment source", () => {
+  it("requires a deploymentGroupId export naming the deployment group", () => {
     const deployExport = () => ({ services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } } } } });
-    expect(evaluateExports(undefined, deployExport)).toThrow("has no `id` export");
+    expect(evaluateExports(undefined, deployExport)).toThrow("has no `deploymentGroupId` export");
     expect(evaluateExports(7, deployExport)).toThrow("must be a string");
-    expect(evaluateExports("-nope", deployExport)).toThrow("Invalid deployment source id");
+    expect(evaluateExports("-nope", deployExport)).toThrow("Invalid deployment group id");
     expect(evaluateExports("backend", deployExport)().sourceId).toBe("backend");
     // Dots are legal: deployments declared in hexclave.config.ts belong to a
-    // source named after the file.
+    // group named after the file.
     expect(evaluateExports("hexclave.config.ts", deployExport)().sourceId).toBe("hexclave.config.ts");
+  });
+
+  it("names the rename when the file still exports `id`", () => {
+    const deployExport = () => ({ services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } } } } });
+    const evaluateLegacy = (legacyIdExport: unknown, deploymentGroupIdExport?: unknown) =>
+      () => evaluateDeploymentConfig({ deployFilePath: DEPLOY_FILE_PATH, deploymentGroupIdExport, legacyIdExport, deployExport, mode: "deploy" });
+
+    // The old name is refused rather than ignored: deploying under a different
+    // group id than the file names would tear down its services.
+    expect(evaluateLegacy("backend")).toThrow('Rename it to `deploymentGroupId`, e.g. `export const deploymentGroupId = "backend";`');
+    // Refused even alongside the new one, so a half-done rename can't deploy
+    // under whichever export happened to win.
+    expect(evaluateLegacy("backend", "backend")).toThrow("no longer supported");
+    // A non-string `id` is still the rename, not a type complaint.
+    expect(evaluateLegacy(7)).toThrow('export const deploymentGroupId = "backend";');
   });
 
   it("rejects a missing or malformed deploy export", () => {

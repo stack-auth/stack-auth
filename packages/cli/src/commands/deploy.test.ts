@@ -50,12 +50,13 @@ describe("deploy command helpers", () => {
     const dir = makeTempDir();
     const deployFilePath = path.join(dir, "hexclave.deploy.ts");
     const configFilePath = path.join(dir, "hexclave.config.ts");
-    fs.writeFileSync(deployFilePath, 'export const id = "source"; export const deploy = () => ({ services: {} });');
+    fs.writeFileSync(deployFilePath, 'export const deploymentGroupId = "source"; export const deploy = () => ({ services: {} });');
     fs.writeFileSync(configFilePath, "export const config = {}; export const deploy = () => ({ services: {} });");
 
     const deployModule = await importDeployModule(deployFilePath);
     const configModule = await importConfigModule(configFilePath);
-    expect(deployModule.id).toBe("source");
+    expect(deployModule.deploymentGroupId).toBe("source");
+    expect(deployModule.legacyId).toBeUndefined();
     expect(deployModule.deploy).toBeTypeOf("function");
     expect(configModule.deploy).toBeTypeOf("function");
   });
@@ -81,7 +82,7 @@ describe("deploy command helpers", () => {
   it("returns one final URL for each successfully deployed public service", () => {
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } } },
         worker: { type: "serverless", ports: { 3001: { protocol: "http" } } },
@@ -102,7 +103,7 @@ describe("deploy command helpers", () => {
     // number, and would otherwise appear nowhere the author looks.
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         // Declared high-first on purpose: the holder is the lowest port NUMBER,
         // not whichever key was written first.
@@ -126,7 +127,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>no dockerfile</h1>");
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } }, dockerfilePath: "Dockerfile" },
       } }),
@@ -153,7 +154,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "apps", "web", "index.html"), "<h1>hi</h1>");
     const servicesOf = (rootDirectory: string) => evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory, dockerfilePath: "Dockerfile" },
       } }),
@@ -183,7 +184,7 @@ describe("deploy command helpers", () => {
     fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
     const services = evaluateDeploymentConfig({
       deployFilePath: path.join(dir, "hexclave.deploy.ts"),
-      idExport: "test-source",
+      deploymentGroupIdExport: "test-source",
       deployExport: () => ({ services: {
         web: { type: "serverless", ports: { 3000: { protocol: "http" } } },
       } }),
@@ -207,7 +208,7 @@ describe("deploy command helpers", () => {
 describe("collectRequiredSecretKeys", () => {
   const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateDeploymentConfig({
     deployFilePath: path.join(os.tmpdir(), "hexclave.deploy.ts"),
-    idExport: "test-source",
+    deploymentGroupIdExport: "test-source",
     deployExport: (ctx: ServicesFunctionContext) => ({ services: definition(ctx) }),
     mode: "deploy",
   }).services.values()];

@@ -396,13 +396,16 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
 /**
  * What this deploy ships: a deploy file when there is one, otherwise the config
  * file, for a project small enough to keep its services there. The config file
- * has no `id` export, so its deployments belong to a source named after the file
- * itself — which is what lets them coexist with the deploy files of other
- * repositories deploying into the same project.
+ * has no `deploymentGroupId` export, so its deployments belong to a group named
+ * after the file itself — which is what lets them coexist with the deploy files
+ * of other repositories deploying into the same project.
  */
 async function resolveDeploySource(deployFileOption: string | undefined, cwd: string): Promise<{
   path: string,
-  idExport: unknown,
+  deploymentGroupIdExport: unknown,
+  // The deploy file's `id` export, if it still uses that old name. Only a deploy
+  // file can have one; the config file's group id is the file name.
+  legacyIdExport?: unknown,
   deployExport: unknown,
 }> {
   if (deployFileOption == null || deployFileOption === "") {
@@ -413,13 +416,13 @@ async function resolveDeploySource(deployFileOption: string | undefined, cwd: st
     if (configPath !== null && !hasDeployFile(cwd)) {
       const configModule = await importConfigModule(configPath);
       if (configModule.deploy !== undefined) {
-        return { path: configPath, idExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deployExport: configModule.deploy };
+        return { path: configPath, deploymentGroupIdExport: CONFIG_FILE_DEPLOYMENT_SOURCE_ID, deployExport: configModule.deploy };
       }
     }
   }
   const deployFilePath = resolveDeployFilePath(deployFileOption, cwd);
   const deployModule = await importDeployModule(deployFilePath);
-  return { path: deployFilePath, idExport: deployModule.id, deployExport: deployModule.deploy };
+  return { path: deployFilePath, deploymentGroupIdExport: deployModule.deploymentGroupId, legacyIdExport: deployModule.legacyId, deployExport: deployModule.deploy };
 }
 
 export function registerDeployCommand(program: Command) {
@@ -437,12 +440,13 @@ export function registerDeployCommand(program: Command) {
       const authHeaders = await buildAuthHeadersFactory(auth);
 
       // A deploy file if there is one; otherwise the config file, for a project
-      // that keeps its services there. The config file has no `id` export, so
-      // its deployments belong to a source named after the file itself.
+      // that keeps its services there. The config file has no `deploymentGroupId`
+      // export, so its deployments belong to a group named after the file itself.
       const deploySource = await resolveDeploySource(opts.deployFile, process.cwd());
       const { sourceId, services } = evaluateDeploymentConfig({
         deployFilePath: deploySource.path,
-        idExport: deploySource.idExport,
+        deploymentGroupIdExport: deploySource.deploymentGroupIdExport,
+        legacyIdExport: deploySource.legacyIdExport,
         deployExport: deploySource.deployExport,
         mode: "deploy",
       });

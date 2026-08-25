@@ -18,9 +18,9 @@ export const deploymentsSkillSection = deindent`
   \`\`\`ts title="hexclave.deploy.ts"
   import type { HexclaveDeploymentConfig } from "@hexclave/js";
 
-  // Names this DEPLOYMENT SOURCE: which deploy file these services come from.
+  // Names this DEPLOYMENT GROUP: which deploy file these services come from.
   // Required, and unique across every deploy file deploying into this project.
-  export const id = "my-app";
+  export const deploymentGroupId = "my-app";
 
   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
     services: {

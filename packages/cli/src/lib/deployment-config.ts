@@ -8,11 +8,13 @@
 // The export is a FUNCTION of the deployment context returning `{ services }`.
 // The context is where `secret()`, `service()` and `hexclave.*` come from.
 //
-// The file's `id` export names the DEPLOYMENT SOURCE: which deploy file (and so
-// which repository) these services belong to. Service ids stay unique across the
-// whole project, so a reference never names a source.
+// The file's `deploymentGroupId` export names the DEPLOYMENT GROUP: which deploy
+// file (and so which repository) these services belong to. Service ids stay
+// unique across the whole project, so a reference never names a group. (The
+// wire format and the dashboard still call a group a deployment SOURCE; the
+// export was renamed, the concept is the same one.)
 //
-//   export const id = "my-app";
+//   export const deploymentGroupId = "my-app";
 //
 //   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
 //     services: {
@@ -576,7 +578,7 @@ function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<
   }));
 }
 
-const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
+const EXAMPLE_DEPLOYMENT_EXPORT = `  export const deploymentGroupId = "my-app";
 
   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
     services: {
@@ -597,29 +599,41 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
  */
 export function evaluateDeploymentConfig(options: {
   deployFilePath: string,
-  // The file's `id` export — the deployment source id. Required in a deploy
-  // file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for deployments
-  // declared in hexclave.config.ts, which has no id of its own.
-  idExport: unknown,
+  // The file's `deploymentGroupId` export — the deployment group id. Required in
+  // a deploy file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for
+  // deployments declared in hexclave.config.ts, which has no id of its own.
+  deploymentGroupIdExport: unknown,
+  // The file's `id` export, which is what this used to be called. Passed so a
+  // file still using the old name fails with the rename instead of the
+  // less helpful "no `deploymentGroupId` export".
+  legacyIdExport?: unknown,
   deployExport: unknown,
   mode: "deploy" | "dev",
 }): EvaluatedServices {
-  const { deployFilePath, idExport, deployExport, mode } = options;
+  const { deployFilePath, deploymentGroupIdExport, legacyIdExport, deployExport, mode } = options;
   const deployFileDirectory = path.dirname(deployFilePath);
 
-  // The source id names what this file deploys. Everything downstream — the
+  // `id` was the old name for this export. Refuse the file outright rather than
+  // ignoring the old name: silently ignoring it would deploy under a DIFFERENT
+  // group id than the file asks for, which tears down every service the author
+  // meant to keep.
+  if (legacyIdExport !== undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has an \`id\` export, which is no longer supported. Rename it to \`deploymentGroupId\`, e.g. \`export const deploymentGroupId = ${JSON.stringify(typeof legacyIdExport === "string" ? legacyIdExport : "backend")};\`.`);
+  }
+
+  // The group id names what this file deploys. Everything downstream — the
   // upload, the build, the teardown of services this file no longer declares —
   // is scoped to it, which is what lets several repositories deploy into one
   // project without touching each other's services.
-  if (idExport === undefined) {
-    throw new CliError(`The deploy file ${deployFilePath} has no \`id\` export. Add one naming this deployment source, e.g. \`export const id = "backend";\` — it is how Hexclave tells the deploy files of different repositories apart.`);
+  if (deploymentGroupIdExport === undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has no \`deploymentGroupId\` export. Add one naming this deployment group, e.g. \`export const deploymentGroupId = "backend";\` — it is how Hexclave tells the deploy files of different repositories apart.`);
   }
-  if (typeof idExport !== "string") {
-    throw new CliError(`The \`id\` export of ${deployFilePath} must be a string naming this deployment source (got ${typeof idExport}).`);
+  if (typeof deploymentGroupIdExport !== "string") {
+    throw new CliError(`The \`deploymentGroupId\` export of ${deployFilePath} must be a string naming this deployment group (got ${typeof deploymentGroupIdExport}).`);
   }
-  const sourceId = idExport;
+  const sourceId = deploymentGroupIdExport;
   if (!DEPLOYMENT_SOURCE_ID_REGEX.test(sourceId) || sourceId.length > MAX_DEPLOYMENT_SOURCE_ID_LENGTH) {
-    throw new CliError(`Invalid deployment source id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
+    throw new CliError(`Invalid deployment group id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
   }
 
   if (deployExport === undefined) {
@@ -1130,20 +1144,22 @@ async function importModule(filePath: string, description: string): Promise<Reco
 
 /**
  * Loads a deploy file (hexclave.deploy.ts) and returns the two exports that make
- * it one: the deployment source `id`, and the `deploy` function.
+ * it one: the deployment group id, and the `deploy` function. The old name of
+ * the first (`id`) comes back too, so evaluation can name the rename instead of
+ * reporting a missing export.
  */
-export async function importDeployModule(deployFilePath: string): Promise<{ id: unknown, deploy: unknown }> {
+export async function importDeployModule(deployFilePath: string): Promise<{ deploymentGroupId: unknown, legacyId: unknown, deploy: unknown }> {
   const module = await importModule(deployFilePath, "deploy file");
-  return { id: module.id, deploy: module.deploy };
+  return { deploymentGroupId: module.deploymentGroupId, legacyId: module.id, deploy: module.deploy };
 }
 
 /**
  * Loads a config file (hexclave.config.ts) and returns its `config` export, plus
  * a `deploy` export if it has one — a project small enough to keep its
  * services in the config file may declare them there instead of in a deploy
- * file. Those services belong to a deployment source named after the file (the
- * config file has no `id` export of its own), so they can coexist with the
- * deploy files of other repositories deploying into the same project.
+ * file. Those services belong to a deployment group named after the file (the
+ * config file has no `deploymentGroupId` export of its own), so they can coexist
+ * with the deploy files of other repositories deploying into the same project.
  */
 export async function importConfigModule(configPath: string): Promise<{ config: unknown, deploy: unknown }> {
   const module = await importModule(configPath, "config file");

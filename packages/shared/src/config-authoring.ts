@@ -268,9 +268,9 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * // hexclave.deploy.ts
  * import type { HexclaveDeploymentConfig } from "@hexclave/js";
  *
- * // Identifies this file as a deployment source. Required here, and unique
+ * // Identifies this file as a deployment group. Required here, and unique
  * // across every deploy file that deploys into the same project.
- * export const id = "backend";
+ * export const deploymentGroupId = "backend";
  *
  * export const deploy: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
  *   services: {
@@ -289,7 +289,7 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * be deployed from several repositories, each shipping the services it owns and
  * each deploying on its own schedule. The same export is accepted in
  * hexclave.config.ts for a project that has only one; those services belong to a
- * deployment source named after that file.
+ * deployment group named after that file.
  */
 export type HexclaveDeploymentConfig = (context: HexclaveDeploymentContext) => {
   services: Record<string, HexclaveService>,

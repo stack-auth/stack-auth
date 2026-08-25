@@ -18,9 +18,11 @@ import { stringCompare } from "./utils/strings";
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // A DEPLOYMENT SOURCE is the unit a deploy ships: one deploy file, one source,
-// one upload, one build. Its id comes from the deploy file's own `id` export,
-// which is what lets one project be deployed from several repositories — each
-// with a deploy file of its own, each deploying on its own schedule.
+// one upload, one build. Its id comes from the deploy file's own
+// `deploymentGroupId` export — the authoring surface calls it a deployment
+// GROUP, the wire format and the database still say source — which is what lets
+// one project be deployed from several repositories, each with a deploy file of
+// its own, each deploying on its own schedule.
 //
 // Service ids stay unique per PROJECT rather than per source, so a reference
 // never has to name a source: two sources declaring the same service id is a
@@ -168,9 +170,9 @@ export function sourceManifestEntriesForService(
   return { entries, truncated: manifest.file_count > manifest.entries.length };
 }
 
-// The source id of deployments declared in hexclave.config.ts, which has no `id`
-// export of its own. Named after the file so the dashboard can show where those
-// services came from without a special case.
+// The source id of deployments declared in hexclave.config.ts, which has no
+// `deploymentGroupId` export of its own. Named after the file so the dashboard
+// can show where those services came from without a special case.
 export const CONFIG_FILE_DEPLOYMENT_SOURCE_ID = "hexclave.config.ts";
 
 // A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
