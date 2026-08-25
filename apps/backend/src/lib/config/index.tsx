@@ -1559,6 +1559,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
         ? `${renderedConfig.emails.server.managedSenderLocalPart}@${renderedConfig.emails.server.managedSubdomain}`
         : renderedConfig.emails.server.senderEmail,
     } : {
+      // The legacy admin email_config shape only models SMTP, so a project on an HTTP provider
+      // (resend/usesend) reports type 'standard' with empty SMTP fields. Its real settings live in
+      // the config API under emails.server, which is what the dashboard reads and writes.
       type: 'standard',
       host: renderedConfig.emails.server.host,
       port: renderedConfig.emails.server.port,

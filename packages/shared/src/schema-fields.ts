@@ -764,6 +764,12 @@ export const emailSenderEmailSchema = emailSchema.meta({ openapiField: { descrip
 // need the 70-char bcrypt limit from passwordSchema. Some providers (e.g. ZeptoMail) generate
 // passwords well over 100 chars.
 export const emailPasswordSchema = yupString().max(256).meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
+// HTTP email providers (Resend, useSend) authenticate with an API key rather than SMTP credentials.
+// Stored encrypted like the SMTP password, so the same generous length limit applies.
+export const emailApiKeySchema = yupString().max(256).meta({ openapiField: { description: 'API key for an HTTP email provider. Needs to be specified when using provider="resend" or provider="usesend".', exampleValue: 're_123456789' } });
+// Only meaningful for self-hosted providers. Resend defaults to https://api.resend.com; useSend has no
+// default because every deployment is at its own origin.
+export const emailBaseUrlSchema = yupString().meta({ openapiField: { description: 'Base URL of the email provider API. Required for provider="usesend" (your own instance); optional for provider="resend".', exampleValue: 'https://send.your-domain.com' } });
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 // Project email theme config

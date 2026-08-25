@@ -4,10 +4,10 @@ import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
-import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { Json } from '@hexclave/shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
-import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
+import { HttpEmailProvider, LowLevelEmailConfig, isSecureEmailPort, resolveHttpProviderBaseUrl } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
 
@@ -166,6 +166,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
         });
       }
       return {
+        transport: 'smtp',
         host: "smtp.resend.com",
         port: 465,
         username: "resend",
@@ -177,10 +178,34 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
       };
     }
 
+    // Providers reached over HTTP instead of SMTP. The schema requires apiKey for both and baseUrl
+    // for useSend, so a config that reaches here without them is a bug rather than user error.
+    if (projectEmailConfig.provider === "resend" || projectEmailConfig.provider === "usesend") {
+      const provider: HttpEmailProvider = projectEmailConfig.provider;
+      if (!projectEmailConfig.apiKey || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
+        throw new HexclaveAssertionError("HTTP email provider config is incomplete despite the schema requiring an API key and sender", {
+          projectId: tenancy.id,
+          provider,
+        });
+      }
+      const baseUrl = resolveHttpProviderBaseUrl(provider, projectEmailConfig.baseUrl)
+        ?? throwErr(`No base URL configured for the ${provider} email provider, and it has no public default`);
+      return {
+        transport: 'http',
+        provider,
+        apiKey: projectEmailConfig.apiKey,
+        baseUrl,
+        senderEmail: projectEmailConfig.senderEmail,
+        senderName: projectEmailConfig.senderName,
+        type: 'standard',
+      };
+    }
+
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
       throw new HexclaveAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
     }
     return {
+      transport: 'smtp',
       host: projectEmailConfig.host,
       port: projectEmailConfig.port,
       username: projectEmailConfig.username,
@@ -196,6 +221,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
 
 export async function getSharedEmailConfig(displayName: string): Promise<LowLevelEmailConfig> {
   return {
+    transport: 'smtp',
     host: getEnvVariable('STACK_EMAIL_HOST'),
     port: parseInt(getEnvVariable('STACK_EMAIL_PORT')),
     username: getEnvVariable('STACK_EMAIL_USERNAME'),

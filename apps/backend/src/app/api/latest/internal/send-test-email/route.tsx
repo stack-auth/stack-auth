@@ -62,6 +62,9 @@ export const POST = createSmartRouteHandler({
     const resultOuter = await timeout(lowLevelSendEmailDirectWithoutRetries({
       tenancyId: auth.tenancy.id,
       emailConfig: {
+        // This endpoint only accepts SMTP credentials in its request body; testing an HTTP provider
+        // goes through the saved project config rather than ad-hoc credentials.
+        transport: 'smtp',
         type: 'standard',
         host: body.email_config.host,
         port: body.email_config.port,

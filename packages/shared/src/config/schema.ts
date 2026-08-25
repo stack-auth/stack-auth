@@ -411,7 +411,11 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
-      provider: yupString().oneOf(['resend', 'smtp', 'managed']).optional(),
+      // 'smtp': the tenant's own SMTP server. 'resend'/'usesend': an HTTP email API, authenticated
+      // with an API key instead of SMTP credentials — useSend is Resend-compatible for the fields we
+      // send, and differs only in its request path and in needing an explicit baseUrl. 'managed': a
+      // domain Hexclave provisions and sends through on the tenant's behalf.
+      provider: yupString().oneOf(['resend', 'usesend', 'smtp', 'managed']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
@@ -430,6 +434,18 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       managedSenderLocalPart: yupString().optional().nonEmpty().when(['provider', 'isShared'], {
         is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
         then: (schema) => schema.defined("Managed sender local part is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
+      apiKey: schemaFields.emailApiKeySchema.optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => (provider === 'resend' || provider === 'usesend') && isShared === false,
+        then: (schema) => schema.defined("API key is required when using an HTTP email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
+      // useSend is self-hosted, so there is no sensible default origin to fall back to; Resend's
+      // public API is the default when this is omitted.
+      baseUrl: schemaFields.emailBaseUrlSchema.optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'usesend' && isShared === false,
+        then: (schema) => schema.defined("Base URL is required when using useSend, because it is self-hosted"),
         otherwise: (schema) => schema.optional(),
       }),
     }),
@@ -976,6 +992,8 @@ const organizationConfigDefaults = {
       senderEmail: undefined,
       managedSubdomain: undefined,
       managedSenderLocalPart: undefined,
+      apiKey: undefined,
+      baseUrl: undefined,
     },
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
     themes: typedAssign((key: string) => ({
