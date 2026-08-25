@@ -3,8 +3,8 @@ import {
   getProjectIdpId,
   getProjectOAuthIssuer,
   isTrustedClient,
-  PROJECT_OAUTH_OIDC_SCOPES,
 } from "@/lib/project-oauth-provider";
+import { PROJECT_OAUTH_OIDC_SCOPES } from "@/lib/project-oauth-scopes";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { getHostedHandlerTrustedDomain } from "@/lib/redirect-urls";

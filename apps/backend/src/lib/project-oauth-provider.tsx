@@ -7,6 +7,7 @@ import type { AdapterPayload, ClientMetadata } from "oidc-provider";
 import { assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument } from "./ssrf-protection/oauth";
 import { getResourceAudience } from "./tokens";
 import { Tenancy } from "./tenancies";
+import { PROJECT_OAUTH_OIDC_SCOPES } from "./project-oauth-scopes";
 import {
   findProjectOAuthAccount,
   installProjectOAuthInteractionMiddleware,
@@ -36,16 +37,6 @@ import {
 export function getProjectIdpId(tenancy: Tenancy): string {
   return `project:${tenancy.project.id}:${tenancy.branchId}`;
 }
-
-/**
- * The entire scope vocabulary of a project's provider: the standard OIDC scopes, nothing else.
- *
- * `openid` and `offline_access` are protocol machinery; `profile` and `email` are backed by the
- * claim mapping in `findProjectOAuthAccount`. The other OIDC standard scopes (`address`, `phone`)
- * are deliberately absent because no claim mapping exists for them, so advertising them in the
- * discovery document would be a lie.
- */
-export const PROJECT_OAUTH_OIDC_SCOPES = ["openid", "profile", "email", "offline_access"];
 
 /**
  * The `iss` of tokens minted by a project's own provider.
