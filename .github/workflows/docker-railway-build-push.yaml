@@ -1,0 +1,65 @@
+name: Docker Railway Overlay Build and Push
+
+# Runs after the server image is published, and builds the Railway overlay on top
+# of that exact commit's image. Triggering on workflow_run rather than on push is
+# what guarantees the overlay's bundled cron schedule matches the backend bundled
+# inside its own base image.
+on:
+  workflow_run:
+    workflows: ["Docker Server Build and Push"]
+    types:
+      - completed
+
+# Publishes the moving `latest`/`dev` tags, so runs must stay serialized per ref
+# or an older run could overwrite a newer commit's tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+
+jobs:
+  build-railway-overlay:
+    # A failed or cancelled server build publishes no base image to layer onto.
+    if: github.event.workflow_run.conclusion == 'success'
+    name: Build and push Railway overlay
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the commit the base image was built from
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ secrets.DOCKER_REPO }}/server-railway
+          tags: |
+            type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' }}
+            type=raw,value=${{ github.event.workflow_run.head_branch }},enable=${{ github.event.workflow_run.head_branch != 'main' }}
+            type=raw,value=${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # The overlay adds no RUN layers, so both platforms build from one job in
+      # seconds without the digest-merge dance the server image needs.
+      - name: Build and push overlay image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./docker/railway/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            BASE_IMAGE=${{ secrets.DOCKER_REPO }}/server:${{ github.event.workflow_run.head_sha }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
