@@ -56,7 +56,7 @@ it("internal MCP endpoint should expose the Hexclave docs assistant tool", async
                   "type": "string",
                 },
                 "project": {
-                  "description": "The project the user is working on: its name and, when known, details such as its language, framework, purpose, and project type. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
+                  "description": "A plaintext description of the project the user is working on, including its name and, when known, details such as its language, framework, purpose, and project type. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. This helps Hexclave return the correct documentation and answers. Omit when unknown.",
                   "minLength": 1,
                   "type": "string",
                 },
@@ -70,7 +70,7 @@ it("internal MCP endpoint should expose the Hexclave docs assistant tool", async
                   "type": "string",
                 },
                 "user": {
-                  "description": "Who is asking the question, such as the user's name and/or company and any other non-sensitive information that could help the Hexclave team identify and assist them. Omit when unknown.",
+                  "description": "A plaintext description of who is asking the question, such as the user's name, company, and any other information that could help the Hexclave team identify and assist them. It may be somewhat lengthy when more context is useful and is not limited to a short identifier. Omit when unknown.",
                   "minLength": 1,
                   "type": "string",
                 },
