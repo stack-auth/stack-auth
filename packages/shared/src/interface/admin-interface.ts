@@ -1,5 +1,6 @@
 import * as yup from "yup";
 import type { EnvironmentConfigOverrideOverride } from "../config/schema";
+import type { DeploymentSourceManifest } from "../deployments";
 import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type ConfigAgentRunApi, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
@@ -57,6 +58,10 @@ export type AdminDeploymentServiceOutcomeJson = {
   status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url: string | null,
   revision: string | null,
+  // The digest-pinned image this deploy actually ran for the service — what its
+  // build pushed, or what its `image` reference resolved to. Null until the
+  // apply has happened, and on deployments from before this was recorded.
+  image: string | null,
   error: string | null,
 };
 
@@ -96,6 +101,15 @@ export type AdminDeploymentJson = {
   error: string | null,
   // Whether the build produced a log to read (see getDeploymentBuildLogs).
   has_build_logs: boolean,
+  // What this deploy PACKAGED: paths and sizes, never contents. One manifest per
+  // deployment, because a deploy uploads one tree and every source-built service
+  // is built from it — a service's slice is the subtree under its
+  // `root_directory`. Null when nothing was packaged (every service ran an
+  // already-built image) and on deployments from before this was recorded.
+  //
+  // Also null on the deployments LIST, which omits it: it is per-deployment and
+  // the list is polled. Read one deployment to get its manifest.
+  source_manifest: DeploymentSourceManifest | null,
   // Every service the deploy intended to ship, in the order it applied them.
   services: AdminDeploymentServiceOutcomeJson[],
 };
@@ -122,6 +136,11 @@ export type AdminDeploymentServiceJson = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // The already-built image this service runs, canonical and fully qualified
+  // ("docker.io/library/postgres:16"), as the deploy file named it. Null = the
+  // service is built from source, in which case the two fields above say how.
+  // The two are mutually exclusive.
+  image: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id, which names a disk owned by the
   // deployment source — it outlives the service that mounts it. Mirrors
