@@ -13,15 +13,6 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
-import type {
-  AdminGetSessionReplayAllEventsResponse,
-  AdminGetSessionReplayChunkEventsResponse,
-  AdminGetSessionReplayResponse,
-  AdminListSessionReplayChunksOptions,
-  AdminListSessionReplayChunksResponse,
-  AdminListSessionReplaysOptions,
-  AdminListSessionReplaysResponse
-} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -1327,67 +1318,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
     const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
-  }
-
-  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
-    const qs = new URLSearchParams();
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
-    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
-    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
-    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
-    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
-    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
-    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
-    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplay(sessionReplayId: string): Promise<AdminGetSessionReplayResponse> {
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
-    const qs = new URLSearchParams();
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
-    const qs = new URLSearchParams();
-    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
-    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
   }
 
   async refundTransaction(options: {

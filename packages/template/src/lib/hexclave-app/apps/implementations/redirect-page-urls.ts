@@ -254,7 +254,7 @@ export async function planRedirectToHandler(options: {
   rawHandlerUrl: string,
   noRedirectBack: boolean,
   currentUrl: URL | null,
-  localOAuthCallbackUrl: string,
+  getLocalOAuthCallbackUrl: () => string,
   rawHomeUrl: string,
   getCrossDomainHandoffParams: (currentUrl: URL) => Promise<CrossDomainHandoffParams>,
 }): Promise<RedirectToHandlerPlan> {
@@ -359,7 +359,7 @@ export async function planRedirectToHandler(options: {
       handlerName: options.handlerName,
       rawHandlerUrl: options.rawHandlerUrl,
       currentUrl: options.currentUrl,
-      localOAuthCallbackUrl: options.localOAuthCallbackUrl,
+      localOAuthCallbackUrl: options.getLocalOAuthCallbackUrl(),
       getCrossDomainHandoffParams: options.getCrossDomainHandoffParams,
       noRedirectBack: options.noRedirectBack,
       afterCallbackRedirectUrlOverride,
