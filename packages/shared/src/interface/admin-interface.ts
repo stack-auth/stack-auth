@@ -1,5 +1,6 @@
 import * as yup from "yup";
 import type { EnvironmentConfigOverrideOverride } from "../config/schema";
+import type { DeploymentSourceManifest } from "../deployments";
 import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type ConfigAgentRunApi, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
@@ -12,15 +13,6 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
-import type {
-  AdminGetSessionReplayAllEventsResponse,
-  AdminGetSessionReplayChunkEventsResponse,
-  AdminGetSessionReplayResponse,
-  AdminListSessionReplayChunksOptions,
-  AdminListSessionReplayChunksResponse,
-  AdminListSessionReplaysOptions,
-  AdminListSessionReplaysResponse
-} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -57,6 +49,10 @@ export type AdminDeploymentServiceOutcomeJson = {
   status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url: string | null,
   revision: string | null,
+  // The digest-pinned image this deploy actually ran for the service — what its
+  // build pushed, or what its `image` reference resolved to. Null until the
+  // apply has happened, and on deployments from before this was recorded.
+  image: string | null,
   error: string | null,
 };
 
@@ -96,6 +92,15 @@ export type AdminDeploymentJson = {
   error: string | null,
   // Whether the build produced a log to read (see getDeploymentBuildLogs).
   has_build_logs: boolean,
+  // What this deploy PACKAGED: paths and sizes, never contents. One manifest per
+  // deployment, because a deploy uploads one tree and every source-built service
+  // is built from it — a service's slice is the subtree under its
+  // `root_directory`. Null when nothing was packaged (every service ran an
+  // already-built image) and on deployments from before this was recorded.
+  //
+  // Also null on the deployments LIST, which omits it: it is per-deployment and
+  // the list is polled. Read one deployment to get its manifest.
+  source_manifest: DeploymentSourceManifest | null,
   // Every service the deploy intended to ship, in the order it applied them.
   services: AdminDeploymentServiceOutcomeJson[],
 };
@@ -122,6 +127,11 @@ export type AdminDeploymentServiceJson = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // The already-built image this service runs, canonical and fully qualified
+  // ("docker.io/library/postgres:16"), as the deploy file named it. Null = the
+  // service is built from source, in which case the two fields above say how.
+  // The two are mutually exclusive.
+  image: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id, which names a disk owned by the
   // deployment source — it outlives the service that mounts it. Mirrors
@@ -1286,67 +1296,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
     const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
-  }
-
-  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
-    const qs = new URLSearchParams();
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
-    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
-    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
-    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
-    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
-    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
-    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
-    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplay(sessionReplayId: string): Promise<AdminGetSessionReplayResponse> {
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
-    const qs = new URLSearchParams();
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
-    const qs = new URLSearchParams();
-    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
-    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
-    const response = await this.sendAdminRequest(
-      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
   }
 
   async refundTransaction(options: {

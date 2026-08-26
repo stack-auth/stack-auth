@@ -80,7 +80,9 @@ async function syncServiceAndUpload(serviceId: string, definition: Record<string
 // declares, then the applies in the given dependency order.
 async function startDeploy(options: {
   sourceId: string,
-  uploadId: string,
+  // Omitted when every service in the deploy names an already-built image:
+  // nothing is built, so there is no source archive and the backend refuses one.
+  uploadId?: string,
   definitionSyncId: string,
   levels: string[][],
   extraBody?: Record<string, unknown>,
@@ -91,7 +93,7 @@ async function startDeploy(options: {
     accessType: options.accessType ?? "admin",
     body: {
       source_id: options.sourceId,
-      upload_id: options.uploadId,
+      ...(options.uploadId === undefined ? {} : { upload_id: options.uploadId }),
       definition_sync_id: options.definitionSyncId,
       levels: options.levels,
       ...options.extraBody,
@@ -530,6 +532,43 @@ describe("definition sync", () => {
     expect(JSON.stringify(escaping.body)).toContain("dockerfile_path");
   });
 
+  it("stores a prebuilt image, normalized, and refuses one that also builds", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const ok = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      // min_instances written out: a `server` defaults to 1, and this project's
+      // billing team is on the Free plan, which refuses always-on instances.
+      body: { source_id: "img-src", services: { db: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, image: "postgres:16", env: {} } } },
+    });
+    expect(ok.status).toBe(200);
+    const list = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
+    const stored = (list.body as any).items.find((item: any) => item.id === "db");
+    // Fully qualified, so the stored definition names what is actually pulled.
+    expect(stored.image).toBe("docker.io/library/postgres:16");
+    // ...and the source fields stay empty, because nothing is built from the upload.
+    expect(stored.root_directory).toBeNull();
+    expect(stored.dockerfile_path).toBeNull();
+
+    // A service says where its code is, or what image to run — never both.
+    const both = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { source_id: "img-src", services: { db: { type: "server", ports: {}, min_instances: 0, image: "postgres:16", dockerfile_path: "Dockerfile", env: {} } } },
+    });
+    expect(both.status).toBe(400);
+    expect(JSON.stringify(both.body)).toContain("cannot do both");
+
+    // An untagged image means ":latest", which moves under a running service.
+    const untagged = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { source_id: "img-src", services: { db: { type: "server", ports: {}, min_instances: 0, image: "postgres", env: {} } } },
+    });
+    expect(untagged.status).toBe(400);
+    expect(JSON.stringify(untagged.body)).toContain("no tag or digest");
+  });
+
   it("rejects definitions without a port and with a non-container type", async ({ expect }) => {
     await Project.createAndSwitch();
     const noPort = await niceBackendFetch("/api/v1/deployments/services", {
@@ -742,6 +781,179 @@ describe("deploys against the Marshal runtime", () => {
     expect(logsText).toContain("OPENAI_KEY=<redacted>");
     expect(logsText).not.toContain("sk-secret-value-123");
     expect(logsText).not.toContain("plain-value");
+  });
+
+  it("deploys a prebuilt image with no upload and no build at all", { timeout: 120_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("db");
+    const { syncId: definitionSyncId, sourceId } = await syncServices({
+      [serviceId]: {
+        type: "server",
+        ports: { 5432: { protocol: "tcp" } },
+        // min_instances stays 0 (suspend when idle): this project's billing team
+        // is on the Free plan, which refuses always-on instances.
+        min_instances: 0,
+        max_instances: 1,
+        image: "postgres:16",
+        env: { POSTGRES_PASSWORD: { value: "hunter2" } },
+      },
+    });
+    // No createUpload: nothing is built, so there is nothing to package. The
+    // backend refuses an upload here rather than consuming one nothing can use.
+    const deploymentId = await startDeploy({ sourceId, definitionSyncId, levels: [[serviceId]] });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    // No builder ran, so there is no build log to offer.
+    expect(deployment.has_build_logs).toBe(false);
+
+    const outcome = serviceOutcome(deployment, serviceId);
+    expect(outcome.status).toBe("deployed");
+    // The deploy records what it actually RAN, which for a tag is a fact only the
+    // platform has: nothing resolves the reference before the machine is created,
+    // so this digest is what the platform reported back for it.
+    expect(outcome.image).toMatch(/^docker\.io\/library\/postgres@sha256:[0-9a-f]{64}$/);
+
+    const app = await findMockApp(serviceId, 1);
+    expect(app.machines).toHaveLength(1);
+    // The machine is given the reference AS WRITTEN — the author's image from its
+    // own registry, not a Fly-registry image (which is what a built service gets),
+    // and a tag rather than the digest the outcome reports.
+    expect(app.machines[0].image).toBe("docker.io/library/postgres:16");
+    expect(app.machines[0].env).toMatchObject({ POSTGRES_PASSWORD: "hunter2" });
+
+    // The definition still reports the reference the author wrote.
+    const service = (await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" })).body as any;
+    expect(service.image).toBe("docker.io/library/postgres:16");
+    expect(service.status).toBe("deployed");
+  });
+
+  it("deploys a mixed source-built and prebuilt deployment in one go", { timeout: 180_000 }, async ({ expect }) => {
+    // The common shape: an app built from the repo, wired to a stock database
+    // image. One deployment, one build covering only the built service, and both
+    // applied in dependency order.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const dbServiceId = uniqueServiceId("db");
+    const webServiceId = uniqueServiceId("web");
+    const { syncId: definitionSyncId, sourceId } = await syncServices({
+      [dbServiceId]: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, max_instances: 1, image: "postgres:16", env: {} },
+      [webServiceId]: {
+        type: "serverless",
+        ports: { 3000: { protocol: "http" } },
+        env: { DATABASE_HOST: { type: "connection", value: `${dbServiceId}.hostname` } },
+      },
+    });
+    // The upload IS required here: one of the two services is built from it.
+    const { uploadId } = await createUpload();
+    const deploymentId = await startDeploy({ sourceId, uploadId, definitionSyncId, levels: [[dbServiceId], [webServiceId]] });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    // A build ran, so this one does have logs.
+    expect(deployment.has_build_logs).toBe(true);
+
+    // The prebuilt service runs its own registry's image; the built one runs what
+    // the build pushed to Fly's. Both outcomes name a digest — the prebuilt one
+    // because the platform reported what its tag resolved to.
+    expect(serviceOutcome(deployment, dbServiceId).image).toMatch(/^docker\.io\/library\/postgres@sha256:[0-9a-f]{64}$/);
+    expect(serviceOutcome(deployment, webServiceId).image).toMatch(/^registry\.fly\.io\/.*@sha256:[0-9a-f]{64}$/);
+    expect(serviceOutcome(deployment, dbServiceId).status).toBe("deployed");
+    expect(serviceOutcome(deployment, webServiceId).status).toBe("deployed");
+
+    // The connection resolved across the two kinds of service, which is the whole
+    // point of deploying them together. The hostname is derived (and hashed), so
+    // this asserts that it resolved to a private address at all rather than
+    // matching the service id inside it.
+    const webApp = await findMockApp(webServiceId, 1);
+    expect(webApp.machines[0].env.DATABASE_HOST).toMatch(/\.flycast$/);
+  });
+
+  it("records what the deploy packaged, and reports it back with the deployment", { timeout: 120_000 }, async ({ expect }) => {
+    // The uploaded tarball is consumed by the build and deleted, so this listing
+    // is the only thing left to answer "why was my upload this big, and did my
+    // .dockerignore work". It is stored as the client reports it — the client is
+    // what packaged the tree — and read back on the deployment.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("web");
+    const { definitionSyncId, sourceId, uploadId } = await syncServiceAndUpload(serviceId);
+    const manifest = {
+      file_count: 3,
+      total_bytes: 6_500,
+      compressed_bytes: 2_100,
+      entries: [
+        { path: "web/public/hero.png", bytes: 6_000 },
+        { path: "web/src/index.ts", bytes: 480 },
+        { path: "web/Dockerfile", bytes: 20 },
+      ],
+    };
+    const deploymentId = await startDeploy({
+      sourceId,
+      uploadId,
+      definitionSyncId,
+      levels: [[serviceId]],
+      extraBody: { source_manifest: manifest },
+    });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    expect(deployment.source_manifest).toEqual(manifest);
+  });
+
+  it("stores no manifest rather than a false one when the client reports nothing usable", async ({ expect }) => {
+    // A debugging aid must degrade to "not recorded" rather than 400 a deploy or
+    // store a shape the dashboard cannot read.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("web");
+    const { definitionSyncId, sourceId, uploadId } = await syncServiceAndUpload(serviceId);
+    const deploymentId = await startDeploy({
+      sourceId,
+      uploadId,
+      definitionSyncId,
+      levels: [[serviceId]],
+      extraBody: { source_manifest: { file_count: 2, entries: "not an array" } },
+    });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    expect(deployment.source_manifest).toBe(null);
+  });
+
+  it("refuses `__proto__` as a service id, at the door", async ({ expect }) => {
+    // REGRESSION: it used to be accepted, and then broke silently everywhere a
+    // service id keys a record — `images[key] = ref` invokes the prototype
+    // setter instead of creating an own property, so the deploy failed with "no
+    // image was built for __proto__"; and Prisma's JSON serializer drops the key
+    // outright, so the outcome stayed "pending" whatever the runtime reported.
+    // The storage layer cannot represent it, so the honest fix is to say so on
+    // the request that introduces it rather than mid-deploy.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      // A COMPUTED key: `{ __proto__: ... }` in an object literal sets the
+      // prototype rather than adding a property, so the literal form would send
+      // an empty record. The same hazard, one layer up.
+      body: { source_id: "proto-src", services: { ["__proto__"]: { type: "server", ports: {}, min_instances: 0, image: "postgres:16", env: {} } } },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("reserved");
+  });
+
+  it("refuses an upload for a deployment that builds nothing", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("db");
+    const { syncId: definitionSyncId, sourceId } = await syncServices({
+      [serviceId]: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, image: "postgres:16", env: {} },
+    });
+    const { uploadId } = await createUpload();
+    // Refused rather than ignored: an upload nothing can build from would be
+    // consumed for no reason, and it means the caller and the stored definitions
+    // disagree about what this deploy is.
+    const response = await niceBackendFetch("/api/v1/deployments/deployments", {
+      method: "POST",
+      accessType: "admin",
+      body: { source_id: sourceId, upload_id: uploadId, definition_sync_id: definitionSyncId, levels: [[serviceId]] },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("must be omitted");
   });
 
   it("gives the build every plain env value, and only those", { timeout: 120_000 }, async ({ expect }) => {

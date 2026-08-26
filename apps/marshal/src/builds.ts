@@ -131,20 +131,57 @@ fail() {
   webhook failed text/plain /tmp/timeout.txt
   kill -9 -1 ) &
 echo "MARSHAL_BUILD_START"
-# The machine rootfs is an overlayfs, which buildkit cannot use as a snapshotter upperdir —
-# it silently falls back to the native (full-copy-per-layer) snapshotter, slow enough that
-# large base images time the build out. A tmpfs at /var/lib/buildkit restores the overlayfs
-# snapshotter; sized by the machine RAM that backs it (Railpack builds get a bigger guest).
+# Buildkit's overlayfs snapshotter needs an upperdir that is not itself an overlayfs, and the
+# machine rootfs IS one — so without help buildkit silently falls back to the native
+# (full-copy-per-layer) snapshotter, slow enough that large base images time the build out.
+#
+# Two filesystems on the machine can serve as that upperdir, and the order matters:
+#
+#  - a tmpfs, which is fast but is unswappable RAM. Every byte the snapshot store holds is
+#    taken from the build itself, so the guest must be big enough for BOTH (see
+#    RAILPACK_BUILDER_GUEST). Undersized, this is what an 8g guest with a 6g tmpfs died of:
+#    the store filled and a large "next build" hit ENOSPC, and a hungrier one is OOM-killed
+#    at ~1.3g RSS while the kernel holds ~6g of snapshots it cannot reclaim.
+#  - the ext4 device Fly backs the rootfs overlay with, which it also mounts at
+#    $BUILDKIT_DISK_DIR. A real filesystem and a legal upperdir, costing no RAM — but real-Fly
+#    QA measured a pnpm install of ~1.1g of node_modules taking 404s there against ~40s on
+#    tmpfs, enough on its own to blow BUILD_TIMEOUT_SECONDS. Hence second, not first.
+#
+# It is still far better than the third outcome: on the native snapshotter a build does not
+# fail, it silently gets slow enough to time out.
+BUILDKIT_DISK_DIR=/.fly-upper-layer
+BUILDKIT_ROOT=""
+BUILDKIT_STORE_READY=""
 if [ -n "\${BUILDKIT_TMPFS_SIZE:-}" ]; then
   mkdir -p /var/lib/buildkit
-  mount -t tmpfs -o "size=$BUILDKIT_TMPFS_SIZE" tmpfs /var/lib/buildkit || echo "MARSHAL_TMPFS_MOUNT_FAILED (continuing on the slow disk-backed snapshotter)"
+  if mount -t tmpfs -o "size=$BUILDKIT_TMPFS_SIZE" tmpfs /var/lib/buildkit; then
+    BUILDKIT_STORE_READY=1
+    echo "MARSHAL_BUILDKIT_STORE tmpfs $BUILDKIT_TMPFS_SIZE"
+  else
+    echo "MARSHAL_TMPFS_MOUNT_FAILED (falling back to the disk-backed snapshot store)"
+  fi
 fi
-buildkitd >/tmp/buildkitd.log 2>&1 &
+# $2/$3 of /proc/mounts are the mount point and the fs type. Requiring an exact mount point
+# (not just a directory that exists) is what proves this is a separate filesystem rather than
+# a plain directory on the overlay, which would put us straight back on the native snapshotter.
+if [ -z "$BUILDKIT_STORE_READY" ] && awk -v dir="$BUILDKIT_DISK_DIR" '$2 == dir && $3 != "overlay" { ok = 1 } END { exit !ok }' /proc/mounts 2>/dev/null; then
+  BUILDKIT_ROOT="$BUILDKIT_DISK_DIR/buildkit"
+  mkdir -p "$BUILDKIT_ROOT"
+  echo "MARSHAL_BUILDKIT_STORE disk $BUILDKIT_DISK_DIR"
+fi
+if [ -n "$BUILDKIT_ROOT" ]; then
+  buildkitd --root "$BUILDKIT_ROOT" >/tmp/buildkitd.log 2>&1 &
+else
+  buildkitd >/tmp/buildkitd.log 2>&1 &
+fi
 i=0
 until buildctl debug workers >/dev/null 2>&1; do
   i=$((i+1)); [ $i -gt 60 ] && fail "buildkitd did not start"
   sleep 1
 done
+# Which snapshotter buildkit actually chose. Echoed because the fallback is silent: on the
+# native one a build does not fail, it just gets slow enough to hit BUILD_TIMEOUT_SECONDS.
+grep -o "auto snapshotter: using [a-z]*" /tmp/buildkitd.log | head -n 1
 mkdir -p /ctx
 # Fetch and extract OUTSIDE the context dir, then extract INTO it — otherwise the tarball
 # itself sits in the build context and a plain \`COPY . .\` bakes a compressed copy of the
