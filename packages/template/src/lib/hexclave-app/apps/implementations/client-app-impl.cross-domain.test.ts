@@ -88,7 +88,7 @@ describe("StackClientApp cross-domain auth", () => {
       rawHandlerUrl: "/handler/sign-in",
       noRedirectBack: true,
       currentUrl: new URL("https://app.example.test/settings?tab=profile"),
-      localOAuthCallbackUrl: "/handler/oauth-callback",
+      getLocalOAuthCallbackUrl: () => "/handler/oauth-callback",
       rawHomeUrl: "/home",
       getCrossDomainHandoffParams: async () => {
         throw new Error("Same-domain redirects must not create cross-domain handoff parameters.");
@@ -117,7 +117,7 @@ describe("StackClientApp cross-domain auth", () => {
       rawHandlerUrl: "https://auth.example.test/handler/sign-in",
       noRedirectBack: true,
       currentUrl,
-      localOAuthCallbackUrl: "/handler/oauth-callback",
+      getLocalOAuthCallbackUrl: () => "/handler/oauth-callback",
       rawHomeUrl: "/home",
       getCrossDomainHandoffParams: async () => {
         throw new Error("Existing cross-domain handoff parameters must be reused.");
@@ -185,6 +185,35 @@ describe("StackClientApp cross-domain auth", () => {
         Reflect.set(globalThis, "window", previousWindow);
       } else {
         Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
+  it("gets a hosted sign-in redirect without accessing window on the server", async () => {
+    const previousWindow = Reflect.get(globalThis, "window");
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    Reflect.deleteProperty(globalThis, "window");
+
+    try {
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId: "00000000-0000-4000-8000-000000000000",
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "none",
+        urls: {
+          default: { type: "hosted" },
+        },
+        noAutomaticPrefetch: true,
+        devTool: false,
+      });
+
+      const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("signIn");
+
+      expect(new URL(redirectUrl).pathname).toContain("sign-in");
+    } finally {
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
       }
     }
   });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 
-import { getAppEnableConfigUpdate, getAppIdsForListing, getEnabledAppIds, getEnabledNavigableAppIds } from "./apps-utils";
+import { getAppEnableConfigUpdate, getAppIdsForListing, getEnabledAppIds, getEnabledNavigableAppIds, isAppEnabled } from "./apps-utils";
 
 describe("app enablement", () => {
   it("enables Warehouse and Observability independently as top-level apps", () => {
@@ -46,5 +46,24 @@ describe("getAppEnableConfigUpdate", () => {
     expect(getAppEnableConfigUpdate("analytics")).toEqual({
       "apps.installed.analytics.enabled": true,
     });
+  });
+});
+
+describe("sub-app enablement", () => {
+  it("continues to use the parent app in the dashboard", () => {
+    const independentlyEnabledClickmaps = {
+      analytics: { enabled: false },
+      clickmaps: { enabled: true },
+    };
+
+    expect(isAppEnabled(independentlyEnabledClickmaps, "clickmaps")).toBe(false);
+    expect(getEnabledAppIds(independentlyEnabledClickmaps)).not.toContain("clickmaps");
+
+    const enabledThroughParent = {
+      analytics: { enabled: true },
+      clickmaps: { enabled: false },
+    };
+    expect(isAppEnabled(enabledThroughParent, "clickmaps")).toBe(true);
+    expect(getEnabledAppIds(enabledThroughParent)).toContain("clickmaps");
   });
 });

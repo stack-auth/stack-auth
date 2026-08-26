@@ -3596,7 +3596,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       rawHandlerUrl,
       noRedirectBack: options?.noRedirectBack === true,
       currentUrl,
-      localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      // Hosted callback URLs use the browser's current location. Keep this lazy because Server
+      // Components intentionally plan redirects without a current URL and never need a callback.
+      getLocalOAuthCallbackUrl: () => this._getLocalOAuthCallbackHandlerUrl(),
       rawHomeUrl: rawUrls.home,
       getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
     });
