@@ -509,8 +509,10 @@ import.meta.vitest?.describe("HTTP email providers", () => {
       ...extra,
     });
 
+  // Parameters are declared so recorded calls stay typed as [string, RequestInit]; without them
+  // vitest infers an empty tuple and indexing a call's arguments is a type error.
   const stubFetch = (response: Response | Error) => {
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => {
       if (response instanceof Error) throw response;
       return response;
     });
@@ -556,7 +558,7 @@ import.meta.vitest?.describe("HTTP email providers", () => {
 
     expect(result.status).toBe('ok');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.resend.com/emails');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test_api_key');
@@ -572,7 +574,7 @@ import.meta.vitest?.describe("HTTP email providers", () => {
   test("omits the idempotency header when the caller has no stable key", async () => {
     const fetchMock = stubFetch(new Response('{}', { status: 200 }));
     await send(httpConfig());
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [, init] = fetchMock.mock.calls[0];
     expect((init.headers as Record<string, string>)['idempotency-key']).toBe(undefined);
   });
 
