@@ -1,0 +1,24 @@
+apps/dashboard/src/lib/apps-utils.test.ts
+  s_c96983283f16b4::t_e12b70f8a5c25f 4
+docs-mintlify/guides/getting-started/setup.mdx
+  s_c96983283f16b4::t_46af223861784b 9
+  s_c96983283f16b4::t_b3fa851ef7d783 1172,1194
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_c96983283f16b4::t_46af223861784b 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "d4b8d37b46e5b39bac7eae670490bcaa06a7bb10",
+  "prompts": {},
+  "sessions": {
+    "s_c96983283f16b4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "78bb2639-7535-4f2e-a72f-367ce7c13511",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
