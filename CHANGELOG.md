@@ -5,6 +5,7 @@
 ## 8/28/26
 
 - The CLI can now access and analyze session replays with AI.
+- Fixed `getUser({ or: "redirect" })` crashing in React server components.
 
 ## 8/14/26
 
