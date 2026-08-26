@@ -1,0 +1,72 @@
+name: Docker Server Build and Push (GHCR)
+
+# A fork-local publishing path that needs no configured secrets.
+#
+# The Docker Hub workflow requires DOCKER_REPO/DOCKER_USER/DOCKER_PASSWORD, which a fork
+# does not inherit — its login step fails immediately. GHCR authenticates with the
+# GITHUB_TOKEN that Actions already provides, so this works on a fresh fork with nothing
+# to configure. It exists because Railway cannot build docker/server/Dockerfile itself:
+# Railway requires BuildKit cache mount ids prefixed with `s/<service id>-` and forbids
+# supplying that through a variable, so the image has to be built here and pulled there.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  build-and-push:
+    name: Build and push server image to GHCR
+    runs-on: ubuntu-latest
+    # A full monorepo build (turbo prune, backend bundle, Next.js dashboard) on a
+    # GitHub-hosted runner is a lot slower than upstream's 8-core machines.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # GHCR rejects uppercase path segments, and repository owners commonly have them.
+      - name: Compute lowercase image name
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/server" >> "$GITHUB_OUTPUT"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+            type=sha,prefix=
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only: Railway runs x86_64, and a second emulated platform would roughly
+      # double an already-long build for something this fork never deploys to.
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./docker/server/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
