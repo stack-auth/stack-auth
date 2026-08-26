@@ -219,7 +219,39 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
 }
 
 
+/**
+ * The instance-wide email server, used by every project that has not configured its own.
+ *
+ * Defaults to SMTP for backwards compatibility. Setting HEXCLAVE_EMAIL_PROVIDER to an HTTP provider
+ * switches the whole instance onto it, which is how a self-hoster points Hexclave at their own
+ * useSend deployment without touching per-project config. Unlike a tenant-supplied config this is
+ * operator-set, so it is trusted: it skips the egress policy and can therefore reach a useSend
+ * instance on a private network (a Railway private domain, say) that a per-project config could not.
+ */
 export async function getSharedEmailConfig(displayName: string): Promise<LowLevelEmailConfig> {
+  // Reads the HEXCLAVE_-prefixed names; the env shim accepts the legacy STACK_ spellings too.
+  const provider = getEnvVariable('HEXCLAVE_EMAIL_PROVIDER', 'smtp');
+
+  if (provider === 'resend' || provider === 'usesend') {
+    const baseUrl = resolveHttpProviderBaseUrl(provider, getEnvVariable('HEXCLAVE_EMAIL_BASE_URL', '') || undefined)
+      ?? throwErr(`HEXCLAVE_EMAIL_PROVIDER is "${provider}", which is self-hosted, so HEXCLAVE_EMAIL_BASE_URL must point at your instance.`);
+    return {
+      transport: 'http',
+      provider,
+      apiKey: getEnvVariable('HEXCLAVE_EMAIL_API_KEY'),
+      baseUrl,
+      senderEmail: getEnvVariable('HEXCLAVE_EMAIL_SENDER'),
+      senderName: displayName,
+      type: 'shared',
+    };
+  }
+
+  // A typo here would otherwise fall through to SMTP and fail with a confusing missing-host error
+  // instead of naming the real problem.
+  if (provider !== 'smtp') {
+    throwErr(`HEXCLAVE_EMAIL_PROVIDER must be "smtp", "resend", or "usesend", but got: "${provider}"`);
+  }
+
   return {
     transport: 'smtp',
     host: getEnvVariable('STACK_EMAIL_HOST'),
@@ -262,4 +294,54 @@ import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
 
   expect(() => normalizeEmail('test@multiple@domains.com')).toThrow();
   expect(() => normalizeEmail('invalid.email')).toThrow();
+});
+
+import.meta.vitest?.describe("getSharedEmailConfig(...)", () => {
+  const { vi, test, beforeEach, expect } = import.meta.vitest!;
+
+  beforeEach(() => {
+    vi.stubEnv("HEXCLAVE_EMAIL_SENDER", "noreply@example.com");
+    return () => vi.unstubAllEnvs();
+  });
+
+  test("defaults to SMTP so existing self-host configs keep working", async () => {
+    vi.stubEnv("HEXCLAVE_EMAIL_HOST", "smtp.example.com");
+    vi.stubEnv("HEXCLAVE_EMAIL_PORT", "465");
+    vi.stubEnv("HEXCLAVE_EMAIL_USERNAME", "user");
+    vi.stubEnv("HEXCLAVE_EMAIL_PASSWORD", "pass");
+    const config = await getSharedEmailConfig("Project");
+    expect(config).toMatchObject({ transport: "smtp", host: "smtp.example.com", port: 465, secure: true, type: "shared" });
+  });
+
+  test("switches the instance onto useSend from env vars alone", async () => {
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend");
+    vi.stubEnv("HEXCLAVE_EMAIL_API_KEY", "us_test_key");
+    vi.stubEnv("HEXCLAVE_EMAIL_BASE_URL", "https://send.example.com");
+    const config = await getSharedEmailConfig("Project");
+    expect(config).toMatchObject({
+      transport: "http",
+      provider: "usesend",
+      apiKey: "us_test_key",
+      baseUrl: "https://send.example.com",
+      senderEmail: "noreply@example.com",
+      // 'shared' is operator-configured and therefore trusted, which is what lets it reach a
+      // useSend instance on a private network.
+      type: "shared",
+    });
+  });
+
+  test("defaults Resend's base URL but requires one for useSend", async () => {
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "resend");
+    vi.stubEnv("HEXCLAVE_EMAIL_API_KEY", "re_test_key");
+    await expect(getSharedEmailConfig("Project")).resolves.toMatchObject({ baseUrl: "https://api.resend.com" });
+
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend");
+    await expect(getSharedEmailConfig("Project")).rejects.toThrow(/HEXCLAVE_EMAIL_BASE_URL/);
+  });
+
+  test("rejects an unrecognised provider instead of silently using SMTP", async () => {
+    // A typo would otherwise surface as a confusing missing-host error.
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "sendgrid");
+    await expect(getSharedEmailConfig("Project")).rejects.toThrow(/must be "smtp", "resend", or "usesend"/);
+  });
 });

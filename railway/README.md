@@ -153,6 +153,31 @@ two spellings of one setting disagree**. Set one spelling per setting, not both.
 | `HEXCLAVE_RAILWAY_CRON_TIMEOUT_MS` | Per-firing timeout. Defaults to 840000 (14 minutes). |
 | `HEXCLAVE_RAILWAY_HEALTH_PATH` | Health endpoint path. Defaults to `/__railway/health`. |
 
+## Email providers
+
+Hexclave sends over SMTP by default. To send through an HTTP provider instead, set these on the
+service — no per-project configuration needed:
+
+| Variable | Notes |
+| --- | --- |
+| `HEXCLAVE_EMAIL_PROVIDER` | `smtp` (default), `resend`, or `usesend` |
+| `HEXCLAVE_EMAIL_API_KEY` | Required for `resend` and `usesend` |
+| `HEXCLAVE_EMAIL_BASE_URL` | Required for `usesend` (it is self-hosted). Optional for `resend`, which defaults to `https://api.resend.com` |
+| `HEXCLAVE_EMAIL_SENDER` | The sender address, used by every provider |
+
+These configure the **instance-wide** email server, which every project uses unless it has its own
+config. Because they are operator-set rather than tenant-supplied, they are trusted and skip the
+outbound egress policy — so a useSend instance reachable only on Railway's private network works
+here, addressed by its `*.railway.internal` domain.
+
+A **per-project** provider configured through the dashboard is tenant-supplied and therefore does go
+through the egress policy, which rejects private addresses. Point those at a public domain, or set
+`HEXCLAVE_ALLOW_STANDARD_EMAIL_PRIVATE_HOSTS=true` if you deliberately run the provider on the same
+private network.
+
+> useSend also ships an SMTP proxy (username `usesend`, ports 25/587/2587/465/2465), so it works
+> with the plain SMTP settings too if you would rather not use its HTTP API.
+
 ## Running a second service against the same database
 
 A staging copy or a test service pointing at an already-populated database needs

@@ -616,7 +616,9 @@ import.meta.vitest?.describe("HTTP email providers", () => {
     // leaking the SMTP password the SMTP path is careful to drop.
     const captured: unknown[] = [];
     stubFetch(new Response('teapot', { status: 418 }));
-    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => { captured.push(args); });
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      captured.push(args);
+    });
     await send(httpConfig());
     consoleWarn.mockRestore();
     expect(JSON.stringify(captured)).not.toContain('test_api_key');
