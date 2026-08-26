@@ -1,6 +1,38 @@
-import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { describe, expect, it } from "vitest";
-import { parseWebhookOpenAPI } from "./openapi";
+import { parseOverload, parseWebhookOpenAPI } from "./openapi";
+
+describe("parseOverload", () => {
+  it("preserves false in request body examples", () => {
+    const result = parseOverload({
+      metadata: {
+        summary: "Complete interaction",
+        description: "Record a decision",
+      },
+      method: "POST",
+      path: "/interaction",
+      requestBodyDesc: yupObject({
+        denied: yupBoolean().defined().meta({ openapiField: { exampleValue: false } }),
+      }).describe(),
+      responseVariants: [{
+        responseTypeDesc: yupString().oneOf(["json"]).describe(),
+        statusCodeDesc: yupNumber().oneOf([200]).describe(),
+      }],
+    });
+
+    expect(result).toMatchObject({
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: {
+              example: { denied: false },
+            },
+          },
+        },
+      },
+    });
+  });
+});
 
 describe("parseWebhookOpenAPI", () => {
   it("emits machine-readable OpenAPI 3.1 types for nullable webhook fields", () => {

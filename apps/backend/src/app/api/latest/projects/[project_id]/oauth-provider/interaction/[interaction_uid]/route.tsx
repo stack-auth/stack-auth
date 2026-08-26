@@ -69,7 +69,7 @@ export const POST = createSmartRouteHandler({
     auth: authSchema,
     params: paramsSchema,
     body: yupObject({
-      denied: yupBoolean().defined(),
+      denied: yupBoolean().defined().meta({ openapiField: { exampleValue: false } }),
     }).defined(),
   }),
   response: yupObject({

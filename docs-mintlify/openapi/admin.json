@@ -4283,13 +4283,16 @@
                 "type": "object",
                 "properties": {
                   "denied": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "example": false
                   }
                 },
                 "required": [
                   "denied"
                 ],
-                "example": {}
+                "example": {
+                  "denied": false
+                }
               }
             }
           }
