@@ -1,3 +1,4 @@
+// IF_PLATFORM next js
 import { describe, expect, it, vi } from "vitest";
 import { encodeBase32 } from "@hexclave/shared/dist/utils/bytes";
 import { getTrustedParentDomain } from "@hexclave/shared/dist/utils/redirect-urls";
@@ -166,3 +167,4 @@ describe("StackClientApp custom refresh cookie updates", () => {
     expect(serverCookieState.values.has(defaultCookieName)).toBe(true);
   });
 });
+// END_PLATFORM
