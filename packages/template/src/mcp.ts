@@ -1,38 +1,6 @@
+import { PROJECT_OAUTH_PROVIDER_JWKS_PATH, canonicalizeResourceUri, getProjectOAuthProviderIssuerUrl } from "@hexclave/shared/dist/utils/urls";
 import * as jose from "jose";
 
-/**
- * Hexclave for MCP servers.
- *
- * The design constraint here is that we ship a **verifier**, not a framework wrapper. The MCP
- * TypeScript ecosystem has converged on one extension seam, and every framework exposes the same
- * shape:
- *
- *  - `mcp-handler` / `@vercel/mcp-adapter`: `withMcpAuth(handler, verifyToken, opts)` where
- *    `verifyToken: (req, bearerToken?) => Promise<AuthInfo | undefined>`
- *  - the MCP TypeScript SDK: `requireBearerAuth({ verifier })` where `verifier` is an
- *    `OAuthTokenVerifier` — an object with `verifyAccessToken(token): Promise<AuthInfo>`
- *
- * Both consume the same `AuthInfo`. So `createMcpTokenVerifier` returns a value that satisfies
- * *both* — it is callable like the first and carries a `verifyAccessToken` method like the second —
- * and Hexclave never needs to ship a per-framework adapter, now or when the next framework appears.
- *
- * We deliberately do NOT export a `withMcpAuth`. That name is already taken by `mcp-handler` with a
- * different signature, and MCP developers routinely have both installed; shipping ours would force
- * an import alias on everyone. (Better Auth made this exact mistake and is now renaming theirs.)
- * Wrapping the handler would also mean owning transport concerns — CORS, SSE, `[transport]` routing —
- * that belong to the MCP framework, not to an auth provider.
- */
-
-/**
- * The MCP ecosystem's shared auth type, structurally redeclared.
- *
- * Intentionally not imported from `@modelcontextprotocol/sdk` or `mcp-handler`: an auth provider
- * should not force a dependency on any one MCP framework, and the SDK is mid-v1→v2 migration. This
- * is structurally compatible with both, which is all either one requires.
- *
- * The e2e tests assert assignability against the real packages, so drift becomes a build failure
- * rather than a silent break at runtime.
- */
 export type McpAuthInfo = {
   token: string,
   clientId: string,
@@ -70,28 +38,11 @@ export type McpTokenVerifier =
 
 const DEFAULT_BASE_URL = "https://api.hexclave.com";
 
-/**
- * Thrown when a token is structurally valid but not acceptable here. Distinct messages per cause,
- * because "invalid token" is the least actionable error an MCP developer can receive.
- */
 export class McpTokenVerificationError extends Error {
   constructor(message: string, public readonly reason: "invalid_token" | "wrong_resource" | "wrong_issuer", cause?: unknown) {
     super(message, { cause });
     this.name = "McpTokenVerificationError";
   }
-}
-
-function canonicalResource(resource: string, allowQueryAndFragment = false): string {
-  const url = new URL(resource);
-  if (!allowQueryAndFragment && (url.search !== "" || url.hash !== "")) {
-    throw new TypeError("RFC 8707 resource identifiers cannot contain a query or fragment.");
-  }
-  url.hash = "";
-  url.search = "";
-  url.protocol = url.protocol.toLowerCase();
-  url.hostname = url.hostname.toLowerCase();
-  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
-  return url.toString();
 }
 
 /**
@@ -118,14 +69,8 @@ function canonicalResource(resource: string, allowQueryAndFragment = false): str
 export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTokenVerifier {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const issuer = getOAuthIssuerUrl({ projectId: options.projectId, baseUrl });
-  // An explicitly configured resource is developer-controlled configuration. Rejecting it while
-  // constructing the verifier makes a deployment error visible instead of misclassifying it as an
-  // attacker-controlled token claim.
-  const configuredResource = options.resource === undefined ? undefined : canonicalResource(options.resource);
+  const configuredResource = options.resource === undefined ? undefined : canonicalizeResourceUri(options.resource);
 
-  // One JWKS per verifier, cached by `jose` across calls. Creating it lazily keeps construction
-  // synchronous and side-effect free, which matters because verifiers are usually built at module
-  // scope where a network call would be surprising.
   let jwkSet: ReturnType<typeof jose.createRemoteJWKSet> | undefined;
   const getJwkSet = () => {
     if (!jwkSet) {
@@ -137,7 +82,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
 
   const verifyAccessToken = async (token: string, resource?: string): Promise<McpAuthInfo> => {
     const expectedResource = configuredResource
-      ?? (resource === undefined ? undefined : canonicalResource(resource, true));
+      ?? (resource === undefined ? undefined : canonicalizeResourceUri(resource, { allowQueryAndFragment: true }));
     if (expectedResource === undefined) {
       throw new McpTokenVerificationError(
         "No resource is configured for this verifier. Pass resource to createMcpTokenVerifier when using verifyAccessToken(token).",
@@ -150,25 +95,19 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
       const verified = await jose.jwtVerify(token, getJwkSet(), { issuer });
       payload = verified.payload;
     } catch (error) {
-      // `jose` distinguishes a bad issuer from a bad signature, and so should we — an issuer
-      // mismatch almost always means the wrong `projectId` or `baseUrl`, which is a one-line fix
-      // the developer can only make if we say so.
+      // jose reports issuer failures as JWTClaimValidationFailed with claim === "iss".
       if (error instanceof jose.errors.JWTClaimValidationFailed && error.claim === "iss") {
         throw new McpTokenVerificationError(`The access token was not issued by the expected authorization server (${issuer}). Check the projectId and baseUrl configuration.`, "wrong_issuer", error);
       }
       throw new McpTokenVerificationError("The access token could not be verified.", "invalid_token", error);
     }
 
-    // RFC 8707 resource binding. Resource servers in one project intentionally share signing keys;
-    // the resource claim is therefore the mandatory application-level boundary.
     const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
     let matches = false;
     if (tokenResource !== undefined) {
       try {
-        matches = canonicalResource(tokenResource) === expectedResource;
+        matches = canonicalizeResourceUri(tokenResource) === expectedResource;
       } catch {
-        // A malformed resource claim is attacker-controlled token data; it must fail closed as a
-        // resource mismatch rather than escaping as a raw URL parser error.
         matches = false;
       }
     }
@@ -179,22 +118,20 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
       );
     }
 
-    // Scopes are space-delimited in the OAuth spec, but be tolerant of an array: some providers, and
-    // some of our own older code paths, emit one.
-    const rawScope = payload.scope ?? payload.scopes;
-    const scopes = Array.isArray(rawScope)
-      ? rawScope.filter((s): s is string => typeof s === "string")
-      : typeof rawScope === "string" ? rawScope.split(" ").filter(s => s.length > 0) : [];
+    const scopes = typeof payload.scope === "string"
+      ? payload.scope.split(" ").filter(scope => scope.length > 0)
+      : [];
+    if (typeof payload.client_id !== "string" || payload.client_id.length === 0) {
+      throw new McpTokenVerificationError("The access token is missing a client_id claim.", "invalid_token");
+    }
 
     return {
       token,
-      clientId: typeof payload.client_id === "string" ? payload.client_id : "",
+      clientId: payload.client_id,
       scopes,
       expiresAt: payload.exp,
       resource: new URL(expectedResource),
       extra: {
-        // The Hexclave user ID. Pass the whole `AuthInfo` to
-        // `hexclaveServerApp.getUser({ from: "mcp", authInfo })` to resolve it to a `ServerUser`.
         userId: payload.sub,
         projectId: options.projectId,
       },
@@ -204,10 +141,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
   const verifyRequest = async (request: Request, bearerToken?: string) => {
     const token = bearerToken ?? extractBearerToken(request);
     if (token === undefined) return undefined;
-    // With no explicitly configured resource, the request URL *is* the resource identifier — which
-    // is correct whenever the server isn't behind a URL-rewriting proxy, and is what lets the
-    // zero-config case work.
-    return await verifyAccessToken(token, options.resource ?? canonicalResource(request.url, true));
+    return await verifyAccessToken(token, options.resource ?? canonicalizeResourceUri(request.url, { allowQueryAndFragment: true }));
   };
 
   return Object.assign(verifyRequest, {
@@ -236,12 +170,11 @@ function extractBearerToken(request: Request): string | undefined {
  * ```
  */
 export function getOAuthIssuerUrl(options: { projectId: string, baseUrl?: string }): string {
-  const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-  return new URL(`/api/v1/projects/${encodeURIComponent(options.projectId)}/oidc`, baseUrl).toString();
+  return getProjectOAuthProviderIssuerUrl(options.projectId, options.baseUrl ?? DEFAULT_BASE_URL);
 }
 
 function getOAuthJwksUrl(issuer: string): URL {
-  return new URL(".well-known/jwks.json", issuer.endsWith("/") ? issuer : `${issuer}/`);
+  return new URL(`${issuer.replace(/\/$/, "")}${PROJECT_OAUTH_PROVIDER_JWKS_PATH}`);
 }
 
 if (import.meta.vitest) {
@@ -265,20 +198,20 @@ if (import.meta.vitest) {
       .toBe("https://api.example.com/api/v1/projects/project/oidc/.well-known/jwks.json");
   });
 
-  describe("canonicalResource", () => {
+  describe("canonicalizeResourceUri (the shared audience-check canonicalization)", () => {
     test("ignores query and fragment and normalizes host and trailing slash", () => {
-      expect(canonicalResource("HTTPS://MCP.Example.com/mcp/?page=1#tools", true))
+      expect(canonicalizeResourceUri("HTTPS://MCP.Example.com/mcp/?page=1#tools", { allowQueryAndFragment: true }))
         .toBe("https://mcp.example.com/mcp");
     });
 
     test("does not equate different resource paths", () => {
-      expect(canonicalResource("https://mcp.example.com/other"))
-        .not.toBe(canonicalResource("https://mcp.example.com/mcp"));
+      expect(canonicalizeResourceUri("https://mcp.example.com/other"))
+        .not.toBe(canonicalizeResourceUri("https://mcp.example.com/mcp"));
     });
   });
 
   describe("createMcpTokenVerifier", () => {
-    async function signedToken(options: { resource?: string, scope?: string, subject?: string }) {
+    async function signedToken(options: { resource?: string, scope?: string, subject?: string, clientId?: string | null }) {
       const { publicKey, privateKey } = await jose.generateKeyPair("RS256");
       const jwk = await jose.exportJWK(publicKey);
       jwk.kid = "mcp-test";
@@ -288,6 +221,7 @@ if (import.meta.vitest) {
         headers: { "content-type": "application/json" },
       });
       const token = await new jose.SignJWT({
+        ...(options.clientId === null ? {} : { client_id: options.clientId ?? "test-client" }),
         scope: options.scope ?? "openid profile",
         ...(options.resource === undefined ? {} : { resource: options.resource }),
       })
@@ -306,6 +240,7 @@ if (import.meta.vitest) {
       try {
         const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
         await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+          clientId: "test-client",
           scopes: ["openid", "profile"],
           resource: new URL(resource),
           extra: { userId: "user-1" },
@@ -349,6 +284,17 @@ if (import.meta.vitest) {
       }
     });
 
+    test("rejects a signed token without a client_id claim", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource, clientId: null });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "invalid_token" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     test("rejects a signed token without a resource claim", async () => {
       const { token, originalFetch } = await signedToken({});
       try {
@@ -378,9 +324,6 @@ if (import.meta.vitest) {
       expect(() => createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp#tools" })).toThrow(TypeError);
     });
 
-    // The DX contract: one export that both ecosystems accept. If either of these shapes stops
-    // holding, every documented snippet breaks, so assert them directly rather than trusting the
-    // type annotation to have been kept honest.
     test("is callable like mcp-handler's verifyToken AND carries the MCP SDK's verifyAccessToken", () => {
       const verifier = createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp" });
       expect(typeof verifier).toBe("function");
@@ -388,8 +331,6 @@ if (import.meta.vitest) {
     });
 
     test("constructs without a secret key or a server app — the remote-MCP-server case", () => {
-      // No network, no credentials, no configured app: just a project ID. This is what makes an MCP
-      // server deployable as its own service.
       expect(() => createMcpTokenVerifier({ projectId })).not.toThrow();
     });
 

@@ -80,24 +80,18 @@ const branchRbacSchema = yupObject({
 });
 // --- END NEW RBAC Schema ---
 
-// --- OAuth Provider Schema ---
-/**
- * Configuration for a project acting as an OAuth 2.1 / OIDC *provider* — i.e. other applications
- * ("clients") sign users in against this project. MCP servers are the motivating case: an MCP
- * server is just a resource server whose clients happen to be AI agents.
- */
 const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => {
   if (value === undefined) return true;
-  const url = new URL(value);
-  return url.search === "" && url.hash === "";
+  try {
+    canonicalizeResourceUri(value);
+    return true;
+  } catch {
+    return false;
+  }
 });
 
 const branchOAuthProviderSchema = yupObject({
-  /**
-   * Resource servers (RFC 8707) that tokens can be minted for. Each entry's `uri` is the canonical
-   * resource identifier a client passes as `resource=` at the authorize endpoint, and which the
-   * resource server checks the token's audience against.
-   */
+  /** RFC 8707 resource servers. */
   resources: yupRecord(
     userSpecifiedIdSchema("resourceId"),
     yupObject({
@@ -113,7 +107,6 @@ const branchOAuthProviderSchema = yupObject({
       try {
         return canonicalizeResourceUri(uri);
       } catch {
-        // Let the URI field report malformed values; uniqueness must not turn them into raw TypeErrors.
         return uri;
       }
     })).size === uris.length;
@@ -123,46 +116,24 @@ const branchOAuthProviderSchema = yupObject({
     userSpecifiedIdSchema("clientId"),
     yupObject({
       displayName: yupString().optional(),
-      // Keyed by an opaque ID with the URL as a *value*, not by the URL itself. Config overrides are
-      // written in dot-path notation (`oauthProvider.clients.x.redirectUris.y.url`), so a key
-      // containing a dot — which every URL does — would be parsed as a path separator. Same reason
-      // `domains.trustedDomains` is shaped this way.
       redirectUris: yupRecord(
         userSpecifiedIdSchema("redirectUriId"),
         yupObject({
           url: schemaFields.urlSchema.optional(),
         }).optional(),
       ).optional(),
-      // Confidential clients need a secret store; until then only public PKCE clients are supported.
       type: yupString().oneOf(['public']).optional(),
-      /**
-       * First-party clients skip the consent *prompt*.
-       *
-       * Settable from config only. A client that registered itself (via dynamic client registration
-       * or a client ID metadata document) must not be able to declare itself first-party, so the
-       * registration paths never write this field.
-       */
       trusted: yupBoolean().optional(),
     }).optional(),
   ),
 
-  /** RFC 7591 dynamic client registration. Required by some MCP clients. */
+  /** RFC 7591. */
   dynamicClientRegistration: yupObject({
     enabled: yupBoolean(),
   }),
 
-  /**
-   * OAuth Client ID Metadata Documents — the `client_id` is an HTTPS URL that serves the client's
-   * own metadata. This is the direction the MCP spec is moving, replacing dynamic registration.
-   */
   clientIdMetadataDocuments: yupObject({
     enabled: yupBoolean(),
-    /**
-     * When non-empty, only these hosts may serve a metadata document.
-     *
-     * Keyed by an opaque ID with the hostname as a value — see the note on `redirectUris` above for
-     * why a hostname can't be the key.
-     */
     allowedDomains: yupRecord(
       userSpecifiedIdSchema("allowedDomainId"),
       yupObject({
@@ -240,10 +211,6 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects resource URIs with q
 });
 
 import.meta.vitest?.test("branchOAuthProviderSchema keys nothing by a URL", async ({ expect }) => {
-  // Config overrides are written in dot-path notation, so a key containing a dot would be parsed as
-  // a path separator. URLs contain dots, which is why every record that names one is keyed by an
-  // opaque ID with the value inside. The fuzzer enforces this globally; this test pins the specific
-  // mistake so it fails with a legible message rather than a fuzzer trace.
   await expect(branchOAuthProviderSchema.validate({
     clients: { "some-client": { redirectUris: { "https://example.com/callback": {} } } },
   }, { abortEarly: false })).rejects.toThrow();
@@ -257,7 +224,6 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects an unknown client ty
     clients: { "some-client": { type: "implicit" } },
   }, { abortEarly: false })).rejects.toThrow();
 });
-// --- END OAuth Provider Schema ---
 
 // --- NEW API Keys Schema ---
 const branchApiKeysSchema = yupObject({
@@ -832,9 +798,6 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 };
 
 import.meta.vitest?.test("migrateConfigOverride leaves oauthProvider overrides untouched", ({ expect }) => {
-  // `oauthProvider` is a purely additive section — it never existed under another name, so there is
-  // deliberately no migration entry for it. This test exists to catch the case where someone later
-  // renames a field inside it and forgets to add one: the round trip below would start failing.
   const oauthProvider = {
     resources: { "my-mcp-server": { uri: "https://mcp.example.com/mcp" } },
     clients: { "some-client": { type: "public", trusted: false } },
@@ -846,7 +809,6 @@ import.meta.vitest?.test("migrateConfigOverride leaves oauthProvider overrides u
   expect(migrateConfigOverride("branch", { oauthProvider })).toEqual({ oauthProvider });
   expect(migrateConfigOverride("environment", { oauthProvider })).toEqual({ oauthProvider });
   expect(migrateConfigOverride("organization", { oauthProvider })).toEqual({ oauthProvider });
-  // ...including in dot-path notation, which is how config updates are actually written.
   expect(migrateConfigOverride("branch", {
     "oauthProvider.consent.required": false,
   })).toEqual({ "oauthProvider.consent.required": false });
@@ -1178,7 +1140,6 @@ const organizationConfigDefaults = {
         url: undefined,
       }),
       type: 'public',
-      // Defaults to false: a client is only first-party if someone explicitly said so.
       trusted: false,
     } as const),
     dynamicClientRegistration: {

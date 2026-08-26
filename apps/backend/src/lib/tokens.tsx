@@ -90,16 +90,6 @@ const issuerHostAliases = new Map<string, string>(
     [hexclaveHost, stackAuthHost],
   ]),
 );
-// Validation accepts both the primary issuer (derived from the deployment's
-// `NEXT_PUBLIC_STACK_API_URL` so existing single-host self-hosters keep working)
-// and its alias host, so a token minted under one cloud brand validates against
-// either backend host.
-//
-// LOAD-BEARING OMISSION: the project's OIDC provider issuer (`.../projects/{id}/oidc`) is
-// deliberately NOT in this list. Tokens minted by a project acting as an OAuth provider are for
-// that project's own resource servers, not for the Hexclave API, and this omission is one of the
-// two independent mechanisms that keeps them out (the other being that the main API rejects
-// resource audiences). Do not "helpfully" unify the two issuer helpers.
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   const aliasHost = issuerHostAliases.get(new URL(issuer).host);
@@ -108,31 +98,14 @@ const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   aliasedUrl.host = aliasHost;
   return [issuer, aliasedUrl.toString()];
 };
-// The `aud` claim identifies the token's intended audience. Resource-scoped tokens are safe because
-// the main API rejects resource audiences and resource servers enforce issuer/resource validation.
-//
-// Because of that, the audience string format is a wire format we can never change without rotating
-// every signing key. Parsing therefore lives in exactly one place — `parseAudience` — and every
-// producer goes through `getAudience`/`getResourceAudience`.
-
 const ANONYMOUS_AUDIENCE_SUFFIX = 'anon';
 const RESTRICTED_AUDIENCE_SUFFIX = 'restricted';
 const RESOURCE_AUDIENCE_MARKER = 'resource';
 
-// Project IDs are UUIDs or the literal `internal` (see `projectIdSchema`), and resource IDs are
-// user-specified IDs (see `USER_SPECIFIED_ID_PATTERN`). Neither can contain a colon, which is what
-// makes the audience format unambiguously parseable. We re-assert it here rather than trusting the
-// callers, because `parseAudience` also runs on attacker-controlled JWTs.
 const AUDIENCE_SEGMENT_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export type ParsedAudience =
-  /** A token representing a signed-in user of the project — what the main API accepts. */
   | { type: 'user', projectId: string, userType: UserType }
-  /**
-   * A token minted by the project's OAuth/OIDC provider for a specific registered resource server
-   * (e.g. a customer's MCP server). Deliberately *not* accepted by the main API: it has a different
-   * issuer and a resource audience.
-   */
   | { type: 'resource', projectId: string, resourceId: string };
 
 const getAudience = (projectId: string, userType: UserType) => {
@@ -140,10 +113,6 @@ const getAudience = (projectId: string, userType: UserType) => {
   return userType === 'anonymous' ? `${projectId}:${ANONYMOUS_AUDIENCE_SUFFIX}` : userType === 'restricted' ? `${projectId}:${RESTRICTED_AUDIENCE_SUFFIX}` : projectId;
 };
 
-/**
- * The audience for a token scoped to a single resource server registered on the project's OAuth
- * provider. Distinct from every user audience, so the main API can reject it.
- */
 export const getResourceAudience = (projectId: string, resourceId: string) => {
   if (!AUDIENCE_SEGMENT_PATTERN.test(projectId)) {
     throw new HexclaveAssertionError("Project ID is not a valid audience segment; it must not contain a colon.", { projectId });
@@ -154,12 +123,6 @@ export const getResourceAudience = (projectId: string, resourceId: string) => {
   return `${projectId}:${RESOURCE_AUDIENCE_MARKER}:${resourceId}`;
 };
 
-/**
- * Parses an `aud` claim, or returns `null` if it is not a shape we mint.
- *
- * Use this on untrusted input (a JWT presented by a caller). Use `parseAudience` where the audience
- * is ours by construction and an unknown shape is a bug.
- */
 export function tryParseAudience(aud: string): ParsedAudience | null {
   const segments = aud.split(":");
   if (!segments.every(segment => AUDIENCE_SEGMENT_PATTERN.test(segment))) return null;
@@ -191,12 +154,6 @@ export function tryParseAudience(aud: string): ParsedAudience | null {
   }
 }
 
-/**
- * Parses an `aud` claim, throwing if it is not a shape we mint.
- *
- * Only for audiences we produced ourselves. For a JWT that came in over the wire, use
- * `tryParseAudience` and turn `null` into a 4xx — an unparsable token is a caller error, not ours.
- */
 export function parseAudience(aud: string): ParsedAudience {
   return tryParseAudience(aud) ?? throwErr("Audience is not in any format Hexclave mints. Either it was not minted by us, or the audience format changed without updating `tryParseAudience`.", { aud });
 }
@@ -235,12 +192,9 @@ import.meta.vitest?.describe("audience parsing", (test) => {
       `${projectId}:`,
       `:${projectId}`,
       `${projectId}:unknown-suffix`,
-      // `resource` must be in the marker position, not the suffix position
       `${projectId}:resource`,
-      // colons cannot be smuggled into a segment
       `${projectId}:resource:a:b`,
       `${projectId}:anon:extra`,
-      // not a marker we mint
       `${projectId}:audience:foo`,
       "a b",
       "https://example.com",
@@ -300,18 +254,11 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       decoded = jose.decodeJwt(accessToken);
       const aud = decoded.aud?.toString() ?? "";
 
-      // The audience is attacker-controlled at this point (the signature hasn't been checked yet),
-      // so an unrecognized shape is a caller error, not an assertion failure.
       const maybeParsedAud = tryParseAudience(aud);
       if (!maybeParsedAud) {
         console.warn("Access token has an audience Hexclave never mints. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { aud });
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
-      // A resource-scoped token belongs to a customer's own resource server (e.g. their MCP server)
-      // and must never authenticate a request to the main API. `getAllowedIssuers` below would
-      // already reject it — the OIDC issuer path is deliberately absent from that list — but
-      // rejecting here means the refusal doesn't silently depend on that omission surviving a
-      // future refactor. This audience check is the replay defence for resource-scoped tokens.
       if (maybeParsedAud.type !== 'user') {
         console.warn("Resource-scoped access token presented to the main API. These are only valid at the resource server they were minted for.", { aud });
         return Result.error(new KnownErrors.UnparsableAccessToken());
@@ -332,9 +279,6 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
-        // Best-effort only: an expired token's audience is still untrusted, and it may be a shape we
-        // don't recognize. The project ID here is diagnostic (it goes into the error for the SDK to
-        // report), never an authorization input.
         const expiredProjectId = tryParseAudience(decoded?.aud?.toString() ?? "")?.projectId;
         const error = new KnownErrors.AccessTokenExpired(
           decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
@@ -372,14 +316,10 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
-    // Validate audience matches the user type. A mismatch means the token claims do not match the
-    // user category encoded in the token.
     const audUserType = parsedAud.userType;
     if ((audUserType === 'anonymous') !== isAnonymous) {
       throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_anonymous claim.", { accessToken, payload, audUserType, isAnonymous });
     }
-    // Anonymous audiences are implicitly restricted (an anonymous user is always restricted), so
-    // they satisfy the restricted check without carrying the `:restricted` suffix.
     if ((audUserType === 'restricted' || audUserType === 'anonymous') !== isRestricted) {
       throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_restricted claim.", { accessToken, payload, audUserType, isRestricted });
     }

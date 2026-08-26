@@ -1201,13 +1201,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return await this.getServerUserById(apiKeyObject.userId);
   }
 
-  /**
-   * Resolves the `AuthInfo` an MCP framework produced into a `ServerUser`.
-   *
-   * The token has already been cryptographically verified by `createMcpTokenVerifier` — that is what
-   * produced this `AuthInfo` — so this is a lookup, not a second auth check. We read the user ID out
-   * of `extra`, which is where our verifier puts it.
-   */
   protected async _getUserByMcpAuthInfo(authInfo: McpAuthInfo): Promise<ServerUser | null> {
     const userId = authInfo.extra?.userId;
     if (typeof userId !== "string") {
@@ -1274,9 +1267,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   createMcpTokenVerifier(options?: { resource?: string }): McpTokenVerifier {
-    // Sugar over the standalone export: same verifier, with the project and base URL this app was
-    // already configured with. An MCP server in its own process imports `createMcpTokenVerifier`
-    // from `@hexclave/js/mcp` directly and passes a project ID — no server app, no secret key.
     return createMcpTokenVerifier({
       projectId: this.projectId,
       baseUrl: this._interface.options.getBaseUrl(),
@@ -1304,10 +1294,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
-    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
-      return await this._getUserByConvex((options as { ctx: ConvexCtx }).ctx, "or" in options && options.or === "anonymous");
-    } else if (typeof options === "object" && "from" in options && options.from as string === "mcp") {
-      return await this._getUserByMcpAuthInfo((options as { authInfo: McpAuthInfo }).authInfo);
+    } else if (typeof options === "object" && "from" in options && options.from === "convex") {
+      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
+    } else if (typeof options === "object" && "from" in options && options.from === "mcp") {
+      return await this._getUserByMcpAuthInfo(options.authInfo);
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
 

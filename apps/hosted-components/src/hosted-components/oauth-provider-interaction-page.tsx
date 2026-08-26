@@ -48,12 +48,22 @@ export function HostedOAuthProviderInteraction() {
           { headers },
         );
         const body: unknown = await response.json();
-        if (!response.ok) throw new Error("This authorization request is expired or no longer available.");
+        if (!response.ok) {
+          if (!cancelled) {
+            loadStateRef.current = { interactionUid, status: "error" };
+            setError("This authorization request is expired or no longer available.");
+          }
+          return;
+        }
         if (cancelled) return;
-        if (!isInteractionDetails(body)) throw new Error("The authorization request returned invalid details.");
+        if (!isInteractionDetails(body)) {
+          loadStateRef.current = { interactionUid, status: "error" };
+          setError("The authorization request returned invalid details.");
+          return;
+        }
         loadStateRef.current = { interactionUid, status: "done" };
         setDetails(body);
-      } catch (loadError) {
+      } catch {
         if (!cancelled) {
           loadStateRef.current = { interactionUid, status: "error" };
           setError("This authorization request is expired or no longer available.");
@@ -92,10 +102,12 @@ export function HostedOAuthProviderInteraction() {
       );
       const body: unknown = await response.json();
       if (!response.ok || typeof body !== "object" || body == null || !("done_url" in body) || typeof body.done_url !== "string") {
-        throw new Error(denied ? "Unable to deny this authorization request." : "Unable to complete this authorization request.");
+        setRedirecting(false);
+        setError(denied ? "Unable to deny this authorization request." : "Unable to complete this authorization request.");
+        return;
       }
       window.location.assign(body.done_url);
-    } catch (finishError) {
+    } catch {
       setRedirecting(false);
       setError("We couldn't complete this authorization request. Please return to the application and try again.");
     }

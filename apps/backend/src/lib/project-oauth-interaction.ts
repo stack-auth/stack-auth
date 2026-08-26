@@ -2,14 +2,17 @@ import { getUser } from "@/app/api/latest/users/crud";
 import {
   getProjectIdpId,
   getProjectOAuthIssuer,
+  getProjectOAuthProviderUrl,
   isTrustedClient,
 } from "@/lib/project-oauth-provider";
 import { PROJECT_OAUTH_OIDC_SCOPES } from "@/lib/project-oauth-scopes";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import type { Tenancy } from "@/lib/tenancies";
 import { getHostedHandlerTrustedDomain } from "@/lib/redirect-urls";
+import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import Provider from "oidc-provider";
 import type { AccountClaims } from "oidc-provider";
 import projectOAuthSessionMiddleware from "oidc-provider/lib/shared/session.js";
@@ -21,7 +24,17 @@ if (typeof projectOAuthSessionMiddleware !== "function") {
 const MODEL = "ProjectOAuthInteraction";
 const TTL_SECONDS = 10 * 60;
 const GRANT_TTL_SECONDS = 14 * 24 * 60 * 60;
-const OIDC_SCOPES = new Set(PROJECT_OAUTH_OIDC_SCOPES);
+const isOidcScope = (scope: string) => PROJECT_OAUTH_OIDC_SCOPES.includes(scope);
+
+const interactionSchema = yupObject({
+  uid: yupString().defined(),
+  projectId: yupString().defined(),
+  idpId: yupString().defined(),
+  clientId: yupString().defined(),
+  resource: yupString().optional(),
+  userId: yupString().optional(),
+  denied: yupBoolean().optional(),
+});
 
 export type ProjectOAuthInteraction = {
   uid: string,
@@ -33,53 +46,35 @@ export type ProjectOAuthInteraction = {
   denied?: boolean,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseInteraction(value: unknown): ProjectOAuthInteraction | undefined {
-  if (!isRecord(value)) return undefined;
-  if (
-    typeof value.uid !== "string"
-    || typeof value.projectId !== "string"
-    || typeof value.idpId !== "string"
-    || typeof value.clientId !== "string"
-  ) return undefined;
-  return {
-    uid: value.uid,
-    projectId: value.projectId,
-    idpId: value.idpId,
-    clientId: value.clientId,
-    ...(typeof value.resource === "string" ? { resource: value.resource } : {}),
-    ...(typeof value.userId === "string" ? { userId: value.userId } : {}),
-    ...(typeof value.denied === "boolean" ? { denied: value.denied } : {}),
-  };
+async function parseInteraction(value: unknown): Promise<ProjectOAuthInteraction | undefined> {
+  try {
+    return await interactionSchema.validate(value, { stripUnknown: true });
+  } catch (error) {
+    captureError("project-oauth-invalid-interaction-payload", new HexclaveAssertionError("Invalid project OAuth interaction payload", { cause: error }));
+    return undefined;
+  }
 }
 
 function interactionId(tenancy: Tenancy, uid: string): string {
   return `${getProjectIdpId(tenancy)}:${uid}`;
 }
 
-async function readInteraction(tenancy: Tenancy, uid: string): Promise<ProjectOAuthInteraction | undefined> {
-  const row = await globalPrismaClient.idPAdapterData.findUnique({
-    where: {
-      idpId_model_id: {
-        idpId: getProjectIdpId(tenancy),
-        model: MODEL,
-        id: interactionId(tenancy, uid),
-      },
+function interactionWhere(tenancy: Tenancy, uid: string) {
+  return {
+    idpId_model_id: {
+      idpId: getProjectIdpId(tenancy),
+      model: MODEL,
+      id: interactionId(tenancy, uid),
     },
-  });
-  if (row === null || row.expiresAt <= new Date()) return undefined;
-  const parsed = parseInteraction(row.payload);
-  if (parsed === undefined) {
-    captureError("project-oauth-invalid-interaction-payload", new HexclaveAssertionError("Invalid project OAuth interaction payload"));
-  }
-  return parsed;
+  };
 }
 
 export async function getProjectOAuthInteraction(tenancy: Tenancy, uid: string): Promise<ProjectOAuthInteraction | undefined> {
-  return await readInteraction(tenancy, uid);
+  const row = await globalPrismaClient.idPAdapterData.findUnique({
+    where: interactionWhere(tenancy, uid),
+  });
+  if (row === null || row.expiresAt <= new Date()) return undefined;
+  return await parseInteraction(row.payload);
 }
 
 export async function recordProjectOAuthDecision(options: {
@@ -88,7 +83,7 @@ export async function recordProjectOAuthDecision(options: {
   userId: string,
   denied: boolean,
 }): Promise<string> {
-  const interaction = await readInteraction(options.tenancy, options.uid);
+  const interaction = await getProjectOAuthInteraction(options.tenancy, options.uid);
   if (interaction === undefined) throw new StatusError(400, "This authorization request has expired.");
   if (interaction.userId !== undefined && interaction.userId !== options.userId) {
     captureError("project-oauth-interaction-user-mismatch", new HexclaveAssertionError("Project OAuth decision user mismatch"));
@@ -96,13 +91,7 @@ export async function recordProjectOAuthDecision(options: {
   }
 
   await globalPrismaClient.idPAdapterData.update({
-    where: {
-      idpId_model_id: {
-        idpId: getProjectIdpId(options.tenancy),
-        model: MODEL,
-        id: interactionId(options.tenancy, options.uid),
-      },
-    },
+    where: interactionWhere(options.tenancy, options.uid),
     data: {
       payload: {
         ...interaction,
@@ -112,24 +101,16 @@ export async function recordProjectOAuthDecision(options: {
       expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
     },
   });
-  const doneUrl = new URL(getProjectOAuthIssuer(options.tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
-  doneUrl.pathname = `${doneUrl.pathname.replace(/\/$/, "")}/interaction/${encodeURIComponent(options.uid)}/done`;
-  return doneUrl.toString();
+  return getProjectOAuthProviderUrl(options.tenancy.project.id, urlString`/interaction/${options.uid}/done`);
 }
 
 export async function consumeProjectOAuthDecision(tenancy: Tenancy, uid: string): Promise<ProjectOAuthInteraction> {
   return await retryTransaction(globalPrismaClient, async (tx) => {
     const row = await tx.idPAdapterData.findUnique({
-      where: {
-        idpId_model_id: {
-          idpId: getProjectIdpId(tenancy),
-          model: MODEL,
-          id: interactionId(tenancy, uid),
-        },
-      },
+      where: interactionWhere(tenancy, uid),
     });
     if (row === null || row.expiresAt <= new Date()) throw new StatusError(400, "This authorization request has expired.");
-    const interaction = parseInteraction(row.payload);
+    const interaction = await parseInteraction(row.payload);
     if (
       interaction === undefined
       || interaction.userId === undefined
@@ -139,13 +120,7 @@ export async function consumeProjectOAuthDecision(tenancy: Tenancy, uid: string)
       throw new StatusError(400, "This authorization request is no longer available.");
     }
     await tx.idPAdapterData.delete({
-      where: {
-        idpId_model_id: {
-          idpId: getProjectIdpId(tenancy),
-          model: MODEL,
-          id: interactionId(tenancy, uid),
-        },
-      },
+      where: interactionWhere(tenancy, uid),
     });
     return interaction;
   });
@@ -188,9 +163,6 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           captureError("project-oauth-provider-session-user-mismatch", new HexclaveAssertionError("Project OAuth provider session user mismatch"));
           throw new StatusError(400, "This authorization request is not available for this user.");
         }
-        // Hosted authentication is authoritative for this interaction, while oidc-provider checks
-        // the provider session UID before applying result.login. Bind both to the same user first
-        // so stale provider cookies cannot select a different session or bypass that check.
         session.loginAccount({ accountId: userId });
         session.touched = true;
         interaction.session = {
@@ -209,15 +181,8 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
         }
 
         const grant = new oidc.Grant({ accountId: userId, clientId });
-        // The requested scopes live on oidc-provider's own interaction record. Grant exactly the
-        // requested-and-supported intersection: the provider's `op_scopes_missing` check compares
-        // the grant against the same intersection, so granting less would bounce back to consent,
-        // and anything outside the vocabulary is ignored by the provider anyway.
-        //
-        // The resource is deliberately not put on the grant. Resource-bound access tokens carry no
-        // scopes, and resource authorization is enforced through the `resource=` parameter and the
-        // resource server registry, not through grant contents.
-        const grantedScopes = `${interaction.params.scope ?? ""}`.split(" ").filter(scope => OIDC_SCOPES.has(scope));
+        // oidc-provider's `op_scopes_missing` check compares the grant against this same requested-and-supported intersection.
+        const grantedScopes = `${interaction.params.scope ?? ""}`.split(" ").filter(scope => isOidcScope(scope));
         if (grantedScopes.length > 0) grant.addOIDCScope(grantedScopes.join(" "));
         // oidc-provider's default refresh-token lifetime is 14 days. Keep the consent grant alive
         // for the same period so offline_access does not silently outlive its backing grant.
@@ -280,7 +245,7 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
         const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
         const resource = typeof details.params.resource === "string" ? details.params.resource : undefined;
         await globalPrismaClient.idPAdapterData.upsert({
-          where: { idpId_model_id: { idpId: getProjectIdpId(tenancy), model: MODEL, id: interactionId(tenancy, uid) } },
+          where: interactionWhere(tenancy, uid),
           create: {
             idpId: getProjectIdpId(tenancy),
             model: MODEL,
@@ -296,8 +261,6 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
           },
           update: {},
         });
-        // A project without required consent still requires an authenticated account. This removes
-        // the confirmation click, never the authentication requirement.
         if (!projectOAuthClientNeedsInteraction(tenancy, clientId)
           && typeof details.session?.accountId === "string") {
           const doneUrl = await recordProjectOAuthDecision({

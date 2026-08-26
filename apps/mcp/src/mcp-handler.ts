@@ -5,22 +5,83 @@ import {
   type HexclaveAskRequestMetadata,
 } from "../../../packages/shared/src/ai/hexclave-ask";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
+import { getBackendApiBaseUrl } from "@/env";
+import { getMcpOAuthConfig, withHexclaveMcpOAuth } from "@/oauth";
 import packageJson from "../package.json";
 
-function getBackendApiBaseUrl(): string {
-  return (
-    getEnvVariable("NEXT_PUBLIC_SERVER_HEXCLAVE_API_URL", "") ||
-    getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") ||
-    getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "") ||
-    getEnvVariable("NEXT_PUBLIC_STACK_API_URL")
-  ).replace(/\/$/, "");
+const MAX_SQL_TOOL_RESULT_CHARS = 100_000;
+
+const AUTH_REQUIRED_MESSAGE = "This tool requires authentication. Ask the user to authenticate the Hexclave MCP server in their MCP client (usually via the client's MCP server settings, e.g. /mcp in Claude Code), then try again.";
+
+type BackendToolCallResult =
+  | { status: "ok", json: unknown }
+  | { status: "error", message: string };
+
+async function callMcpToolBackend(options: {
+  path: string,
+  method: "GET" | "POST",
+  accessToken: string,
+  body?: unknown,
+}): Promise<BackendToolCallResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${getBackendApiBaseUrl()}${options.path}`, {
+      method: options.method,
+      headers: {
+        "authorization": `Bearer ${options.accessToken}`,
+        ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    });
+  } catch (error) {
+    captureError("mcp-tool-backend-unreachable", error);
+    return { status: "error", message: "The Hexclave backend could not be reached. Try again shortly." };
+  }
+
+  const text = await response.text();
+  if (response.ok) {
+    return { status: "ok", json: JSON.parse(text) };
+  }
+  if (response.status === 401) {
+    return { status: "error", message: `Authentication failed: ${extractBackendErrorMessage(text)} ${AUTH_REQUIRED_MESSAGE}` };
+  }
+  if (response.status >= 500) {
+    captureError("mcp-tool-backend-error", new HexclaveAssertionError("Hexclave MCP tool backend endpoint returned a server error", {
+      path: options.path,
+      status: response.status,
+    }));
+    return { status: "error", message: "The Hexclave backend returned an unexpected error. Try again shortly." };
+  }
+  return { status: "error", message: extractBackendErrorMessage(text) };
+}
+
+function extractBackendErrorMessage(bodyText: string): string {
+  const capped = bodyText.slice(0, 2_000);
+  try {
+    const parsed: unknown = JSON.parse(capped);
+    if (typeof parsed === "object" && parsed !== null && "error" in parsed && typeof parsed.error === "string") {
+      return parsed.error;
+    }
+  } catch {
+    return capped;
+  }
+  return capped;
+}
+
+function getAuthInfoFromToolExtra(extra: { authInfo?: { token: string, extra?: Record<string, unknown> } }): { accessToken: string, userId: string | undefined } | undefined {
+  const authInfo = extra.authInfo;
+  if (authInfo === undefined) return undefined;
+  const userId = authInfo.extra?.userId;
+  return {
+    accessToken: authInfo.token,
+    userId: typeof userId === "string" ? userId : undefined,
+  };
 }
 
 const skillResourceUri = "https://skill.hexclave.com/full";
@@ -164,12 +225,17 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
               "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
             ),
         },
-        async ({ question, reason, userPrompt, context, user, project, conversationId }) => {
+        async ({ question, reason, userPrompt, context, user, project, conversationId }, extra) => {
+          const authenticatedUserId = getAuthInfoFromToolExtra(extra)?.userId;
           await withPostHog(async (posthog) => {
             posthog.capture({
               event: "ask_hexclave_mcp",
-              properties: { question, reason },
-              distinctId: "mcp-handler",
+              properties: {
+                question,
+                reason,
+                ...(authenticatedUserId === undefined ? {} : { authenticatedUserId }),
+              },
+              distinctId: authenticatedUserId ?? "mcp-handler",
             });
           });
 
@@ -201,6 +267,81 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
           };
         },
       );
+
+      if (getMcpOAuthConfig() != null) {
+        server.tool(
+          "list_projects",
+          "List the Hexclave projects the authenticated user manages (ID and display name). Use this to discover valid project IDs for run_sql_query. Requires the MCP connection to be authenticated via OAuth.",
+          {},
+          async (_args, extra) => {
+            const auth = getAuthInfoFromToolExtra(extra);
+            if (auth === undefined) {
+              return { content: [{ type: "text", text: AUTH_REQUIRED_MESSAGE }], isError: true };
+            }
+            await withPostHog(async (posthog) => {
+              posthog.capture({
+                event: "list_projects_mcp",
+                properties: {},
+                distinctId: auth.userId ?? "mcp-handler",
+              });
+            });
+            const result = await callMcpToolBackend({
+              path: "/api/v1/internal/mcp/projects",
+              method: "GET",
+              accessToken: auth.accessToken,
+            });
+            if (result.status === "error") {
+              return { content: [{ type: "text", text: result.message }], isError: true };
+            }
+            return { content: [{ type: "text", text: JSON.stringify(result.json, null, 2) }] };
+          },
+        );
+
+        server.tool(
+          "run_sql_query",
+          "Run a read-only ClickHouse SQL query against a Hexclave project's analytics dataset (events, users, teams, contact channels, and more). Use SHOW TABLES and DESCRIBE TABLE <name> to explore the schema. Queries are sandboxed to the given project, read-only, and time/row limited. Requires the MCP connection to be authenticated via OAuth, and the authenticated user must manage the project; use list_projects to discover valid project IDs.",
+          {
+            projectId: z.string().min(1).describe("The ID of the Hexclave project to query. Must be a project the authenticated user manages; find it via list_projects."),
+            query: z.string().min(1).describe("A read-only ClickHouse SQL query, e.g. \"SELECT count() AS event_count FROM events\"."),
+            timeoutMs: z.number().int().min(1_000).max(300_000).optional().describe("Maximum query execution time in milliseconds. Defaults to 10000; also capped by the project's plan."),
+          },
+          async ({ projectId, query, timeoutMs }, extra) => {
+            const auth = getAuthInfoFromToolExtra(extra);
+            if (auth === undefined) {
+              return { content: [{ type: "text", text: AUTH_REQUIRED_MESSAGE }], isError: true };
+            }
+            await withPostHog(async (posthog) => {
+              posthog.capture({
+                event: "run_sql_query_mcp",
+                properties: { projectId },
+                distinctId: auth.userId ?? "mcp-handler",
+              });
+            });
+            const result = await callMcpToolBackend({
+              path: "/api/v1/internal/mcp/sql-query",
+              method: "POST",
+              accessToken: auth.accessToken,
+              body: {
+                project_id: projectId,
+                query,
+                ...(timeoutMs === undefined ? {} : { timeout_ms: timeoutMs }),
+              },
+            });
+            if (result.status === "error") {
+              return { content: [{ type: "text", text: result.message }], isError: true };
+            }
+            const text = JSON.stringify(result.json, null, 2);
+            return {
+              content: [{
+                type: "text",
+                text: text.length > MAX_SQL_TOOL_RESULT_CHARS
+                  ? `${text.slice(0, MAX_SQL_TOOL_RESULT_CHARS)}\n… [truncated — the full result exceeded ${MAX_SQL_TOOL_RESULT_CHARS} characters; narrow the query with LIMIT or aggregation]`
+                  : text,
+              }],
+            };
+          },
+        );
+      }
     },
     {
       serverInfo: {
@@ -218,8 +359,8 @@ ${remindersPrompt}`,
     },
   );
 
-  return (request: Request) => requestMetadataStorage.run(
+  return withHexclaveMcpOAuth((request: Request) => requestMetadataStorage.run(
     getHexclaveAskRequestMetadata(request, "mcp-ask-hexclave"),
     () => handler(request),
-  );
+  ));
 }

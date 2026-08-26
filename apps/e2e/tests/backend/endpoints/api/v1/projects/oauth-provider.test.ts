@@ -480,9 +480,6 @@ it("completes the signed-out-first project OAuth authorization code flow", async
     resource?: string,
     scope?: string,
   };
-  // A resource-bound access token carries no scopes: the resource server resolves the user's full
-  // authority via the SDK instead. code.scope is non-empty (the OIDC scopes), so oidc-provider
-  // reports the resource token's (empty) scope rather than omitting the field.
   expect(token.body).toMatchObject({
     token_type: "Bearer",
     scope: "",
@@ -523,9 +520,6 @@ it("completes the signed-out-first project OAuth authorization code flow", async
     userAuth: {},
     headers: { Authorization: `Bearer ${normalSession.accessToken}` },
   });
-  // The main API does not accept Authorization: Bearer for any session type; both tokens reach
-  // the same header-validation 400. The x-stack-access-token assertion above is the token-specific
-  // rejection check, while this control prevents the Bearer result from being misread as one.
   expect(authorizationHeaderNormalSessionControl.status).toBe(400);
   const refreshed = await niceBackendFetch(providerUrl(projectId, "/token"), {
     method: "POST",

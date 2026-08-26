@@ -18,8 +18,6 @@ function createMockTenancy(): Tenancy {
       rbac: { permissions: {} },
     },
     project: { id: "12345678-1234-4234-8234-123456789abc" },
-  // Tenancy is an inferred Prisma payload with a large config surface; this test intentionally
-  // supplies only the normalized fields consumed by the metadata resolver.
   } as Tenancy;
 }
 

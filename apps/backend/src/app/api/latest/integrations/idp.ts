@@ -5,6 +5,7 @@ import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError, captureError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { sha512 } from '@hexclave/shared/dist/utils/hashes';
 import { getPrivateJwks, getPublicJwkSet } from '@hexclave/shared/dist/utils/jwt';
+import { PROJECT_OAUTH_PROVIDER_JWKS_PATH } from '@hexclave/shared/dist/utils/urls';
 import { deindent } from '@hexclave/shared/dist/utils/strings';
 import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import Provider, { Adapter, AdapterConstructor, AdapterPayload, Configuration, errors } from 'oidc-provider';
@@ -20,15 +21,6 @@ function createAdapter(options: {
     idOrWhere: string | { propertyKey: keyof AdapterPayload, propertyValue: string },
     updater: (old: AdapterData | undefined) => AdapterData | undefined
   ) => Promise<AdapterData | undefined>,
-  /**
-   * Consulted when `find` misses in storage. This is how clients that were never persisted —
-   * resolved live from a client ID metadata document — become visible to the provider.
-   *
-   * Deliberately routed through the adapter rather than a separate lookup: `oidc-provider` funnels
-   * every client resolution through `adapter('Client').find(id)`, so anything resolved here is
-   * indistinguishable from a stored client to the rest of the provider. A second code path would
-   * be a second place for the two to disagree about what a client may do.
-   */
   onFindMiss?: (model: string, id: string) => Promise<AdapterPayload | undefined>,
 }): AdapterConstructor {
   const niceUpdate = async (
@@ -58,7 +50,19 @@ function createAdapter(options: {
       }
     }
 
-    async upsert(id: string, payload: AdapterPayload, expiresInSeconds: number): Promise<void> {
+    async upsert(id: string, payload: AdapterPayload, expiresInSeconds: number | undefined): Promise<void> {
+      // oidc-provider persists the artifacts of RFC 7591 dynamic client registration — the Client
+      // itself and its RegistrationAccessToken — without an expiration (see `lib/models/client.js`
+      // and `lib/models/base_model.js#save`). Our storage requires an expiry and the read path
+      // filters on it, so cap those records at one year: long enough that clients won't notice in
+      // practice (OAuth clients re-register when their client_id stops resolving), short enough
+      // that the open, unauthenticated registration endpoint cannot grow the table without bound.
+      // Every other model always gets an explicit expiration from oidc-provider, so anything else
+      // missing one is a bug.
+      if (expiresInSeconds === undefined) {
+        if (this.model !== 'Client' && this.model !== 'RegistrationAccessToken') throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} is undefined; oidc-provider only omits it for dynamic client registration models`, { model: this.model, id, payload });
+        expiresInSeconds = 60 * 60 * 24 * 365;
+      }
       // if one of these assertions is triggered, make sure you're not minifying class names (see the constructor)
       if (expiresInSeconds < 0) throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} must be non-negative, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
       if (expiresInSeconds > 60 * 60 * 24 * 365 * 100) throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} must be less than 100 years, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
@@ -175,63 +179,26 @@ function createPrismaAdapter(idpId: string, onFindMiss?: (model: string, id: str
   });
 }
 
-/**
- * The parts of an OIDC provider that differ between the two things we run one for:
- *
- *  - the **integration IdPs** (Neon, custom) — singletons with a static, env-configured client list,
- *    no scopes, and an interaction flow that trades a Hexclave-issued wrapper code for an account;
- *  - a **customer project acting as its own OAuth provider** — one per tenancy, with clients from
- *    config (or self-registered), the standard OIDC scopes, and resource servers for RFC 8707
- *    audience binding.
- *
- * Everything else — the Prisma adapter, the per-instance JWKS derivation, cookie keys, error
- * rendering, the JWKS endpoint — is identical, which is why it lives in one factory.
- */
 export type OidcProviderOptions = {
-  /**
-   * Identifies this provider instance. Used as the `idpId` partition key in `IdPAdapterData` and as
-   * the salt for this instance's signing keys, so it must be stable forever and unique across all
-   * providers we run. Integration IdPs use a fixed string; project providers use
-   * `project:<projectId>:<branchId>`.
-   */
   id: string,
   baseUrl: string,
-  /** Statically known clients. Project providers pass their config-declared ones. */
   clients?: Configuration['clients'],
-  /**
-   * Looked up when a `client_id` isn't in `clients` — dynamic client registration and client ID
-   * metadata documents both land here. Returning `undefined` makes it an unknown client.
-   */
+  clientDefaults?: Configuration['clientDefaults'],
   findClient?: (clientId: string) => Promise<AdapterPayload | undefined>,
-  /** The scope vocabulary this provider advertises and accepts. */
   scopes?: string[],
-  /**
-   * Resource servers for RFC 8707 `resource=`. Maps a resource URI to its audience. MCP servers are
-   * resource servers.
-   */
+  /** RFC 8707 `resource=` servers, keyed by resource URI. */
   resourceServers?: Map<string, { audience: string }>,
-  /** Resolves the subject to an account and its claims. Defaults to an opaque `sub`-only account. */
   findAccount?: Configuration['findAccount'],
-  /** Extra claims to stamp into issued access tokens (e.g. the resource URI). */
   extraTokenClaims?: Configuration['extraTokenClaims'],
   features?: {
-    /** RFC 7591 dynamic client registration. */
+    /** RFC 7591. */
     registration?: boolean,
-    /** RFC 7009 token revocation. Required for a usable "disconnect this app" button. */
+    /** RFC 7009. */
     revocation?: boolean,
   },
-  /**
-   * Require PKCE on every authorization request. Mandatory under OAuth 2.1 and the MCP spec, but
-   * off by default here so the pre-existing integration IdPs keep behaving exactly as they did.
-   */
   requirePkce?: boolean,
-  /** Installed after the built-in middleware. Where integration-specific interaction flows go. */
   middleware?: (provider: Provider) => void,
-  /** Where to send the user to log in / consent. */
-  interactionUrl?: (interactionUid: string) => string,
-  /** Render browser-facing authorization failures as a generic page for this provider. */
   userFacingAuthorizationErrors?: boolean,
-  /** Override the JWKS route so discovery advertises the public project-provider URL. */
   jwksRoute?: string,
 };
 
@@ -246,34 +213,75 @@ function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]):
   });
 }
 
+// NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
+// SHA-256 that produces the per-audience signing secret + kid in
+// `getPrivateJwks` (see packages/shared/src/utils/jwt.tsx:114-115). It is
+// never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
+// Changing this string rotates ALL outstanding JWT signing keys and invalidates
+// every cached client JWKS — so it is intentionally pinned to the pre-rebrand
+// domain (internal opaque identifier — never exposed to clients).
+// Exported so the backend can verify an IdP's own tokens locally (without an HTTP
+// round trip to its JWKS endpoint) — see verifyProjectOAuthAccessToken.
+export function getIdpJwksKeyDerivationAudience(idpId: string): string {
+  return `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(idpId)}`;
+}
+
+const NATIVE_CUSTOM_SCHEME_INVALIDATION_SUFFIX = "for native clients using Custom URI scheme should use reverse domain name based scheme";
+
+/**
+ * Lets native clients register custom-scheme redirect URIs that are not reverse-domain-named.
+ *
+ * oidc-provider enforces RFC 8252's SHOULD-level reverse-domain convention (`com.example.app:/...`)
+ * as a hard registration error, but real MCP clients register plain product schemes
+ * (`vscode://...`, `cursor://...`) and are rejected outright. Overriding
+ * `Client.Schema.prototype.invalidate` is oidc-provider's own escape hatch for relaxing specific
+ * metadata invalidations; the message-suffix match is pinned to oidc-provider 8.5.1's wording and
+ * an e2e test registers a `cursor://` client so an upstream wording change fails tests, not users.
+ *
+ * The cast below: `provider.Client.Schema` is a real, stable runtime surface
+ * (lib/models/client.js defines the static; the invalidate-override technique is how oidc-provider
+ * docs suggest customizing validation) that `@types/oidc-provider` simply does not declare, so the
+ * type system cannot express this. The expected shape is asserted at provider construction and
+ * throws loudly on drift, so an oidc-provider upgrade that moves this API breaks at boot rather
+ * than silently re-enabling the rejection.
+ */
+export function allowNonReverseDomainNativeRedirectSchemes(oidcProvider: Provider): void {
+  const clientModel = (oidcProvider as unknown as { Client?: { Schema?: { prototype?: { invalidate?: unknown } } } }).Client;
+  const schemaPrototype = clientModel?.Schema?.prototype;
+  const originalInvalidate = schemaPrototype?.invalidate;
+  if (schemaPrototype === undefined || typeof originalInvalidate !== "function") {
+    throw new HexclaveAssertionError("oidc-provider no longer exposes Client.Schema.prototype.invalidate; the native custom-scheme redirect relaxation must be reimplemented for this oidc-provider version.");
+  }
+  schemaPrototype.invalidate = function (this: unknown, message: unknown, code: unknown) {
+    if (typeof message === "string" && message.endsWith(NATIVE_CUSTOM_SCHEME_INVALIDATION_SUFFIX)) {
+      return undefined;
+    }
+    return originalInvalidate.call(this, message, code);
+  };
+}
+
 export async function createOidcProviderInternal(options: OidcProviderOptions) {
-  // NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
-  // SHA-256 that produces the per-audience signing secret + kid in
-  // `getPrivateJwks` (see packages/shared/src/utils/jwt.tsx:114-115). It is
-  // never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
-  // Changing this string rotates ALL outstanding JWT signing keys and invalidates
-  // every cached client JWKS — so it is intentionally pinned to the pre-rebrand
-  // domain (internal opaque identifier — never exposed to clients).
   const privateJwks = await getPrivateJwks({
-    audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
+    audience: getIdpJwksKeyDerivationAudience(options.id),
   });
   const privateJwkSet = {
     keys: privateJwks,
   };
   const publicJwkSet = await getPublicJwkSet(privateJwks);
 
+  const findClient = options.findClient;
+  const resourceServers = options.resourceServers;
   const adapter = createPrismaAdapter(
     options.id,
-    options.findClient
-      // Only the `Client` model gets a fallback. Every other model (codes, grants, sessions) is
-      // storage-backed by definition, and a miss there means the thing genuinely doesn't exist.
-      ? async (model, id) => model === 'Client' ? await options.findClient!(id) : undefined
+    findClient
+      ? async (model, id) => model === 'Client' ? await findClient(id) : undefined
       : undefined,
   );
 
   const oidc = new Provider(options.baseUrl, {
     adapter,
     clients: options.clients ?? JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
+    ...(options.clientDefaults === undefined ? {} : { clientDefaults: options.clientDefaults }),
     cookies: {
       keys: [
         toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
@@ -290,40 +298,24 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
       revocation: {
         enabled: options.features?.revocation ?? false,
       },
-      resourceIndicators: options.resourceServers ? {
+      resourceIndicators: resourceServers ? {
         enabled: true,
-        // Which resource a token is for, when the client didn't pass `resource=`.
-        //
-        // We only supply a default when the project has exactly one resource server, where there is
-        // no ambiguity — that is the DX win for the common "I have one MCP server" case. With zero
-        // or several we omit the helper entirely and let oidc-provider's own default apply, which
-        // resolves nothing and fails the request. Silently picking one of several would mint a token
-        // for a resource server the client never named, i.e. exactly the confused-deputy problem
-        // RFC 8707 exists to prevent.
-        //
-        // (Omitting rather than returning `undefined` is also what keeps this type-safe: the
-        // published `@types/oidc-provider` types declare the return as `string | string[]` even
-        // though the runtime accepts `undefined` to mean "no default".)
-        ...options.resourceServers.size === 1 ? {
-          defaultResource: async () => [...options.resourceServers!.keys()][0],
+        // `@types/oidc-provider` types `defaultResource` as `string | string[]` even though the
+        // runtime accepts `undefined` to mean "no default", so we omit the helper instead of returning undefined.
+        ...resourceServers.size === 1 ? {
+          defaultResource: async () => [...resourceServers.keys()][0],
         } : {},
         getResourceServerInfo: async (ctx, resourceIndicator, client) => {
-          const resourceServer = options.resourceServers!.get(resourceIndicator);
+          const resourceServer = resourceServers.get(resourceIndicator);
           if (!resourceServer) {
             throw new errors.InvalidTarget();
           }
           return {
-            // The audience identifies the resource server. Providers in one project share signing
-            // keys, so resource validation is enforced by the resource claim and issuer checks.
             audience: resourceServer.audience,
-            // Resource servers have no scope vocabulary; a resource-bound token's authority is the
-            // user's, resolved by the resource server via `getUser({ from: "mcp" })`. An empty
-            // string is oidc-provider's way of saying "this resource server supports no scopes".
+            // Empty string is oidc-provider's "this resource server supports no scopes" sentinel.
             scope: "",
             accessTokenFormat: 'jwt' as const,
-            // Resource JWTs must use an algorithm and key that are published by this provider's
-            // JWKS. The key set is ES256-only; leaving this unset makes oidc-provider default to
-            // RS256 and fail with a server error because no matching RSA key exists.
+            // Unset `jwt.sign` makes oidc-provider default to RS256, which fails: this key set is ES256-only.
             jwt: {
               sign: {
                 alg: privateJwkSet.keys[0]?.alg ?? throwErr("Project OAuth JWKS had no signing algorithm"),
@@ -339,16 +331,11 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
     responseTypes: [
       "code",
     ],
-    // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally, so project
-    // providers turn this on. It is NOT on by default: the Neon/custom integration IdPs predate
-    // this factory being generalized, and forcing PKCE on them would break already-shipped clients.
     ...options.requirePkce ? { pkce: { required: () => true } } : {},
     extraTokenClaims: options.extraTokenClaims,
 
     interactions: {
-      url: (ctx, interaction) => options.interactionUrl
-        ? options.interactionUrl(interaction.uid)
-        : `${options.baseUrl}/interaction/${encodeURIComponent(interaction.uid)}`,
+      url: (ctx, interaction) => `${options.baseUrl}/interaction/${encodeURIComponent(interaction.uid)}`,
     },
 
     async renderError(ctx, out, error) {
@@ -414,7 +401,7 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
 
   // .well-known/jwks.json
   wrapOidcMiddleware(oidc, async (ctx, next) => {
-    if (ctx.path === '/.well-known/jwks.json') {
+    if (ctx.path === PROJECT_OAUTH_PROVIDER_JWKS_PATH) {
       ctx.body = publicJwkSet;
       ctx.type = 'application/json';
       return;
@@ -427,13 +414,6 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
   return oidc;
 }
 
-/**
- * The integration IdP (Neon, custom) — a singleton provider whose login flow is driven by a
- * Hexclave-issued wrapper code rather than by a user session.
- *
- * Kept as its own function so that generalizing the factory above didn't change any behaviour for
- * the two integrations that already depend on it.
- */
 export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
   return await createOidcProviderInternal({
     id: options.id,
@@ -446,12 +426,8 @@ function installIntegrationInteractionMiddleware(
   oidc: Provider,
   options: { id: string, baseUrl: string, clientInteractionUrl: string },
 ) {
-  function middleware(mw: Parameters<typeof oidc.use>[0]) {
-    wrapOidcMiddleware(oidc, mw);
-  }
-
   // Interactions
-  middleware(async (ctx, next) => {
+  wrapOidcMiddleware(oidc, async (ctx, next) => {
     if (/^\/interaction\/[^/]+\/done$/.test(ctx.path)) {
       switch (ctx.method) {
         case 'GET': {
