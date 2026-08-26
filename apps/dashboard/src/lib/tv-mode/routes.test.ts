@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { isTvPresentationPath } from "./routes";
+import { isIndependentTvDisplayPath, isTvPresentationPath } from "./routes";
+
+describe("independent TV display route matching", () => {
+  it("matches only the exact independent display route", () => {
+    expect(isIndependentTvDisplayPath("/tv")).toBe(true);
+    expect(isIndependentTvDisplayPath("/tv/")).toBe(true);
+    expect(isIndependentTvDisplayPath("/tv/pairing")).toBe(false);
+    expect(isIndependentTvDisplayPath("/projects/project-a/tv-mode")).toBe(false);
+  });
+});
 
 describe("TV presentation route matching", () => {
   it("matches only a project presentation route", () => {

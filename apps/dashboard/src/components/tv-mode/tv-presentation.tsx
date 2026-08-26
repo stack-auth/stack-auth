@@ -526,6 +526,7 @@ export function TvPresentation({
   const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsShowVersion, setControlsShowVersion] = useState(0);
   const [rotationPaused, setRotationPaused] = useState(false);
+  const [fullscreenAvailable, setFullscreenAvailable] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const missingScreenReportKeyRef = useRef<string | null>(null);
   const profileId = snapshot?.profile.id;
@@ -641,6 +642,10 @@ export function TvPresentation({
   }, [missingScreenReportKey, snapshot, view]);
 
   useEffect(() => {
+    const available = typeof document.documentElement.requestFullscreen === "function"
+      && typeof document.exitFullscreen === "function";
+    setFullscreenAvailable(available);
+    if (!available) return;
     const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement != null);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -664,7 +669,7 @@ export function TvPresentation({
       } else if (event.key === " " && !isInteractiveTarget) {
         event.preventDefault();
         setRotationPaused((current) => !current);
-      } else if (event.key.toLowerCase() === "f") {
+      } else if (event.key.toLowerCase() === "f" && fullscreenAvailable) {
         runAsynchronously(document.fullscreenElement == null
           ? document.documentElement.requestFullscreen()
           : document.exitFullscreen());
@@ -676,7 +681,7 @@ export function TvPresentation({
       window.removeEventListener("mousemove", showControls);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [snapshot, view]);
+  }, [fullscreenAvailable, snapshot, view]);
 
   if (loading) {
     return <div className="h-dvh w-full"><PresentationMessage type="loading" title="Preparing TV Mode" message="Assembling the latest office-safe snapshot…" /></div>;
@@ -802,18 +807,22 @@ export function TvPresentation({
           >
             <CaretRightIcon className="h-5 w-5" weight="bold" />
           </button>
-          <span className="mx-1 h-6 w-px bg-white/10" />
-          <button
-            type="button"
-            tabIndex={controlsVisible ? 0 : -1}
-            onClick={() => runAsynchronously(document.fullscreenElement == null
-              ? document.documentElement.requestFullscreen()
-              : document.exitFullscreen())}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-white/65 hover:bg-white/10 hover:text-white"
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            {isFullscreen ? <CornersInIcon className="h-5 w-5" weight="bold" /> : <CornersOutIcon className="h-5 w-5" weight="bold" />}
-          </button>
+          {fullscreenAvailable ? (
+            <>
+              <span className="mx-1 h-6 w-px bg-white/10" />
+              <button
+                type="button"
+                tabIndex={controlsVisible ? 0 : -1}
+                onClick={() => runAsynchronously(document.fullscreenElement == null
+                  ? document.documentElement.requestFullscreen()
+                  : document.exitFullscreen())}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-white/65 hover:bg-white/10 hover:text-white"
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? <CornersInIcon className="h-5 w-5" weight="bold" /> : <CornersOutIcon className="h-5 w-5" weight="bold" />}
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

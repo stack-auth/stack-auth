@@ -16,6 +16,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+  Reflect.deleteProperty(document, "exitFullscreen");
   vi.useRealTimers();
 });
 
@@ -74,6 +76,31 @@ describe("TvPresentation rotation", () => {
     render(<TvPresentation snapshot={snapshot} />);
     expect(screen.queryByRole("button", { name: "Exit TV Mode" })).toBeNull();
     expect(screen.getByRole("button", { name: "Pause rotation" })).toBeDefined();
+  });
+
+  it("omits fullscreen controls when the browser does not support the Fullscreen API", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    render(<TvPresentation snapshot={snapshot} />);
+    expect(screen.queryByRole("button", { name: "Enter fullscreen" })).toBeNull();
+  });
+
+  it("requests fullscreen when the browser supports the Fullscreen API", () => {
+    const snapshot = getTvFixtureSnapshot("project-a", "company-pulse");
+    if (snapshot == null) throw new Error("Missing company-pulse fixture");
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<TvPresentation snapshot={snapshot} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(requestFullscreen).toHaveBeenCalledOnce();
   });
 
   it("does not toggle rotation when Space activates a focused control", () => {
