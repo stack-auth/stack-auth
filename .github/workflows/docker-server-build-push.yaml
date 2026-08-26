@@ -1,159 +1,80 @@
 name: Docker Server Build and Push
 
+# Publishes to GHCR rather than Docker Hub.
+#
+# Upstream's version of this workflow pushes to Docker Hub using DOCKER_REPO,
+# DOCKER_USER and DOCKER_PASSWORD. A fork does not inherit repository secrets, so that
+# login step fails within seconds and no image is ever published. GHCR authenticates with
+# the GITHUB_TOKEN that Actions already provides, so this works on a fresh fork with
+# nothing configured.
+#
+# An image has to be built here because Railway cannot build docker/server/Dockerfile
+# itself: Railway requires BuildKit cache mount ids prefixed with `s/<service id>-`, and
+# explicitly forbids supplying that through an environment variable, so a shared Dockerfile
+# cannot satisfy it without hardcoding one project's service id.
 on:
   push:
     branches:
       - main
       - dev
-  # Lets a feature branch publish an image without merging first, which is the only
-  # way to get a branch's backend onto Railway: Railway cannot build this Dockerfile
-  # itself, because its cache mounts would have to hardcode a Railway service id.
+  # Lets a feature branch publish an image without merging first, which is how a change is
+  # tested on Railway before it lands.
   workflow_dispatch:
 
-# Grouped per ref (not per sha) on purpose: this publishes the moving `dev`/`latest` image tags after
-# the platform digests are merged, so runs must stay serialized or an older run could overwrite a
-# newer commit's tag.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  build-server:
-    name: Docker Build Server (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout }}
-    strategy:
-      fail-fast: false
-      # Upstream builds on its own Ubicloud fleet, which a fork does not have — those
-      # labels match no runner here, so jobs queue forever rather than failing. Built on
-      # GitHub-hosted runners instead, and amd64 only: Railway runs x86_64, so the arm64
-      # leg cost a second 8-core build for a platform this fork never deploys to. Add it
-      # back (with an arm runner label this repo actually has) if you need local arm images.
-      matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-latest
-            timeout: 60
-    # Both matrix legs compute the same value, so whichever leg writes this output last is equivalent.
-    outputs:
-      should_push: ${{ steps.push-condition.outputs.should_push }}
+  build-and-push:
+    name: Build and push server image
+    runs-on: ubuntu-latest
+    # A full monorepo build (turbo prune, backend bundle, Next.js dashboard) takes far
+    # longer on a GitHub-hosted runner than on the 8-core machines upstream builds with.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # GHCR rejects uppercase path segments, and repository owners commonly have them.
+      - name: Compute lowercase image name
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/server" >> "$GITHUB_OUTPUT"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ secrets.DOCKER_REPO }}/server
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
+            type=ref,event=branch
             type=sha,prefix=
-            type=match,pattern=\d.\d.\d
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Set push condition
-        id: push-condition
-        run: |
-          if [[ ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }} == 'true' ]]; then
-            echo "should_push=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_push=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Login to DockerHub
-        if: steps.push-condition.outputs.should_push == 'true'
+      - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
-          username: ${{ secrets.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # QEMU emulation of the turbo/Next build can hang for the arm64 leg. Build each platform
-      # natively and push only an untagged digest; the merge job below owns moving release tags.
-      - name: Build platform image
-        id: build-platform
+      # amd64 only: Railway runs x86_64, and emulating a second platform would roughly
+      # double an already-long build for something this fork never deploys to. The layer
+      # cache lives in the Actions cache because the Dockerfile's own cache mounts are not
+      # usable here.
+      - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ./docker/server/Dockerfile
-          platforms: ${{ matrix.platform }}
-          outputs: ${{ steps.push-condition.outputs.should_push == 'true' && format('type=image,name={0}/server,push-by-digest=true,name-canonical=true,push=true', secrets.DOCKER_REPO) || '' }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Export image digest
-        if: steps.push-condition.outputs.should_push == 'true'
-        run: |
-          mkdir -p digest
-          printf '%s\n' '${{ steps.build-platform.outputs.digest }}' > "digest/${{ matrix.arch }}"
-
-      - name: Upload image digest
-        if: steps.push-condition.outputs.should_push == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: server-digest-${{ matrix.arch }}
-          path: digest/${{ matrix.arch }}
-
-  merge:
-    if: needs.build-server.result == 'success' && needs.build-server.outputs.should_push == 'true'
-    needs: build-server
-    name: Merge and tag server images
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
-        with:
-          images: ${{ secrets.DOCKER_REPO }}/server
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
-            type=sha,prefix=
-            type=match,pattern=\d.\d.\d
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - name: Login to DockerHub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Download image digests
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: server-digest-*
-          merge-multiple: true
-          path: digests
-
-      # Platform jobs cannot safely race on release tags. Assemble their immutable digests here,
-      # preserving the metadata action's existing tag rules while publishing one multi-platform tag.
-      - name: Merge platform images and publish tags
-        env:
-          IMAGE: ${{ secrets.DOCKER_REPO }}/server
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          sources=()
-          while IFS= read -r digest_file; do
-            digest="$(cat "$digest_file")"
-            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              echo "Invalid or empty image digest in $digest_file: '$digest'" >&2
-              exit 1
-            fi
-            sources+=("${IMAGE}@${digest}")
-          done < <(find digests -maxdepth 1 -type f -print | sort)
-
-          if [ "${#sources[@]}" -eq 0 ]; then
-            echo "Expected at least one platform image digest, found none" >&2
-            exit 1
-          fi
-
-          while IFS= read -r tag; do
-            [ -n "$tag" ] || continue
-            docker buildx imagetools create --tag "$tag" "${sources[@]}"
-          done <<< "$TAGS"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
