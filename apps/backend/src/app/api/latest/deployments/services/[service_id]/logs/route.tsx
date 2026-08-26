@@ -103,6 +103,17 @@ export const GET = createSmartRouteHandler({
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
         try {
+          // Flush the response headers before waiting on anything. Node sends
+          // them with the first body chunk, so a service that is not printing
+          // right now would otherwise leave the client with no response at all
+          // until a line finally arrived — up to the full follow cap. The reader
+          // then cannot tell "quiet" from "still connecting", and the dashboard
+          // sits on a spinner instead of saying the service is idle.
+          //
+          // A blank line rather than a status object: both parsers skip empty
+          // lines, so this costs the protocol nothing. Only in follow mode —
+          // a single-page response completes on its own.
+          if (follow) controller.enqueue(encoder.encode("\n"));
           const startedAt = performance.now();
           let page = firstPage;
           // Seeded with the caller's cursor so the monotonic guard below has a floor
