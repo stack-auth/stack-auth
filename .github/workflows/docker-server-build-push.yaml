@@ -5,6 +5,10 @@ on:
     branches:
       - main
       - dev
+  # Lets a feature branch publish an image without merging first, which is the only
+  # way to get a branch's backend onto Railway: Railway cannot build this Dockerfile
+  # itself, because its cache mounts would have to hardcode a Railway service id.
+  workflow_dispatch:
 
 # Grouped per ref (not per sha) on purpose: this publishes the moving `dev`/`latest` image tags after
 # the platform digests are merged, so runs must stay serialized or an older run could overwrite a
@@ -53,7 +57,7 @@ jobs:
       - name: Set push condition
         id: push-condition
         run: |
-          if [[ ${{ github.event_name == 'push' }} == 'true' ]]; then
+          if [[ ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }} == 'true' ]]; then
             echo "should_push=true" >> $GITHUB_OUTPUT
           else
             echo "should_push=false" >> $GITHUB_OUTPUT
