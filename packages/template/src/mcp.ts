@@ -18,20 +18,16 @@ export type McpTokenVerifierOptions = {
    */
   baseUrl?: string,
   /**
-   * This MCP server's resource identifier (RFC 8707) — the canonical URL of the MCP endpoint, e.g.
-   * `https://mcp.acme.com/mcp`.
+   * This MCP server's resource identifier (RFC 8707), the canonical URL of the MCP endpoint.
+   * Example: `https://mcp.acme.com/mcp`.
    *
-   * When omitted, the resource is taken from the incoming request URL, which is right for most
-   * deployments. Pass it explicitly when the server sits behind a proxy that rewrites the URL, since
-   * in that case the request URL isn't what the client used.
+   * When omitted, the resource is taken from the incoming request URL. Pass it when the server
+   * sits behind a proxy that rewrites the URL.
    */
   resource?: string,
 };
 
-/**
- * Satisfies `mcp-handler`'s `verifyToken` parameter and the MCP SDK's `OAuthTokenVerifier` at the
- * same time, so one export drops into either.
- */
+/** Callable as mcp-handler's `verifyToken`, and as the MCP SDK's `OAuthTokenVerifier`. */
 export type McpTokenVerifier =
   ((request: Request, bearerToken?: string) => Promise<McpAuthInfo | undefined>)
   & { verifyAccessToken: (token: string) => Promise<McpAuthInfo> };
@@ -46,13 +42,10 @@ export class McpTokenVerificationError extends Error {
 }
 
 /**
- * Creates a token verifier for an MCP server.
+ * Verifies project-OAuth access tokens for an MCP server.
  *
- * Standalone by design: it takes a `projectId` and nothing else, needs no Hexclave server app, and
- * — because verification is public-key only — needs **no secret key**. That matters because the
- * common deployment is an MCP server running as its own service, separate from the app that
- * configured Hexclave. Verification is a local JWT check against a cached remote JWKS, so there is
- * no network round trip to Hexclave on the hot path.
+ * Needs a projectId, not a server app or secret key. Verification is a local JWT check against
+ * the project's published JWKS.
  *
  * ```ts
  * import { createMcpTokenVerifier } from "@hexclave/js/mcp";  // replace `js` with the correct framework SDK package
@@ -63,8 +56,7 @@ export class McpTokenVerificationError extends Error {
  * });
  * ```
  *
- * A configured server app can produce one with `projectId`/`baseUrl` already filled in via
- * `hexclaveServerApp.createMcpTokenVerifier(...)`; this is that method's implementation.
+ * A HexclaveServerApp can fill in projectId and baseUrl via `createMcpTokenVerifier()`.
  */
 export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTokenVerifier {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
@@ -157,10 +149,10 @@ function extractBearerToken(request: Request): string | undefined {
 }
 
 /**
- * The OAuth issuer URL for a Hexclave project acting as an authorization server.
+ * Issuer URL for a Hexclave project acting as an authorization server.
  *
- * This is exactly the string `mcp-handler`'s `protectedResourceHandler({ authServerUrls })` wants,
- * and the `authorization_servers` entry RFC 9728 requires:
+ * Pass this to `protectedResourceHandler({ authServerUrls })` and as the RFC 9728
+ * `authorization_servers` entry.
  *
  * ```ts
  * export const GET = protectedResourceHandler({

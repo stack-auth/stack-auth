@@ -139,9 +139,7 @@ export async function seed() {
         }
       },
       ...(internalMcpServerUrl === "" ? {} : {
-        // MCP OAuth dogfooding: Hexclave's own MCP server verifies bearer tokens minted by the
-        // internal project's OAuth provider. Only the resources are seeded — MCP clients register
-        // themselves via RFC 7591 dynamic client registration, as the MCP spec prescribes.
+        // Register the local MCP endpoints as resource servers. Clients register themselves via DCR.
         oauthProvider: {
           resources: {
             mcp: {

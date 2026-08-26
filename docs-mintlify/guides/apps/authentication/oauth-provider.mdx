@@ -4,7 +4,7 @@ description: "Let other applications and AI agents sign in with your project, an
 sidebarTitle: "OAuth Provider & MCP"
 ---
 
-Your Hexclave project can act as its own OAuth 2.1 / OpenID Connect authorization server. Other applications — most commonly AI agents connecting to an [MCP](https://modelcontextprotocol.io) server — redirect their users to your project, your users sign in and approve the access, and the client receives an access token bound to your resource server.
+Your Hexclave project can act as its own OAuth 2.1 / OpenID Connect authorization server. Other applications, most commonly AI agents connecting to an [MCP](https://modelcontextprotocol.io) server, redirect their users to your project. Your users sign in and approve the access, and the client receives an access token bound to your resource server.
 
 MCP is not a separate feature here; an MCP server is just an OAuth resource server whose clients happen to be AI agents. Everything on this page applies to any OAuth client.
 
@@ -67,7 +67,7 @@ Configure everything on the **OAuth Provider** page in your project's dashboard 
 
 ### Resource servers
 
-A resource server is the thing tokens are minted *for* — your MCP server. Its **resource URI** is the canonical URL of the endpoint, e.g. `https://mcp.acme.com/mcp`, and it is what clients pass as `resource=` when they start the flow (RFC 8707).
+A resource server is the API tokens are minted for, usually your MCP server. Its **resource URI** is the canonical URL of the endpoint, for example `https://mcp.acme.com/mcp`, and it is what clients pass as `resource=` when they start the flow (RFC 8707).
 
 Tokens are bound to that resource: a token minted for one resource server is rejected by another, even within the same project. Resource URIs cannot contain a query or fragment, and must be unique within a project.
 
@@ -81,13 +81,13 @@ Clients can reach your project three ways; enable whichever your ecosystem needs
   <Tab title="Static clients">
     Register the client yourself with a display name and its redirect URIs. Use this when you know the client up front (a partner integration, your own desktop app). Native and CLI clients typically need a loopback redirect URI such as `http://127.0.0.1:8976/callback`.
 
-    A static client can be marked **trusted**, which skips the consent *prompt* — the user still has to be signed in to your project.
+    A static client can be marked **trusted**, which skips the consent prompt. The user still has to be signed in to your project.
   </Tab>
   <Tab title="Dynamic registration">
     RFC 7591 dynamic client registration lets a client register itself at `<issuer>/reg`. Several MCP clients require this, since they cannot ask a user to pre-register anything. Clients that register themselves can never mark themselves trusted.
   </Tab>
   <Tab title="Client ID metadata documents">
-    The client's `client_id` is an HTTPS URL that serves its own metadata document, so no write path is needed at all. This is where the MCP ecosystem is heading. Optionally restrict which hosts may serve a document via the allowed-domains list.
+    The client's `client_id` is an HTTPS URL that serves its own metadata document, so no write path is needed. Optionally restrict which hosts may serve a document via the allowed-domains list.
   </Tab>
 </Tabs>
 
@@ -139,7 +139,7 @@ Install the MCP framework of your choice — Hexclave does not wrap it. What Hex
   </Tab>
 </Tabs>
 
-The verifier needs **no secret key** — verification is a local JWT check against your project's public JWKS, cached in memory. That matters because an MCP server usually runs as its own service, separate from the app that configured Hexclave. Import `createMcpTokenVerifier` from `@hexclave/js/mcp` there and pass only a project ID.
+The verifier needs no secret key. Verification is a local JWT check against your project's public JWKS, cached in memory. An MCP server usually runs as its own service, separate from the app that configured Hexclave. Import `createMcpTokenVerifier` from `@hexclave/js/mcp` there and pass only a project ID.
 
 ### Advertising your authorization server
 
@@ -175,5 +175,5 @@ Revocation is always enabled at `<issuer>/token/revocation`. A revoked refresh t
 
 ## See also
 
-* [MCP SDK reference](/sdk/types/mcp) — `createMcpTokenVerifier`, `McpAuthInfo`, `McpTokenVerifier`
-* [JWT tokens](/guides/apps/authentication/jwts) — how Hexclave's own session tokens differ
+* [MCP SDK reference](/sdk/types/mcp). `createMcpTokenVerifier`, `McpAuthInfo`, `McpTokenVerifier`
+* [JWT tokens](/guides/apps/authentication/jwts). How Hexclave's own session tokens differ

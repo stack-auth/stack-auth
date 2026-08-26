@@ -71,8 +71,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     /**
      * Creates a token verifier for an MCP server, with this app's project and base URL filled in.
      *
-     * The result drops straight into `mcp-handler`'s `withMcpAuth` and the MCP SDK's
-     * `requireBearerAuth` alike:
+     * Pass the result to `mcp-handler`'s `withMcpAuth` or the MCP SDK's `requireBearerAuth`.
      *
      * ```ts
      * export const { GET, POST } = withMcpAuth(
@@ -83,12 +82,12 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * ```
      *
      * For an MCP server running as its own service, import `createMcpTokenVerifier` from
-     * `@hexclave/js/mcp` instead — it needs only a project ID and no secret key.
+     * `@hexclave/js/mcp` instead. It needs only a project ID and no secret key.
      */
     createMcpTokenVerifier(options?: { resource?: string }): McpTokenVerifier,
 
     /**
-     * This project's OAuth issuer URL — what RFC 9728 protected-resource metadata must advertise.
+     * This project's OAuth issuer URL, what RFC 9728 protected-resource metadata must advertise.
      *
      * ```ts
      * export const GET = protectedResourceHandler({

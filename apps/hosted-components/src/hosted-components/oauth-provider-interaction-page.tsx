@@ -3,7 +3,6 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiBaseUrlFromEnv } from "~/lib/api-base-url";
-import { getProjectClientRequestHeaders } from "~/lib/project-client-request";
 import { Button, Typography } from "~/components/ui";
 import {
   HostedAuthHeading,
@@ -17,6 +16,19 @@ type InteractionDetails = {
   resource: { uri: string, display_name: string } | null,
   trusted_client: boolean,
 };
+
+async function getProjectClientRequestHeaders(app: {
+  projectId: string,
+  getAccessToken: () => Promise<string | null>,
+}): Promise<Record<string, string>> {
+  const token = await app.getAccessToken();
+  if (token == null) throw new Error("Your session expired. Please sign in again.");
+  return {
+    "x-stack-access-type": "client",
+    "x-stack-project-id": app.projectId,
+    "x-stack-access-token": token,
+  };
+}
 
 export function HostedOAuthProviderInteraction() {
   const app = useStackApp();

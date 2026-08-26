@@ -2,21 +2,14 @@ import { createMcpTokenVerifier, getOAuthIssuerUrl, type McpTokenVerifier } from
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { withMcpAuth } from "@vercel/mcp-adapter";
 
-import { getBackendApiBaseUrl } from "@/env";
-
-/**
- * MCP OAuth (the MCP authorization spec) for Hexclave's own MCP server, dogfooding the project
- * OAuth provider: a Hexclave project acts as the authorization server and this app is a resource
- * server verifying its tokens with `createMcpTokenVerifier` — the exact wiring we document for
- * customers' MCP servers.
- *
- * Authorization is *required* by default: anonymous MCP requests get a 401 with an RFC 9728
- * `WWW-Authenticate` challenge. That is what makes MCP clients actually start the OAuth flow —
- * they never authenticate spontaneously, only in response to a challenge — so "optional" auth is
- * invisible in every real client. Set `HEXCLAVE_MCP_OAUTH_OPTIONAL=true` to instead let anonymous
- * requests through while still verifying presented tokens (a migration mode for rolling OAuth out
- * on an already-public deployment without cutting off existing anonymous users).
- */
+export function getBackendApiBaseUrl(): string {
+  return (
+    getEnvVariable("NEXT_PUBLIC_SERVER_HEXCLAVE_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_STACK_API_URL")
+  ).replace(/\/$/, "");
+}
 
 export type McpOAuthConfig = {
   projectId: string,
@@ -28,6 +21,7 @@ export const MCP_RESOURCE_PATHNAMES = new Set(["/mcp", "/api/internal/mcp"]);
 
 let cachedConfig: McpOAuthConfig | null | undefined;
 
+/** Tokens come from the internal project's OAuth provider. Auth is required so clients start from the 401 challenge. */
 export function getMcpOAuthConfig(): McpOAuthConfig | null {
   if (cachedConfig !== undefined) {
     return cachedConfig;
@@ -66,7 +60,7 @@ export function withHexclaveMcpOAuth(
       return await cached(request);
     }
     const wrap = () => withMcpAuth(handler, config.verifier, {
-      required: getEnvVariable("HEXCLAVE_MCP_OAUTH_OPTIONAL", "") !== "true",
+      required: true,
       resourceMetadataPath: getProtectedResourceMetadataPath(pathname),
     });
     if (!MCP_RESOURCE_PATHNAMES.has(pathname)) {

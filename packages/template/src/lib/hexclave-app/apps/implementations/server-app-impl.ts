@@ -1204,7 +1204,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected async _getUserByMcpAuthInfo(authInfo: McpAuthInfo): Promise<ServerUser | null> {
     const userId = authInfo.extra?.userId;
     if (typeof userId !== "string") {
-      throw new Error("The AuthInfo passed to getUser({ from: 'mcp' }) has no Hexclave user ID. Make sure it came from a verifier created by createMcpTokenVerifier — AuthInfo from another auth provider cannot be resolved to a Hexclave user.");
+      throw new Error("The AuthInfo passed to getUser({ from: 'mcp' }) has no Hexclave user ID. Use a verifier from createMcpTokenVerifier. AuthInfo from another auth provider cannot be resolved to a Hexclave user.");
     }
     return await this.getServerUserById(userId);
   }
@@ -1294,10 +1294,19 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
-    } else if (typeof options === "object" && "from" in options && options.from === "convex") {
-      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
-    } else if (typeof options === "object" && "from" in options && options.from === "mcp") {
-      return await this._getUserByMcpAuthInfo(options.authInfo);
+    } else if (typeof options === "object" && "from" in options) {
+      switch (options.from) {
+        case "convex": {
+          return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
+        }
+        case "mcp": {
+          return await this._getUserByMcpAuthInfo(options.authInfo);
+        }
+        default: {
+          const _exhaustive: never = options.from;
+          throw new Error(`Unhandled getUser from: ${JSON.stringify(_exhaustive)}`);
+        }
+      }
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
 

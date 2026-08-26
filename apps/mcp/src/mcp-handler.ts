@@ -11,8 +11,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
-import { getBackendApiBaseUrl } from "@/env";
-import { getMcpOAuthConfig, withHexclaveMcpOAuth } from "@/oauth";
+import { getBackendApiBaseUrl, getMcpOAuthConfig, withHexclaveMcpOAuth } from "@/oauth";
 import packageJson from "../package.json";
 
 const MAX_SQL_TOOL_RESULT_CHARS = 100_000;

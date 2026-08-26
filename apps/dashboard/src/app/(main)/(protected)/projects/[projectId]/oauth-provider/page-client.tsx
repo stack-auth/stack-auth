@@ -138,8 +138,8 @@ export default function PageClient() {
         description={(
           <div className="space-y-2">
             <p>
-              Your project acts as its own OAuth provider: external apps — including AI agents connecting to an MCP
-              server you host — send your users through a sign-in and approval flow, then receive an access token for
+              Your project acts as its own OAuth provider. External apps, including AI agents connecting to an MCP
+              server you host, send your users through a sign-in and approval flow, then receive an access token for
               your APIs. Paste these two URLs into the app or MCP client you want to connect:
             </p>
             <CopyableValue label="Issuer" value={issuer} />
@@ -152,7 +152,7 @@ export default function PageClient() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Toggle
             label="Require consent"
-            description="Show users an approval screen listing what an app is asking for, before it gets access. When off, apps get access silently as soon as the user signs in."
+            description="Show users an approval screen before an app gets access. When off, apps get access as soon as the user signs in."
             value={consentRequired}
             onChange={setConsentRequired}
           />
@@ -167,7 +167,7 @@ export default function PageClient() {
       <DesignCard title="Client ID metadata documents" subtitle="Let apps identify themselves with a URL they control." icon={GlobeIcon} glassmorphic>
         <Toggle
           label="Enable client ID metadata documents"
-          description="Accept apps whose client ID is an HTTPS URL serving the app's own OAuth metadata (name, redirect URIs, etc.). A newer alternative to dynamic client registration that the MCP spec is moving towards. When off, such apps are rejected."
+          description="Accept apps whose client ID is an HTTPS URL that serves the app's OAuth metadata. When off, those apps are rejected."
           value={cimdEnabled}
           onChange={setCimdEnabled}
         />
