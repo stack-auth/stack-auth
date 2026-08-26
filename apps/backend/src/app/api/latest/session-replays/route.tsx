@@ -8,7 +8,7 @@ import {
 } from "./session-replay-admin-rows";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 
@@ -84,10 +84,14 @@ async function loadClickQualifiedReplayIds(options: {
 }
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "List session replays",
+    description: "Lists session replays for the project, most recently active first. Supports filtering by user, team, duration, last-event time, and click count, and cursor-based pagination.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema.defined(),
+      type: serverOrHigherAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
     query: yupObject({
