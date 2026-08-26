@@ -100,4 +100,69 @@ describe("StackClientApp custom refresh cookie updates", () => {
     expect.soft(trustedParentLookups).toEqual(["_.example.com"]);
     warnSpy.mockRestore();
   });
+
+  it("recovers the custom cookie after overlapping server updates", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const customCookieName = `hexclave-refresh-${projectId}--custom-${encodeBase32(new TextEncoder().encode("example.com"))}`;
+    const defaultCookieName = `__Host-hexclave-refresh-${projectId}--default`;
+    serverCookieState.values.clear();
+    serverCookieState.values.set(defaultCookieName, JSON.stringify({ refresh_token: "old-refresh", updated_at_millis: 1 }));
+    serverCookieState.values.set(customCookieName, JSON.stringify({ refresh_token: "old-refresh", updated_at_millis: 1 }));
+
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId,
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+      devTool: false,
+    });
+    let releaseTrustedParentLookup: (() => void) | undefined;
+    let shouldBlockTrustedParentLookup = true;
+    Reflect.set(clientApp, "_getTrustedParentDomain", async (domain: string) => {
+      if (shouldBlockTrustedParentLookup) {
+        shouldBlockTrustedParentLookup = false;
+        await new Promise<void>((resolve) => {
+          releaseTrustedParentLookup = resolve;
+        });
+      }
+      return domain === "_.example.com" ? "example.com" : null;
+    });
+    const getOrCreateTokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore");
+    const cookieHelper = {
+      get: (name: string) => serverCookieState.values.get(name) ?? null,
+      getAll: () => Object.fromEntries(serverCookieState.values),
+      set: (name: string, value: string) => serverCookieState.values.set(name, value),
+      setOrDelete: (name: string, value: string | null) => {
+        if (value === null) {
+          serverCookieState.values.delete(name);
+        } else {
+          serverCookieState.values.set(name, value);
+        }
+      },
+      delete: (name: string) => serverCookieState.values.delete(name),
+    };
+    const tokenStore = getOrCreateTokenStore.call(clientApp, cookieHelper, "nextjs-cookie");
+
+    tokenStore.set({ accessToken: "first-access", refreshToken: "first-refresh" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (releaseTrustedParentLookup == null) {
+      throw new Error("Expected the first custom cookie recovery lookup to be pending.");
+    }
+    tokenStore.set({ accessToken: "second-access", refreshToken: "second-refresh" });
+    releaseTrustedParentLookup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const customCookieValue = serverCookieState.values.get(customCookieName);
+    expect(customCookieValue).toBeDefined();
+    if (customCookieValue == null) {
+      throw new Error("Expected the custom refresh cookie to be recovered.");
+    }
+    expect(JSON.parse(customCookieValue)).toMatchObject({
+      refresh_token: "second-refresh",
+      updated_at_millis: expect.any(Number),
+    });
+    expect(serverCookieState.values.has(defaultCookieName)).toBe(true);
+  });
 });

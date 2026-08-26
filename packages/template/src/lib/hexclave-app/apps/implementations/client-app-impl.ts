@@ -630,6 +630,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _trustedParentDomainCache = createCache<[string], string | null>(
     async ([domain]) => await this._getTrustedParentDomain(domain)
   );
+  // Retain domains across token-store snapshots because a later update can see cookies already deleted by an earlier update.
+  private readonly _knownCustomRefreshCookieDomains = new Set<string>();
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
   private _prefetchedCrossDomainHandoffParams: CrossDomainHandoffParams | null = null;
@@ -1567,6 +1569,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         return;
       }
       await setCookie(domain.data, value);
+      this._knownCustomRefreshCookieDomains.add(domain.data);
       const isSecure = await isSecureCookieContext();
       const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(isSecure);
       if (context === "browser") {
@@ -1635,7 +1638,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           const previousCustomDomains = cookieNamesToDelete
             .map((name) => this._getDomainFromCustomRefreshCookieName(name))
             .filter((domain): domain is string => domain !== null);
-          this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser", previousCustomDomains);
+          previousCustomDomains.forEach((domain) => this._knownCustomRefreshCookieDomains.add(domain));
+          this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser", [...this._knownCustomRefreshCookieDomains]);
           hasSucceededInWriting = true;
         } catch (e) {
           if (!isBrowserLike()) {
@@ -1711,7 +1715,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
               const previousCustomDomains = cookieNamesToDelete
                 .map((name) => this._getDomainFromCustomRefreshCookieName(name))
                 .filter((domain): domain is string => domain !== null);
-              this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server", previousCustomDomains);
+              previousCustomDomains.forEach((domain) => this._knownCustomRefreshCookieDomains.add(domain));
+              this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server", [...this._knownCustomRefreshCookieDomains]);
             });
           });
           return store;
