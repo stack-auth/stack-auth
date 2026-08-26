@@ -33,7 +33,7 @@ import {
   validateServiceSpec,
   validateSourceId,
 } from "./services.js";
-import { createUploadSlot, readDeployment, readDeploymentLog } from "./store.js";
+import { createMultipartUploadSlot, createUploadSlot, multipartPartCount, readDeployment, readDeploymentLog } from "./store.js";
 import type { LogLine } from "./types.js";
 
 // How long after a build goes terminal its durable log object may still be missing before
@@ -103,6 +103,17 @@ function isAuthorized(header: string | null, apiKey: string): boolean {
 // form a nanosecond log cursor, so an unbounded number would produce exponential-notation
 // (`1e+36`) tokens that break BigInt parsing downstream (and in the fly-mock).
 const MAX_CURSOR_MILLIS = 9_000_000_000_000; // ~2255-01-01
+/**
+ * The `size_bytes` an upload request declared, or undefined when it said nothing
+ * usable. Advisory only — it decides whether to mint a multipart slot, never
+ * what may be stored, which stays the consume-time gate's job.
+ */
+function declaredSizeBytes(body: unknown): number | undefined {
+  if (body === null || typeof body !== "object") return undefined;
+  const value = (body as Record<string, unknown>).size_bytes;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 function parseOptionalMillis(value: unknown): number | undefined {
   if (typeof value !== "string" || value === "") return undefined;
   const parsed = Number(value);
@@ -167,16 +178,31 @@ export function createMarshalApp() {
     })
     .get("/health", () => ({ ok: true }))
 
-    .post("/v1/namespaces/:ns/uploads", ({ params }) => handle(async () => {
+    // The body is optional and advisory: `size_bytes` is how big the caller says
+    // its source is, which is the only thing that decides whether a multipart
+    // slot is worth starting. An older client sends no body and gets exactly the
+    // response it always got.
+    .post("/v1/namespaces/:ns/uploads", ({ params, body }) => handle(async () => {
       const ns = validateNamespace(params.ns);
       const id = randomUUID();
       const slot = await createUploadSlot(ns, id);
+      const partCount = multipartPartCount(declaredSizeBytes(body));
+      // `upload_url` is returned either way. It is the fallback when the client
+      // cannot do multipart, and the only thing an older client looks at.
+      const multipart = partCount === null ? null : await createMultipartUploadSlot(ns, id, partCount);
       return jsonResponse(201, {
         id,
         upload_url: slot.uploadUrl,
         content_type: "application/gzip",
         expires_at_millis: slot.expiresAtMillis,
         max_bytes: MAX_UPLOAD_BYTES,
+        multipart: multipart === null ? null : {
+          upload_id: multipart.uploadId,
+          part_size_bytes: multipart.partSizeBytes,
+          part_urls: multipart.partUrls,
+          complete_url: multipart.completeUrl,
+          abort_url: multipart.abortUrl,
+        },
       });
     }))
 

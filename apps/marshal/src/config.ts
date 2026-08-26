@@ -186,6 +186,21 @@ export const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${
 export const BUILD_TIMEOUT_SECONDS = 15 * 60;
 export const UPLOAD_EXPIRY_SECONDS = 15 * 60;
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+// One part of a multipart source upload.
+//
+// Parts are sent and retried INDEPENDENTLY, which is the whole point: a link
+// that drops a connection every few seconds cannot finish a single 30 MB PUT
+// (measured: median connection life ~9s against a ~40s upload), but it finishes
+// an 8 MiB part comfortably and only re-sends that part when one dies.
+//
+// The size has to satisfy both stores: S3 requires every part but the last to be
+// at least 5 MiB, and R2 additionally requires them all to be the SAME size. A
+// fixed part size with a smaller final part satisfies both by construction —
+// splitting the source into N even chunks would not.
+export const UPLOAD_PART_SIZE_BYTES = 8 * 1024 * 1024;
+// Below this, one PUT is fewer round trips than a multipart handshake and short
+// enough on the wire that re-sending it after a drop costs little.
+export const MULTIPART_UPLOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
 // The build-completion webhook carries a status plus a small metadata document
 // (an image digest at most). It is the only route reachable before the API-key
 // check, so it gets an explicit cap rather than inheriting the server default.

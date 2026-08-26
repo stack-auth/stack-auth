@@ -171,6 +171,16 @@ export type MarshalUploadSlot = {
   content_type: string,
   expires_at_millis: number,
   max_bytes: number,
+  // Present only for a source big enough to be worth sending in parts. Every
+  // field is a presigned object-storage URL, so the client runs the multipart
+  // lifecycle against the store directly and the backend only relays them.
+  multipart?: {
+    upload_id: string,
+    part_size_bytes: number,
+    part_urls: string[],
+    complete_url: string,
+    abort_url: string,
+  } | null,
 };
 
 export type MarshalApplyResult = {
@@ -244,8 +254,14 @@ export class MarshalClient {
     return json as T;
   }
 
-  async createUpload(ns: string): Promise<MarshalUploadSlot> {
-    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/uploads`, { method: "POST" });
+  // `sizeBytes` is what the client says it is about to upload. The runtime uses
+  // it to decide whether to mint a multipart slot alongside the single-PUT URL;
+  // omitting it yields the single-PUT slot on its own.
+  async createUpload(ns: string, sizeBytes?: number): Promise<MarshalUploadSlot> {
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/uploads`, {
+      method: "POST",
+      body: { size_bytes: sizeBytes },
+    });
   }
 
   // Starts a whole deployment: one uploaded source, one builder machine

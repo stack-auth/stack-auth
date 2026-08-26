@@ -8,7 +8,7 @@ import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type P
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { followBuildLogs, type FollowBuildLogsOptions } from "../lib/build-logs.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
-import { uploadSource } from "../lib/source-upload.js";
+import { formatDuration, uploadSource, uploadSourceMultipart, type MultipartUploadSlot } from "../lib/source-upload.js";
 import { collectSecretDefaults, computeDeploymentLevels, evaluateDeploymentConfig, hasDeployFile, importConfigModule, importDeployModule, resolveDeployFilePath, type EvaluatedService } from "../lib/deployment-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
@@ -319,27 +319,77 @@ export async function packageAndUploadSource(options: {
   }
   console.error(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed) from ${sourceRoot}.`);
 
-  const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", { method: "POST" });
+  // The size is declared up front so the API can decide whether to hand back a
+  // multipart slot: below its threshold one PUT is fewer round trips, and above
+  // it a single connection is too long-lived to survive a lossy link.
+  const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", {
+    method: "POST",
+    jsonBody: { size_bytes: packaged.tarballGzipped.length },
+  });
   if (typeof upload?.id !== "string" || typeof upload?.upload_url !== "string" || typeof upload?.content_type !== "string") {
     throw new CliError("Unexpected response from the Hexclave API when creating the upload.");
   }
   if (typeof upload.max_bytes === "number" && packaged.tarballGzipped.length > upload.max_bytes) {
     throw new CliError(`The packaged source is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.dockerignore — build outputs and large assets shouldn't be uploaded.`);
   }
-  console.error("Uploading source...");
-  await uploadSource({
+  const multipart = parseMultipartSlot(upload.multipart);
+  const uploadOptions = {
     uploadUrl: upload.upload_url,
     contentType: upload.content_type,
     bytes: packaged.tarballGzipped,
     // The slot's own expiry is the upload's deadline — see source-upload.ts.
     expiresAtMillis: typeof upload.expires_at_millis === "number" ? upload.expires_at_millis : null,
-  });
+    // A retry re-sends a whole part (or, without multipart, the whole tarball),
+    // which is minutes of apparent silence on a big source — so say that it is
+    // happening and why. Only the first line: the rest of an upload error is
+    // advice that a retry is already acting on, and repeating it every attempt
+    // would bury the one thing that changes.
+    onRetry: ({ attempt, maxAttempts, error, delayMs }: { attempt: number, maxAttempts: number, error: Error, delayMs: number }) => {
+      console.error(`Upload attempt ${attempt} of ${maxAttempts} failed: ${error.message.split("\n")[0]}`);
+      console.error(`Retrying in ${formatDuration(delayMs)}...`);
+    },
+  };
+  if (multipart === null) {
+    console.error("Uploading source...");
+    await uploadSource(uploadOptions);
+  } else {
+    const partCount = multipart.part_urls.length;
+    console.error(`Uploading source in ${partCount} parts...`);
+    await uploadSourceMultipart({
+      ...uploadOptions,
+      multipart,
+      onPartUploaded: ({ part }) => console.error(`  uploaded ${part}/${partCount}`),
+    });
+  }
   // Recorded with the deployment because the tarball is not: the build consumes
   // it and it is deleted, so a listing of what went in is the only thing left
   // to answer "why was this upload 39 MB" after the fact.
   return {
     uploadId: upload.id,
     manifest: buildSourceManifest({ files: packaged.files, compressedBytes: packaged.tarballGzipped.length }),
+  };
+}
+
+/**
+ * The multipart slot from an upload response, or null to use the single PUT.
+ *
+ * Null rather than an error whenever the shape is not exactly right: multipart
+ * is an optimisation over a `upload_url` that is always returned, so an API that
+ * omits it, is older than it, or returns something unusable must fall back
+ * rather than fail the deploy.
+ */
+function parseMultipartSlot(value: unknown): MultipartUploadSlot | null {
+  if (value === null || typeof value !== "object") return null;
+  const slot = value as Record<string, unknown>;
+  const partUrls = slot.part_urls;
+  if (typeof slot.part_size_bytes !== "number" || slot.part_size_bytes <= 0) return null;
+  if (!Array.isArray(partUrls) || partUrls.length === 0 || !partUrls.every((url) => typeof url === "string")) return null;
+  if (typeof slot.complete_url !== "string" || typeof slot.abort_url !== "string") return null;
+  return {
+    part_size_bytes: slot.part_size_bytes,
+    part_urls: partUrls as string[],
+    complete_url: slot.complete_url,
+    abort_url: slot.abort_url,
   };
 }
 
