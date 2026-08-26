@@ -4,7 +4,7 @@
 
 ## 8/28/26
 
-- _(entries added throughout the week)_
+- The CLI can now access and analyze session replays with AI.
 
 ## 8/14/26
 
