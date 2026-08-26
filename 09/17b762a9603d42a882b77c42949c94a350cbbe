@@ -1,0 +1,63 @@
+examples/demo/hexclave.config.ts
+  s_4bc2cb97a1c52e::t_8e2d6ce9512646 75-76,86,93-94,104,108
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_d525dbcda38083::t_746d4470c7aa8e 1289
+apps/backend/src/app/api/latest/integrations/idp.ts
+  s_4bc2cb97a1c52e::t_6bc8758c450a65 202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "0917b762a9603d42a882b77c42949c94a350cbbe",
+  "prompts": {},
+  "sessions": {
+    "s_138763c6539944": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afeeb8cd-5ed0-46e8-b66b-e3e20cb16011",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_2971664da9e01c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f4fde95-7c6e-4de4-b833-4b48872eb168",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4bc2cb97a1c52e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2d76516-9035-4ade-be47-5469c312fb53",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_a8829a71b95e3c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c58f43cc-db22-4e00-bb7d-401de8e5386b",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bb43e9ab053e3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03a55-f3e6-7590-ba7e-ea43104bcb3c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d525dbcda38083": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3eb0a3e7-66f3-4154-819a-cb7725ffbd2f",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
