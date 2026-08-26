@@ -28,6 +28,26 @@ export type EmailConfig = {
   senderName: string,
 }
 
+/**
+ * An email provider addressed over its HTTP API instead of SMTP. `baseUrl` is optional for
+ * `resend-api` (it has a public API) and required for `usesend-api`, which is self-hosted and so has
+ * no default origin.
+ */
+export type HttpEmailConfig = {
+  provider: "resend-api" | "usesend-api",
+  apiKey: string,
+  baseUrl?: string,
+  senderEmail: string,
+  senderName: string,
+}
+
+/** Either transport, for the places that accept a config to send through without saving it. */
+export type AnyEmailConfig = EmailConfig | HttpEmailConfig;
+
+export function isHttpEmailConfig(config: AnyEmailConfig): config is HttpEmailConfig {
+  return "provider" in config;
+}
+
 export type RedirectMethod = "window"
   | "nextjs" // THIS_LINE_PLATFORM next
   | "tanstack-start" // THIS_LINE_PLATFORM tanstack-start

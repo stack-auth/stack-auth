@@ -15,7 +15,7 @@ import { pick, typedEntries, typedValues } from "@hexclave/shared/dist/utils/obj
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
-import { EmailConfig, hexclaveAppInternalsSymbol } from "../../common";
+import { AnyEmailConfig, hexclaveAppInternalsSymbol, isHttpEmailConfig } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
@@ -239,6 +239,13 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
+        } : data.config.email_config.type === 'http' ? {
+          type: 'http',
+          provider: data.config.email_config.email_provider ?? throwErr("Email provider is missing"),
+          apiKey: data.config.email_config.api_key ?? throwErr("Email API key is missing"),
+          baseUrl: data.config.email_config.base_url,
+          senderName: data.config.email_config.sender_name ?? throwErr("Email sender name is missing"),
+          senderEmail: data.config.email_config.sender_email ?? throwErr("Email sender email is missing"),
         } : {
           type: 'standard',
           host: data.config.email_config.host ?? throwErr("Email host is missing"),
@@ -817,13 +824,20 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async sendTestEmail(options: {
     recipientEmail: string,
-    emailConfig: EmailConfig,
+    emailConfig: AnyEmailConfig,
   }): Promise<Result<undefined, { errorMessage: string }>> {
     let response: { success: boolean, error_message?: string };
     try {
       response = await this._interface.sendTestEmail({
         recipient_email: options.recipientEmail,
-        email_config: {
+        email_config: isHttpEmailConfig(options.emailConfig) ? {
+          type: "http",
+          email_provider: options.emailConfig.provider,
+          api_key: options.emailConfig.apiKey,
+          base_url: options.emailConfig.baseUrl,
+          sender_email: options.emailConfig.senderEmail,
+          sender_name: options.emailConfig.senderName,
+        } : {
           ...(pick(options.emailConfig, ['host', 'port', 'username', 'password'])),
           sender_email: options.emailConfig.senderEmail,
           sender_name: options.emailConfig.senderName,

@@ -17,6 +17,7 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@hexclave/shared/dist/helpers/emails";
 import { deepPlainEquals, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import type { EmailSetupProvider } from "./schemas";
 
 // Self-contained helpers for the newly-created-projects internal tool.
 // Kept next to the routes so the feature stays modular and doesn't leak into
@@ -47,6 +48,7 @@ export type FeaturedAppId = (typeof FEATURED_APP_IDS)[number];
 /** Tick strength: off < enabled < setup (green) < used (golden). */
 export type AppTickLevel = "off" | "enabled" | "setup" | "used";
 export type EmailSetupKind = "shared" | "custom-domain" | "custom-server";
+
 
 export type OwnerMember = {
   id: string,
@@ -87,7 +89,7 @@ export type NewlyCreatedProjectRow = {
   },
   email_setup: {
     kind: EmailSetupKind,
-    provider: "resend" | "smtp" | "managed" | null,
+    provider: EmailSetupProvider | null,
     sender_email: string | null,
     managed_subdomain: string | null,
   },
@@ -112,7 +114,7 @@ type EmailSetupConfig = {
   emails: {
     server: {
       isShared: boolean,
-      provider: "resend" | "smtp" | "managed",
+      provider: EmailSetupProvider,
       senderEmail?: string,
       managedSubdomain?: string,
     },

@@ -180,7 +180,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
 
     // Providers reached over HTTP instead of SMTP. The schema requires apiKey for both and baseUrl
     // for useSend, so a config that reaches here without them is a bug rather than user error.
-    if (projectEmailConfig.provider === "resend" || projectEmailConfig.provider === "usesend") {
+    if (projectEmailConfig.provider === "resend-api" || projectEmailConfig.provider === "usesend-api") {
       const provider: HttpEmailProvider = projectEmailConfig.provider;
       if (!projectEmailConfig.apiKey || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
         throw new HexclaveAssertionError("HTTP email provider config is incomplete despite the schema requiring an API key and sender", {
@@ -232,7 +232,7 @@ export async function getSharedEmailConfig(displayName: string): Promise<LowLeve
   // Reads the HEXCLAVE_-prefixed names; the env shim accepts the legacy STACK_ spellings too.
   const provider = getEnvVariable('HEXCLAVE_EMAIL_PROVIDER', 'smtp');
 
-  if (provider === 'resend' || provider === 'usesend') {
+  if (provider === 'resend-api' || provider === 'usesend-api') {
     const baseUrl = resolveHttpProviderBaseUrl(provider, getEnvVariable('HEXCLAVE_EMAIL_BASE_URL', '') || undefined)
       ?? throwErr(`HEXCLAVE_EMAIL_PROVIDER is "${provider}", which is self-hosted, so HEXCLAVE_EMAIL_BASE_URL must point at your instance.`);
     return {
@@ -249,7 +249,7 @@ export async function getSharedEmailConfig(displayName: string): Promise<LowLeve
   // A typo here would otherwise fall through to SMTP and fail with a confusing missing-host error
   // instead of naming the real problem.
   if (provider !== 'smtp') {
-    throwErr(`HEXCLAVE_EMAIL_PROVIDER must be "smtp", "resend", or "usesend", but got: "${provider}"`);
+    throwErr(`HEXCLAVE_EMAIL_PROVIDER must be "smtp", "resend-api", or "usesend-api", but got: "${provider}"`);
   }
 
   return {
@@ -314,13 +314,13 @@ import.meta.vitest?.describe("getSharedEmailConfig(...)", () => {
   });
 
   test("switches the instance onto useSend from env vars alone", async () => {
-    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend");
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend-api");
     vi.stubEnv("HEXCLAVE_EMAIL_API_KEY", "us_test_key");
     vi.stubEnv("HEXCLAVE_EMAIL_BASE_URL", "https://send.example.com");
     const config = await getSharedEmailConfig("Project");
     expect(config).toMatchObject({
       transport: "http",
-      provider: "usesend",
+      provider: "usesend-api",
       apiKey: "us_test_key",
       baseUrl: "https://send.example.com",
       senderEmail: "noreply@example.com",
@@ -331,17 +331,17 @@ import.meta.vitest?.describe("getSharedEmailConfig(...)", () => {
   });
 
   test("defaults Resend's base URL but requires one for useSend", async () => {
-    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "resend");
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "resend-api");
     vi.stubEnv("HEXCLAVE_EMAIL_API_KEY", "re_test_key");
     await expect(getSharedEmailConfig("Project")).resolves.toMatchObject({ baseUrl: "https://api.resend.com" });
 
-    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend");
+    vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "usesend-api");
     await expect(getSharedEmailConfig("Project")).rejects.toThrow(/HEXCLAVE_EMAIL_BASE_URL/);
   });
 
   test("rejects an unrecognised provider instead of silently using SMTP", async () => {
     // A typo would otherwise surface as a confusing missing-host error.
     vi.stubEnv("HEXCLAVE_EMAIL_PROVIDER", "sendgrid");
-    await expect(getSharedEmailConfig("Project")).rejects.toThrow(/must be "smtp", "resend", or "usesend"/);
+    await expect(getSharedEmailConfig("Project")).rejects.toThrow(/must be "smtp", "resend-api", or "usesend-api"/);
   });
 });

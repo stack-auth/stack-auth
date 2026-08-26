@@ -96,6 +96,10 @@ const projectOnboardingStateSchema = yupUnion(
   cloudProjectOnboardingStateSchema,
 );
 
+// Sender identity is required for every non-shared transport; the SMTP credentials and the HTTP
+// credentials are each required only for their own transport.
+const isSenderConfigurableType = (type: unknown) => type === 'standard' || type === 'http';
+
 export const emailConfigSchema = yupObject({
   type: schemaFields.emailTypeSchema.defined(),
   host: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailHostSchema, {
@@ -110,15 +114,24 @@ export const emailConfigSchema = yupObject({
   password: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailPasswordSchema, {
     type: 'standard',
   }),
+  email_provider: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailProviderSchema, {
+    type: 'http',
+  }),
+  api_key: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailApiKeySchema, {
+    type: 'http',
+  }),
+  // Optional even for type='http': Resend has a public default base URL, so only self-hosted
+  // providers such as useSend have to supply one. The backend fails loudly if neither is available.
+  base_url: schemaFields.emailBaseUrlSchema.optional(),
   sender_name: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderNameSchema, {
-    type: 'standard',
+    type: isSenderConfigurableType,
   }),
   sender_email: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.emailSenderEmailSchema, {
-    type: 'standard',
+    type: isSenderConfigurableType,
   }),
 });
 
-export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
+export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'email_provider', 'base_url', 'sender_name', 'sender_email']);
 
 const domainSchema = yupObject({
   domain: schemaFields.urlSchema.defined()

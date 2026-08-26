@@ -1558,10 +1558,18 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
       sender_email: renderedConfig.emails.server.managedSubdomain && renderedConfig.emails.server.managedSenderLocalPart
         ? `${renderedConfig.emails.server.managedSenderLocalPart}@${renderedConfig.emails.server.managedSubdomain}`
         : renderedConfig.emails.server.senderEmail,
+    } : (renderedConfig.emails.server.provider === "resend-api" || renderedConfig.emails.server.provider === "usesend-api") ? {
+      // Providers reached over HTTP have no SMTP host/port/username to report, so they get their own
+      // `type` rather than being squeezed into 'standard' — emailConfigSchema requires every SMTP
+      // field when type is 'standard', so reporting them as 'standard' would fail validation on
+      // read and take the whole project endpoint down with it.
+      type: 'http',
+      email_provider: renderedConfig.emails.server.provider,
+      api_key: renderedConfig.emails.server.apiKey,
+      base_url: renderedConfig.emails.server.baseUrl,
+      sender_name: renderedConfig.emails.server.senderName,
+      sender_email: renderedConfig.emails.server.senderEmail,
     } : {
-      // The legacy admin email_config shape only models SMTP, so a project on an HTTP provider
-      // (resend/usesend) reports type 'standard' with empty SMTP fields. Its real settings live in
-      // the config API under emails.server, which is what the dashboard reads and writes.
       type: 'standard',
       host: renderedConfig.emails.server.host,
       port: renderedConfig.emails.server.port,

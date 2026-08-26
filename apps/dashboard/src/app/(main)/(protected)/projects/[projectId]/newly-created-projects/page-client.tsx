@@ -89,7 +89,7 @@ type ProjectRow = {
   },
   email_setup: {
     kind: "shared" | "custom-domain" | "custom-server",
-    provider: "resend" | "smtp" | "managed" | null,
+    provider: "resend" | "resend-api" | "usesend-api" | "smtp" | "managed" | null,
     sender_email: string | null,
     managed_subdomain: string | null,
   },

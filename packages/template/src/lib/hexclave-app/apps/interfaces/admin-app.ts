@@ -4,7 +4,7 @@ import type { Transaction, TransactionType } from "@hexclave/shared/dist/interfa
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { AsyncStoreProperty, EmailConfig } from "../../common";
+import { AnyEmailConfig, AsyncStoreProperty } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
@@ -115,7 +115,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     sendTestEmail(options: {
       recipientEmail: string,
-      emailConfig: EmailConfig,
+      emailConfig: AnyEmailConfig,
     }): Promise<Result<undefined, { errorMessage: string }>>,
 
     sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>>,

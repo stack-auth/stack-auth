@@ -27,8 +27,12 @@ function is4yzSMTPResponseCode(code: number | undefined) {
   return code >= 400 && code < 500;
 }
 
-/** Providers reached over their HTTP API rather than SMTP. */
-export type HttpEmailProvider = 'resend' | 'usesend';
+/**
+ * Providers reached over their HTTP API rather than SMTP. The `-api` suffix distinguishes these
+ * from the pre-existing `resend` config value, which means "SMTP, pre-filled with Resend's SMTP
+ * endpoint" and must keep that meaning so existing configs stay valid.
+ */
+export type HttpEmailProvider = 'resend-api' | 'usesend-api';
 
 /**
  * Where each provider accepts a send. The request body is identical for the fields we send
@@ -37,13 +41,13 @@ export type HttpEmailProvider = 'resend' | 'usesend';
  * 'emailId'), which is irrelevant here because we discard it.
  */
 const HTTP_PROVIDER_SEND_PATHS = new Map<HttpEmailProvider, string>([
-  ['resend', '/emails'],
-  ['usesend', '/api/v1/emails'],
+  ['resend-api', '/emails'],
+  ['usesend-api', '/api/v1/emails'],
 ]);
 
 /** useSend is absent on purpose: it is self-hosted, so there is no default origin to fall back to. */
 const HTTP_PROVIDER_DEFAULT_BASE_URLS = new Map<HttpEmailProvider, string>([
-  ['resend', 'https://api.resend.com'],
+  ['resend-api', 'https://api.resend.com'],
 ]);
 
 const HTTP_SEND_TIMEOUT_MS = 15_000;
@@ -490,7 +494,7 @@ import.meta.vitest?.describe("HTTP email providers", () => {
 
   const httpConfig = (overrides: Partial<HttpEmailConfig> = {}): HttpEmailConfig => ({
     transport: 'http',
-    provider: 'resend',
+    provider: 'resend-api',
     apiKey: 'test_api_key',
     baseUrl: 'https://api.resend.com',
     senderEmail: 'sender@example.com',
@@ -531,25 +535,25 @@ import.meta.vitest?.describe("HTTP email providers", () => {
   });
 
   test("resolves each provider's send URL", () => {
-    expect(httpProviderSendUrl({ provider: 'resend', baseUrl: 'https://api.resend.com' }))
+    expect(httpProviderSendUrl({ provider: 'resend-api', baseUrl: 'https://api.resend.com' }))
       .toBe('https://api.resend.com/emails');
-    expect(httpProviderSendUrl({ provider: 'usesend', baseUrl: 'https://send.example.com' }))
+    expect(httpProviderSendUrl({ provider: 'usesend-api', baseUrl: 'https://send.example.com' }))
       .toBe('https://send.example.com/api/v1/emails');
   });
 
   test("tolerates a base URL with a trailing slash", () => {
     // Operators paste their instance URL by hand, so a trailing slash is common and must not
     // produce a double slash that some routers 404 on.
-    expect(httpProviderSendUrl({ provider: 'usesend', baseUrl: 'https://send.example.com/' }))
+    expect(httpProviderSendUrl({ provider: 'usesend-api', baseUrl: 'https://send.example.com/' }))
       .toBe('https://send.example.com/api/v1/emails');
   });
 
   test("defaults the base URL for Resend but not for useSend", () => {
     // useSend has no public instance to fall back to, so omitting its base URL must stay an error
     // rather than silently sending somewhere else.
-    expect(resolveHttpProviderBaseUrl('resend', undefined)).toBe('https://api.resend.com');
-    expect(resolveHttpProviderBaseUrl('usesend', undefined)).toBe(undefined);
-    expect(resolveHttpProviderBaseUrl('resend', 'https://custom.example.com')).toBe('https://custom.example.com');
+    expect(resolveHttpProviderBaseUrl('resend-api', undefined)).toBe('https://api.resend.com');
+    expect(resolveHttpProviderBaseUrl('usesend-api', undefined)).toBe(undefined);
+    expect(resolveHttpProviderBaseUrl('resend-api', 'https://custom.example.com')).toBe('https://custom.example.com');
   });
 
   test("posts the expected request for a successful send", async () => {
@@ -580,7 +584,7 @@ import.meta.vitest?.describe("HTTP email providers", () => {
 
   test("sends through useSend's path when that provider is configured", async () => {
     const fetchMock = stubFetch(new Response(JSON.stringify({ emailId: 'x' }), { status: 200 }));
-    const result = await send(httpConfig({ provider: 'usesend', baseUrl: 'https://send.example.com' }));
+    const result = await send(httpConfig({ provider: 'usesend-api', baseUrl: 'https://send.example.com' }));
     expect(result.status).toBe('ok');
     expect(fetchMock.mock.calls[0][0]).toBe('https://send.example.com/api/v1/emails');
   });

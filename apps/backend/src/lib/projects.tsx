@@ -5,7 +5,7 @@ import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrid
 import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
@@ -301,7 +301,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
       password: dataOptions.email_config.password,
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
-      provider: "smtp",
+      // The whole object is written at once, so the SMTP and HTTP credential sets are mutually
+      // exclusive here by construction: whichever transport was not chosen ends up undefined.
+      provider: dataOptions.email_config.type === 'http'
+        ? (dataOptions.email_config.email_provider ?? throwErr("email_provider is required for email_config.type 'http'; the schema should have rejected this"))
+        : "smtp",
+      apiKey: dataOptions.email_config.api_key,
+      baseUrl: dataOptions.email_config.base_url,
       managedSubdomain: undefined,
       managedSenderLocalPart: undefined,
     } satisfies CompleteConfig['emails']['server'] : undefined,
