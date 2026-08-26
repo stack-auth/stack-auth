@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
 import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_BUILD_ENV_BYTES, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
+import { applyErrorMessage } from "./apply-error.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
@@ -195,10 +196,10 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     if (volumesRecord === null) throw badRequest("config.persistent_volumes must be an object keyed by volume id");
     const volumeIds = Object.keys(volumesRecord);
     if (volumeIds.length > MAX_PERSISTENT_VOLUMES_PER_SERVICE) {
-      throw badRequest(`config.persistent_volumes may declare at most ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} volume (a Fly machine mounts at most one)`);
+      throw badRequest(`config.persistent_volumes may declare at most ${MAX_PERSISTENT_VOLUMES_PER_SERVICE} volume (an instance mounts at most one)`);
     }
     if (volumeIds.length > 0 && serviceKind !== "server") {
-      throw badRequest('config.type must be "server" when config.persistent_volumes is set (a Fly volume can only be attached to one instance)');
+      throw badRequest('config.type must be "server" when config.persistent_volumes is set (a persistent volume can only be attached to one instance)');
     }
     const validatedVolumes = new Map<string, VolumeConfig>();
     for (const [volumeId, volumeValue] of Object.entries(volumesRecord)) {
@@ -988,7 +989,11 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     stored.last_apply_error = null;
   } catch (error) {
     if (isReconciliationFencingError(error)) throw error;
-    stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
+    // Logged here because this is the ONLY place the real failure survives:
+    // last_apply_error is served to the caller, so it carries our sanitized text
+    // and never the provider's wording, status or app identifiers.
+    console.error(`apply failed for service ${stored.ns}/${stored.key}`, error);
+    stored.last_apply_error = `deploy failed: ${applyErrorMessage(error)}`;
   }
   return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag, knownTargets), imageRef };
 }
@@ -1522,7 +1527,9 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
       state = deploymentStateForApply(next.service_key, image, applied);
     } catch (error) {
       if (isReconciliationFencingError(error)) throw error;
-      state = { service_key: next.service_key, status: "failed", revision: null, url: null, image, error: truncateError(error instanceof Error ? error.message : "the deploy failed") };
+      // Same as applyServiceSpecWithLease: log the real error, store only text we wrote.
+      console.error(`deployment ${deployment.id}: applying service ${next.service_key} failed`, error);
+      state = { service_key: next.service_key, status: "failed", revision: null, url: null, image, error: truncateError(applyErrorMessage(error)) };
     }
     const updated: StoredDeployment = { ...deployment, services: { ...deployment.services, [next.service_key]: state } };
     if (state.status === "failed") {

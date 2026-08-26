@@ -42,7 +42,7 @@ export function getMarshalDeploymentsConfigOrNull(): MarshalDeploymentsConfig | 
 
 // Statuses that indicate OUR request was bad in a way the caller can fix
 // (invalid spec, missing upload, hostname conflict). Everything else — auth
-// failures (our credential), 5xx, 502 fly_api_error relays — is an
+// failures (our credential), 5xx, 502 upstream_api_error relays — is an
 // infrastructure problem the caller can't do anything about.
 const USER_INPUT_MARSHAL_STATUSES = new Set([400, 404, 409]);
 

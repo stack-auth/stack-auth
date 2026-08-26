@@ -73,11 +73,13 @@ function errorResponse(error: unknown): Response {
     return jsonResponse(503, { error: "mutation_outcome_unknown", message: "a runtime mutation did not confirm; re-read the service state before retrying" });
   }
   if (error instanceof FlyApiError) {
-    // Relay a sanitized upstream failure; Fly's own 4xxes on our requests are still OUR
-    // bug or an infra failure from the caller's perspective, never theirs. The endpoint
-    // (which embeds the Fly app name) stays in the server log only — never the response.
+    // Report an upstream failure without describing it: the provider's 4xxes on OUR
+    // requests are our bug or an infra failure from the caller's perspective, never
+    // theirs, so its wording, its status code, and the org/app identifiers its endpoints
+    // embed all stay in the server log — none of them belong in a response that can be
+    // relayed onward to an end user.
     console.error("fly API error", error);
-    return jsonResponse(502, { error: "fly_api_error", message: `the Fly API rejected a request (${error.status})` });
+    return jsonResponse(502, { error: "upstream_api_error", message: "the runtime could not complete the request" });
   }
   console.error("unhandled marshal error", error);
   return jsonResponse(500, { error: "internal_error", message: "internal error" });
