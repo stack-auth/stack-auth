@@ -1,3 +1,4 @@
+import { ANALYTICS_TABLES } from "@/lib/clickhouse";
 import { describe, expect, it } from "vitest";
 import { GROWTH_METRIC_IDS } from "./action-item-types";
 import { GROWTH_AGENT_QUERYABLE_TABLES, GROWTH_METRIC_CATALOG } from "./metric-catalog";
@@ -101,28 +102,14 @@ describe("GROWTH_METRIC_CATALOG", () => {
     }
   });
 
-  // This is the sync tripwire for GROWTH_AGENT_QUERYABLE_TABLES: the first 12 names MUST match the
-  // `tables` array in apps/backend/scripts/clickhouse-migrations.ts (which drives row policies and
-  // GRANT SELECT), plus the two growth metric tables added by the same script. If this test fails,
-  // update BOTH places together — a table listed here but missing a row policy would let the agent
-  // reference a table it can't actually read (or worse, the migration script grants a table the
-  // catalog doesn't know about).
-  it("matches the row-policy table list in scripts/clickhouse-migrations.ts", () => {
-    expect([...GROWTH_AGENT_QUERYABLE_TABLES]).toEqual([
-      "events",
-      "users",
-      "contact_channels",
-      "teams",
-      "team_member_profiles",
-      "team_permissions",
-      "team_invitations",
-      "email_outboxes",
-      "project_permissions",
-      "notification_preferences",
-      "refresh_tokens",
-      "connected_accounts",
-      "growth_daily_metrics",
-      "growth_daily_ad_metrics",
-    ]);
+  // This is the sync tripwire for GROWTH_AGENT_QUERYABLE_TABLES: it must match ANALYTICS_TABLES,
+  // which drives the row policies and the GRANT SELECT loop in
+  // apps/backend/scripts/clickhouse-migrations.ts, and now also the Data Warehouse users' analytics
+  // access. Compared against the constant itself rather than a copy of the names, so the two lists
+  // cannot drift while the test still passes. If this fails, update BOTH places together — a table
+  // here without a row policy would let the agent reference a table it cannot actually read, and a
+  // table there without a catalog entry grants access the catalog does not know about.
+  it("matches ANALYTICS_TABLES, the row-policy and GRANT SELECT list", () => {
+    expect([...GROWTH_AGENT_QUERYABLE_TABLES]).toEqual([...ANALYTICS_TABLES]);
   });
 });
