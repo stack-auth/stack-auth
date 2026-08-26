@@ -2549,6 +2549,16 @@ model DeploymentService {
   // The Dockerfile to build from, relative to the root of the uploaded source.
   // Null = no Dockerfile: the remote builder auto-detects the build with Railpack.
   dockerfilePath String?
+  // An already-built image to run instead of building one from the upload, as a
+  // canonical fully-qualified reference with an explicit tag or digest
+  // ("docker.io/library/postgres:16"). Mutually exclusive with rootDirectory and
+  // dockerfilePath — those say where the code is, this says what to run —
+  // enforced in code alongside the rest of the definition validation rather than
+  // by a CHECK, for the same reason as isPublic above.
+  //
+  // A TAG here is deliberately not resolved: this is what the author asked for,
+  // and the digest it resolved to belongs to the deployment that pinned it.
+  image String?
   // Note there is deliberately no dev command here: `devCommand` in the deploy
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only
@@ -2681,11 +2691,37 @@ model Deployment {
   status DeploymentStatus @default(QUEUED)
   error  String?
 
-  // ONE build per deployment: the source's whole tree is uploaded once and
-  // every service's image is built by one builder machine, so the build (and
-  // its log) belongs to the deployment rather than to any single service.
-  // Null until the runtime has accepted the batch build.
+  // The runtime's id for this deployment. Null until the runtime has accepted
+  // it.
+  //
+  // Named "build" for historical reasons: when a deployment builds anything, it
+  // builds ONCE — the source tree is uploaded once and every source-built
+  // service's image comes out of one builder machine, so the build and its log
+  // belong to the deployment rather than to any single service. A deployment
+  // whose every service runs an already-built image starts no builder at all and
+  // still has an id here; see hasBuildLogs for whether a log exists.
   marshalBuildId String?
+
+  // Whether this deployment produced a BUILD LOG, as the runtime reported when
+  // it accepted the deployment. False when every service ran an already-built
+  // image: no builder machine started, so there is no log to offer and the
+  // dashboard must not show an empty one.
+  //
+  // Defaults true because every row written before prebuilt images existed was a
+  // source build, which is exactly what true means.
+  hasBuildLogs Boolean @default(true)
+
+  // What this deploy PACKAGED: `{ file_count, total_bytes, compressed_bytes,
+  // entries: [{ path, bytes }] }` (see DeploymentSourceManifest in
+  // packages/shared/src/deployments). A listing, never contents — the tarball
+  // itself is consumed by the build and deleted, so this is what survives it to
+  // answer "why was my upload this big, and did my .dockerignore work".
+  //
+  // Null for an all-prebuilt deploy (nothing was packaged) and for every row
+  // written before the manifest existed. Capped at MAX_SOURCE_MANIFEST_ENTRIES
+  // files, largest first, so the column stays small on a repository with tens of
+  // thousands of files.
+  sourceManifest Json?
 
   // The service ids this deploy INTENDED to ship, in dependency order, as a
   // JSON string array — kept separately from the outcomes below because a

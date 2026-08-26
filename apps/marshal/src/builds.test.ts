@@ -370,6 +370,68 @@ describe("validateDeploymentRequest paths", () => {
     expect("root_directory" in validateDeploymentRequest(request({ root_directory: "." })).targets[0]).toBe(false);
   });
 
+  it("accepts a prebuilt image target and normalizes its reference", () => {
+    // The upload must be OMITTED when nothing is built: an archive nothing can
+    // build from would be consumed and copied for no reason.
+    const parsed = validateDeploymentRequest({
+      targets: [{
+        service_key: "database",
+        image: "postgres:16",
+        spec: { config: { type: "server", min_instances: 1, max_instances: 1, ports: { "5432": { protocol: "tcp" } } }, env: {} },
+      }],
+      order: [["database"]],
+    });
+    expect(parsed.uploadId).toBe(null);
+    expect(parsed.targets[0]).toMatchObject({ image: "docker.io/library/postgres:16" });
+  });
+
+  it("ties the upload to whether anything is actually built", () => {
+    const prebuilt = {
+      service_key: "database",
+      image: "postgres:16",
+      spec: { config: { type: "server", min_instances: 1, max_instances: 1, ports: { "5432": { protocol: "tcp" } } }, env: {} },
+    };
+    // An upload alongside an all-prebuilt deployment: the caller and the targets
+    // disagree about what this deployment is, so it is refused rather than
+    // silently stranded.
+    expect(() => validateDeploymentRequest({
+      upload_id: "00000000-0000-4000-8000-000000000001",
+      targets: [prebuilt],
+      order: [["database"]],
+    })).toThrow(/upload_id must be omitted/);
+    // ...and a source build without one cannot be built at all.
+    expect(() => validateDeploymentRequest({
+      targets: [{ service_key: "web", spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } }, env: {} } }],
+      order: [["web"]],
+    })).toThrow(/upload_id is required/);
+    // A MIXED deployment builds something, so it still needs the upload.
+    const mixed = validateDeploymentRequest({
+      upload_id: "00000000-0000-4000-8000-000000000001",
+      targets: [prebuilt, { service_key: "web", spec: { config: { type: "serverless", min_instances: 0, max_instances: 1, ports: { "3000": { protocol: "http" } } }, env: {} } }],
+      order: [["database"], ["web"]],
+    });
+    expect(mixed.uploadId).not.toBe(null);
+  });
+
+  it("refuses an image reference that would not name fixed bytes, or one that also builds", () => {
+    const target = (extra: Record<string, unknown>) => () => validateDeploymentRequest({
+      targets: [{
+        service_key: "database",
+        spec: { config: { type: "server", min_instances: 1, max_instances: 1, ports: {} }, env: {} },
+        ...extra,
+      }],
+      order: [["database"]],
+    });
+    // The last line before the runtime is at least as strict as the layers above
+    // it: an untagged image means ":latest", which moves.
+    expect(target({ image: "postgres" })).toThrow(/explicit tag or digest/);
+    expect(target({ image: "postgres:16@sha256:" + "a".repeat(64) })).toThrow(/tag or a digest, not both/);
+    expect(target({ image: "https://ghcr.io/org/app:1" })).toThrow(/scheme/);
+    // A target either takes part in the build or names an image to run.
+    expect(target({ image: "postgres:16", dockerfile_path: "Dockerfile" })).toThrow(/names an image and a source build/);
+    expect(target({ image: "postgres:16", root_directory: "database" })).toThrow(/names an image and a source build/);
+  });
+
   it("rejects paths that could escape or break the builder's manifest", () => {
     // Both fields reach the harness as TAB-separated manifest fields and as shell
     // variables, so a tab or a traversal segment is refused rather than escaped.

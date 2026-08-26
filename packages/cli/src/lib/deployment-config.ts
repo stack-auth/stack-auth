@@ -8,11 +8,13 @@
 // The export is a FUNCTION of the deployment context returning `{ services }`.
 // The context is where `secret()`, `service()` and `hexclave.*` come from.
 //
-// The file's `id` export names the DEPLOYMENT SOURCE: which deploy file (and so
-// which repository) these services belong to. Service ids stay unique across the
-// whole project, so a reference never names a source.
+// The file's `deploymentGroupId` export names the DEPLOYMENT GROUP: which deploy
+// file (and so which repository) these services belong to. Service ids stay
+// unique across the whole project, so a reference never names a group. (The
+// wire format and the dashboard still call a group a deployment SOURCE; the
+// export was renamed, the concept is the same one.)
 //
-//   export const id = "my-app";
+//   export const deploymentGroupId = "my-app";
 //
 //   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
 //     services: {
@@ -68,6 +70,7 @@ import {
   connectionRequiresTargetDeployed,
   formatConnectionValue,
   parseConnectionValue,
+  parseDeploymentImageRef,
   DEPLOYMENT_PORT_KEY_REGEX,
   deploymentPortEntries,
   deploymentPortEntry,
@@ -327,7 +330,7 @@ export type EvaluatedServices = {
 
 const KNOWN_SERVICE_FIELDS = new Set([
   "type", "public", "ports", "minInstances", "maxInstances",
-  "rootDirectory", "dockerfilePath", "devCommand", "persistentVolumes", "env",
+  "rootDirectory", "dockerfilePath", "image", "devCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
 
@@ -575,7 +578,7 @@ function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<
   }));
 }
 
-const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
+const EXAMPLE_DEPLOYMENT_EXPORT = `  export const deploymentGroupId = "my-app";
 
   export const deploy: HexclaveDeploymentConfig = ({ isDev, secret, service, hexclave }) => ({
     services: {
@@ -596,29 +599,41 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const id = "my-app";
  */
 export function evaluateDeploymentConfig(options: {
   deployFilePath: string,
-  // The file's `id` export — the deployment source id. Required in a deploy
-  // file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for deployments
-  // declared in hexclave.config.ts, which has no id of its own.
-  idExport: unknown,
+  // The file's `deploymentGroupId` export — the deployment group id. Required in
+  // a deploy file; the caller passes CONFIG_FILE_DEPLOYMENT_SOURCE_ID for
+  // deployments declared in hexclave.config.ts, which has no id of its own.
+  deploymentGroupIdExport: unknown,
+  // The file's `id` export, which is what this used to be called. Passed so a
+  // file still using the old name fails with the rename instead of the
+  // less helpful "no `deploymentGroupId` export".
+  legacyIdExport?: unknown,
   deployExport: unknown,
   mode: "deploy" | "dev",
 }): EvaluatedServices {
-  const { deployFilePath, idExport, deployExport, mode } = options;
+  const { deployFilePath, deploymentGroupIdExport, legacyIdExport, deployExport, mode } = options;
   const deployFileDirectory = path.dirname(deployFilePath);
 
-  // The source id names what this file deploys. Everything downstream — the
+  // `id` was the old name for this export. Refuse the file outright rather than
+  // ignoring the old name: silently ignoring it would deploy under a DIFFERENT
+  // group id than the file asks for, which tears down every service the author
+  // meant to keep.
+  if (legacyIdExport !== undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has an \`id\` export, which is no longer supported. Rename it to \`deploymentGroupId\`, e.g. \`export const deploymentGroupId = ${JSON.stringify(typeof legacyIdExport === "string" ? legacyIdExport : "backend")};\`.`);
+  }
+
+  // The group id names what this file deploys. Everything downstream — the
   // upload, the build, the teardown of services this file no longer declares —
   // is scoped to it, which is what lets several repositories deploy into one
   // project without touching each other's services.
-  if (idExport === undefined) {
-    throw new CliError(`The deploy file ${deployFilePath} has no \`id\` export. Add one naming this deployment source, e.g. \`export const id = "backend";\` — it is how Hexclave tells the deploy files of different repositories apart.`);
+  if (deploymentGroupIdExport === undefined) {
+    throw new CliError(`The deploy file ${deployFilePath} has no \`deploymentGroupId\` export. Add one naming this deployment group, e.g. \`export const deploymentGroupId = "backend";\` — it is how Hexclave tells the deploy files of different repositories apart.`);
   }
-  if (typeof idExport !== "string") {
-    throw new CliError(`The \`id\` export of ${deployFilePath} must be a string naming this deployment source (got ${typeof idExport}).`);
+  if (typeof deploymentGroupIdExport !== "string") {
+    throw new CliError(`The \`deploymentGroupId\` export of ${deployFilePath} must be a string naming this deployment group (got ${typeof deploymentGroupIdExport}).`);
   }
-  const sourceId = idExport;
+  const sourceId = deploymentGroupIdExport;
   if (!DEPLOYMENT_SOURCE_ID_REGEX.test(sourceId) || sourceId.length > MAX_DEPLOYMENT_SOURCE_ID_LENGTH) {
-    throw new CliError(`Invalid deployment source id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
+    throw new CliError(`Invalid deployment group id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
   }
 
   if (deployExport === undefined) {
@@ -698,6 +713,28 @@ export function evaluateDeploymentConfig(options: {
     }
     const isPublic = record.public === true;
     const ports = evaluatePorts(serviceId, isPublic, record.ports);
+
+    // A service either names an already-built `image` or is built from the
+    // uploaded source. Checked on the RAW record rather than on the resolved
+    // values below, because `rootDirectory` resolves to a default and would
+    // otherwise look present on every service.
+    const imageRaw = readOptionalStringField(record, serviceId, "image");
+    let image: string | undefined;
+    if (imageRaw !== undefined) {
+      for (const conflicting of ["rootDirectory", "dockerfilePath"] as const) {
+        if (record[conflicting] !== undefined) {
+          throw new CliError(`deploy.services.${serviceId} sets both \`image\` and \`${conflicting}\`. A service either runs an already-built image or is built from your source — remove \`${conflicting}\` to run ${JSON.stringify(imageRaw)}, or remove \`image\` to build it.`);
+        }
+      }
+      const parsed = parseDeploymentImageRef(imageRaw);
+      if (!parsed.ok) {
+        // The shared parser phrases the rule; this only says where it was broken.
+        throw new CliError(`deploy.services.${serviceId}: ${parsed.message}.`);
+      }
+      // Normalized rather than stored verbatim, so the definition names what is
+      // actually pulled: `postgres:16` is `docker.io/library/postgres:16`.
+      image = parsed.ref.canonical;
+    }
 
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
     const absoluteRootDirectory = path.resolve(deployFileDirectory, rootDirectoryRaw ?? ".");
@@ -785,10 +822,19 @@ export function evaluateDeploymentConfig(options: {
         // Stored/displayed as a config-directory-relative posix path ("." for
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
-        root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
+        //
+        // Both source fields are omitted entirely for an image service: it is
+        // not built from the upload, so a root directory within it would be a
+        // path to nothing. (`absoluteRootDirectory` below is still the deploy
+        // file's own directory, because `hexclave dev` runs `devCommand` there
+        // — that is a local concern and never leaves this machine.)
+        root_directory: image === undefined ? (relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/")) : undefined,
         // Posix path within the uploaded tree — `rootDirectory` already joined
         // on. Absent = Railpack auto-detection.
         dockerfile_path: dockerfilePath,
+        // An already-built image to run instead of building one. Nothing is
+        // built or uploaded for this service.
+        image,
         // Absent = the container filesystem is entirely ephemeral.
         persistent_volumes: persistentVolumes,
         env: serializeEnvForWire(env),
@@ -1098,20 +1144,22 @@ async function importModule(filePath: string, description: string): Promise<Reco
 
 /**
  * Loads a deploy file (hexclave.deploy.ts) and returns the two exports that make
- * it one: the deployment source `id`, and the `deploy` function.
+ * it one: the deployment group id, and the `deploy` function. The old name of
+ * the first (`id`) comes back too, so evaluation can name the rename instead of
+ * reporting a missing export.
  */
-export async function importDeployModule(deployFilePath: string): Promise<{ id: unknown, deploy: unknown }> {
+export async function importDeployModule(deployFilePath: string): Promise<{ deploymentGroupId: unknown, legacyId: unknown, deploy: unknown }> {
   const module = await importModule(deployFilePath, "deploy file");
-  return { id: module.id, deploy: module.deploy };
+  return { deploymentGroupId: module.deploymentGroupId, legacyId: module.id, deploy: module.deploy };
 }
 
 /**
  * Loads a config file (hexclave.config.ts) and returns its `config` export, plus
  * a `deploy` export if it has one — a project small enough to keep its
  * services in the config file may declare them there instead of in a deploy
- * file. Those services belong to a deployment source named after the file (the
- * config file has no `id` export of its own), so they can coexist with the
- * deploy files of other repositories deploying into the same project.
+ * file. Those services belong to a deployment group named after the file (the
+ * config file has no `deploymentGroupId` export of its own), so they can coexist
+ * with the deploy files of other repositories deploying into the same project.
  */
 export async function importConfigModule(configPath: string): Promise<{ config: unknown, deploy: unknown }> {
   const module = await importModule(configPath, "config file");

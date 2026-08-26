@@ -3,11 +3,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { copySwcHelpersIntoStandalone } from "./copy-swc-helpers-into-standalone.mjs";
+import { completeStandaloneSwcHelpers } from "./complete-standalone-swc-helpers.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = resolve(scriptDir, "..");
-const repoRoot = resolve(dashboardRoot, "../..");
 const distDir = process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR ?? ".next-development-environment";
 const nextOutputRoot = resolve(dashboardRoot, distDir);
 const standaloneRoot = join(nextOutputRoot, "standalone");
@@ -51,7 +50,7 @@ if (!existsSync(standaloneServerPath)) {
   throw new Error(`Dashboard standalone server was not created at ${standaloneServerPath}.`);
 }
 
-copySwcHelpersIntoStandalone(standaloneRoot, join(repoRoot, "node_modules", ".pnpm"));
+completeStandaloneSwcHelpers(standaloneRoot, resolve(dashboardRoot, "../../node_modules/.pnpm"));
 
 copyIfExists(join(nextOutputRoot, "static"), join(standaloneDashboardRoot, distDir, "static"));
 copyIfExists(join(dashboardRoot, "public"), join(standaloneDashboardRoot, "public"));
