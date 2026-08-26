@@ -1,0 +1,268 @@
+apps/mcp/.env.development
+  s_2971664da9e01c::t_d6ad2c1fc62710 3
+examples/demo/src/app/oauth-provider-demo/shared.ts
+  s_4bc2cb97a1c52e::t_03a1774880b667 35-50
+  s_4bc2cb97a1c52e::t_174955083afc2d 1-33,51-68
+  s_d525dbcda38083::t_4335a821f4bc73 34
+examples/demo/hexclave.config.ts
+  s_4bc2cb97a1c52e::t_8e2d6ce9512646 41-71
+apps/backend/src/lib/analytics-queries.tsx
+  s_2971664da9e01c::t_88192a514a4462 1-67
+apps/backend/.env.development
+  s_2971664da9e01c::t_2bfcf42f285d7b 16
+  s_bb43e9ab053e3b::t_4a29f2627b4ffa 3
+apps/backend/src/utils/expiring-promise-cache.ts
+  s_a8829a71b95e3c::t_57d88f35c5fc4f 19-22,28
+  s_4bc2cb97a1c52e::t_75453cb75a347e 8-9,13-17,42-48
+  s_2971664da9e01c::t_b7d83e722433c4 18
+apps/hosted-components/src/hosted-components/oauth-provider-interaction-page.tsx
+  s_d525dbcda38083::t_35308dcd501c6f 51-57,59-63,66
+  s_d525dbcda38083::t_50aee07bd6b66b 105-107,110
+apps/e2e/tests/backend/endpoints/api/v1/internal/mcp.test.ts
+  s_2971664da9e01c::t_656e8d36e7404d 420-422
+  s_2971664da9e01c::t_0a6858ca9c22fd 1
+  s_2971664da9e01c::t_59a097164f58f1 466
+  s_2971664da9e01c::t_332b26899c156b 186
+  s_2971664da9e01c::t_d34709a6774f19 164,169
+  s_2971664da9e01c::t_8fc031394c873e 2-4,7,13
+  s_2971664da9e01c::t_133612d437b253 300-301
+  s_2971664da9e01c::t_3df1ba7b396b14 437-464,469-531,536
+  s_2971664da9e01c::t_27ad7f674180c9 465
+  s_2971664da9e01c::t_0c91bb585ea9b0 5
+  s_2971664da9e01c::t_93030c6b261901 292-299,302-311,315-326,333-419,423-436
+  s_2971664da9e01c::t_7521f40ffa0115 532-535
+  s_2971664da9e01c::t_96a5b4b5926e79 98-138
+  s_2971664da9e01c::t_31054b12b7043e 35,40
+  s_2971664da9e01c::t_a4b2d455fab1b8 327-332
+  s_a8829a71b95e3c::t_82a8e30cbc6839 537-556
+  s_2971664da9e01c::t_87790b37ff1341 312-314
+  s_2971664da9e01c::t_674fa8b909d77f 254,266
+  s_2971664da9e01c::t_ff3293421df6f1 145,151-153,155-159
+  s_a8829a71b95e3c::t_d1f499e8e81443 467-468
+  s_2971664da9e01c::t_e296cd156c3452 65,79
+apps/backend/src/lib/project-oauth-provider-cache.ts
+  s_4bc2cb97a1c52e::t_6a53a207c7abcf 1,6,14-15
+packages/shared/src/config/schema.ts
+  s_4bc2cb97a1c52e::t_ab2b13f6a19c55 85-90
+  s_4bc2cb97a1c52e::t_c2d84b21d839e9 436
+  s_d525dbcda38083::t_a96b31dea79207 130
+  s_d525dbcda38083::t_00663841ac92d1 94
+apps/backend/src/app/api/latest/integrations/neon/oauth/idp/[[...route]]/route.tsx
+  s_4bc2cb97a1c52e::t_ca946f0620d773 1,5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/oauth-provider/page-client.tsx
+  s_138763c6539944::t_faf55687722bb2 4-5,15-16,86,134,137,140-144,151,153-164,167-173,176-180,183,185-192,194,197,203-206,212-225,232-235,242-254,258-260,274-281,286-288,294-297,300,304,309-318,322-341,346-349,357,359-364,375
+  s_d525dbcda38083::t_9ac6af8e00dd09 37
+  s_4bc2cb97a1c52e::t_3491d5376606c1 75-78,81
+  s_d525dbcda38083::t_a12bcfe0587e74 261
+  s_d525dbcda38083::t_c1d4c091ac3565 116,128-129
+  s_d525dbcda38083::t_b4a54eb566d4a2 268
+  s_d525dbcda38083::t_c77d4ba2cfba89 13
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_d525dbcda38083::t_746d4470c7aa8e 1297-1300
+packages/shared/src/utils/oauth.tsx
+  s_4bc2cb97a1c52e::t_2a7f35f2b1142d 18
+apps/mcp/src/app/.well-known/oauth-protected-resource/[[...resourcePath]]/route.ts
+  s_2971664da9e01c::t_62046d69e3eca1 1-17
+apps/backend/prisma/seed.ts
+  s_2971664da9e01c::t_2b0ea5931a1070 70
+  s_2971664da9e01c::t_1a56727a3e2b8b 141-160
+apps/backend/src/app/api/latest/integrations/custom/oauth/idp/[[...route]]/route.tsx
+  s_4bc2cb97a1c52e::t_36ea3ce35717f4 1,5
+examples/demo/src/app/oauth-provider-demo/page.tsx
+  s_4bc2cb97a1c52e::t_7311ad21314d3c 106
+  s_4bc2cb97a1c52e::t_caf972dd7f9a04 190-191
+  s_4bc2cb97a1c52e::t_287b608f1fc590 1-105,107-189,192-255
+examples/demo/src/app/oauth-provider-demo/api/run/route.ts
+  s_4bc2cb97a1c52e::t_acbbb54aab5c54 1-3,6-7,9,11-62,66-137,141-158,162-216,221-231,236-244,250-257,266-271,282-287,291-295,299-303,307-312,316-334,338,340-356,359-362,364-368
+  s_4bc2cb97a1c52e::t_caf972dd7f9a04 4-5,140,160-161,218-220,233-235,246-249,259-265,273-281,289-290,297-298,305-306,314-315
+  s_4bc2cb97a1c52e::t_b77ce6eba38855 63-65
+  s_4bc2cb97a1c52e::t_cc4fbe3cc0142b 138-139,159,217,232,245,258,272,288,296,304,313,357-358,363
+  s_4bc2cb97a1c52e::t_e1e35359e76528 8,10
+  s_4bc2cb97a1c52e::t_235987de00b85d 335-337,339
+examples/demo/src/app/oauth-provider-demo/callback/page.tsx
+  s_4bc2cb97a1c52e::t_ff3591ee113bf0 1-184
+apps/mcp/.env.example
+  s_2971664da9e01c::t_d6ad2c1fc62710 5
+  s_2971664da9e01c::t_57d5e342a77be7 6
+apps/backend/src/app/api/latest/internal/mcp/sql-query/route.tsx
+  s_2971664da9e01c::t_009e9a6f7dc6a0 1-6,9-18,20-51
+  s_a8829a71b95e3c::t_9f267f067a42ac 7-8,19
+apps/backend/src/app/api/latest/integrations/oauth-idp-route.tsx
+  s_4bc2cb97a1c52e::t_a102824aef9733 1-6,11-42,44-46
+  s_d525dbcda38083::t_6d16de89fcfe67 7-10
+  s_d525dbcda38083::t_edccf51767d5dc 43
+apps/mcp/.env
+  s_2971664da9e01c::t_d6ad2c1fc62710 5
+  s_2971664da9e01c::t_57d5e342a77be7 6
+apps/backend/src/utils/expiring-promise-cache.test.ts
+  s_4bc2cb97a1c52e::t_a691c7c23ca719 8
+  s_4bc2cb97a1c52e::t_14ad2549e362d9 45-46
+  s_4bc2cb97a1c52e::t_624db0bbaafa8d 33-44,47-50
+packages/shared/src/utils/node-http.tsx
+  s_a8829a71b95e3c::t_2adeda0ca2f688 81
+  s_4bc2cb97a1c52e::t_4a89a81300d0e9 48,54-80,82-84
+  s_a8829a71b95e3c::t_ec7a371507c0a0 49-53
+examples/demo/src/app/oauth-provider-demo/api/exchange/route.ts
+  s_4bc2cb97a1c52e::t_f93a2bdfeafd83 1-2,4-33,35-60
+  s_4bc2cb97a1c52e::t_eccc0ddbee09f3 34
+  s_4bc2cb97a1c52e::t_caf972dd7f9a04 3
+apps/backend/src/lib/project-oauth-route.ts
+  s_2971664da9e01c::t_79a1d8d5ee4ece 48-62
+  s_4bc2cb97a1c52e::t_643405ee01500f 75-79
+  s_4bc2cb97a1c52e::t_9af971821beb47 6
+  s_4bc2cb97a1c52e::t_56eb8a8db6ad72 83
+  s_4bc2cb97a1c52e::t_b7d0fad6b4b2d0 1
+apps/mcp/src/oauth.ts
+  s_2971664da9e01c::t_7e3aa981e05c89 13-18
+  s_2971664da9e01c::t_33d86f1b54a11c 1-12,19-56,58-63,70,78-79
+  s_a8829a71b95e3c::t_b9f4b937124731 57,64-68,71-77
+  s_2971664da9e01c::t_f9fa42f08cd434 69
+examples/demo/src/components/header.tsx
+  s_4bc2cb97a1c52e::t_92dfb684d5ea17 32-34
+apps/mcp/src/mcp-handler.ts
+  s_2971664da9e01c::t_e5dcf1f3121630 270-344
+  s_2971664da9e01c::t_87054f865697e8 228,233-238
+  s_a8829a71b95e3c::t_f45f517fe8319c 72
+  s_2971664da9e01c::t_ac3d8603eb16fc 229
+  s_2971664da9e01c::t_135b680642b52d 14
+  s_2971664da9e01c::t_868cc82e25031d 15,18-71,73-84
+  s_2971664da9e01c::t_ac7b45e3a811c4 362,365
+apps/backend/.env
+  s_2971664da9e01c::t_2232270bcef502 17
+examples/demo/src/app/oauth-provider-demo/api/mcp/route.ts
+  s_4bc2cb97a1c52e::t_47aec61498e2ef 1-48
+packages/shared/src/utils/urls.tsx
+  s_4bc2cb97a1c52e::t_383b409fa2cc8b 39,41-45,56-59
+  s_4bc2cb97a1c52e::t_8ab795197155b1 436-448
+apps/backend/src/app/api/latest/internal/mcp/auth.ts
+  s_a8829a71b95e3c::t_e235a99b207520 9-10,17-19
+  s_2971664da9e01c::t_642659b114a606 1-8,11-16,20-42
+apps/backend/src/lib/project-oauth-provider.tsx
+  s_d525dbcda38083::t_82b64970a40b30 153
+  s_2971664da9e01c::t_801a2cdcbc3114 25,115-117,119-132,134-137
+  s_d525dbcda38083::t_e14d45ac95beb4 165
+  s_a8829a71b95e3c::t_80cca6ccc7b46b 118
+  s_2971664da9e01c::t_7b0ceb44b0387d 159-162
+  s_d525dbcda38083::t_eda13990682678 67
+  s_d525dbcda38083::t_71499265e4afeb 21
+  s_2971664da9e01c::t_a6a80576d1fedc 154-158,163
+  s_4bc2cb97a1c52e::t_6f3e0ba3c159a6 2
+  s_2971664da9e01c::t_956fa63e8ca52f 149
+  s_4bc2cb97a1c52e::t_8c74ba89bbb591 24
+  s_2971664da9e01c::t_f12e9c51b903a3 1
+  s_2971664da9e01c::t_2e3e7d9537274c 5,7,10
+  s_a8829a71b95e3c::t_6a107f5794c1b2 133
+  s_2971664da9e01c::t_f2dfed8e59a43f 182-185
+  s_4bc2cb97a1c52e::t_4527a43ef00894 180
+  s_4bc2cb97a1c52e::t_d193e74caaa3dd 164
+  s_4bc2cb97a1c52e::t_3894bc01c785db 27-30
+  s_2971664da9e01c::t_1709ec1dae2e71 22,26
+apps/backend/src/lib/project-oauth-interaction.ts
+  s_4bc2cb97a1c52e::t_349cf683b5f7dc 12,15
+  s_4bc2cb97a1c52e::t_41784e820506ea 29-37,49-55,62-67,69,73-77
+  s_d525dbcda38083::t_8a1b62fed33316 27
+  s_4bc2cb97a1c52e::t_428460007e57e0 86,94,104
+  s_4bc2cb97a1c52e::t_ebfaf7ab1ab2a2 110,113,123
+  s_4bc2cb97a1c52e::t_2104a4ed77ab3a 185
+  s_d525dbcda38083::t_ae17d76a0e5935 184
+  s_4bc2cb97a1c52e::t_9744d774c3ad4a 5
+  s_4bc2cb97a1c52e::t_1f6607900e69a0 248
+  s_2971664da9e01c::t_3028dd8d77de41 28
+apps/mcp/package.json
+  s_2971664da9e01c::t_977b00d79d78ad 17
+apps/backend/src/app/api/latest/analytics/query/route.ts
+  s_2971664da9e01c::t_fca519833a8ca0 1,20,32-33,35-37,43
+  s_a8829a71b95e3c::t_7adc6eb3476fe3 17
+apps/backend/src/app/api/latest/internal/mcp/projects/route.tsx
+  s_2971664da9e01c::t_2b87783a202fae 1-42
+apps/mcp/src/env.ts
+  s_2971664da9e01c::t_aa1e9dc4ac0f8f 1-10
+apps/backend/src/app/api/latest/integrations/idp.ts
+  s_d525dbcda38083::t_50e27c9e0d672a 189,194,196
+  s_4bc2cb97a1c52e::t_61c76df42c85ce 404
+  s_4bc2cb97a1c52e::t_3036b3ba9cffac 8
+  s_2971664da9e01c::t_d2764b0907947c 54-61,63
+  s_2971664da9e01c::t_17b0b8f4161140 186
+  s_2971664da9e01c::t_d54861519b84dd 53,62,64-65
+  s_d525dbcda38083::t_71571b3f9c45b3 301,305-306,309
+  s_d525dbcda38083::t_85ff6fca743b7d 303-304,315,318
+  s_d525dbcda38083::t_e233ebdb7737a1 272-273,276-277
+  s_d525dbcda38083::t_f51411d9063d21 430
+  s_2971664da9e01c::t_a2634007d12532 284
+  s_2971664da9e01c::t_cd5545fba78886 216-228,265
+  s_4bc2cb97a1c52e::t_6bc8758c450a65 338
+  s_2971664da9e01c::t_5b15b0d34f4219 229-262
+packages/template/src/mcp.ts
+  s_d525dbcda38083::t_2ee6c0b0c01a48 243
+  s_d525dbcda38083::t_58031d96f3bf04 287-297
+  s_4bc2cb97a1c52e::t_f527e10b2947d0 85
+  s_4bc2cb97a1c52e::t_409f2850f606ef 173,177
+  s_4bc2cb97a1c52e::t_61293ff5f90667 144
+  s_d525dbcda38083::t_ed5566ce87c385 214
+  s_d525dbcda38083::t_25299715da89f8 98
+  s_4bc2cb97a1c52e::t_3ea6d6ffd1d5ef 109
+  s_d525dbcda38083::t_d228c50465fdd5 121-126,130
+  s_4bc2cb97a1c52e::t_de848ef2899c7d 72
+  s_4bc2cb97a1c52e::t_b04620b23e51ff 201,203,208-209
+  s_4bc2cb97a1c52e::t_ef7ed1a829cc32 1
+  s_d525dbcda38083::t_41d4e659280b22 224
+  s_2971664da9e01c::t_33659be1d894bd 73
+pnpm-lock.yaml
+  s_2971664da9e01c::t_22a6882927f1a5 1012-1014,1610,1613,9339-9340,9343-9344,9350-9351,9354-9355,9363-9364,9367-9368,28082,28086,28092,28096,28101,28103,28106,28111,28113-28117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "6dc64ed38c6210003f542be3ebc05e60a6293045",
+  "prompts": {},
+  "sessions": {
+    "s_138763c6539944": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afeeb8cd-5ed0-46e8-b66b-e3e20cb16011",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_2971664da9e01c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f4fde95-7c6e-4de4-b833-4b48872eb168",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4bc2cb97a1c52e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2d76516-9035-4ade-be47-5469c312fb53",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_a8829a71b95e3c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c58f43cc-db22-4e00-bb7d-401de8e5386b",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bb43e9ab053e3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03a55-f3e6-7590-ba7e-ea43104bcb3c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d525dbcda38083": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3eb0a3e7-66f3-4154-819a-cb7725ffbd2f",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
