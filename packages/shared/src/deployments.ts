@@ -157,17 +157,23 @@ export function parseSourceManifest(value: unknown): DeploymentSourceManifest | 
  *
  * `rootDirectory` is the service's own subtree of the shared upload; null or
  * "." means the whole tree. Paths are posix and relative to the upload root.
+ *
+ * `prefix` is that root as a path prefix ("web/", or "" for the whole tree).
+ * Returned rather than left for the caller to re-derive: entries keep their
+ * full paths, so anything that displays them relative to the service — the
+ * dashboard's folder tree — needs exactly the prefix this filtered on, and a
+ * second copy of this normalisation is a second place for it to drift.
  */
 export function sourceManifestEntriesForService(
   manifest: DeploymentSourceManifest,
   rootDirectory: string | null,
-): { entries: { path: string, bytes: number }[], truncated: boolean } {
+): { entries: { path: string, bytes: number }[], truncated: boolean, prefix: string } {
   const normalized = (rootDirectory ?? ".").replace(/^\.\/+/, "").replace(/\/+$/, "");
   const prefix = normalized === "" || normalized === "." ? "" : `${normalized}/`;
   const entries = prefix === "" ? manifest.entries : manifest.entries.filter((entry) => entry.path.startsWith(prefix));
   // Truncated is a property of the whole manifest, not of this slice: once the
   // cap dropped files, no subtree can claim to be complete.
-  return { entries, truncated: manifest.file_count > manifest.entries.length };
+  return { entries, truncated: manifest.file_count > manifest.entries.length, prefix };
 }
 
 // The source id of deployments declared in hexclave.config.ts, which has no
@@ -1492,6 +1498,12 @@ import.meta.vitest?.test("sourceManifestEntriesForService slices the shared uplo
   expect(sourceManifestEntriesForService(manifest, "./web/").entries).toHaveLength(2);
   // A prefix must match a whole path SEGMENT: "web" is not "website".
   expect(sourceManifestEntriesForService(manifest, "webs").entries).toHaveLength(0);
+  // The prefix it filtered on comes back, so a caller showing paths relative to
+  // the service strips exactly what was matched.
+  expect(sourceManifestEntriesForService(manifest, "./web/").prefix).toBe("web/");
+  for (const root of [null, ".", "./", ""]) {
+    expect(sourceManifestEntriesForService(manifest, root).prefix).toBe("");
+  }
 });
 
 import.meta.vitest?.test("sourceManifestEntriesForService reports truncation as the manifest's, not the slice's", ({ expect }) => {

@@ -33,7 +33,7 @@ import {
   validateServiceSpec,
   validateSourceId,
 } from "./services.js";
-import { createUploadSlot, readDeployment, readDeploymentLog } from "./store.js";
+import { createMultipartUploadSlot, createUploadSlot, multipartPartCount, readDeployment, readDeploymentLog } from "./store.js";
 import type { LogLine } from "./types.js";
 
 // How long after a build goes terminal its durable log object may still be missing before
@@ -73,11 +73,13 @@ function errorResponse(error: unknown): Response {
     return jsonResponse(503, { error: "mutation_outcome_unknown", message: "a runtime mutation did not confirm; re-read the service state before retrying" });
   }
   if (error instanceof FlyApiError) {
-    // Relay a sanitized upstream failure; Fly's own 4xxes on our requests are still OUR
-    // bug or an infra failure from the caller's perspective, never theirs. The endpoint
-    // (which embeds the Fly app name) stays in the server log only — never the response.
+    // Report an upstream failure without describing it: the provider's 4xxes on OUR
+    // requests are our bug or an infra failure from the caller's perspective, never
+    // theirs, so its wording, its status code, and the org/app identifiers its endpoints
+    // embed all stay in the server log — none of them belong in a response that can be
+    // relayed onward to an end user.
     console.error("fly API error", error);
-    return jsonResponse(502, { error: "fly_api_error", message: `the Fly API rejected a request (${error.status})` });
+    return jsonResponse(502, { error: "upstream_api_error", message: "the runtime could not complete the request" });
   }
   console.error("unhandled marshal error", error);
   return jsonResponse(500, { error: "internal_error", message: "internal error" });
@@ -103,6 +105,17 @@ function isAuthorized(header: string | null, apiKey: string): boolean {
 // form a nanosecond log cursor, so an unbounded number would produce exponential-notation
 // (`1e+36`) tokens that break BigInt parsing downstream (and in the fly-mock).
 const MAX_CURSOR_MILLIS = 9_000_000_000_000; // ~2255-01-01
+/**
+ * The `size_bytes` an upload request declared, or undefined when it said nothing
+ * usable. Advisory only — it decides whether to mint a multipart slot, never
+ * what may be stored, which stays the consume-time gate's job.
+ */
+function declaredSizeBytes(body: unknown): number | undefined {
+  if (body === null || typeof body !== "object") return undefined;
+  const value = (body as Record<string, unknown>).size_bytes;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 function parseOptionalMillis(value: unknown): number | undefined {
   if (typeof value !== "string" || value === "") return undefined;
   const parsed = Number(value);
@@ -167,16 +180,31 @@ export function createMarshalApp() {
     })
     .get("/health", () => ({ ok: true }))
 
-    .post("/v1/namespaces/:ns/uploads", ({ params }) => handle(async () => {
+    // The body is optional and advisory: `size_bytes` is how big the caller says
+    // its source is, which is the only thing that decides whether a multipart
+    // slot is worth starting. An older client sends no body and gets exactly the
+    // response it always got.
+    .post("/v1/namespaces/:ns/uploads", ({ params, body }) => handle(async () => {
       const ns = validateNamespace(params.ns);
       const id = randomUUID();
       const slot = await createUploadSlot(ns, id);
+      const partCount = multipartPartCount(declaredSizeBytes(body));
+      // `upload_url` is returned either way. It is the fallback when the client
+      // cannot do multipart, and the only thing an older client looks at.
+      const multipart = partCount === null ? null : await createMultipartUploadSlot(ns, id, partCount);
       return jsonResponse(201, {
         id,
         upload_url: slot.uploadUrl,
         content_type: "application/gzip",
         expires_at_millis: slot.expiresAtMillis,
         max_bytes: MAX_UPLOAD_BYTES,
+        multipart: multipart === null ? null : {
+          upload_id: multipart.uploadId,
+          part_size_bytes: multipart.partSizeBytes,
+          part_urls: multipart.partUrls,
+          complete_url: multipart.completeUrl,
+          abort_url: multipart.abortUrl,
+        },
       });
     }))
 

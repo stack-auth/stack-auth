@@ -14,6 +14,8 @@ import {
   CheckCircleIcon,
   CircleNotchIcon,
   ClockIcon,
+  FileIcon,
+  FolderIcon,
   LinkSimpleIcon,
   LockSimpleIcon,
   PlusIcon,
@@ -25,8 +27,9 @@ import {
   WarningIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getServiceOutputs, portEntriesOf, type BoardService, type EnvVar } from "./board-model";
+import { allDirectoryPaths, buildSourceTree, visibleRows, type SourceTreeNode } from "./source-tree";
 
 type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
@@ -53,8 +56,9 @@ export function serviceOutcomeMeta(status: AdminDeploymentServiceOutcomeJson["st
     case "deployed": { return { label: "Deployed", color: "green", icon: CheckCircleIcon, spin: false }; }
     case "failed": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
     // The deploy never reached it — its build failed, or something it depends
-    // on did.
-    case "skipped": { return { label: "Skipped", color: "orange", icon: ProhibitIcon, spin: false }; }
+    // on did. Named after the cause ("Build failed") rather than the effect
+    // ("Skipped"), which told a reader nothing about why nothing shipped.
+    case "skipped": { return { label: "Build failed", color: "orange", icon: ProhibitIcon, spin: false }; }
   }
 }
 
@@ -410,6 +414,117 @@ function useSourceManifest(project: AdminProject, deploymentId: string | null) {
   return { manifest, error, loading };
 }
 
+function SourceTreeRow({ node, depth, expanded, onToggle }: {
+  node: SourceTreeNode,
+  depth: number,
+  expanded: boolean,
+  onToggle: (path: string) => void,
+}) {
+  // Rows are indented by depth rather than nested in the DOM: the list scrolls
+  // as one column of equal rows, and a nested tree would indent the size column
+  // along with the name.
+  const indent = { paddingLeft: 10 + depth * 14 };
+  const rowClassName = "flex w-full items-center gap-1.5 border-b border-border/40 bg-foreground/[0.02] py-1.5 pr-2.5 text-left last:border-b-0";
+
+  if (node.kind === "file") {
+    return (
+      <div className={rowClassName} style={indent}>
+        {/* Occupies the caret's width so filenames line up with the folder
+            names they sit under, rather than with their carets. */}
+        <span className="size-3 shrink-0" />
+        <FileIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        {/* The row shows the name; the full path is on the title, since the
+            folders above it are on screen anyway. */}
+        <span className="truncate font-mono text-[11px]" title={node.path}>{node.name}</span>
+        <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(node.bytes)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={() => onToggle(node.path)} className={cn(rowClassName, "hover:bg-foreground/[0.06]")} style={indent} aria-expanded={expanded}>
+      <CaretRightIcon className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} weight="bold" />
+      <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" weight={expanded ? "regular" : "fill"} />
+      <span className="truncate font-mono text-[11px]" title={node.path}>{node.name}</span>
+      <span className="shrink-0 text-[10px] text-muted-foreground/70">{node.fileCount.toLocaleString()}</span>
+      {/* A folder's size is its subtree's, which is the number that makes a
+          collapsed row worth reading at all. */}
+      <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(node.bytes)}</span>
+    </button>
+  );
+}
+
+/**
+ * The manifest slice as a folder tree.
+ *
+ * Takes the manifest rather than the sliced entries: the slice is a fresh array
+ * on every render, and the tree — which the expand/collapse set is keyed on —
+ * has to stay the same object across renders or every click would be undone by
+ * the re-render it causes.
+ */
+function SourceFileTree({ manifest, rootDirectory }: { manifest: DeploymentSourceManifest, rootDirectory: string | null }) {
+  const tree = useMemo(() => {
+    const { entries, prefix } = sourceManifestEntriesForService(manifest, rootDirectory);
+    const nodes = buildSourceTree(entries, prefix);
+    return { nodes, fileCount: entries.length, directories: allDirectoryPaths(nodes) };
+  }, [manifest, rootDirectory]);
+
+  // Every folder starts closed, so the tab opens as the shape of the upload —
+  // one screen of top-level folders with their sizes — rather than a wall of
+  // files. Expand all is one click away for a reader who wants the whole thing.
+  //
+  // Reset on a new tree (the reader switched service or deployment) rather than
+  // in an effect, so the first render of the new tree is already the right one.
+  const [state, setState] = useState(() => ({ nodes: tree.nodes, expanded: new Set<string>() }));
+  if (state.nodes !== tree.nodes) {
+    setState({ nodes: tree.nodes, expanded: new Set<string>() });
+  }
+
+  const toggle = useCallback((path: string) => {
+    setState((previous) => {
+      const expanded = new Set(previous.expanded);
+      if (!expanded.delete(path)) expanded.add(path);
+      return { nodes: previous.nodes, expanded };
+    });
+  }, []);
+
+  const allExpanded = tree.directories.length > 0 && tree.directories.every((path) => state.expanded.has(path));
+  const rows = visibleRows(state.nodes, state.expanded);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        {/* Largest first is worth saying out loud: it is what makes the top row
+            of every level the answer to "why is this upload so big", and it is
+            not the order a file tree is usually read in. */}
+        <p className="text-[11px] text-muted-foreground">
+          {tree.fileCount.toLocaleString()} file{tree.fileCount === 1 ? "" : "s"}, largest first.
+        </p>
+        {tree.directories.length > 0 && (
+          <button
+            type="button"
+            className="shrink-0 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            onClick={() => setState((previous) => ({ nodes: previous.nodes, expanded: allExpanded ? new Set<string>() : new Set(tree.directories) }))}
+          >
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+        {rows.map(({ node, depth }) => (
+          <SourceTreeRow
+            key={`${node.kind}:${node.path}`}
+            node={node}
+            depth={depth}
+            expanded={node.kind === "directory" && state.expanded.has(node.path)}
+            onToggle={toggle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SourceContent({ deploymentId, project, service, isHexclave }: {
   // Read on demand rather than taken from the open deployment: the listing the
   // board is built from is polled every few seconds and deliberately omits the
@@ -473,16 +588,8 @@ export function SourceContent({ deploymentId, project, service, isHexclave }: {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="shrink-0 space-y-1">
+        <div className="shrink-0">
           <SectionLabel>Files under {scopeLabel}</SectionLabel>
-          {entries.length > 0 && (
-            // Largest first is worth saying out loud: it is what makes the first
-            // row the answer to "why is this upload so big", and it is not the
-            // order a file listing is usually read in.
-            <p className="text-[11px] text-muted-foreground">
-              {entries.length.toLocaleString()} file{entries.length === 1 ? "" : "s"}, largest first.
-            </p>
-          )}
         </div>
         {entries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
@@ -491,16 +598,7 @@ export function SourceContent({ deploymentId, project, service, isHexclave }: {
               : <>Nothing was packaged under {scopeLabel}.</>}
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
-            {entries.map((entry) => (
-              <div key={entry.path} className="flex items-center justify-between gap-3 border-b border-border/40 bg-foreground/[0.02] px-2.5 py-1.5 last:border-b-0">
-                {/* Right-truncated would hide the filename, which is the part
-                    that identifies the row; the title carries the full path. */}
-                <span className="truncate font-mono text-[11px]" dir="rtl" title={entry.path}>{entry.path}</span>
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(entry.bytes)}</span>
-              </div>
-            ))}
-          </div>
+          <SourceFileTree manifest={manifest} rootDirectory={rootDirectory} />
         )}
         {truncated && (
           // Only ever shown for a tree past the cap, which is far larger than
