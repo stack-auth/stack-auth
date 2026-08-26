@@ -23,16 +23,17 @@ jobs:
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
+      # Upstream builds on its own Ubicloud fleet, which a fork does not have — those
+      # labels match no runner here, so jobs queue forever rather than failing. Built on
+      # GitHub-hosted runners instead, and amd64 only: Railway runs x86_64, so the arm64
+      # leg cost a second 8-core build for a platform this fork never deploys to. Add it
+      # back (with an arm runner label this repo actually has) if you need local arm images.
       matrix:
         include:
           - platform: linux/amd64
             arch: amd64
-            runner: ubicloud-standard-8
-            timeout: 30
-          - platform: linux/arm64
-            arch: arm64
-            runner: ubicloud-standard-8-arm
-            timeout: 45
+            runner: ubuntu-latest
+            timeout: 60
     # Both matrix legs compute the same value, so whichever leg writes this output last is equivalent.
     outputs:
       should_push: ${{ steps.push-condition.outputs.should_push }}
@@ -147,8 +148,8 @@ jobs:
             sources+=("${IMAGE}@${digest}")
           done < <(find digests -maxdepth 1 -type f -print | sort)
 
-          if [ "${#sources[@]}" -ne 2 ]; then
-            echo "Expected 2 platform image digests, found ${#sources[@]}" >&2
+          if [ "${#sources[@]}" -eq 0 ]; then
+            echo "Expected at least one platform image digest, found none" >&2
             exit 1
           fi
 
