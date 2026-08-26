@@ -54,6 +54,37 @@ async function createUpload(files?: Record<string, string>): Promise<{ uploadId:
   return { uploadId: (uploadResponse.body as any).id };
 }
 
+type RuntimeLogLine = { at_millis: number, stream: string, instance: string | null, text: string };
+
+/**
+ * Reads one page of a service's runtime logs.
+ *
+ * `follow=false` matters: the endpoint's whole point is that a runtime log never
+ * ends, so the default follows for minutes and a test that read the body would
+ * block for all of them.
+ */
+async function readRuntimeLogs(serviceId: string, options?: { sinceMillis?: number }): Promise<{ status: number, contentType: string | null, lines: RuntimeLogLine[] }> {
+  const params = new URLSearchParams({ follow: "false" });
+  if (options?.sinceMillis !== undefined) params.set("since_millis", String(options.sinceMillis));
+  const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/logs?${params.toString()}`, { accessType: "admin" });
+  // Only a 200 is NDJSON; an error status carries an ordinary JSON error body,
+  // which would blow up the per-line parse below.
+  //
+  // The body arrives as an ArrayBuffer, not a string: the test helper decodes
+  // `application/json` and `text/*` and hands everything else back raw, and
+  // `application/x-ndjson` is neither.
+  const text = response.status !== 200
+    ? ""
+    : typeof response.body === "string"
+      ? response.body
+      : new TextDecoder().decode(response.body as ArrayBuffer);
+  return {
+    status: response.status,
+    contentType: response.headers.get("content-type"),
+    lines: text.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as RuntimeLogLine),
+  };
+}
+
 // Syncs service definitions the way `hexclave deploy` does (its first step
 // after evaluating the deploy file's `services`). Scoped to a DEPLOYMENT SOURCE:
 // one deploy file, whose services this sync is the whole truth about.
@@ -781,6 +812,75 @@ describe("deploys against the Marshal runtime", () => {
     expect(logsText).toContain("OPENAI_KEY=<redacted>");
     expect(logsText).not.toContain("sk-secret-value-123");
     expect(logsText).not.toContain("plain-value");
+
+    // Runtime logs: what the SERVICE printed, as opposed to what its build did.
+    // The fly-mock writes a line per machine lifecycle event, so a deployed
+    // service always has some.
+    const runtime = await readRuntimeLogs(serviceId);
+    expect(runtime.status).toBe(200);
+    expect(runtime.contentType).toContain("application/x-ndjson");
+    expect(runtime.lines.length).toBeGreaterThan(0);
+    for (const line of runtime.lines) {
+      expect(typeof line.at_millis).toBe("number");
+      expect(line.at_millis).toBeGreaterThan(0);
+      expect(["stdout", "stderr", "system"]).toContain(line.stream);
+    }
+
+    // The stream classification is the one piece of real logic in the mapping:
+    // a line from a non-"app" provider is the RUNTIME talking about the service
+    // (machine started), not the service talking. Getting this backwards would
+    // present platform chatter as the app's own output.
+    const machineStarted = runtime.lines.find((line) => line.text.includes("Machine started"));
+    expect(machineStarted?.stream).toBe("system");
+    const appOutput = runtime.lines.find((line) => line.text.includes("mock app listening"));
+    expect(appOutput?.stream).toBe("stdout");
+
+    // Instances are named, which is what lets a reader filter a multi-instance
+    // service down to one machine. (The build-log path deliberately nulls this;
+    // the runtime path must not.)
+    const machineIds = new Set(app.machines.map((machine: any) => machine.id));
+    const runtimeInstances = new Set(runtime.lines.map((line) => line.instance).filter((instance) => instance != null));
+    expect(runtimeInstances.size).toBeGreaterThan(0);
+    for (const instance of runtimeInstances) expect(machineIds).toContain(instance);
+
+    // Resuming from the newest timestamp returns nothing: the cursor is what
+    // makes a reconnect neither repeat nor skip, and it is the whole reason this
+    // endpoint serves NDJSON rather than the build log's plain text.
+    const newestAtMillis = Math.max(...runtime.lines.map((line) => line.at_millis));
+    const resumed = await readRuntimeLogs(serviceId, { sinceMillis: newestAtMillis + 1 });
+    expect(resumed.status).toBe(200);
+    expect(resumed.lines).toEqual([]);
+
+    // A cursor BEFORE the first line replays from there — the same request the
+    // dashboard makes when it reconnects mid-history.
+    const oldestAtMillis = Math.min(...runtime.lines.map((line) => line.at_millis));
+    const replayed = await readRuntimeLogs(serviceId, { sinceMillis: oldestAtMillis });
+    expect(replayed.status).toBe(200);
+    expect(replayed.lines.length).toBeGreaterThan(0);
+    for (const line of replayed.lines) expect(line.at_millis).toBeGreaterThanOrEqual(oldestAtMillis);
+  });
+
+  it("refuses runtime logs for a service that was never deployed, and for one that does not exist", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("never-deployed");
+    // Synced but never deployed: the definition exists, the runtime has no app
+    // for it, and Fly answers a missing app with an empty page — which would
+    // render as a silently empty stream if this were not refused up front.
+    await syncServices({
+      [serviceId]: {
+        type: "serverless",
+        ports: { 3000: { protocol: "http" } },
+        min_instances: 0,
+        max_instances: 1,
+        env: {},
+      },
+    });
+    const notDeployed = await readRuntimeLogs(serviceId);
+    expect(notDeployed.status).toBe(400);
+
+    const missing = await readRuntimeLogs(uniqueServiceId("no-such-service"));
+    expect(missing.status).toBe(404);
   });
 
   it("deploys a prebuilt image with no upload and no build at all", { timeout: 120_000 }, async ({ expect }) => {

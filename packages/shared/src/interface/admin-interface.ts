@@ -47,6 +47,20 @@ export type ChatContent = Array<
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
 >;
 
+// One line of a service's RUNTIME output — what the container printed while
+// running, as opposed to what its build printed. `stream` is "system" for the
+// runtime's own lifecycle events (machine started, health check failed) and
+// "stdout"/"stderr" for the service's own output; `instance` names the machine
+// that printed it, so a multi-instance service can be filtered down to one.
+//
+// NOT redacted: a runtime process can print anything, including env values.
+export type AdminDeploymentServiceLogLineJson = {
+  at_millis: number,
+  stream: "stdout" | "stderr" | "system",
+  instance: string | null,
+  text: string,
+};
+
 // What ONE service did in one deployment. There is no separate run entity: a
 // deploy builds every service of its deployment source in a single builder
 // machine, so the build belongs to the deployment and this is only the outcome
@@ -1541,6 +1555,84 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return await response.text();
+  }
+
+  /**
+   * Follows a service's runtime logs, calling `onLine` for each line as it arrives.
+   *
+   * The endpoint streams NDJSON and follows for a few minutes before closing, so
+   * this resolves when the server stops following rather than when the service
+   * stops running — there is no end to a runtime log. Resume by calling again
+   * with the largest `at_millis` seen; omit it to start at the tail.
+   *
+   * Rejects if the stream ends in an error, AFTER delivering everything that
+   * arrived before it: the lines already handed to `onLine` are real output and
+   * the caller should keep them.
+   */
+  async getDeploymentServiceLogs(serviceId: string, options: {
+    sinceMillis?: number,
+    /** False returns what is available right now instead of following. */
+    follow?: boolean,
+    signal?: AbortSignal,
+    onLine: (line: AdminDeploymentServiceLogLineJson) => void,
+  }): Promise<void> {
+    const params = new URLSearchParams();
+    if (options.sinceMillis !== undefined) params.set("since_millis", String(options.sinceMillis));
+    if (options.follow === false) params.set("follow", "false");
+    const query = params.toString();
+    const response = await this.sendAdminRequest(
+      `${urlString`/deployments/services/${serviceId}/logs`}${query === "" ? "" : `?${query}`}`,
+      { method: "GET", signal: options.signal },
+      null,
+    );
+    if (response.body === null) return;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    // Held on an object rather than a plain `let`: it is written from inside
+    // handleLine, and TypeScript keeps narrowing a plain local to its
+    // initializer across a closure it cannot see run (the check at the bottom
+    // would then be "always false").
+    const stream = { error: null as string | null };
+    const handleLine = (raw: string) => {
+      if (raw === "") return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // A truncated line must not take down a tail that is otherwise fine.
+        return;
+      }
+      if (parsed === null || typeof parsed !== "object") return;
+      // The server's one control line. Real log lines always carry `at_millis`,
+      // which is what tells the two apart without a discriminator on every line.
+      const errorMessage = (parsed as { _error?: unknown })._error;
+      if (typeof errorMessage === "string") {
+        stream.error = errorMessage;
+        return;
+      }
+      if (typeof (parsed as { at_millis?: unknown }).at_millis !== "number") return;
+      options.onLine(parsed as AdminDeploymentServiceLogLineJson);
+    };
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // Split on every complete line; a chunk can end mid-line.
+        while (true) {
+          const newlineIndex = buffer.indexOf("\n");
+          if (newlineIndex < 0) break;
+          handleLine(buffer.slice(0, newlineIndex));
+          buffer = buffer.slice(newlineIndex + 1);
+        }
+      }
+      buffer += decoder.decode();
+      handleLine(buffer);
+    } finally {
+      reader.releaseLock();
+    }
+    if (stream.error !== null) throw new Error(stream.error);
   }
 
   async addDeploymentServiceDomain(serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void> {
