@@ -137,11 +137,9 @@ export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | und
   return command == null || command.length === 0 ? undefined : command;
 }
 
-function normalizeApiBaseUrl(apiBaseUrl: string): string {
+export function normalizeApiBaseUrl(apiBaseUrl: string): string {
+  // API base URLs identify OAuth issuers, so hostname aliases must remain unchanged.
   const url = new URL(apiBaseUrl);
-  if (url.hostname === "localhost") {
-    url.hostname = "127.0.0.1";
-  }
   return url.toString().replace(/\/$/, "");
 }
 
