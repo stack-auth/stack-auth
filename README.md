@@ -7,7 +7,7 @@
 
 **The user infrastructure platform.**
 
-Hexclave handles everything around your users: authentication, teams,
+Hexclave handles everything your project needs: authentication, teams,
 payments, emails, analytics, and much more. Get started with our AI
 prompt below.
 
