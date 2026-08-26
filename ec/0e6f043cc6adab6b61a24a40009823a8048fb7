@@ -1,0 +1,53 @@
+apps/mcp/.env.example
+  s_2e0c4d19537b09::t_71341bc0a465af 5
+apps/mcp/src/oauth.ts
+  s_2e0c4d19537b09::t_83b68a38be70f3 63
+  s_2e0c4d19537b09::t_c5ac977a178f3d 5-12
+  s_2e0c4d19537b09::t_53df61e5f61f04 24
+apps/hosted-components/src/hosted-components/oauth-provider-interaction-page.tsx
+  s_2e0c4d19537b09::t_5cc55b4196c2a8 20-32
+packages/template/src/mcp.ts
+  s_2e0c4d19537b09::t_3cb7e9e239d1bf 152,154-155
+  s_2e0c4d19537b09::t_57ae149c846fd5 30
+  s_2e0c4d19537b09::t_2e084e39c18609 21-22,24-25
+  s_2e0c4d19537b09::t_bbf527d3d765bf 45,47-48,59
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/oauth-provider/page-client.tsx
+  s_2e0c4d19537b09::t_bf92a2fdd2d97f 155
+  s_2e0c4d19537b09::t_8de5c510802dfd 170
+  s_2e0c4d19537b09::t_ed169a7e1bd7ee 141-142
+apps/backend/src/app/api/latest/analytics/query/route.ts
+  s_2e0c4d19537b09::t_3bee273e85c34b 17
+apps/backend/prisma/seed.ts
+  s_2e0c4d19537b09::t_8356a6849e4ef4 142
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_2e0c4d19537b09::t_17e53088911fe6 1207
+  s_2e0c4d19537b09::t_c5ae9c3d4295c4 1297-1309
+apps/mcp/src/mcp-handler.ts
+  s_2e0c4d19537b09::t_dcb5151fb5da03 14
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_2e0c4d19537b09::t_afea7180b85b1a 74,85
+  s_2e0c4d19537b09::t_c9b2d9bf97c928 90
+docs-mintlify/guides/apps/authentication/oauth-provider.mdx
+  s_2e0c4d19537b09::t_6e4e3baa01b594 90
+  s_2e0c4d19537b09::t_e9958fe22d95f3 84
+  s_2e0c4d19537b09::t_7da3828d2335fb 142
+  s_2e0c4d19537b09::t_15cbfd169d41ff 7
+  s_2e0c4d19537b09::t_6a75759c3fffc1 70
+  s_2e0c4d19537b09::t_c82f85bd1baab6 178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "ec0e6f043cc6adab6b61a24a40009823a8048fb7",
+  "prompts": {},
+  "sessions": {
+    "s_2e0c4d19537b09": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8517f1e1-957b-477c-9cc5-c873dc97afa9",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
