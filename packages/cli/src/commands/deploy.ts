@@ -1,4 +1,4 @@
-import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, buildSourceManifest, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, parseConnectionValue, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
+import { CONFIG_FILE_DEPLOYMENT_SOURCE_ID, buildSourceManifest, connectionRequiresTargetDeployed, deploymentPortEntries, deploymentPortEntry, deploymentPortOwnsStandardPorts, deploymentServiceIsBuilt, deploymentServiceUsesGeneratedDockerfile, parseConnectionValue, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
@@ -277,16 +277,43 @@ export async function packageAndUploadSource(options: {
   authHeaders: () => Promise<Record<string, string>>,
   sourceRoot: string,
   services: Map<string, EvaluatedService>,
+  // The services this deploy actually ships. The UPLOAD is still the whole tree
+  // — one deploy is one tarball — but only these are pre-flighted: a
+  // `--service-id web` deploy must not fail over a sibling whose directory is
+  // missing from a sparse checkout, since nothing is going to build it. Absent =
+  // every service, which is what a full deploy passes.
+  deploySet?: string[],
 }): Promise<{ uploadId: string, manifest: DeploymentSourceManifest }> {
-  const { auth, authHeaders, sourceRoot, services } = options;
+  const { auth, authHeaders, sourceRoot, services, deploySet } = options;
   const packaged = packageSourceDirectory(sourceRoot);
 
-  for (const service of services.values()) {
-    // A service that names an already-built image is not built from this tree at
-    // all, so neither the Dockerfile pre-flight nor the Railpack note below
-    // applies to it — and a stray Dockerfile beside it is not a mistake.
-    if (service.definition.image !== undefined) continue;
+  const preflightServices = deploySet === undefined
+    ? [...services.values()]
+    : deploySet.flatMap((serviceId) => {
+      const service = services.get(serviceId);
+      return service === undefined ? [] : [service];
+    });
+  for (const service of preflightServices) {
+    // A service that only runs an already-built image is not built from this
+    // tree at all, so neither the Dockerfile pre-flight nor the Railpack note
+    // below applies to it — and a stray Dockerfile beside it is not a mistake.
+    if (!deploymentServiceIsBuilt(service.definition)) continue;
+    // The root directory has to exist in the PACKAGED tree, or the build fails
+    // in the remote builder minutes later with nothing to look at. Only checked
+    // for services that are built from it (the loop above skips the rest), and
+    // only when it names something other than the upload root, which is the
+    // tarball itself.
+    const rootDirectory = service.definition.root_directory ?? ".";
+    const normalizedRootDirectory = rootDirectory.replace(/^\.\//, "").replace(/\/$/, "");
+    if (normalizedRootDirectory !== "" && normalizedRootDirectory !== "." && !packaged.paths.some((entry) => entry.startsWith(`${normalizedRootDirectory}/`))) {
+      throw new CliError(fs.existsSync(path.join(sourceRoot, normalizedRootDirectory))
+        ? `services.${service.serviceId} declares rootDirectory ${JSON.stringify(rootDirectory)}, but nothing under it is in the packaged source — check your .dockerignore/.gitignore.`
+        : `services.${service.serviceId} declares rootDirectory ${JSON.stringify(rootDirectory)}, but there is no such directory under ${sourceRoot}.`);
+    }
     const dockerfilePath = service.definition.dockerfile_path;
+    // A generated Dockerfile is built from the base image and the build command,
+    // so there is no Dockerfile to look for and no auto-detection to warn about.
+    if (deploymentServiceUsesGeneratedDockerfile(service.definition)) continue;
     if (dockerfilePath === undefined) {
       // No dockerfilePath means Railpack auto-detection — an existing Dockerfile is
       // deliberately NOT picked up implicitly, so say so instead of silently ignoring it.
@@ -651,14 +678,14 @@ export function registerDeployCommand(program: Command) {
       // known service is impossible (the set comes from `services`), and letting
       // it read as "source-built" would package an upload for nothing and defer
       // the real error to the API. Same shape as the two other lookups here.
-      const buildsFromSource = deploySet.some((serviceId) => (services.get(serviceId) ?? (() => {
+      const buildsFromSource = deploySet.some((serviceId) => deploymentServiceIsBuilt((services.get(serviceId) ?? (() => {
         throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
-      })()).definition.image === undefined);
+      })()).definition));
       const sourceRoot = path.dirname(deploySource.path);
       // Undefined for an all-prebuilt deploy: nothing is packaged, so there is
       // no upload and no manifest to report.
       const packagedSource = buildsFromSource
-        ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services })
+        ? await packageAndUploadSource({ auth, authHeaders, sourceRoot, services, deploySet })
         : undefined;
 
       console.error("Starting deployment...");
@@ -790,8 +817,8 @@ export function registerDeployCommand(program: Command) {
       // builds from source, so a mixed deploy whose PREBUILT service failed
       // would link to a build-logs tab holding a sibling's log — which never
       // mentions the failed service. Worse than not linking to the tab at all.
-      const failedServiceBuilt = failedService !== null
-        && services.get(failedService)?.definition.image === undefined;
+      const failedServiceDefinition = failedService === null ? undefined : services.get(failedService)?.definition;
+      const failedServiceBuilt = failedServiceDefinition !== undefined && deploymentServiceIsBuilt(failedServiceDefinition);
       const deploymentUrl = failedService === null
         ? deploymentUrlBase
         : deploymentDashboardUrl({

@@ -2,7 +2,7 @@ import { assertGlobalDeploymentCapacity, assertMinInstancesAllowedByPlan, create
 import { getMarshalDeploymentsConfigOrNull } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentSecretDefaultsSchema, parseSourceManifest, type DeploymentServiceDefinition } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentSecretDefaultsSchema, deploymentServiceIsBuilt, parseSourceManifest, type DeploymentServiceDefinition } from "@hexclave/shared/dist/deployments";
 import type { MarshalEnvValue } from "@/lib/deployments/marshal-client";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
@@ -183,7 +183,7 @@ export const POST = createSmartRouteHandler({
     // the stored definitions rather than trusted from the request: the upload is
     // what the builder consumes, so "is there a build" and "is there a tarball"
     // must be answered from one source.
-    const buildsFromSource = [...definitionsByServiceId.values()].some((definition) => definition.image === undefined);
+    const buildsFromSource = [...definitionsByServiceId.values()].some(deploymentServiceIsBuilt);
     if (buildsFromSource && body.upload_id === undefined) {
       throw new StatusError(400, "This deployment builds at least one service from source, so it needs an uploaded source archive. Create an upload (POST /deployments/uploads) and send its id as `upload_id`.");
     }
@@ -191,7 +191,7 @@ export const POST = createSmartRouteHandler({
       // Refused rather than ignored: accepting it would consume (or strand) an
       // upload that nothing can ever build from, and it means the client and the
       // stored definitions disagree about what this deploy is.
-      throw new StatusError(400, "Every service in this deployment runs an already-built image, so there is nothing to build and `upload_id` must be omitted.");
+      throw new StatusError(400, "Every service in this deployment runs an already-built image with no build command, so there is nothing to build and `upload_id` must be omitted.");
     }
 
     // Re-check the plan against the STORED definitions. The sync checks too, but

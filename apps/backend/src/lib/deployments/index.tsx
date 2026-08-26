@@ -191,6 +191,8 @@ export function definitionFromServiceRow(row: {
   rootDirectory: string | null,
   dockerfilePath: string | null,
   image: string | null,
+  buildCommand: string | null,
+  startCommand: string | null,
   env: Prisma.JsonValue,
 }, volume: { volumeId: string, path: string | null, sizeGb: number } | null = null): DeploymentServiceDefinition {
   if (row.type !== "server" && row.type !== "serverless") {
@@ -209,6 +211,8 @@ export function definitionFromServiceRow(row: {
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
     image: row.image ?? undefined,
+    build_command: row.buildCommand ?? undefined,
+    start_command: row.startCommand ?? undefined,
     // A volume row with no mount path is unattached — it belongs to the source
     // rather than to this service, so it is not part of the definition.
     persistent_volumes: volume !== null && volume.path !== null
@@ -519,9 +523,13 @@ export async function syncSourceServices(
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
-      // Null = built from source. The schema has already refused a definition
-      // that sets this alongside either field above.
+      // With no buildCommand this is the image to run and the service is not
+      // built at all; with one it is the base it is built on. The schema has
+      // already refused a definition that also names a dockerfilePath.
       image: definition.image ?? null,
+      // Null = the base decides the build / the image decides what starts.
+      buildCommand: definition.build_command ?? null,
+      startCommand: definition.start_command ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
@@ -1138,6 +1146,10 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       ...(definition.persistent_volumes !== undefined && Object.keys(definition.persistent_volumes).length > 0
         ? { persistent_volumes: definition.persistent_volumes }
         : {}),
+      // Part of the CONTAINER rather than of the build: the runtime starts the
+      // machine with it instead of the image's own entrypoint and command, so
+      // changing only this rolls the machines without rebuilding anything.
+      ...(definition.start_command !== undefined ? { start_command: definition.start_command } : {}),
     },
     env: resolvedEnv,
   };
@@ -1256,9 +1268,13 @@ export async function startDeployment(options: {
       service_key: serviceId,
       ...(definition.root_directory !== undefined ? { root_directory: definition.root_directory } : {}),
       ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}),
-      // A target with an image is not built: the runtime resolves the reference
-      // to a digest and applies it, and never looks at the upload for it.
+      // An image with no build command is not built: the runtime resolves the
+      // reference to a digest and applies it, and never looks at the upload for
+      // it. With one, the same field names the BASE of a build instead — which
+      // is why the runtime derives "is this built" from the pair rather than
+      // from `image` alone.
       ...(definition.image !== undefined ? { image: definition.image } : {}),
+      ...(definition.build_command !== undefined ? { build_command: definition.build_command } : {}),
       spec: marshalSpecForDefinition(definition, resolvedEnv),
     };
   });
@@ -1531,10 +1547,16 @@ export type DeploymentServiceApiShape = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
-  // The already-built image this service runs, as the deploy file named it
-  // (canonical and fully qualified, e.g. "docker.io/library/postgres:16"). Null =
-  // the service is built from source, in which case the two fields above say how.
+  // The image this service runs — or, with a build_command, the base it is built
+  // on — as the deploy file named it (canonical and fully qualified, e.g.
+  // "docker.io/library/postgres:16"). Null = no image was named, in which case
+  // the two fields above say what the build starts from.
   image: string | null,
+  // A single command line run while the image is built (null = none), and one
+  // run as the container's process instead of the image's own (null = the image
+  // decides). The start command is applied at run time, so it never builds.
+  build_command: string | null,
+  start_command: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id.
   persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
@@ -1731,6 +1753,8 @@ export async function serviceToApiShape(options: {
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
     image: row.image,
+    build_command: row.buildCommand,
+    start_command: row.startCommand,
     persistent_volumes: definition.persistent_volumes ?? null,
     provisioned: row.provisionedAt != null,
     status,

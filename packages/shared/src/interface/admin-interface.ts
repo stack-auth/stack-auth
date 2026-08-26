@@ -150,11 +150,19 @@ export type AdminDeploymentServiceJson = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
-  // The already-built image this service runs, canonical and fully qualified
-  // ("docker.io/library/postgres:16"), as the deploy file named it. Null = the
-  // service is built from source, in which case the two fields above say how.
-  // The two are mutually exclusive.
+  // The image this service runs, canonical and fully qualified
+  // ("docker.io/library/postgres:16"), as the deploy file named it. With no
+  // `build_command` it is the whole story and the service is not built at all;
+  // with one it is the BASE the service is built on. Null = no image was named,
+  // so the fields above say what the build starts from instead. Mutually
+  // exclusive with dockerfile_path.
   image: string | null,
+  // A single command line run while the image is built (null = none). Its base
+  // is `image`, or `dockerfile_path`'s Dockerfile, or the Hexclave base image.
+  build_command: string | null,
+  // A single command line run as the container's process instead of the image's
+  // own (null = the image decides). Applied at run time, so it never builds.
+  start_command: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id, which names a disk owned by the
   // deployment source — it outlives the service that mounts it. Mirrors

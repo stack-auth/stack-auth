@@ -309,6 +309,12 @@ async function handleRequest(req, res) {
           metadata: machine.config.metadata ?? {},
           env: machine.config.env ?? {},
           mounts: machine.config.mounts ?? [],
+          // What the machine is started with, when it overrides the image's own
+          // entrypoint/command. Exposed alongside env and mounts because it is
+          // the same kind of fact — part of what Marshal asked the machine to be
+          // — and a test that asserts a service's start command has no other way
+          // to see it.
+          init: machine.config.init ?? null,
         })),
         volumes: [...app.volumesById.values()],
         certificates: [...app.certsByHostname.values()].map(certJson),
