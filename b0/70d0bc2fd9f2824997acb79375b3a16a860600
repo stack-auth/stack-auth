@@ -1,0 +1,29 @@
+packages/cli/scripts/copy-runtime-assets.mjs
+  s_967bb6612b9324::t_5249fe844d761a 285-286
+  s_967bb6612b9324::t_8bd55f597bc036 5
+apps/dashboard/scripts/complete-standalone-swc-helpers.mjs
+  s_967bb6612b9324::t_8486072716716f 1-36
+apps/dashboard/scripts/complete-standalone-swc-helpers.test.ts
+  s_967bb6612b9324::t_798e5f24da9069 1,3-51,54,56-102
+  s_967bb6612b9324::t_0a117602bd9ebf 2
+  s_967bb6612b9324::t_5073da6b2c372b 52-53,55
+apps/dashboard/scripts/dev-rde-production.mjs
+  s_967bb6612b9324::t_b3457c2d4ca5ab 6
+  s_967bb6612b9324::t_087e1843fc0b2a 53-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "b070d0bc2fd9f2824997acb79375b3a16a860600",
+  "prompts": {},
+  "sessions": {
+    "s_967bb6612b9324": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6e1ed0be-89aa-4951-aab8-87d34e42c3d3",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
