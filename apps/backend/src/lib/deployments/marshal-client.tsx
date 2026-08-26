@@ -205,6 +205,22 @@ const DEFAULT_TIMEOUT_MS = 60 * 1000;
 const APPLY_TIMEOUT_MS = 15 * 60 * 1000;
 const DELETE_TIMEOUT_MS = 5 * 60 * 1000;
 const LIST_TIMEOUT_MS = 2 * 60 * 1000;
+// Starting a source deployment is the same CLASS of work as an apply, and got
+// the default tier only by omission. Before it answers, the runtime validates
+// the uploaded archive (reading the whole tarball out of the bucket and copying
+// it to a deployment-owned key — seconds for a small source, far longer for one
+// near the 50 MB ceiling), calls ensureApp once PER TARGET in sequence, and then
+// creates and starts the builder machine.
+//
+// Under the 60s default this 504'd on a 30 MB source while the runtime carried
+// on and created a real deployment — a Fly app and a builder machine included —
+// that the caller had no id for and could never poll. A deploy of many services
+// would hit the same wall on the sequential ensureApp loop alone.
+//
+// Deliberately BELOW the 800s Vercel maxDuration both services declare (see
+// `src/index.ts` in each): this has to fire first, so the caller gets a clean
+// 504 from here rather than a platform-killed invocation with no body at all.
+const DEPLOY_START_TIMEOUT_MS = 5 * 60 * 1000;
 
 export class MarshalClient {
   constructor(private readonly config: MarshalDeploymentsConfig) {}
@@ -284,7 +300,7 @@ export class MarshalClient {
     // converged (a `url` ref can only resolve after its target is up).
     order: string[][],
   }): Promise<MarshalDeployment> {
-    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/sources/${sourceId}/deployments`, { method: "POST", body });
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/sources/${sourceId}/deployments`, { method: "POST", body, timeoutMs: DEPLOY_START_TIMEOUT_MS });
   }
 
   async getDeployment(ns: string, deploymentId: string): Promise<MarshalDeployment> {
