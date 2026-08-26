@@ -2,7 +2,7 @@
 
 import { SimpleTooltip } from "@/components/ui";
 import { ClockIcon, CursorClickIcon, KeyboardIcon, ListBulletsIcon } from "@phosphor-icons/react";
-import { formatReplayDuration } from "./replay-list-formatting";
+import { formatReplayCount, formatReplayDuration } from "./replay-list-formatting";
 
 export function ReplayActivityMetrics({
   durationMs,
@@ -21,28 +21,32 @@ export function ReplayActivityMetrics({
     {
       label: "Replay duration",
       value: formatReplayDuration(durationMs),
+      exactValue: formatReplayDuration(durationMs),
       icon: ClockIcon,
     },
     {
       label: "Recorded events",
-      value: eventCount.toLocaleString(),
+      value: formatReplayCount(eventCount),
+      exactValue: eventCount.toLocaleString(),
       icon: ListBulletsIcon,
     },
     {
       label: "Recorded clicks",
-      value: clickCount.toLocaleString(),
+      value: formatReplayCount(clickCount),
+      exactValue: clickCount.toLocaleString(),
       icon: CursorClickIcon,
     },
     {
       label: "Recorded keystrokes",
-      value: keystrokeCount.toLocaleString(),
+      value: formatReplayCount(keystrokeCount),
+      exactValue: keystrokeCount.toLocaleString(),
       icon: KeyboardIcon,
     },
   ];
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2.5 text-xs tabular-nums text-muted-foreground"
+      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] tabular-nums text-muted-foreground"
       aria-label="Replay activity"
       onClick={onActivate}
     >
@@ -51,9 +55,9 @@ export function ReplayActivityMetrics({
         return (
           <SimpleTooltip
             key={metric.label}
-            tooltip={`${metric.label}: ${metric.value}`}
+            tooltip={`${metric.label}: ${metric.exactValue}`}
             inline
-            className="inline-flex shrink-0 items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+            className="inline-flex items-center gap-0.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           >
             <Icon className="size-3.5" aria-hidden="true" />
             <span>{metric.value}</span>

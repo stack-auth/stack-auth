@@ -8,17 +8,23 @@ import { DesignButton } from "@/components/design-components/button";
 import { Typography } from "@/components/ui";
 import { SpinnerGapIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeUrlPath } from "./normalize-url";
 import { computeLayout, type GraphNode, type GraphEdge } from "./force-layout";
 import { buildPathsGraphPresentation } from "./graph-presentation";
-import { PathsGraphCanvas } from "./paths-graph-canvas";
+import { PathsGraphCanvas, type PathComparisonResult } from "./paths-graph-canvas";
 import { pageViewTelemetrySubquery } from "../page-view-query";
 
 type TransitionRow = {
   from_path: string,
   to_path: string,
   cnt: string,
+};
+
+type PathComparisonRow = {
+  path: string,
+  users: string | number,
 };
 
 type PathsData = {
@@ -66,17 +72,30 @@ ORDER BY views DESC
 LIMIT 200
 `;
 
+const PATH_COMPARISON_QUERY = `
+SELECT
+  JSONExtractString(data, 'path') AS path,
+  uniqExact(user_id) AS users
+FROM ${pageViewTelemetrySubquery()}
+WHERE user_id != ''
+  AND JSONExtractString(data, 'path') IN {paths:Array(String)}
+GROUP BY path
+ORDER BY path ASC
+`;
+
 const MIN_CARD_WIDTH = 100;
 const MAX_CARD_WIDTH = 220;
+const CARD_MONO_CHAR_WIDTH_PX = 6.5;
+const CARD_PADDING_PX = 20;
 
 function computeCardWidth(label: string): number {
-  // ~6.5px per character in 11px monospace font, plus padding (20px)
-  const textWidth = label.length * 6.5 + 20;
+  const textWidth = label.length * CARD_MONO_CHAR_WIDTH_PX + CARD_PADDING_PX;
   return Math.max(MIN_CARD_WIDTH, Math.min(MAX_CARD_WIDTH, textWidth));
 }
 
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<PathsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +146,6 @@ export default function PageClient() {
         nodeSet.add(toNorm);
       }
 
-      // Query page views and domain info
       const pvResponse = await adminApp.queryAnalytics({
         query: PAGE_VIEWS_QUERY,
         include_all_branches: false,
@@ -201,6 +219,30 @@ export default function PageClient() {
     }
   }, [adminApp]);
 
+  const comparePaths = useCallback(async (paths: string[]): Promise<PathComparisonResult[]> => {
+    const response = await adminApp.queryAnalytics({
+      query: PATH_COMPARISON_QUERY,
+      params: { paths },
+      include_all_branches: false,
+      timeout_ms: 30_000,
+    });
+    const visitorsByPath = new Map<string, number>();
+    for (const resultRow of response.result) {
+      const path = resultRow.path;
+      const users = resultRow.users;
+      if (typeof path !== "string" || (typeof users !== "string" && typeof users !== "number")) {
+        throw new Error("Unexpected path comparison result shape: path must be a string and users must be numeric");
+      }
+      const row = { path, users } satisfies PathComparisonRow;
+      const uniqueVisitors = Number(row.users);
+      if (!Number.isFinite(uniqueVisitors) || uniqueVisitors < 0) {
+        throw new Error(`Invalid unique visitor count for path ${row.path}`);
+      }
+      visitorsByPath.set(row.path, uniqueVisitors);
+    }
+    return paths.map((path) => ({ path, uniqueVisitors: visitorsByPath.get(path) ?? 0 }));
+  }, [adminApp]);
+
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
@@ -257,6 +299,8 @@ export default function PageClient() {
               totalEdgeCount={data.totalEdgeCount}
               totalTransitionCount={data.totalTransitionCount}
               visibleTransitionCount={data.visibleTransitionCount}
+              initialCompareMode={searchParams.get("mode") === "compare"}
+              comparePaths={comparePaths}
             />
           )}
         </DesignAnalyticsCard>

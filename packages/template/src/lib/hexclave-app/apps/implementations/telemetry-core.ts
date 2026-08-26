@@ -7,11 +7,7 @@ import { runtimeGlobals } from "./runtime-globals";
 /**
  * Environment-independent core of the custom telemetry API: the public types
  * (Span & friends), input validation, parent resolution, and the shared
- * withSpan() driver. Split out of event-tracker.ts so environments that never
- * ship the browser tracker (server bundles) — and browser bundles BEFORE the
- * lazily-loaded tracker module arrives — can validate input and build span
- * handles without pulling in ~1.5k lines of autocapture code. event-tracker.ts
- * re-exports everything here so its import sites stay stable across the split.
+ * withSpan() driver.
  */
 
 /**
@@ -274,13 +270,6 @@ export type ResolvedSpanParent = {
  *    entry is the innermost scope;
  *  - `root` drops ambient entirely, so with no explicit parent the item becomes a
  *    trace root with a fresh trace id.
- *
- * The old model rejected "two unrelated ambient spans" outright because it had to
- * flatten them into one path. Here the extra ones are simply not ancestors, so
- * any ambient context from a DIFFERENT trace than the chosen parent is recorded
- * as a LINK — provably not an ancestor (different trace), and links are exactly
- * the standard representation for that. Same-trace ambient entries need no link:
- * they are plausibly ancestors of the parent already.
  */
 export function resolveSpanParent(opts: {
   explicit?: ParentRef,

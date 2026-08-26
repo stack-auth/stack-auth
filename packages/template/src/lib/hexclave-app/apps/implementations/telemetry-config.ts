@@ -48,12 +48,8 @@ function readEnv(name: string): string | undefined {
 /**
  * Best-effort service identity for apps that did not configure `telemetry`.
  *
- * `service.name` used to be REQUIRED, which meant a bare `new StackClientApp(…)`
- * threw at construction as soon as Analytics/Observability defaulted on — the
- * SDK's own tests and e2e helpers all had to carry a `telemetry.resource` block.
  * Inference keeps zero-config working while leaving the explicit option as the
- * override for projects that genuinely run several services against one project
- * (the reason the field exists at all).
+ * override for projects that run several services against one project.
  *
  * `tier` disambiguates the two halves of an isomorphic app, so a browser bundle
  * and its server never collapse into one service identity by accident.

@@ -19,6 +19,16 @@ import type { SpanContext } from "./telemetry-core";
 const TEST_TELEMETRY = { resource: { service: { name: "test-client" } } } as const;
 const loggerProviders: LoggerProvider[] = [];
 
+function createAccessTokenString(refreshTokenId: string): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return [
+    encode({ alg: "none", typ: "JWT" }),
+    encode({ sub: "user-id", exp: nowSeconds + 60, iat: nowSeconds, refresh_token_id: refreshTokenId }),
+    "",
+  ].join(".");
+}
+
 function installExistingProvider(): void {
   if (!trace.setGlobalTracerProvider(new BasicTracerProvider())) {
     throw new Error("Test could not install its existing OTel provider");
@@ -734,6 +744,51 @@ describe("browser analytics startup", () => {
     analytics.resumeSessionReplayAfterAuthentication();
 
     expect(calls).toEqual(["rotate", "clear", "snapshot"]);
+  });
+
+  it("rotates replay capture before a new sign-in identity is published", async () => {
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000001",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: "memory",
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+      automaticSideEffects: false,
+      devTool: false,
+      analytics: { enabled: true },
+      observability: { enabled: false },
+      telemetry: TEST_TELEMETRY,
+    });
+    stubSessionRootContext(app);
+    const analytics = Reflect.get(app, "_clientAnalytics");
+    if (!(analytics instanceof ClientAnalytics)) throw new Error("Expected the browser telemetry facade");
+    const calls: string[] = [];
+    Reflect.set(analytics, "_recorder", {
+      setSessionReplaySegmentId: () => calls.push("rotate"),
+      clearBuffer: () => calls.push("clear"),
+      captureFullSnapshotForCurrentSegment: () => calls.push("snapshot"),
+    });
+
+    const clientInterface = Reflect.get(app, "_interface");
+    Reflect.set(clientInterface, "getClientUserByToken", async () => {
+      calls.push("user");
+      return { id: "user-id", is_anonymous: false, is_restricted: false };
+    });
+    const signIn = Reflect.get(app, "_signInToAccountWithTokens");
+    await signIn.call(app, {
+      accessToken: createAccessTokenString("new-refresh-token-id"),
+      refreshToken: "new-refresh-token",
+    });
+
+    expect(calls).toEqual(["rotate", "clear", "user", "snapshot"]);
+
+    calls.length = 0;
+    await signIn.call(app, {
+      accessToken: createAccessTokenString("new-refresh-token-id"),
+      refreshToken: "new-refresh-token",
+    });
+    expect(calls).toEqual(["user", "snapshot"]);
   });
 
   it("captures SDK API calls while suppressing only recursive telemetry delivery", () => {

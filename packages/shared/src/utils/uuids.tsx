@@ -93,8 +93,7 @@ export function isUuid(str: string) {
 // Accepts any RFC 9562 version (1–8) with the standard variant. Unlike
 // `isUuid`, this does not pin the version nibble to `4` — observability IDs are
 // generated with different UUID versions depending on the source, so callers
-// that only care about well-formedness use this pattern instead. This was
-// previously re-declared in many backend modules — import it from here.
+// that only care about well-formedness use this pattern instead.
 export const anyVersionUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isAnyVersionUuid(str: string) {

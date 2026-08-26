@@ -1,5 +1,7 @@
 import { getHexclaveServerApp } from "@/hexclave";
 import type { Span, SpanContext } from "@hexclave/js";
+import { captureHexclaveServerRequestError } from "@hexclave/js/otel";
+import { getEnvBoolean } from "@hexclave/shared/dist/utils/env";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { context, isSpanContextValid, ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { suppressTracing, W3CTraceContextPropagator } from "@opentelemetry/core";
@@ -15,6 +17,22 @@ const traceContextPropagator = new W3CTraceContextPropagator();
 
 function isInternalProjectRequest(request: Request): boolean {
   return (request.headers.get("x-hexclave-project-id") ?? request.headers.get("x-stack-project-id")) === "internal";
+}
+
+export async function captureInternalRequestError(error: unknown, request: Request, requestId: string): Promise<void> {
+  const pathname = new URL(request.url).pathname;
+  if (!getEnvBoolean("HEXCLAVE_SELF_TELEMETRY_ENABLED") || isTelemetryIngestionPath(pathname)) return;
+
+  await captureHexclaveServerRequestError(getHexclaveServerApp(), error, {
+    handled: false,
+    mechanism: "hexclave.smart-route",
+    request,
+    data: {
+      request_id: requestId,
+      method: request.method,
+      path: pathname,
+    },
+  });
 }
 
 function getIncomingParent(request: Request): SpanContext | null {

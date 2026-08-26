@@ -3,7 +3,7 @@ import { captureWarning, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
-import type { AnalyticsReplayOptions } from "./analytics-config";
+import { getEffectiveSessionReplayBlockSelector, type AnalyticsReplayOptions } from "./analytics-config";
 import type { TelemetryResource } from "./telemetry-config";
 
 
@@ -35,6 +35,10 @@ const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024 - BATCH_ENVELOPE_OVERHEAD_BYTES;
 const textEncoder = new TextEncoder();
 
 const STYLESHEET_RESNAPSHOT_DEBOUNCE_MS = 1_000;
+
+function isFullSnapshotEvent(event: unknown): boolean {
+  return typeof event === "object" && event !== null && Reflect.get(event, "type") === 2;
+}
 
 /**
  * Whether rrweb would be able to inline this just-loaded stylesheet link into
@@ -125,10 +129,11 @@ export class SessionRecorder {
   private _approxBytes = 0;
   private _lastPersistActivity = 0;
   private _recording = false;
-  private _rrwebModule: typeof import("rrweb") | null = null;
+  private _rrwebModule: typeof import("@rrweb/record") | null = null;
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
   private _needsFullSnapshot = false;
+  private _hasMaterializedFullSnapshot = false;
   private _flushInProgress = false;
   private _resnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private _sessionReplaySegmentId: string;
@@ -188,6 +193,7 @@ export class SessionRecorder {
   setSessionReplaySegmentId(id: string) {
     this._sessionReplaySegmentId = id;
     this._needsFullSnapshot = true;
+    this._hasMaterializedFullSnapshot = false;
   }
 
   /** Resume a rotated segment only after its authenticated session is live. */
@@ -223,6 +229,14 @@ export class SessionRecorder {
     // duplicate SessionReplay records. Events stay in _events and will be
     // picked up by the next tick or batch-size check.
     if (this._flushInProgress) return;
+
+    // A segment is not usable until its FullSnapshot has reached the server.
+    // If an earlier first-batch attempt failed, never upload the dependent
+    // mutations by themselves; replace them with a fresh reconstruction root.
+    if (this._recording && !this._hasMaterializedFullSnapshot && !this._events.some(isFullSnapshotEvent)) {
+      this._restartUnmaterializedSegment(this._sessionReplaySegmentId);
+      if (this._events.length === 0) return;
+    }
 
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
@@ -271,6 +285,7 @@ export class SessionRecorder {
         }
 
         const batchEvents = allEvents.slice(offset, batchEnd);
+        const batchHasFullSnapshot = batchEvents.some(isFullSnapshotEvent);
         offset = batchEnd;
 
         const batchId = generateUuid();
@@ -295,6 +310,7 @@ export class SessionRecorder {
             this._disable();
             return;
           }
+          this._restartUnmaterializedSegment(sessionReplaySegmentId);
           // Ad blockers commonly block analytics endpoints, causing network
           // errors. These are expected and should not pollute the console.
           if (isAdBlockerNetworkError(res.error)) {
@@ -308,6 +324,7 @@ export class SessionRecorder {
           // On any non-2xx we stop the loop, so this batch and every event still
           // buffered behind it are dropped (not retried). Count them for the log.
           const droppedCount = batchEvents.length + (allEvents.length - offset);
+          this._restartUnmaterializedSegment(sessionReplaySegmentId);
           if (res.data.status === 413) {
             // The payload exceeded the server's body limit despite the client-side
             // size caps — most likely a single poorly-compressible event (e.g. an
@@ -322,11 +339,21 @@ export class SessionRecorder {
           captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed (dropping ${droppedCount} buffered event(s)): ${res.data.status} ${await res.data.text()}`));
           return;
         }
+        if (batchHasFullSnapshot && sessionReplaySegmentId === this._sessionReplaySegmentId) {
+          this._hasMaterializedFullSnapshot = true;
+        }
         await this._deps.onSessionReplaySegmentMaterialized?.(sessionReplaySegmentId);
       }
     } finally {
       this._flushInProgress = false;
     }
+  }
+
+  private _restartUnmaterializedSegment(segmentId: string): void {
+    if (segmentId !== this._sessionReplaySegmentId || this._hasMaterializedFullSnapshot) return;
+    this.clearBuffer();
+    this._needsFullSnapshot = true;
+    this.captureFullSnapshotForCurrentSegment();
   }
 
   private _disable() {
@@ -343,9 +370,9 @@ export class SessionRecorder {
     if (this._recording || this._cancelled) return;
 
     if (!this._rrwebModule) {
-      const rrwebImport = await Result.fromPromise(import("rrweb"));
+      const rrwebImport = await Result.fromPromise(import("@rrweb/record"));
       if (rrwebImport.status === "error") {
-        console.warn("SessionRecorder: rrweb import failed. Is rrweb installed?", rrwebImport.error);
+        console.warn("SessionRecorder: @rrweb/record import failed. Is @rrweb/record installed?", rrwebImport.error);
         return;
       }
       this._rrwebModule = rrwebImport.data;
@@ -355,7 +382,7 @@ export class SessionRecorder {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (this._cancelled) return;
 
-    // rrweb v1 only inlines a `<link rel="stylesheet">` into a snapshot when
+    // rrweb only inlines a `<link rel="stylesheet">` into a snapshot when
     // its CSS is already loaded and readable at serialization time. Two paths
     // systematically miss that window: (1) the initial full snapshot is taken
     // as soon as the SDK boots, which can be before head stylesheets finish
@@ -439,7 +466,15 @@ export class SessionRecorder {
           this.captureFullSnapshotForCurrentSegment();
         }
 
-        if (this._needsFullSnapshot && event.type !== 2) return;
+        // While a rotated segment waits for its fresh FullSnapshot, drop
+        // everything EXCEPT the FullSnapshot (type 2) and Meta (type 4):
+        // rrweb's takeFullSnapshot emits a Meta event immediately before the
+        // snapshot, and the replayer keeps its iframe hidden (display: none)
+        // until it has seen a Meta to size it — a segment whose Meta was
+        // dropped plays back as a blank white frame. Meta events are only ever
+        // emitted as part of a snapshot, so letting them through cannot leak
+        // pre-rotation activity into the new segment.
+        if (this._needsFullSnapshot && event.type !== 2 && event.type !== 4) return;
         if (event.type === 2) this._needsFullSnapshot = false;
 
         // Measure UTF-8 byte length to match the server's byte limit (.length counts UTF-16 units, undercounting multibyte content).
@@ -453,7 +488,7 @@ export class SessionRecorder {
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
       ...(this._replayOptions.blockClass !== undefined ? { blockClass: this._replayOptions.blockClass } : {}),
-      ...(this._replayOptions.blockSelector !== undefined ? { blockSelector: this._replayOptions.blockSelector } : {}),
+      blockSelector: getEffectiveSessionReplayBlockSelector(this._replayOptions.blockSelector),
     }) ?? null;
   }
 

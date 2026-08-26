@@ -39,6 +39,15 @@ function requestHeaders(nativeFetch: ReturnType<typeof stubNativeFetch>, callInd
   return new Headers(init?.headers);
 }
 
+function requiredUnknownArray(value: unknown, key: string): unknown[] {
+  if (typeof value !== "object" || value === null || !(key in value)) {
+    throw new Error(`native OTLP trace object should contain ${key}`);
+  }
+  const field = Reflect.get(value, key);
+  if (!Array.isArray(field)) throw new Error(`native OTLP trace ${key} should be an array`);
+  return field;
+}
+
 const FETCH_SPAN_END_DELAY_MS = 350;
 
 async function waitForFetchSpanEnd(): Promise<void> {
@@ -117,6 +126,28 @@ describe("managed browser HTTP instrumentation", () => {
 
     expect(nativeFetch).toHaveBeenCalledTimes(1);
     expect(requestHeaders(nativeFetch, 0).get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+  });
+
+  it("records one span for one fetch", async () => {
+    const nativeFetch = stubNativeFetch();
+    const registration = registerWithAmbient(() => pageViewAmbientContext());
+
+    await fetch(window.location.origin + "/orders");
+    await waitForFetchSpanEnd();
+    await registration.forceFlush();
+
+    const traceCalls = nativeFetch.mock.calls.filter(([input]) => new URL(String(input)).pathname.endsWith("/v1/traces"));
+    const exportedSpans = traceCalls.flatMap(([, init]) => {
+      const body = init?.body;
+      if (!(body instanceof Uint8Array)) throw new Error("native OTLP trace body should be JSON bytes");
+      const payload: unknown = JSON.parse(new TextDecoder().decode(body));
+      return requiredUnknownArray(payload, "resourceSpans").flatMap((resourceSpan) =>
+        requiredUnknownArray(resourceSpan, "scopeSpans").flatMap((scopeSpan) =>
+          requiredUnknownArray(scopeSpan, "spans")));
+    });
+
+    const orderSpans = exportedSpans.filter((span) => JSON.stringify(span).includes(`${window.location.origin}/orders`));
+    expect(orderSpans).toHaveLength(1);
   });
 
   it("does not create request spans for client reports or attachment uploads", async () => {

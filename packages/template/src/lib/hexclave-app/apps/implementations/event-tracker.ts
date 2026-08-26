@@ -10,6 +10,7 @@ import { emitHexclaveOtelEvent } from "./otel-log-facade";
 import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { generateUuid } from "./telemetry-transport";
 import type { TelemetryResource } from "./telemetry-config";
+import { INTERNAL_SESSION_REPLAY_BLOCK_SELECTOR } from "./analytics-config";
 import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
 import { buildPropagationHeaderValues, fetchWithSpanPropagation, type SpanPropagationContext } from "./span-propagation";
 import { OtlpWebVitalsMetricRecorder, startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
@@ -200,6 +201,7 @@ function isInsideBlockedReplaySubtree(element: Element, options: KeystrokeCaptur
   const blockClass = options.blockClass ?? "rr-block";
   let current: Element | null = element;
   while (current !== null) {
+    if (current.matches(INTERNAL_SESSION_REPLAY_BLOCK_SELECTOR)) return true;
     if (classMatchesReplayBlock(current, blockClass)) return true;
     if (options.blockSelector !== undefined && current.matches(options.blockSelector)) return true;
     current = current.parentElement;
@@ -652,10 +654,8 @@ export class EventTracker {
    * Registers a span as an ambient parent for all subsequently created custom
    * events and spans. Ending the span automatically unregisters it.
    *
-   * Registering several global spans is no longer an error the way incompatible
-   * ancestry paths used to be: the NEAREST ambient context wins as parent, and any
-   * other global span in a different trace is recorded as a link instead. That is
-   * strictly more expressive than the old "one path or reject" rule.
+   * The nearest ambient context wins as parent. Any other global span in a
+   * different trace is recorded as a link.
    */
   setGlobalSpan(span: Span): void {
     if (span.isEnded) {

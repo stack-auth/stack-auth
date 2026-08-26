@@ -1,8 +1,5 @@
 "use client";
 
-// ClickHouse query builders and row parsers for the traces page. Kept separate
-// from the page component so the data layer stays testable and the component
-// file stays focused on UI.
 import { isDateValue, parseClickHouseDate, type RowData } from "../../analytics/shared";
 import { tryParseJson } from "../format";
 import { type ServiceIdentity } from "../service-identity";

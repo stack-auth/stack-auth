@@ -2,7 +2,7 @@ import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { isTracingSuppressed } from "@opentelemetry/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
+import { captureInternalRequestError, isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
 
 const state = vi.hoisted(() => {
@@ -17,13 +17,18 @@ const state = vi.hoisted(() => {
     [trustedWriter]: addTrustedBackendSpanLink,
   };
   const startSpan = vi.fn(() => span);
+  const captureHexclaveServerRequestError = vi.fn(async () => {});
   const runWithTelemetrySuppressed = vi.fn(async (fn: () => Promise<Response>) => await fn());
   const recordBackendRequestMetrics = vi.fn();
-  return { addTrustedBackendSpanLink, end, recordBackendRequestMetrics, runWithTelemetrySuppressed, setData, span, startSpan };
+  return { addTrustedBackendSpanLink, captureHexclaveServerRequestError, end, recordBackendRequestMetrics, runWithTelemetrySuppressed, setData, span, startSpan };
 });
 
 vi.mock("@/hexclave", () => ({
   getHexclaveServerApp: () => ({ startSpan: state.startSpan }),
+}));
+
+vi.mock("@hexclave/js/otel", () => ({
+  captureHexclaveServerRequestError: state.captureHexclaveServerRequestError,
 }));
 
 vi.mock("./node-telemetry-suppression", () => ({
@@ -45,6 +50,35 @@ describe("internal backend observability", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("HEXCLAVE_SELF_TELEMETRY_ENABLED", "true");
+  });
+
+  it("captures an unexpected smart-route failure with request-aware issue correlation", async () => {
+    const error = new Error("query failed");
+    const request = new Request("http://localhost:8102/api/v1/internal/sign-up-rules-stats?secret=never-record-this", { method: "GET" });
+
+    await captureInternalRequestError(error, request, "request-error");
+
+    expect(state.captureHexclaveServerRequestError).toHaveBeenCalledWith(expect.any(Object), error, {
+      handled: false,
+      mechanism: "hexclave.smart-route",
+      request,
+      data: {
+        request_id: "request-error",
+        method: "GET",
+        path: "/api/v1/internal/sign-up-rules-stats",
+      },
+    });
+  });
+
+  it("does not recursively capture failures from telemetry ingestion", async () => {
+    await captureInternalRequestError(
+      new Error("telemetry failed"),
+      new Request("http://localhost:8102/api/v1/analytics/otlp/v1/logs", { method: "POST" }),
+      "request-telemetry",
+    );
+
+    expect(state.captureHexclaveServerRequestError).not.toHaveBeenCalled();
   });
 
   it.each([

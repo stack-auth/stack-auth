@@ -2,6 +2,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { StackClientApp } from "@hexclave/next";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import "../polyfills";
+import { DASHBOARD_SESSION_REPLAY_BLOCK_CLASS } from "./session-replay-config";
 
 if (getPublicEnvVar("NEXT_PUBLIC_STACK_PROJECT_ID") !== "internal") {
   throw new Error("This project is not configured correctly. stack-dashboard must always use the internal project.");
@@ -29,7 +30,7 @@ export const hexclaveClientApp = new StackClientApp({
     replays: {
       captureKeystrokes: !isPreview && !isRemoteDevelopmentEnvironment,
       maskAllInputs: false,
-      blockClass: "hexclave-sensitive",
+      blockClass: DASHBOARD_SESSION_REPLAY_BLOCK_CLASS,
       enabled: !isPreview && !isRemoteDevelopmentEnvironment,
     },
   },

@@ -1580,6 +1580,11 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
   }
 
   const httpInstrumentationConfig = () => ({
+    // OpenTelemetry instrumentations enable themselves during construction by
+    // default. Keep construction inert so registerInstrumentations owns the
+    // single enable/disable lifecycle; otherwise fetch is wrapped once by the
+    // constructor and a second time by our registration path.
+    enabled: false,
     ignoreUrls: networkIgnorePatterns(activeOptions),
     propagateTraceHeaderCorsUrls: propagationPatterns(activeOptions),
     ignoreNetworkEvents: true,
@@ -1605,7 +1610,6 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
       instrumentations,
       tracerProvider: provider,
     });
-    for (const instrumentation of instrumentations) instrumentation.enable();
     httpInstrumentationEnabled = true;
     return true;
   };
@@ -1673,6 +1677,10 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
 
       const shutdownTimeout = normalizedPositiveInteger(activeOptions.shutdownDeadlineMs, OTLP_SHUTDOWN_DEADLINE_MS, "shutdownDeadlineMs");
       removeLifecycleListeners();
+      // Retiring a provider must revoke its last owner's registration view;
+      // otherwise that stale view can re-install the old Fetch/XHR patches.
+      activeOwnerId += 1;
+      setHttpInstrumentationEnabled(false);
       const shutdownResult = await Result.fromPromise(withDeadline(
         Promise.all([provider.shutdown(), loggerProvider.shutdown(), meterProvider.shutdown()]),
         elapsedDeadline(shutdownTimeout),
@@ -1684,13 +1692,13 @@ export function registerManagedBrowserOtel(options: BrowserManagedOtelOptions): 
       propagation.disable();
       logs.disable();
       metrics.disable();
-      if (shutdownResult.status === "error") {
-        throw new Error("Hexclave could not safely rotate browser telemetry authentication after an OTel flush failure", {
-          cause: shutdownResult.error,
-        });
-      }
       browserRegistration = null;
-      console.warn("Hexclave browser OpenTelemetry flush failed during authentication rotation; the provider was replaced so buffered spans cannot cross users.", flushResult.error);
+      console.warn(
+        "Hexclave browser OpenTelemetry flush failed during authentication rotation; the provider was replaced so buffered telemetry cannot cross users.",
+        shutdownResult.status === "error"
+          ? { flushError: flushResult.error, shutdownError: shutdownResult.error }
+          : flushResult.error,
+      );
       return registerManagedBrowserOtel(activeOptions);
     },
     updatePropagationPolicy,

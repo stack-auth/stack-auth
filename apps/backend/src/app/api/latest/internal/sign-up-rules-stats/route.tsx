@@ -62,7 +62,7 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.rule_id, 'Nullable(String)'), ''),
             NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
           ) as rule_id,
-          data.action as action,
+          CAST(data.action, 'String') as action,
           toStartOfHour(event_at) as hour,
           count() AS trigger_count
         FROM analytics_internal.events

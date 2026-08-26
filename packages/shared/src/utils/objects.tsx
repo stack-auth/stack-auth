@@ -18,8 +18,7 @@ import.meta.vitest?.test("isNotNull", ({ expect }) => {
 
 /**
  * True for plain-ish objects (including class instances), excluding null and
- * arrays. This was previously re-implemented in dozens of files across the
- * codebase — import it from here instead of writing a new copy.
+ * arrays.
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

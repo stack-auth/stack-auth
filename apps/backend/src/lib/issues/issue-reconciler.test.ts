@@ -1,5 +1,6 @@
+import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { describe, expect, it } from "vitest";
-import { completeBatchRebuildOptions, groupingProvenanceForReconciliation } from "./issue-reconciler";
+import { buildIssueRebuildQuery, completeBatchRebuildOptions, groupingProvenanceForReconciliation } from "./issue-reconciler";
 
 describe("issue reconciliation boundaries", () => {
   it("uses the discovery window only to select batches, then rebuilds the complete batch", () => {
@@ -21,7 +22,7 @@ describe("issue reconciliation boundaries", () => {
       issue_hash: "owner-hash",
       grouping_config: "hexclave-js:2026-08-01",
       grouping_provenance: "[]",
-      issue_variant: "app",
+      selected_issue_variant: "app",
     })).toEqual([{
       hash: "owner-hash",
       role: "primary",
@@ -29,5 +30,19 @@ describe("issue reconciliation boundaries", () => {
       variant: "app",
       fingerprint: { type: "default", source: "degraded", tokens: [], resolved_tokens: [] },
     }]);
+  });
+
+  it("executes the occurrence rebuild query without aggregate alias collisions", async () => {
+    const result = await getSharedClickhouseAdminClient().query({
+      query: buildIssueRebuildQuery(""),
+      query_params: {
+        projectId: "issue-reconciler-query-regression",
+        branchId: "main",
+        batchIds: ["issue-reconciler-query-regression"],
+      },
+      format: "JSONEachRow",
+    });
+
+    await expect(result.json()).resolves.toEqual([]);
   });
 });

@@ -2,7 +2,7 @@ import { headers as rscHeaders } from "@hexclave/sc/force-react-server";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { RequestLike } from "../lib/hexclave-app/common";
-import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-impl";
+import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-instrumentation";
 import { preCaught } from "../lib/hexclave-app/apps/implementations/telemetry-core";
 import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequestContext, runGuardedCall, runGuardedRoute, UnauthorizedFactory } from "./adapter-core";
 

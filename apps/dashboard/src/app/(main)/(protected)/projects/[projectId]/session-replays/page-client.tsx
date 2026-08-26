@@ -31,6 +31,15 @@ import { SessionReplayLimitBanner } from "../analytics/shared";
 import { replaceLocationSearch } from "../observability/filters";
 import { sessionReplayHref } from "../observability/observability-links";
 import { ReplayActivityMetrics } from "./replay-activity-metrics";
+import { ensureMetaBeforeFirstFullSnapshot } from "./replay-event-compat";
+import { ReplayRecordingBoundary } from "./replay-recording-boundary";
+import {
+  formatReplayTimelineEventTooltip,
+  getReplayTimelineQuery,
+  replayTimelineMarkerClassName,
+  type ReplayTimelineEvent,
+  type ReplayTimelineMarker,
+} from "./replay-timeline";
 import {
   EMPTY_REPLAY_FILTERS,
   replayFiltersActiveCount,
@@ -73,8 +82,8 @@ const EXTRA_TABS_TO_SHOW = 2;
 const REPLAY_SETTINGS_STORAGE_KEY = "stack.session-replay.settings";
 const LEGACY_PLAYER_SPEED_STORAGE_KEY = "stack.session-replay.speed";
 
-type RrwebEventWithTime = import("rrweb/typings/types").eventWithTime;
-type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
+type RrwebEventWithTime = import("@rrweb/types").eventWithTime;
+type RrwebReplayer = InstanceType<typeof import("@rrweb/replay").Replayer>;
 
 type RecordingRow = {
   id: string,
@@ -163,73 +172,6 @@ function formatTimelineMs(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-type TimelineEvent = {
-  eventType: string,
-  eventAtMs: number,
-  data: Record<string, unknown>,
-};
-
-type TimelineMarker = {
-  timeMs: number,
-  eventType: string,
-  label: string,
-};
-
-const TIMELINE_EVENT_LABELS = new Map([
-  ["$copy", "Copy"],
-  ["$cut", "Cut"],
-  ["$paste", "Paste"],
-  ["$context-menu", "Context menu"],
-  ["$print", "Print"],
-  ["$fullscreen-exit", "Fullscreen exit"],
-]);
-
-const TIMELINE_MARKER_CLASS_NAMES = new Map([
-  ["$click", "bg-blue-500/70 hover:bg-blue-400"],
-  ["$page-view", "bg-emerald-500/70 hover:bg-emerald-400"],
-  ["$form-submit", "bg-amber-500/70 hover:bg-amber-400"],
-  ["$window-resize", "bg-sky-500/70 hover:bg-sky-400"],
-  ["$copy", "bg-violet-500/70 hover:bg-violet-400"],
-  ["$cut", "bg-violet-500/70 hover:bg-violet-400"],
-  ["$paste", "bg-violet-500/70 hover:bg-violet-400"],
-  ["$context-menu", "bg-violet-500/70 hover:bg-violet-400"],
-  ["$print", "bg-violet-500/70 hover:bg-violet-400"],
-  ["$fullscreen-exit", "bg-violet-500/70 hover:bg-violet-400"],
-]);
-
-function formatEventTooltip(event: TimelineEvent): string {
-  const d = event.data;
-  switch (event.eventType) {
-    case "$click": {
-      const tag = (d.tag_name as string) || "element";
-      return `Clicked ${tag}`;
-    }
-    case "$page-view": {
-      const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
-      const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
-      return truncated;
-    }
-    case "$form-submit": {
-      const formId = typeof d.form_id === "string" && d.form_id !== "" ? d.form_id : null;
-      const formName = typeof d.form_name === "string" && d.form_name !== "" ? d.form_name : null;
-      return `Form submit${formId != null ? ` #${formId}` : formName != null ? ` ${formName}` : ""}`;
-    }
-    case "$window-resize": {
-      const w = d.viewport_width;
-      const h = d.viewport_height;
-      if (typeof w === "number" && typeof h === "number") return `Resize ${w}×${h}`;
-      return "Window resize";
-    }
-    default: {
-      return TIMELINE_EVENT_LABELS.get(event.eventType) ?? event.eventType;
-    }
-  }
-}
-
-function markerClassName(eventType: string): string {
-  return TIMELINE_MARKER_CLASS_NAMES.get(eventType) ?? "bg-zinc-500/70 hover:bg-zinc-400";
-}
-
 function DisplayDate({ date }: { date: Date }) {
   const fromNow = useFromNow(date);
   return <span>{fromNow}</span>;
@@ -291,7 +233,7 @@ const TimelineMarkersLane = React.memo(function TimelineMarkersLane({
   totalTimeMs,
   onSeek,
 }: {
-  markers: TimelineMarker[],
+  markers: ReplayTimelineMarker[],
   totalTimeMs: number,
   onSeek: (timeOffset: number) => void,
 }) {
@@ -309,7 +251,7 @@ const TimelineMarkersLane = React.memo(function TimelineMarkersLane({
             className={cn(
               "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
               "transition-colors hover:transition-none",
-              markerClassName(marker.eventType),
+              replayTimelineMarkerClassName(marker.eventType),
             )}
             style={{ left: `${left}%`, marginLeft: "-1.5px" }}
             onMouseEnter={() => setHoveredMarkerIndex(i)}
@@ -355,7 +297,7 @@ function Timeline({
   onSeek: (timeOffset: number) => void,
   playerSpeed: number,
   onSpeedChange: (speed: number) => void,
-  markers?: TimelineMarker[],
+  markers?: ReplayTimelineMarker[],
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
@@ -566,7 +508,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     setAppliedFilters((prev) => prev.userId === lockedUserId ? prev : { ...prev, userId: lockedUserId, userLabel: prev.userLabel || "" });
   }, [lockedUserId]);
   const [activityCountsByReplayId, setActivityCountsByReplayId] = useState<Map<string, ReplayActivityCounts>>(new Map());
-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [timelineEvents, setTimelineEvents] = useState<ReplayTimelineEvent[]>([]);
   const [standaloneReplay, setStandaloneReplay] = useState<RecordingRow | null>(null);
   const [standaloneReplayError, setStandaloneReplayError] = useState<string | null>(null);
 
@@ -803,7 +745,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     const rootEl = rootMaybe;
 
     const eventsSnapshot = eventsByTabRef.current.get(tabKey)?.slice() ?? [];
-    if (eventsSnapshot.length === 0) {
+    // rrweb's Replayer constructor throws ("Replayer need at least 2 events")
+    // below two events, which a sparse first chunk can trigger. Stay pending
+    // instead — the machine re-emits ensure_replayer on every CHUNK_LOADED
+    // until this replayer reports ready, so the next chunk retries.
+    if (eventsSnapshot.length < 2) {
       pendingInitByTabRef.current.add(tabKey);
       return;
     }
@@ -829,12 +775,12 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     }
 
     try {
-      const { Replayer } = await import("rrweb");
+      const { Replayer } = await import("@rrweb/replay");
       if (msRef.current.generation !== gen) return;
       if (replayerByTabRef.current.has(tabKey)) return;
 
       const eventsSnapshot2 = eventsByTabRef.current.get(tabKey)?.slice() ?? [];
-      if (eventsSnapshot2.length === 0) return;
+      if (eventsSnapshot2.length < 2) return;
 
       const replayer = new Replayer(eventsSnapshot2, {
         root: rootEl,
@@ -1165,6 +1111,12 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         const prev = eventsByTabRef.current.get(tabKey) ?? [];
         const wasEmpty = prev.length === 0;
         prev.push(...events);
+        // Repair recordings from SDK builds whose rotation gate dropped the
+        // Meta event before the first FullSnapshot (see replay-event-compat).
+        // Safe to run per chunk: it is a no-op once a Meta is in place, and a
+        // repair can only happen before the tab's replayer exists (a replayer
+        // is only constructed once the accumulated events hold a snapshot).
+        ensureMetaBeforeFirstFullSnapshot(prev);
         eventsByTabRef.current.set(tabKey, prev);
 
         const hasFullSnapshot = !msRef.current.hasFullSnapshotByTab.has(tabKey)
@@ -1325,21 +1277,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     setTimelineEvents([]);
     runAsynchronously(async () => {
       const res = await serverApp.queryAnalytics({
-        query: `SELECT event_type,
-                       toUnixTimestamp64Milli(event_at) AS event_at_ms,
-                       data
-                FROM (
-                  SELECT event_type, event_at, toString(data) AS data
-                  FROM default.events
-                  WHERE session_replay_id = {id:String}
-                    AND event_type != '$page-view'
-                  UNION ALL
-                  SELECT CAST('$page-view', 'LowCardinality(String)') AS event_type, started_at AS event_at, data
-                  FROM default.page_views
-                  WHERE session_replay_id = {id:String}
-                )
-                ORDER BY event_at ASC
-                LIMIT 2000`,
+        query: getReplayTimelineQuery(),
         params: { id: selectedRecordingId },
         include_all_branches: false,
         timeout_ms: 15000,
@@ -1551,10 +1489,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
 
   const timelineMarkers = useMemo(() => {
     if (timelineEvents.length === 0 || ms.globalTotalMs <= 0) return [];
-    return timelineEvents.map((e): TimelineMarker => ({
+    return timelineEvents.map((e): ReplayTimelineMarker => ({
       timeMs: e.eventAtMs - ms.globalStartTs,
       eventType: e.eventType,
-      label: formatEventTooltip(e),
+      label: formatReplayTimelineEventTooltip(e),
     })).filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
   }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
 
@@ -2130,7 +2068,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                                 ...(isActive ? {} : { aspectRatio: "16/10" }),
                               }}
                             >
-                              <div
+                              <ReplayRecordingBoundary
                                 ref={(el) => setContainerRefForTab(s.tabKey, el)}
                                 className={cn("absolute inset-0", replaysViewerSurfaceClass)}
                               />

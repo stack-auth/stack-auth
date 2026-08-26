@@ -1,5 +1,7 @@
 import { StackServerApp } from '@hexclave/js';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import backendPackageJson from '../package.json';
+import { getSentryRelease } from './sentry-release';
 
 function createHexclaveServerApp() {
   // Fail fast if the backend self-URL env var is missing — without it the SDK
@@ -27,7 +29,15 @@ function createHexclaveServerApp() {
     },
     telemetry: {
       resource: {
-        service: { name: "hexclave-backend" },
+        // Keep issue releases identical to Sentry releases so uploaded source
+        // maps and both error products address the same deployed artifact.
+        service: {
+          name: "hexclave-backend",
+          version: getSentryRelease({
+            packageName: backendPackageJson.name,
+            packageVersion: backendPackageJson.version,
+          }),
+        },
       },
     },
   });

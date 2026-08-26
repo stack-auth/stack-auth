@@ -63,6 +63,7 @@ import { registerManagedOtelAsync, tryRequireOtelSdkSync } from "./otel-sdk-load
 import { createDefaultErrorIntegrationRegistry, type ErrorIntegrationRegistry, type ErrorIntegrationRuntime } from "./integration-registry";
 import { installServerLifecycle, type ServerLifecycleHandle, type ServerLifecycleInstallOptions, type ServerLifecycleSignal } from "./server-lifecycle";
 import { assertErrorAttachmentDeliveryConfigured, deliverErrorAttachments, getErrorAttachmentInputs } from "./error-attachments";
+import { serverAppInstrumentationSymbol, type ServerAppInstrumentation } from "./server-app-instrumentation";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -2673,52 +2674,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
     });
   }
+
+  /** SDK-internal facade consumed through the cycle-free symbol lookup. */
+  [serverAppInstrumentationSymbol](): ServerAppInstrumentation {
+    return {
+      ensureOpenTelemetryProvider: () => this._ensureOpenTelemetryProvider(),
+      installServerErrorMonitor: () => this._installServerErrorMonitor(),
+      installServerLifecycle: (options) => this._installServerLifecycle(options),
+      uninstallErrorIntegrations: () => this._uninstallErrorIntegrations(),
+      setTelemetrySuppressionPredicate: (predicate) => this._setTelemetrySuppressionPredicate(predicate),
+      runWithTelemetrySuppressed: async (fn) => await runWithOtelTracingSuppressed(fn),
+      captureServerRequestError: (error, info) => this._captureServerRequestError(error, info),
+      setAmbientRequestProvider: (provider) => this._setAmbientRequestProvider(provider),
+      registerOpenTelemetry: (instrumentations) => this._registerOpenTelemetry(instrumentations),
+    };
+  }
 }
 
-export type ServerAppInstrumentation = {
-  ensureOpenTelemetryProvider: () => void,
-  installServerErrorMonitor: () => void,
-  installServerLifecycle: (options?: Omit<ServerLifecycleInstallOptions, "ownerKey" | "capture" | "flush">) => ServerLifecycleHandle | null,
-  uninstallErrorIntegrations: () => void,
-  setTelemetrySuppressionPredicate: (predicate: (() => boolean) | null) => void,
-  runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
-  captureServerRequestError: (error: unknown, info: { mechanism: string, handled: boolean, request?: RequestLike, data?: Record<string, unknown> }) => Promise<void>,
-  /**
-   * Registers the framework's ambient request provider: a function that
-   * returns the current request's RequestLike when called inside a request
-   * scope (null outside one — that is a normal state, not an error). Once
-   * registered, bare `trackEvent` / `withSpan` / logger calls with no explicit
-   * `{ request }` attribute to the ambient request automatically. Single slot,
-   * replace semantics; pass null to unregister.
-   */
-  setAmbientRequestProvider: (provider: (() => Promise<RequestLike | null>) | null) => void,
-  /** Registers the real OTel Node SDK and authenticated Hexclave exporter. */
-  registerOpenTelemetry: (instrumentations: Instrumentation[]) => Promise<ManagedOtelRegistration | null>,
-};
-
-/**
- * SDK-internal accessor for the instrumentation hooks framework integrations
- * need (Next.js `instrumentation.ts` glue). The integrations only see the
- * public StackServerApp interface; this narrows via instanceof — no casts, no
- * interface pollution — and returns null for anything that is not a real
- * server app (e.g. structural mocks), letting callers fail loud with their own
- * message. New instrumentation hooks should extend this seam rather than
- * adding another accessor.
- */
-export function getServerAppInstrumentation(app: unknown): ServerAppInstrumentation | null {
-  if (!(app instanceof _HexclaveServerAppImplIncomplete)) return null;
-  return {
-    ensureOpenTelemetryProvider: () => app._ensureOpenTelemetryProvider(),
-    installServerErrorMonitor: () => app._installServerErrorMonitor(),
-    installServerLifecycle: (options) => app._installServerLifecycle(options),
-    uninstallErrorIntegrations: () => app._uninstallErrorIntegrations(),
-    setTelemetrySuppressionPredicate: (predicate) => app._setTelemetrySuppressionPredicate(predicate),
-    runWithTelemetrySuppressed: async (fn) => await runWithOtelTracingSuppressed(fn),
-    captureServerRequestError: (error, info) => app._captureServerRequestError(error, info),
-    setAmbientRequestProvider: (provider) => app._setAmbientRequestProvider(provider),
-    registerOpenTelemetry: (instrumentations) => app._registerOpenTelemetry(instrumentations),
-  };
-}
+export { getServerAppInstrumentation, type ServerAppInstrumentation } from "./server-app-instrumentation";
 
 const SERVER_TELEMETRY_UUID_RE = TELEMETRY_UUID_RE;
 

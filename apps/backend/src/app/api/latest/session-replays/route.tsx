@@ -10,7 +10,7 @@ import { parseSessionReplayUserKind, sessionReplayUserKindIsAnonymous } from "./
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 
 const DEFAULT_LIMIT = 50;
@@ -80,18 +80,8 @@ async function loadClickQualifiedReplayIds(options: {
     format: "JSONEachRow",
   });
 
-  const rows: unknown = await result.json();
-  if (!Array.isArray(rows)) {
-    throw new HexclaveAssertionError("ClickHouse $click aggregation must return an array of rows");
-  }
-  return rows.map((row) => {
-    // The query selects only session_replay_id with format JSONEachRow, so
-    // every row is an object carrying that key as a string.
-    if (typeof row !== "object" || row === null || !("session_replay_id" in row) || typeof row.session_replay_id !== "string") {
-      throw new HexclaveAssertionError("ClickHouse $click aggregation rows must carry a string session_replay_id");
-    }
-    return row.session_replay_id;
-  });
+  const rows = await result.json() as Array<{ session_replay_id: string }>;
+  return rows.map((row) => row.session_replay_id);
 }
 
 export const GET = createSmartRouteHandler({
@@ -141,10 +131,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, query }) {
-    const [prisma, schema] = await Promise.all([
-      getPrismaClientForTenancy(auth.tenancy),
-      getPrismaSchemaForTenancy(auth.tenancy),
-    ]);
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const schema = await getPrismaSchemaForTenancy(auth.tenancy);
 
     const rawLimit = query.limit ?? String(DEFAULT_LIMIT);
     const parsedLimit = Number.parseInt(rawLimit, 10);
@@ -264,9 +252,7 @@ export const GET = createSmartRouteHandler({
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    // hasMore implies rows.length > limit >= 1, so the page sliced to exactly
-    // `limit` elements always has a last element to anchor the next cursor on.
-    const nextCursor = hasMore ? page[page.length - 1]?.id ?? throwErr("hasMore guarantees the paginated slice is non-empty") : null;
+    const nextCursor = hasMore ? page[page.length - 1]!.id : null;
 
     const sessionIds = page.map((row) => row.id);
     const aggBySessionId = await aggregateSessionReplayChunksByReplayIds(prisma, auth.tenancy.id, sessionIds);

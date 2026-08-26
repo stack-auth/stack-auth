@@ -9,3 +9,14 @@ export function formatReplayDuration(durationMs: number): string {
   if (minutes > 0) return `${minutes}m ${totalSeconds % 60}s`;
   return `${totalSeconds}s`;
 }
+
+const compactCountFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  compactDisplay: "short",
+  maximumFractionDigits: 1,
+});
+
+export function formatReplayCount(count: number): string {
+  if (!Number.isFinite(count) || count < 0) return "—";
+  return compactCountFormatter.format(count).toLocaleLowerCase("en-US");
+}

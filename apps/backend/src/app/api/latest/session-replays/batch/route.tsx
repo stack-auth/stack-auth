@@ -56,9 +56,10 @@ function extractEventTimesMs(events: unknown[], fallbackMs: number) {
   let minTs = Infinity;
   let maxTs = -Infinity;
 
-  for (const event of events) {
-    if (typeof event !== "object" || event === null || !("timestamp" in event)) continue;
-    const ts = event.timestamp;
+  for (const e of events) {
+    if (typeof e !== "object" || e === null) continue;
+    if (!("timestamp" in e)) continue;
+    const ts = (e as any).timestamp;
     if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
     minTs = Math.min(minTs, ts);
     maxTs = Math.max(maxTs, ts);

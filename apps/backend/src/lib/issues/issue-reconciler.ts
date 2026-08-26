@@ -43,7 +43,7 @@ type OccurrenceGroupRow = {
   batch_id: string,
   issue_hash: string,
   grouping_config: string,
-  issue_variant: string,
+  selected_issue_variant: string,
   grouping_provenance: string,
   occurrences: string | number,
   first_event_at_millis: string | number,
@@ -60,13 +60,13 @@ type OccurrenceGroupRow = {
   synthetic: boolean,
 };
 
-export function groupingProvenanceForReconciliation(row: Pick<OccurrenceGroupRow, "grouping_config" | "grouping_provenance" | "issue_hash" | "issue_variant">): DurableGroupingHashProvenance[] {
+export function groupingProvenanceForReconciliation(row: Pick<OccurrenceGroupRow, "grouping_config" | "grouping_provenance" | "issue_hash" | "selected_issue_variant">): DurableGroupingHashProvenance[] {
   if (row.grouping_provenance !== "[]") return parseDurableGroupingProvenance(row.grouping_provenance);
   return [{
     hash: row.issue_hash,
     role: "primary",
     config_id: row.grouping_config,
-    variant: row.issue_variant,
+    variant: row.selected_issue_variant,
     fingerprint: {
       type: "default",
       source: "degraded",
@@ -88,6 +88,48 @@ export function completeBatchRebuildOptions(options: {
 
 function platformFromRuntime(runtime: string): string {
   return runtime === "browser" ? "javascript" : "node";
+}
+
+export function buildIssueRebuildQuery(timeFilter: string): string {
+  return `
+      SELECT
+        batch_id,
+        issue_hash,
+        any(issue_grouping_config) AS grouping_config,
+        any(issue_variant) AS selected_issue_variant,
+        -- \`any\` matches the neighboring column projections. The alias hashes are
+        -- deliberately NOT selected from \`issue_hashes\`: the provenance column
+        -- records every hash of the decision (owner primary + alias secondaries),
+        -- and reading aliases out of the same value that carries their decision
+        -- records keeps the two consistent even when two \`any(...)\` aggregates
+        -- would have picked different rows of the group.
+        any(issue_grouping_provenance) AS grouping_provenance,
+        count() AS occurrences,
+        toUnixTimestamp64Milli(min(event_at)) AS first_event_at_millis,
+        toUnixTimestamp64Milli(max(event_at)) AS last_event_at_millis,
+        toUnixTimestamp64Milli(max(created_at)) AS received_at_millis,
+        argMax(error_type, event_at) AS error_type,
+        argMax(message, event_at) AS message,
+        argMax(error_culprit, event_at) AS culprit,
+        argMax(runtime, event_at) AS runtime,
+        argMax(service_name, event_at) AS service_name,
+        argMax(deployment_environment_name, event_at) AS environment,
+        argMax(nullIf(toString(data.release), ''), event_at) AS release,
+        -- Mechanism facts, read back out of the occurrence's \`data\` because the
+        -- Issue row persists them at CREATION time and a reconciled batch may be
+        -- the one that creates the issue. \`handled\` defaults to true: an error we
+        -- cannot prove crashed the caller must not be reported as a crash.
+        argMax(toString(data.handled) = 'true', event_at) AS handled,
+        argMax(issue_variant = 'message' AND toString(data.synthetic) = 'true', event_at) AS synthetic
+      FROM analytics_internal.events
+      PREWHERE project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND event_type = '$error'
+        ${timeFilter}
+      WHERE issue_hash != ''
+        AND batch_id IN {batchIds:Array(String)}
+      GROUP BY batch_id, issue_hash
+    `;
 }
 
 async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[]> {
@@ -147,45 +189,7 @@ async function rebuildInputs(options: {
     queryParams.to = options.to.getTime() / 1000;
   }
   const result = await client.query({
-    query: `
-      SELECT
-        batch_id,
-        issue_hash,
-        any(issue_grouping_config) AS grouping_config,
-        any(issue_variant) AS issue_variant,
-        -- \`any\` matches the neighboring column projections. The alias hashes are
-        -- deliberately NOT selected from \`issue_hashes\`: the provenance column
-        -- records every hash of the decision (owner primary + alias secondaries),
-        -- and reading aliases out of the same value that carries their decision
-        -- records keeps the two consistent even when two \`any(...)\` aggregates
-        -- would have picked different rows of the group.
-        any(issue_grouping_provenance) AS grouping_provenance,
-        count() AS occurrences,
-        toUnixTimestamp64Milli(min(event_at)) AS first_event_at_millis,
-        toUnixTimestamp64Milli(max(event_at)) AS last_event_at_millis,
-        toUnixTimestamp64Milli(max(created_at)) AS received_at_millis,
-        argMax(error_type, event_at) AS error_type,
-        argMax(message, event_at) AS message,
-        argMax(error_culprit, event_at) AS culprit,
-        argMax(runtime, event_at) AS runtime,
-        argMax(service_name, event_at) AS service_name,
-        argMax(deployment_environment_name, event_at) AS environment,
-        argMax(nullIf(toString(data.release), ''), event_at) AS release,
-        -- Mechanism facts, read back out of the occurrence's \`data\` because the
-        -- Issue row persists them at CREATION time and a reconciled batch may be
-        -- the one that creates the issue. \`handled\` defaults to true: an error we
-        -- cannot prove crashed the caller must not be reported as a crash.
-        argMax(toString(data.handled) = 'true', event_at) AS handled,
-        argMax(issue_variant = 'message' AND toString(data.synthetic) = 'true', event_at) AS synthetic
-      FROM analytics_internal.events
-      PREWHERE project_id = {projectId:String}
-        AND branch_id = {branchId:String}
-        AND event_type = '$error'
-        ${timeFilter}
-      WHERE issue_hash != ''
-        AND batch_id IN {batchIds:Array(String)}
-      GROUP BY batch_id, issue_hash
-    `,
+    query: buildIssueRebuildQuery(timeFilter),
     query_params: queryParams,
     format: "JSONEachRow",
   });

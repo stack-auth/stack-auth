@@ -526,6 +526,15 @@ importers:
       '@react-hook/resize-observer':
         specifier: ^2.0.2
         version: 2.0.2(react@19.2.3)
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
+      '@rrweb/replay':
+        specifier: ^2.1.1
+        version: 2.1.1
+      '@rrweb/types':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@sentry/nextjs':
         specifier: ^10.11.0
         version: 10.11.0(@opentelemetry/context-async-hooks@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(next@16.3.1(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@types/node@20.17.6)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(webpack@5.92.0(esbuild@0.24.2))
@@ -637,9 +646,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       svix:
         specifier: ^1.32.0
         version: 1.32.0
@@ -1897,6 +1903,9 @@ importers:
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
@@ -1921,9 +1930,6 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       yup:
         specifier: ^1.7.1
         version: 1.7.1
@@ -2063,6 +2069,9 @@ importers:
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
@@ -2111,9 +2120,6 @@ importers:
       react-hook-form:
         specifier: ^7.70.0
         version: 7.70.0(react@19.2.3)
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.18(tsx@4.21.0)(yaml@2.9.0))
@@ -2262,6 +2268,9 @@ importers:
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
@@ -2310,9 +2319,6 @@ importers:
       react-hook-form:
         specifier: ^7.70.0
         version: 7.70.0(react@19.2.1)
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14)
@@ -2584,6 +2590,9 @@ importers:
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
@@ -2632,9 +2641,6 @@ importers:
       react-hook-form:
         specifier: ^7.70.0
         version: 7.70.0(react@19.2.3)
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.18(tsx@4.21.0)(yaml@2.9.0))
@@ -2789,6 +2795,9 @@ importers:
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
+      '@rrweb/record':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
@@ -2837,9 +2846,6 @@ importers:
       react-hook-form:
         specifier: ^7.70.0
         version: 7.70.0(react@19.2.1)
-      rrweb:
-        specifier: ^1.1.3
-        version: 1.1.3
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.14)
@@ -8938,6 +8944,18 @@ packages:
     resolution: {integrity: sha512-mxRFDdHIWRxg3UfIIAwCm6NzvxG0jDX/wBN6KsQFTvKFqqg9vTrWUE68qEjHt19A5wwx5X5aUi2zuZT7YR0jrA==}
     cpu: [x64]
     os: [win32]
+
+  '@rrweb/record@2.1.1':
+    resolution: {integrity: sha512-c2u175R+daC37PhbjaQV0migxtIXsLuD0mRgRstj/x/CRmLGctRlDi373/4miIUclleq4eZIQXAglH9opclFRQ==}
+
+  '@rrweb/replay@2.1.1':
+    resolution: {integrity: sha512-jq64eyJvrh/ioBS1MpDrs/Lj+7QY2TW4xGxp4g4LJKdltSkqMjMbUmhTDcpzaEDZt66S0gasGcgqCulsksSXnw==}
+
+  '@rrweb/types@2.1.1':
+    resolution: {integrity: sha512-g0I3nCNL1S7slDXwhunxOuOoswkY8WVZJQrPFiwixOc6xoD514d1JLTuyAzCKIox8g/PaLKtV5g31Uk42inQSQ==}
+
+  '@rrweb/utils@2.1.1':
+    resolution: {integrity: sha512-x2SgJAD3YJ9eVcLZ5l6OqWMtczdA3VfS5XqPeqpZdQgV9oh6Id5GK2cDN4bimnkqryOcIJdz8cTvV0yNvqQ+nA==}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -15069,9 +15087,6 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  mitt@1.2.0:
-    resolution: {integrity: sha512-r6lj77KlwqLhIUku9UWYes7KJtsczvolZkzp8hbaDPPaE24OmWl5s539Mytlj22siEQKosZ26qCBgda2PKwoJw==}
-
   mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
@@ -16868,14 +16883,17 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
+  rrdom@2.1.1:
+    resolution: {integrity: sha512-VBkTF3bGNqcZjqnbo/gKi9GVQPIxiG0dofw7CQdAZQFQ2juJdt2YKIf3oS9QudL8HTpGh9bz5TUN+3amBn1Geg==}
+
   rrweb-cssom@0.7.1:
     resolution: {integrity: sha512-TrEMa7JGdVm0UThDJSx7ddw5nVm3UJS9o9CCIZ72B1vSyEZoziDqBYP3XIoi/12lKrJR8rE3jeFHMok2F/Mnsg==}
 
-  rrweb-snapshot@1.1.14:
-    resolution: {integrity: sha512-eP5pirNjP5+GewQfcOQY4uBiDnpqxNRc65yKPW0eSoU1XamDfc4M8oqpXGMyUyvLyxFDB0q0+DChuxxiU2FXBQ==}
+  rrweb-snapshot@2.1.1:
+    resolution: {integrity: sha512-al4Kx7Am7YlIn/5Yb2EMr7cdmjGiK+cLhdilJEXqkFXgpnys8t/yMJumXy2Ormgirpg3MBnFha0GTgny+iIL2w==}
 
-  rrweb@1.1.3:
-    resolution: {integrity: sha512-F2qp8LteJLyycsv+lCVJqtVpery63L3U+/ogqMA0da8R7Jx57o6gT+HpjrzdeeGMIBZR7kKNaKyJwDupTTu5KA==}
+  rrweb@2.1.1:
+    resolution: {integrity: sha512-ToxhJg3SsrAhw+/DPhI/2iiwZQIrGK5BGkZ0kHn4qUExcvQYRaolkciD1FWX2+r6vf1IxFyhsoRY18h3D+XoCg==}
 
   rsvp@3.2.1:
     resolution: {integrity: sha512-Rf4YVNYpKjZ6ASAmibcwTNciQ5Co5Ztq6iZPEykHpkoflnD/K5ryE/rHehFsTm4NJj8nKDhbi3eKBWGogmNnkg==}
@@ -27284,6 +27302,21 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.57.1':
     optional: true
 
+  '@rrweb/record@2.1.1':
+    dependencies:
+      '@rrweb/types': 2.1.1
+      '@rrweb/utils': 2.1.1
+      rrweb: 2.1.1
+
+  '@rrweb/replay@2.1.1':
+    dependencies:
+      '@rrweb/types': 2.1.1
+      rrweb: 2.1.1
+
+  '@rrweb/types@2.1.1': {}
+
+  '@rrweb/utils@2.1.1': {}
+
   '@rtsao/scc@1.1.0': {}
 
   '@rushstack/eslint-patch@1.10.3': {}
@@ -35606,8 +35639,6 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  mitt@1.2.0: {}
-
   mitt@3.0.1: {}
 
   mkdirp-classic@0.5.3:
@@ -38201,18 +38232,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  rrdom@2.1.1:
+    dependencies:
+      rrweb-snapshot: 2.1.1
+
   rrweb-cssom@0.7.1: {}
 
-  rrweb-snapshot@1.1.14: {}
-
-  rrweb@1.1.3:
+  rrweb-snapshot@2.1.1:
     dependencies:
+      postcss: 8.5.23
+
+  rrweb@2.1.1:
+    dependencies:
+      '@rrweb/types': 2.1.1
+      '@rrweb/utils': 2.1.1
       '@types/css-font-loading-module': 0.0.7
       '@xstate/fsm': 1.6.5
       base64-arraybuffer: 1.0.2
-      fflate: 0.4.8
-      mitt: 1.2.0
-      rrweb-snapshot: 1.1.14
+      mitt: 3.0.1
+      rrdom: 2.1.1
+      rrweb-snapshot: 2.1.1
 
   rsvp@3.2.1: {}
 

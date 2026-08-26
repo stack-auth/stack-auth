@@ -36,14 +36,12 @@ const FIXTURE_MAP_TEXT = fs.readFileSync(path.join(FIXTURES_DIR, "minified-chunk
 const DEBUG_ID_A = "11111111-2222-4333-8444-555555555555";
 const DEBUG_ID_B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 
-// ---------------------------------------------------------------------------
 // A minimal source-map reader.
 //
 // `@jridgewell/trace-mapping` does not resolve from this package and the CLI
 // takes zero new dependencies, so the mapping-invariance test — the single most
 // important test in this file — decodes the VLQ `mappings` itself. It is a
 // direct transcription of the source map spec's decoding rules.
-// ---------------------------------------------------------------------------
 
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

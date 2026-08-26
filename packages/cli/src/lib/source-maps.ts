@@ -61,10 +61,6 @@ function assertDebugId(debugId: string): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Debug id derivation
-// ---------------------------------------------------------------------------
-
 /**
  * `uuidShape(sha256(sha256(minified) ‖ sha256(map)))`.
  *
@@ -210,10 +206,6 @@ export function deriveBundleDebugId(source: string, mapText: string): string {
   return deriveDebugId(Buffer.from(canonicalCleanSource(source), "utf-8"), Buffer.from(mapText, "utf-8"));
 }
 
-// ---------------------------------------------------------------------------
-// Source map discovery
-// ---------------------------------------------------------------------------
-
 /**
  * Returns the JSON text of a map inlined into the bundle as a
  * `sourceMappingURL=data:` URI, or null when there is none.
@@ -338,10 +330,6 @@ function resolveSourceMappingUrlToPath(url: string, bundleDir: string): string |
   }
   return path.resolve(bundleDir, decoded);
 }
-
-// ---------------------------------------------------------------------------
-// Source map preparation
-// ---------------------------------------------------------------------------
 
 export type PrepareSourceMapOptions = {
   sourceMapDir: string,

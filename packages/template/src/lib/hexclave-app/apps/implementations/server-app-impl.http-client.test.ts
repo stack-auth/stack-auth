@@ -126,7 +126,7 @@ function makeApp(baseUrl: string, traceSampleRate = 1): StackServerApp {
     tokenStore: "memory",
     noAutomaticPrefetch: true,
     observability: { enabled: true, traceSampleRate },
-    telemetry: { resource: { service: { name: "test-server" } } },
+    telemetry: { resource: { service: { name: "test-server", version: "test-release" } } },
   });
   return app;
 }
@@ -268,10 +268,49 @@ describe("server OTel integration", () => {
     expect(errorData.get("mechanism_type")).toBe("next.onRequestError");
     expect(errorData.get("handled")).toBe(false);
     expect(errorData.get("path")).toBe("/orders");
+    expect(errorData.get("release")).toBe("test-release");
     const message = errorData.get("message");
     expect(typeof message).toBe("string");
     if (typeof message !== "string") throw new Error("Expected bounded error message");
     expect(message.length).toBeLessThanOrEqual(8_192);
+  });
+
+  it("uses the original request context for captured error user and replay correlation", async () => {
+    const collector = await startCollector();
+    const app = await makeReadyApp(collector.baseUrl);
+    const instrumentation = getServerAppInstrumentation(app);
+    if (instrumentation === null) throw new Error("Expected a real server app instrumentation facade");
+    const resolvedContext = requestContext({
+      userId: "99999999-9999-4999-8999-999999999999",
+      refreshTokenId: "44444444-4444-4444-8444-444444444444",
+      sessionReplaySegmentId: "55555555-5555-4555-8555-555555555555",
+      pageViewSpanId: "6666666666666666",
+      incomingParent: CLIENT_FETCH,
+    });
+    const resolveRequestContext = vi.fn(async () => resolvedContext);
+    Reflect.set(app, "_resolveServerRequestContext", resolveRequestContext);
+    const request = new Request("https://app.example.com/api/orders", {
+      headers: { baggage: "hexclave.session_replay.segment.id=55555555-5555-4555-8555-555555555555" },
+    });
+
+    await instrumentation.captureServerRequestError(new Error("request failed"), {
+      mechanism: "hexclave.smart-route",
+      handled: false,
+      request,
+    });
+    await app.flush();
+
+    expect(resolveRequestContext).toHaveBeenCalledWith(request, null);
+    const error = logRecords(collector.requests).find((record) => record.eventName === "$error");
+    if (error === undefined) throw new Error("Expected the captured error LogRecord");
+    expect(error).toMatchObject({ traceId: CLIENT_FETCH.traceId, spanId: CLIENT_FETCH.spanId });
+    expect(attributeValue(error, "hexclave.user.id")).toBe(resolvedContext.userId);
+    expect(attributeValue(error, "hexclave.refresh_token.id")).toBe(resolvedContext.refreshTokenId);
+    expect(attributeValue(error, "hexclave.session_replay.segment.id")).toBe(resolvedContext.sessionReplaySegmentId);
+    expect(attributeValue(error, "hexclave.page_view.span_id")).toBe(resolvedContext.pageViewSpanId);
+    const errorData = attributeValue(error, "hexclave.data");
+    if (!(errorData instanceof Map)) throw new Error("Expected structured Hexclave error data");
+    expect(errorData.get("release")).toBe("test-release");
   });
 
   it("installs late-supplied instrumentations on the cached provider, deduped by name", async () => {

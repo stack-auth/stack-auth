@@ -146,6 +146,12 @@ Targets inside the effective replay `blockClass` / `blockSelector`, the default
 `rr-mask` class, password inputs, or any input masked by `maskAllInputs` are
 excluded entirely so the count cannot reveal a masked value's length.
 
+The effective replay block selector MUST always include
+`[data-hexclave-session-replay-block]`, in addition to any customer-provided
+`blockSelector`. Hexclave-owned embedded replay players use this attribute to
+keep a nested rrweb mirror out of the surrounding recording; recording nested
+mirror IDs can corrupt unrelated nodes during playback.
+
 `analytics.enabled` controls custom/product events, autocapture, replays, and
 integrity signals. It does not disable code instrumentation.
 
@@ -341,12 +347,23 @@ Buffering, export, and sampling:
 - Session replay remains a separate transport because replay chunks are not an
   OpenTelemetry signal. The released `/analytics/events/batch` route remains a
   receiver-side compatibility adapter for already-deployed SDKs only.
-- Authentication replacement is a hard replay boundary. Before sign-out can
-  await network I/O, rotate the per-tab segment and clear its queued replay
-  events. Suppress subsequent incremental rrweb events until the next
-  authenticated token set has been published; then take a new FullSnapshot
-  before accepting increments. This prevents both cross-user DOM attribution
-  and mutation-only replay streams that the player cannot reconstruct.
+- Authentication replacement is a hard replay boundary. Before sign-out or a
+  direct signed-out/anonymous-to-authenticated transition can await network
+  I/O, rotate the per-tab segment and clear its queued replay events. Merely
+  replacing the access token for the same refresh token is not a boundary.
+  Suppress subsequent incremental rrweb events until the next authenticated
+  token set has been published; then take a new FullSnapshot before accepting
+  increments. The suppression window must still admit Meta events alongside
+  the FullSnapshot: rrweb emits the Meta immediately before every snapshot,
+  and the replayer keeps its iframe hidden until the first Meta sizes it, so a
+  segment whose Meta was suppressed plays back as a blank frame. This prevents
+  both cross-user DOM attribution and mutation-only replay streams that the
+  player cannot reconstruct.
+- A replay segment is not materialized until a batch containing its
+  FullSnapshot succeeds. If that first upload fails, discard mutations that
+  depend on the missing snapshot and capture a replacement FullSnapshot before
+  attempting another upload. Never persist a mutations-only segment after a
+  transient transport failure.
 - `observability.traceSampleRate` defaults to 0.1 and configures the managed
   provider's standard parent-aware root sampler. Existing-provider mode leaves
   sampling entirely to the application's provider. This rate samples traces
@@ -406,8 +423,12 @@ the response arrives; a mismatch aborts delivery with an
 attributed to the wrong user. Advancing the generation (authentication change)
 flushes first; if that fails, providers shut down within the shutdown deadline
 and the whole managed registration is replaced rather than letting spans cross
-users. Client reports are never emitted for `auth_generation_mismatch`,
-`queue_overflow`, or `persistence_failure` outcomes.
+users. Once generation advancement succeeds, a provider shutdown rejection is
+reported but does not abort the authentication change: shutdown is one-way, and
+the old instrumentation and page-global providers are detached before the
+replacement is installed. Client reports are never emitted for
+`auth_generation_mismatch`, `queue_overflow`, or `persistence_failure`
+outcomes.
 
 Page-unload path: on `visibilitychange → hidden` / `pagehide` a single
 microtask flush runs under the 250 ms unload deadline. Requests may use

@@ -1,12 +1,3 @@
-/**
- * Product Analytics options and their serialization helpers, split out of
- * session-replay.ts: the app constructor needs these eagerly (option
- * resolution, toClientJson), while the SessionRecorder itself is now loaded
- * lazily — keeping the options in session-replay.ts would pull the whole
- * recorder into every initial bundle. session-replay.ts re-exports everything
- * here for compatibility.
- */
-
 export type AnalyticsReplayOptions = {
   /**
    * Whether session replays are enabled.
@@ -43,6 +34,17 @@ export type AnalyticsReplayOptions = {
    */
   blockSelector?: string,
 };
+
+// Hexclave-owned replay viewers contain a second rrweb instance. Recording
+// that nested player leaks its mirror metadata into the outer recording and
+// can make outer mutations target unrelated nodes with the same rrweb ID.
+export const INTERNAL_SESSION_REPLAY_BLOCK_SELECTOR = "[data-hexclave-session-replay-block]";
+
+export function getEffectiveSessionReplayBlockSelector(configuredSelector: string | undefined): string {
+  return configuredSelector === undefined
+    ? INTERNAL_SESSION_REPLAY_BLOCK_SELECTOR
+    : `${INTERNAL_SESSION_REPLAY_BLOCK_SELECTOR}, ${configuredSelector}`;
+}
 
 export type AnalyticsOptions = {
   /**

@@ -1,7 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
-import { runWithInternalRequestObservability } from "@/lib/internal-observability";
+import { captureInternalRequestError, runWithInternalRequestObservability } from "@/lib/internal-observability";
 import { requestContextALS } from "@/lib/runtime/request-context";
 import { isTelemetryIngestionPath } from "@/lib/telemetry/ingestion-paths";
 import { isRequestBodyTooLargeError } from "@/server/request-body-limit";
@@ -41,7 +41,7 @@ function isCommonError(error: unknown): boolean {
  * Catches the given error, logs it if needed and returns it as a StatusError. Errors that are not actually errors
  * (such as Next.js redirects) will be re-thrown.
  */
-function catchError(error: unknown, requestId: string): StatusError {
+async function catchError(error: unknown, request: Request | null, requestId: string): Promise<StatusError> {
   // catch some Next.js non-errors and rethrow them
   if (error instanceof Error) {
     const digest = getErrorDigest(error);
@@ -64,6 +64,13 @@ function catchError(error: unknown, requestId: string): StatusError {
   if (StatusError.isStatusError(error)) return error;
 
   captureError(`route-handler`, error);
+  if (request !== null) {
+    // Reporting must finish before the serverless response is returned, but a
+    // telemetry outage must not replace the route's original sanitized 500.
+    await captureInternalRequestError(error, request, requestId).then(undefined, (captureFailure: unknown) => {
+      captureError("route-handler-internal-issue-capture", captureFailure);
+    });
+  }
   return new InternalServerError(error, requestId);
 }
 
@@ -180,7 +187,7 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
         } catch (e) {
           let statusError: StatusError;
           try {
-            statusError = catchError(e, requestId);
+            statusError = await catchError(e, req, requestId);
           } catch (e) {
             if (shouldLogExtendedRequestDetails) console.log(`[    EXC] [${requestId}] ${req.method} ${requestUrl.pathname}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${String(getErrorDigest(e))}`);
             throw e;
@@ -299,7 +306,7 @@ export function createSmartRouteHandler<
       if (reqsErrors.length === 1) {
         throw reqsErrors[0];
       } else {
-        const caughtErrors = reqsErrors.map(e => catchError(e, requestId));
+        const caughtErrors = await Promise.all(reqsErrors.map(async (error) => await catchError(error, nextRequest, requestId)));
         throw createOverloadsError(caughtErrors);
       }
     }

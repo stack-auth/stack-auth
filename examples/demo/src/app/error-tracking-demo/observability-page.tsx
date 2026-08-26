@@ -3,6 +3,7 @@
 import { useStackApp } from "@hexclave/next";
 import { Button, Card, CardContent, CardHeader, Input, Tabs, TabsContent, TabsList, TabsTrigger, Typography } from "@hexclave/ui";
 import { useState, type ReactNode } from "react";
+import { deliverErrorCapture } from "./error-capture-delivery";
 import {
   OBSERVABILITY_DEMO_BUNDLE_PATH,
   OBSERVABILITY_DEMO_CODE_FILE,
@@ -30,6 +31,8 @@ type CaptureRecord = {
   recordedAt: string,
 };
 
+type PendingCaptureRecord = Omit<CaptureRecord, "recordedAt">;
+
 type ServerTelemetryResult = {
   status: number,
   ok: boolean,
@@ -53,6 +56,7 @@ type FrameworkErrorResult = {
 
 const MAX_ACTIVITY_RECORDS = 24;
 const MAX_CAPTURE_RECORDS = 12;
+const DEMO_ERROR_USER = { id: "demo-user-001", username: "observability-tester" };
 const DEMO_LOG_LEVELS: DemoLogLevel[] = ["trace", "debug", "info", "warn", "error"];
 const LAB_SECTIONS = [
   { id: "events", label: "Events" },
@@ -320,10 +324,10 @@ export default function ObservabilityPage() {
     addActivity("span", "Read propagation headers", formatJson(headers));
   };
 
-  const captureRepeatedError = () => {
+  const captureRepeatedError = (): PendingCaptureRecord => {
     const eventId = app.withErrorScope((scope) => {
       scope
-        .setUser({ id: "demo-user-001", username: "observability-tester" })
+        .setUser(DEMO_ERROR_USER)
         .setTags({ demo: "observability", grouping_mode: "same" })
         .setContext("checkout", { cart_id: "demo-cart-001", step: "payment" })
         .setExtra("fixture", "repeatable")
@@ -338,27 +342,38 @@ export default function ObservabilityPage() {
         mechanism: "demo.manual.repeatable",
       });
     });
-    addCapture("Repeatable scoped exception", eventId, "Same fingerprint on every click; issue occurrence count should increase.");
+    return {
+      eventId,
+      label: "Repeatable scoped exception",
+      detail: "Same fingerprint on every click; issue occurrence count should increase.",
+    };
   };
 
-  const captureUniqueError = () => {
+  const captureUniqueError = (): PendingCaptureRecord => {
     const instanceKey = crypto.randomUUID();
-    const eventId = app.captureException(new Error(`Hexclave observability demo: unique error ${instanceKey}`), {
-      handled: true,
-      mechanism: "demo.manual.unique",
-      fingerprint: ["hexclave-observability-demo", "unique-error", instanceKey],
-      tags: {
-        demo: "observability",
-        grouping_mode: "unique",
-      },
-      extra: {
-        instance_key: instanceKey,
-      },
+    const eventId = app.withErrorScope((scope) => {
+      scope.setUser(DEMO_ERROR_USER);
+      return app.captureException(new Error(`Hexclave observability demo: unique error ${instanceKey}`), {
+        handled: true,
+        mechanism: "demo.manual.unique",
+        fingerprint: ["hexclave-observability-demo", "unique-error", instanceKey],
+        tags: {
+          demo: "observability",
+          grouping_mode: "unique",
+        },
+        extra: {
+          instance_key: instanceKey,
+        },
+      });
     });
-    addCapture("Unique fingerprint exception", eventId, `instance_key=${instanceKey}\nA fresh issue group is expected for every click.`);
+    return {
+      eventId,
+      label: "Unique fingerprint exception",
+      detail: `instance_key=${instanceKey}\nA fresh issue group is expected for every click.`,
+    };
   };
 
-  const captureMessage = () => {
+  const captureMessage = (): PendingCaptureRecord => {
     const eventId = app.captureMessage("Hexclave observability demo: degraded payment provider", {
       level: "warning",
       mechanism: "demo.manual.message",
@@ -367,10 +382,14 @@ export default function ObservabilityPage() {
         signal: "message",
       },
     });
-    addCapture("First-class message event", eventId, "captureMessage creates a grouped issue without requiring an Error object.");
+    return {
+      eventId,
+      label: "First-class message event",
+      detail: "captureMessage creates a grouped issue without requiring an Error object.",
+    };
   };
 
-  const captureNormalizedEvent = () => {
+  const captureNormalizedEvent = (): PendingCaptureRecord => {
     const stack = new Error("normalized fixture").stack;
     const eventId = app.captureEvent({
       name: "DemoNormalizedError",
@@ -403,10 +422,14 @@ export default function ObservabilityPage() {
         signal: "normalized-event",
       },
     });
-    addCapture("Normalized exception event", eventId, "Includes an explicit exception chain and stack frame for issue detail rendering.");
+    return {
+      eventId,
+      label: "Normalized exception event",
+      detail: "Includes an explicit exception chain and stack frame for issue detail rendering.",
+    };
   };
 
-  const captureProcessedError = () => {
+  const captureProcessedError = (): PendingCaptureRecord => {
     const eventId = app.withErrorScope((scope) => {
       scope
         .setTag("processor_fixture", "true")
@@ -423,17 +446,25 @@ export default function ObservabilityPage() {
         mechanism: "demo.manual.processor",
       });
     });
-    addCapture("Scope-processed exception", eventId, "A scope event processor rewrites the message before beforeSend and delivery.");
+    return {
+      eventId,
+      label: "Scope-processed exception",
+      detail: "A scope event processor rewrites the message before beforeSend and delivery.",
+    };
   };
 
-  const captureIgnoredMessage = () => {
+  const captureIgnoredMessage = (): PendingCaptureRecord => {
     const eventId = app.captureMessage("Hexclave observability demo: ignored by policy", {
       mechanism: "demo.manual.ignore-policy",
     });
-    addCapture("Policy-ignored message", eventId, "The SDK returns an event id immediately, but observability.errorCapture.ignoreErrors drops this message before delivery.");
+    return {
+      eventId,
+      label: "Policy-ignored message",
+      detail: "The SDK generated this event ID, but observability.errorCapture.ignoreErrors dropped the message before delivery. No issue is expected.",
+    };
   };
 
-  const captureAttachment = () => {
+  const captureAttachment = (): PendingCaptureRecord => {
     const eventId = app.withErrorScope((scope) => {
       scope
         .setTag("demo_attachment", "true")
@@ -453,7 +484,11 @@ export default function ObservabilityPage() {
         mechanism: "demo.manual.attachment",
       });
     });
-    addCapture("Exception with attachment", eventId, "Attachment upload uses the authenticated /analytics/attachments path.");
+    return {
+      eventId,
+      label: "Exception with attachment",
+      detail: "Attachment upload uses the authenticated /analytics/attachments path.",
+    };
   };
 
   const captureAsyncScopedMessage = async () => {
@@ -475,6 +510,7 @@ export default function ObservabilityPage() {
           mechanism: "demo.manual.async-scope",
         });
       });
+      await app.flush();
       addCapture("Async scoped message", eventId, "withErrorScopeAsync preserves scope data across the promise boundary.");
     });
   };
@@ -523,6 +559,7 @@ export default function ObservabilityPage() {
             code_file: prepared.codeFile,
           },
         });
+        await app.flush();
         addCapture(
           "Symbolicated charge error",
           eventId,
@@ -534,9 +571,10 @@ export default function ObservabilityPage() {
     });
   };
 
-  const runErrorCapture = async (capture: () => void): Promise<void> => {
+  const runErrorCapture = async (capture: () => PendingCaptureRecord): Promise<void> => {
     await runAction("error", async () => {
-      capture();
+      const captured = await deliverErrorCapture(capture, async () => await app.flush());
+      addCapture(captured.label, captured.eventId, captured.detail);
     });
   };
 
@@ -748,7 +786,7 @@ export default function ObservabilityPage() {
                 <div className="grid gap-5">
                   <LabCard
                     title="Error capture"
-                    description="Each control hits a different part of the public error contract: scope, grouping, normalized events, messages, and attachments."
+                    description="Each control waits for telemetry delivery before confirming the capture. Issue grouping can take a few seconds after delivery."
                   >
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" disabled={busy !== null} onClick={async () => await runErrorCapture(captureRepeatedError)}>Same issue</Button>
@@ -770,7 +808,17 @@ export default function ObservabilityPage() {
                               <div className="break-all font-mono text-xs text-gray-600 dark:text-gray-400">{capture.eventId}</div>
                               <div className="mt-1 whitespace-pre-wrap text-xs text-gray-500">{capture.detail}</div>
                             </div>
-                            <time className="text-xs text-gray-500">{capture.recordedAt}</time>
+                            <div className="flex items-start gap-3 text-xs">
+                              <a
+                                className="text-blue-600 underline-offset-2 transition-colors duration-150 hover:text-blue-800 hover:transition-none hover:underline dark:text-blue-400 dark:hover:text-blue-200"
+                                href={`${dashboardBaseUrl}${projectPath}/observability/issues`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Open issues
+                              </a>
+                              <time className="text-gray-500">{capture.recordedAt}</time>
+                            </div>
                           </li>
                         ))}
                       </ol>

@@ -2023,6 +2023,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const attemptId = ++this._signInAttemptCounter;
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
 
+    // A direct signed-out/anonymous -> authenticated transition does not pass
+    // through _signOut(), but it changes which project user owns replay
+    // uploads just as decisively. Rotate before the user lookup can await:
+    // otherwise a large initial FullSnapshot can flush under the old identity
+    // while later mutations flush under the new one, leaving the new user's
+    // replay impossible to reconstruct. Re-installing an access token for the
+    // same refresh token is not an identity boundary and must not fragment the
+    // current replay.
+    if (tokenStore.get().refreshToken !== tokens.refreshToken) {
+      await this._clientAnalytics?.clearBuffer();
+    }
+
     // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
     // access token for the same access-only session), push the new token into it in place; constructing a new
     // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.

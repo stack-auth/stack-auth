@@ -203,6 +203,54 @@ describe("managed browser OpenTelemetry", () => {
     expect(receivedContentType).toBe("application/json");
   });
 
+  it("replaces the managed providers when their pre-authentication flush and shutdown both fail", async () => {
+    let accessToken = "old-user-token";
+    const receivedAccessTokens: string[] = [];
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      receivedAccessTokens.push(headers.get("x-hexclave-access-token") ?? "");
+      return response(200, "{}");
+    }));
+    const registration = registerManagedBrowserOtel({
+      analyticsBaseUrl: "https://analytics.example.test",
+      projectId: "project",
+      clientVersion: "test",
+      traceSampleRate: 1,
+      resource: { service: { name: "storefront" } },
+      getRequestHeaders: async () => ({ "x-hexclave-access-token": accessToken }),
+      flushDeadlineMs: 25,
+      shutdownDeadlineMs: 25,
+      networkCapture: { enabled: true, allowOrigins: null, denyOrigins: null, ignoreUrls: [] },
+      getPropagationPolicy: () => ({ allowedOrigins: [], allowLocalhost: false, correlationBaggage: true }),
+      getAmbientOtelContext: () => null,
+    });
+    vi.spyOn(registration.provider, "forceFlush").mockRejectedValueOnce(new Error("fixture flush failure"));
+    const shutdown = registration.provider.shutdown.bind(registration.provider);
+    vi.spyOn(registration.provider, "shutdown").mockImplementationOnce(async () => {
+      await shutdown();
+      throw new Error("fixture shutdown failure");
+    });
+
+    trace.getTracer("browser-fixture").startSpan("before-sign-out").end();
+    logs.getLogger("browser-fixture").emit({ body: "before-sign-out" });
+    const registrationAfterRotation = await registration.flushBeforeAuthenticationChange();
+
+    expect(registrationAfterRotation.provider).not.toBe(registration.provider);
+    expect(registrationAfterRotation.loggerProvider).not.toBe(registration.loggerProvider);
+    expect(warning).toHaveBeenCalledWith(
+      "Hexclave browser OpenTelemetry flush failed during authentication rotation; the provider was replaced so buffered telemetry cannot cross users.",
+      { flushError: expect.any(Error), shutdownError: expect.any(Error) },
+    );
+    expect(registration.enableHttpInstrumentation()).toBe(false);
+    accessToken = "new-user-token";
+    trace.getTracer("browser-fixture").startSpan("after-sign-in").end();
+    logs.getLogger("browser-fixture").emit({ body: "after-sign-in" });
+    await registrationAfterRotation.forceFlush();
+    expect(receivedAccessTokens.at(-2)).toBe("new-user-token");
+    expect(receivedAccessTokens.at(-1)).toBe("new-user-token");
+  });
+
   it("exports an open snapshot of system spans at start, superseded by the end-write", async () => {
     type ExportedSpan = { name: string, spanId: string, endTimeUnixNano: string };
     const exportedSpans: ExportedSpan[] = [];

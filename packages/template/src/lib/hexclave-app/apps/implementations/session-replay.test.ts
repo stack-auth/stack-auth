@@ -27,7 +27,14 @@ describe("session replay lifecycle", () => {
 const rrwebMocks = vi.hoisted(() => {
   type TestRrwebEvent = { type: number, timestamp: number, data: Record<string, unknown> };
   let emit: ((event: TestRrwebEvent) => void) | undefined;
-  const takeFullSnapshot = vi.fn(() => emit?.({ type: 2, timestamp: Date.now(), data: {} }));
+  // Faithful to real rrweb: takeFullSnapshot emits a Meta event (type 4)
+  // immediately before the FullSnapshot (type 2). The replayer keeps its
+  // iframe hidden until the first Meta sizes it, so the recorder must never
+  // drop the Meta half of a snapshot — tests rely on the mock modeling this.
+  const takeFullSnapshot = vi.fn(() => {
+    emit?.({ type: 4, timestamp: Date.now(), data: { href: "https://example.com/", width: 1280, height: 720 } });
+    emit?.({ type: 2, timestamp: Date.now(), data: {} });
+  });
   const record = Object.assign(vi.fn((options: { emit: (event: TestRrwebEvent) => void }) => {
     emit = options.emit;
     return () => {};
@@ -38,7 +45,7 @@ const rrwebMocks = vi.hoisted(() => {
   };
   return { record, takeFullSnapshot, emitEvent };
 });
-vi.mock("rrweb", () => ({ record: rrwebMocks.record }));
+vi.mock("@rrweb/record", () => ({ record: rrwebMocks.record }));
 
 describe("session replay options", () => {
   it("enables replays by default", () => {
@@ -118,20 +125,38 @@ describe("canInlineStylesheetLink", () => {
 });
 
 describe("SessionRecorder stylesheet re-snapshot", () => {
-  function makeRecorder() {
+  function makeRecorder(replayOptions: ConstructorParameters<typeof SessionRecorder>[1] = {}) {
     return new SessionRecorder(
       {
         projectId: "test-project",
         resource: TEST_RESOURCE,
         sendBatch: async () => Result.ok(new Response("ok", { status: 200 })),
       },
-      {},
+      replayOptions,
     );
   }
 
+  it("always blocks Hexclave-owned nested replay players", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const recorder = makeRecorder({ blockClass: "customer-secret", blockSelector: ".customer-private" });
+
+    try {
+      await startRecorder(recorder);
+
+      expect(rrwebMocks.record).toHaveBeenCalledWith(expect.objectContaining({
+        blockClass: "customer-secret",
+        blockSelector: "[data-hexclave-session-replay-block], .customer-private",
+      }));
+    } finally {
+      recorder.stop();
+      vi.useRealTimers();
+    }
+  });
+
   async function startRecorder(recorder: SessionRecorder) {
     recorder.start();
-    // Flush the dynamic import("rrweb") microtasks so record() runs and the
+    // Flush the dynamic import("@rrweb/record") microtasks so record() runs and the
     // stylesheet-load listener is attached.
     await vi.advanceTimersByTimeAsync(0);
     expect(rrwebMocks.record).toHaveBeenCalledTimes(1);
@@ -198,7 +223,11 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
       rrwebMocks.emitEvent({ type: 3, timestamp: Date.now() + 1, data: {} });
 
       expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledOnce();
+      // The Meta event must survive the rotation gate alongside the
+      // FullSnapshot — without it the replayer never unhides its iframe and
+      // the whole segment plays back as a blank white frame.
       expect(Reflect.get(recorder, "_events")).toMatchObject([
+        { type: 4 },
         { type: 2 },
         { type: 3 },
       ]);
@@ -311,7 +340,7 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
 
   async function startRecorder(recorder: SessionRecorder) {
     recorder.start();
-    // Flush the dynamic import("rrweb") microtasks so record() runs and the
+    // Flush the dynamic import("@rrweb/record") microtasks so record() runs and the
     // stylesheet-load listener is attached.
     await vi.advanceTimersByTimeAsync(0);
     expect(rrwebMocks.record).toHaveBeenCalledTimes(1);
@@ -420,6 +449,59 @@ describe("SessionRecorder stylesheet re-snapshot", () => {
 });
 
 describe("SessionRecorder flush", () => {
+  it("regenerates the first full snapshot when its upload fails", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        resource: TEST_RESOURCE,
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return sentBodies.length === 1
+            ? Result.error(new Error("temporary network failure"))
+            : Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+    const captureWarningSpy = vi.spyOn(errors, "captureWarning").mockImplementation(() => {});
+
+    try {
+      recorder.start();
+      await vi.advanceTimersByTimeAsync(0);
+      rrwebMocks.emitEvent({ type: 2, timestamp: Date.now(), data: { initial: true } });
+      rrwebMocks.emitEvent({ type: 3, timestamp: Date.now() + 1, data: { stale: true } });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sentBodies).toHaveLength(1);
+      expect(JSON.parse(sentBodies[0]).events).toMatchObject([{ type: 2 }, { type: 3 }]);
+      expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledOnce();
+      expect(Reflect.get(recorder, "_events")).toMatchObject([{ type: 4 }, { type: 2 }]);
+
+      rrwebMocks.emitEvent({ type: 3, timestamp: Date.now() + 2, data: { fresh: true } });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sentBodies).toHaveLength(2);
+      expect(JSON.parse(sentBodies[1]).events).toMatchObject([{ type: 4 }, { type: 2 }, { type: 3 }]);
+    } finally {
+      recorder.stop();
+      captureWarningSpy.mockRestore();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
   it("silently ignores network errors caused by ad blockers", async () => {
     vi.useFakeTimers();
 

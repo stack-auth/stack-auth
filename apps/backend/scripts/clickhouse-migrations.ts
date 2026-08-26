@@ -90,8 +90,6 @@ export async function runClickhouseMigrations() {
     // back until retention is decided as its own change; the tables new in
     // this migration keep the TTL from their CREATE statements because they
     // start empty.
-    // ensureTableTtl(client, { database: "analytics_internal", table: "events", ttlDays: TELEMETRY_TTL_DAYS }),
-    // ensureTableTtl(client, { database: "analytics_internal", table: "clickmap_events", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "event_at" }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_events", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "spans", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "page_views", ttlDays: TELEMETRY_TTL_DAYS, timestampColumn: "started_at" }),
@@ -545,21 +543,6 @@ export async function writeSpansSubsystemFingerprint(client: ClickHouseClient, f
   await writeSubsystemFingerprint(client, SPANS_SUBSYSTEM_FINGERPRINT_TABLE, fingerprint);
 }
 
-/**
- * ============================ SCHEMA GUARD ================================
- *
- * The issues subsystem fingerprint, and the ONE constraint on it that matters:
- *
- *   IT COVERS THE ROLLUP TABLE AND ITS MATERIALIZED VIEW. NOTHING ELSE.
- *   NEVER WIDEN IT TO THE `logs` COLUMNS.
- *
- * Keep the fingerprint scoped to the derivable rollup boundary. The grouping
- * columns on telemetry hold non-derivable per-occurrence data computed once at
- * ingest, so they stay on the forward-compatible ADD COLUMN path. A mismatch
- * still fails closed; it does not rebuild even the derivable rollup at startup.
- *
- * ==========================================================================
- */
 const ISSUES_SUBSYSTEM_FINGERPRINT_TABLE = "analytics_internal.issues_schema_fingerprint";
 const ISSUES_SUBSYSTEM_MATERIALIZED_VIEWS = ["issue_occurrence_rollup_mv"] as const;
 const ISSUES_SUBSYSTEM_TABLES = ["issue_occurrence_rollup"] as const;
@@ -784,15 +767,9 @@ export type ClickhouseColumn = {
   default?: string,
 };
 
-// ─── Retention ──────────────────────────────────────────────────────
-//
-// Hard, platform-wide retention caps enforced ClickHouse-side via TTL, keyed on
-// `created_at` (ingestion time) so re-upserted telemetry never expires earlier
-// than its last write. Telemetry rows (events, spans, span links) keep 90 days.
-// `span_writes` is the immutable billing ledger and must outlive every billing
-// period it can be audited or disputed against, so it keeps 400 days (13
-// monthly periods plus buffer). These are platform-wide upper bounds; a later
-// per-plan retention setting would only tighten them, never loosen.
+// Retention caps are enforced ClickHouse-side via TTL, keyed on `created_at`
+// (ingestion time) so re-upserted telemetry never expires earlier than its last
+// write.
 export const TELEMETRY_TTL_DAYS = 90;
 export const SPAN_WRITES_TTL_DAYS = 400;
 export const TELEMETRY_INSERT_DEDUPLICATION_WINDOW = 10_000;
@@ -1086,8 +1063,6 @@ FROM analytics_internal.events
 WHERE event_type = '$error';
 `;
 
-// ─── Issue occurrence rollup ────────────────────────────────────────
-//
 // Windowed statistics per (issue, hour): the ClickHouse half of the split
 // counter authority. Postgres owns LIFETIME counters (maintained only by ledger
 // deltas); this table owns everything window-scoped — last 24h/7d/30d counts,

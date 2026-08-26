@@ -31,3 +31,29 @@ export {
 // no new runtime surface to browser bundles.
 export { registerManagedOtel } from "../lib/hexclave-app/apps/implementations/otel-sdk";
 export type { ManagedOtelOptions, ManagedOtelRegistration } from "../lib/hexclave-app/apps/implementations/otel-managed";
+
+import type { RequestLike } from "../lib/hexclave-app/common";
+import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-instrumentation";
+
+/**
+ * Captures a server error with correlation resolved from the original request.
+ * Generic server adapters use this instead of `captureException`: the request
+ * is what lets the SDK resolve the authenticated user and the browser's replay
+ * baggage before emitting the `$error` event.
+ */
+export async function captureHexclaveServerRequestError(
+  app: unknown,
+  error: unknown,
+  info: {
+    mechanism: string,
+    handled: boolean,
+    request: RequestLike,
+    data?: Record<string, unknown>,
+  },
+): Promise<void> {
+  const instrumentation = getServerAppInstrumentation(app);
+  if (instrumentation === null) {
+    throw new Error("captureHexclaveServerRequestError() requires a StackServerApp instance (created with `new StackServerApp(...)`)");
+  }
+  await instrumentation.captureServerRequestError(error, info);
+}

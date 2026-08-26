@@ -1,4 +1,4 @@
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
+import { isObjectLike, isRecord } from "@hexclave/shared/dist/utils/objects";
 import type { ManagedOtelOptions, ManagedOtelRegistration } from "./otel-managed";
 import { runtimeGlobals } from "./runtime-globals";
 
@@ -10,13 +10,18 @@ type OtelSdkLoadAttempt =
   | { module: OtelSdkModule }
   | { module: null, errors: unknown[] };
 
-function otelSdkSpecifiers(): string[] {
+function otelSdkSpecifiers(includePackageQualified = true): string[] {
   const base = ["otel", "sdk"].join("-");
   // `.js` for Node ESM dist; extensionless for Vitest/Vite TS resolution.
   const relative = [`./${base}.js`, `./${base}`];
+  if (!includePackageQualified) return relative;
   const packageQualified = ["next", "react", "js", "template"]
     .map((name) => ["@hexclave/", name, "/otel"].join(""));
   return [...relative, ...packageQualified];
+}
+
+function isTypeScriptSourceUrl(url: string): boolean {
+  return /\.[cm]?tsx?(?:[?#]|$)/.test(url);
 }
 
 function describeLoadError(error: unknown): string {
@@ -49,8 +54,10 @@ function tryRequireOtelSdkSyncAttempt(): OtelSdkLoadAttempt {
     const getBuiltinModule = proc["getBuiltinModule"];
     if (typeof getBuiltinModule !== "function") return { module: null, errors };
     const nodeModule: unknown = getBuiltinModule.call(proc, "module");
-    if (!isRecord(nodeModule)) return { module: null, errors };
-    const createRequire = nodeModule["createRequire"];
+    // Node exposes the `module` builtin as its callable Module constructor,
+    // with createRequire attached as a property. Object-only guards reject it.
+    if (!isObjectLike(nodeModule)) return { module: null, errors };
+    const createRequire: unknown = Reflect.get(nodeModule, "createRequire");
     if (!isCreateRequire(createRequire)) return { module: null, errors };
 
     const urls = [import.meta.url];
@@ -60,7 +67,10 @@ function tryRequireOtelSdkSyncAttempt(): OtelSdkLoadAttempt {
 
     for (const url of urls) {
       const require = createRequire.call(nodeModule, url);
-      for (const id of otelSdkSpecifiers()) {
+      // A source test must not fall through into a stale built workspace
+      // package: that would create a second OTel singleton beside Vitest's
+      // source module. Bundled/dist JavaScript still gets the package anchor.
+      for (const id of otelSdkSpecifiers(!isTypeScriptSourceUrl(url))) {
         try {
           const mod = require(id);
           if (isOtelSdkModule(mod)) return { module: mod };
