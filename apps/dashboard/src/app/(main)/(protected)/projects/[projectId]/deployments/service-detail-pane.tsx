@@ -10,6 +10,7 @@ import {
   BuildLogsContent,
   DomainsContent,
   OverviewContent,
+  RuntimeLogsContent,
   SettingsContent,
   SourceContent,
   VariablesContent,
@@ -41,14 +42,16 @@ type ServiceDetailPaneProps = {
 // No "Deployments" tab listing every past run of this service: the page is already scoped to
 // ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
 // instead — the thing you actually open a failed service to read.
-type PanelTabId = "overview" | "source" | "build-logs" | "variables" | "domains" | "settings";
+type PanelTabId = "overview" | "source" | "build-logs" | "runtime-logs" | "variables" | "domains" | "settings";
 
 // Source sits before Build logs because that is the order the deploy happened
-// in: what was packaged, then what the builder made of it.
+// in: what was packaged, then what the builder made of it — and Runtime logs
+// follows both, being what happened after the deploy rather than during it.
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "source", label: "Source" },
   { id: "build-logs", label: "Build logs" },
+  { id: "runtime-logs", label: "Runtime logs" },
   { id: "variables", label: "Variables" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
@@ -102,6 +105,10 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
       case "source": { return <SourceContent deploymentId={props.deploymentId} project={project} service={service} isHexclave={isHexclave} />; }
       case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} hasBuildLogs={props.hasBuildLogs} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      // Deliberately NOT scoped to props.deploymentId: this is what the service
+      // is printing NOW, which is the same output whichever past deployment the
+      // board was opened from.
+      case "runtime-logs": { return <RuntimeLogsContent service={service} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }
