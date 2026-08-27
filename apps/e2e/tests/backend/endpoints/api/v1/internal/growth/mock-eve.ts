@@ -3,8 +3,11 @@ import http from "node:http";
 // Mock Eve server for the growth engine e2e suite.
 //
 // The backend dispatches growth agent invocations as HTTP POSTs to
-// getEnvVariable("HEXCLAVE_GROWTH_EVE_URL"), which apps/e2e/.env.development pins to
-// http://127.0.0.1:32872. Because that URL (and therefore the port) is FIXED, only one server can
+// getEnvVariable("HEXCLAVE_GROWTH_EVE_URL"), which must be http://127.0.0.1:32872 in the
+// BACKEND's environment for this mock to receive anything. The e2e process cannot set it for the
+// backend: the CI workflows export it at the job level (dotenv does not override existing process
+// env), and local runs must export it too, because apps/backend/.env.development points at the
+// real Eve dev app on :8149 instead. Because that URL (and therefore the port) is FIXED, only one server can
 // play Eve at a time — so:
 //   - withMockEve serializes concurrent entries within this process via a module-level
 //     promise-chain mutex, and
@@ -134,7 +137,7 @@ export async function withMockEve<T>(fn: (mock: MockEve) => Promise<T>): Promise
         if (error.code === "EADDRINUSE") {
           reject(new Error(
             `mock Eve could not bind ${MOCK_EVE_HOST}:${MOCK_EVE_PORT} — the port is already taken. `
-            + `The port is fixed by HEXCLAVE_GROWTH_EVE_URL in apps/e2e/.env.development, so only ONE e2e file `
+            + `The port is fixed (it must match HEXCLAVE_GROWTH_EVE_URL in the backend's environment), so only ONE e2e file `
             + `(growth-workflows.test.ts) may use withMockEve; if another file started using it, or a stray process `
             + `holds the port, free it before running this suite.`,
           ));

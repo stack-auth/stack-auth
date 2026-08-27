@@ -19,10 +19,13 @@ const SERVER_BASE = "/api/v1/internal/growth-server";
 // routes (analysis/tick + analysis/wait) — and those bridge ticks dispatch analysis phases to Eve
 // (played by the in-process mock Eve server) exactly like the deleted v1 cron engine did.
 //
-// IMPORTANT: every test that needs the mock Eve lives in THIS file. The mock's port is fixed by
-// HEXCLAVE_GROWTH_EVE_URL in apps/e2e/.env.development (the backend reads it per-dispatch), and
-// vitest runs test files in separate workers, so a second file binding the same port would flake
-// with EADDRINUSE. Within this file, withMockEve serializes entries via a module-level mutex.
+// IMPORTANT: every test that needs the mock Eve lives in THIS file. The mock's port is fixed at
+// 127.0.0.1:32872 (see mock-eve.ts), and the BACKEND must have HEXCLAVE_GROWTH_EVE_URL pointed at
+// it (it reads the env var per-dispatch) — the CI workflows export it at the job level, and local
+// runs need it exported in the backend's environment too (the backend's .env.development instead
+// points at the real Eve dev app on :8149). Vitest runs test files in separate workers, so a
+// second file binding the same port would flake with EADDRINUSE. Within this file, withMockEve
+// serializes entries via a module-level mutex.
 //
 // Time-dependent orchestration paths — the stuck-phase reaper (15min timeout), the milestone
 // hourly claim, the watchdog's 5-minute resurrection grace, and the stale-brief sweep (3h) — keep

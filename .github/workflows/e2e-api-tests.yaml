@@ -43,6 +43,11 @@ jobs:
       HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
+      # The growth e2e suite's mock Eve listens on this fixed port; the backend's .env.test.local
+      # (a copy of .env.development) points at the Eve dev port instead, and dotenv does not
+      # override process env, so the job must pin the URL here for the mock to ever receive
+      # dispatches (see apps/e2e/tests/backend/endpoints/api/v1/internal/growth/mock-eve.ts).
+      HEXCLAVE_GROWTH_EVE_URL: "http://127.0.0.1:32872"
 
     strategy:
       matrix:
