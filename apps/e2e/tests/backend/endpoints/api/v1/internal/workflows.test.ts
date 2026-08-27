@@ -193,6 +193,7 @@ export default workflow("${workflowId}", {
         id: workflowId,
         latest_version: 1,
         triggers: [{ type: "event", event_type: `custom.${eventName}` }],
+        stats: { total_runs: 0, active_runs: 0, sleeping_runs: 0 },
       });
 
       // Duplicate delivery: two events mapping to the same runKey while the
@@ -207,6 +208,12 @@ export default workflow("${workflowId}", {
 
       const { runs: allRunsForKey } = await listRuns(workflowId, { run_key: "order:o1" });
       expect(allRunsForKey).toHaveLength(1);
+
+      // The summary's total matches the historical runs grid, while the
+      // active/sleeping fields remain zero after the run completes.
+      const afterRunListResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+      const afterRunSummary = afterRunListResponse.body.workflows.find((workflow: { id: string }) => workflow.id === workflowId);
+      expect(afterRunSummary).toMatchObject({ stats: { total_runs: 1, active_runs: 0, sleeping_runs: 0 } });
 
       // The Admin SDK's includeState option is backed by this wire query.
       // It must return full details for every listed run rather than only
