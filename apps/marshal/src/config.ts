@@ -183,6 +183,28 @@ export const RAILPACK_VERSION = "0.35.0";
 export const RAILPACK_CLI_URL = `https://github.com/railwayapp/railpack/releases/download/v${RAILPACK_VERSION}/railpack-v${RAILPACK_VERSION}-x86_64-unknown-linux-musl.tar.gz`;
 export const RAILPACK_CLI_SHA256 = "d039785dd926ba059031c9c463c51f1462f344c844f828ac872c1f6d46fed7f1";
 export const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}@sha256:bc73534934e7929ab3dc41765fb7e25c8c69d9be98c43ef8792fea51f65317bd`;
+// The base image a service is built on when it names a `build_command` but no
+// image and no Dockerfile — the one shape where the author has said how to build
+// and run but not what to start from.
+//
+// A stock upstream image rather than one Hexclave publishes: it is already
+// mirrored, already patched on a schedule somebody else keeps, and needs no
+// release pipeline of ours to stay current. The full (non-slim) Debian variant
+// on purpose — it carries git, curl, python3 and a C toolchain, which is what
+// makes an arbitrary `npm install` with native modules work — and node/npm come
+// with it, with pnpm and yarn a `corepack enable` away in the image itself.
+//
+// Pinned by DIGEST as well as tag, like RAILPACK_FRONTEND_IMAGE: a moved tag
+// must not silently change what every base-image build starts from. The tag is
+// kept alongside it for readability; the digest is what is pulled.
+//
+// The cost of this path is that the build image IS the runtime image (there is
+// no stage to discard), so a service built this way pulls the whole toolchain on
+// every cold start. A Dockerfile is the answer for anything that minds.
+export const BASE_IMAGE = "docker.io/library/node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d";
+// Where the upload is copied to in a generated Dockerfile, and the root that a
+// target's `root_directory` is resolved against for its build command.
+export const BASE_IMAGE_WORKDIR = "/app";
 export const BUILD_TIMEOUT_SECONDS = 15 * 60;
 export const UPLOAD_EXPIRY_SECONDS = 15 * 60;
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -216,6 +238,16 @@ export const MAX_BUILD_ENV_BYTES = 32 * 1024;
 // Where the harness finds those files: one file per var, filename = var name, contents =
 // the exact value.
 export const BUILD_ENV_DIR = "/marshal-build-env";
+// Where Marshal-generated Dockerfiles (and Dockerfile suffixes) are injected on
+// the builder machine, one directory per target. Kept out of the build CONTEXT
+// (/ctx, the extracted upload) on purpose: a file placed there would be part of
+// every `COPY . .` the author writes.
+export const BUILD_DOCKERFILE_DIR = "/marshal-dockerfiles";
+// The cap on a build or start command, stated here for Marshal and in
+// @hexclave/shared's MAX_DEPLOYMENT_COMMAND_LENGTH for everything upstream of
+// it. Both must agree: a command the runtime would refuse has to fail at sync
+// time, before an upload has been consumed.
+export const MAX_COMMAND_LENGTH = 2048;
 // Tenant env now reaches the builder, so its values are scrubbed from build logs alongside
 // Marshal's own credentials. Short values are skipped: "1", "true", "5432" and friends are
 // everywhere in a build log, and redacting them would leave a page of <redacted> with no

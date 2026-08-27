@@ -177,6 +177,40 @@ describe("deploy command helpers", () => {
     await expect(upload(servicesOf("./"))).rejects.not.toThrow(/dockerfilePath/);
   });
 
+  it("pre-flights only the services this deploy ships", async () => {
+    // The UPLOAD is still the whole tree — one deploy is one tarball — but a
+    // `--service-id web` deploy must not fail over a sibling whose directory is
+    // missing from a sparse checkout, since nothing is going to build it.
+    const dir = makeTempDir();
+    fs.mkdirSync(path.join(dir, "web"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "web", "index.html"), "<h1>hi</h1>");
+    const services = evaluateDeploymentConfig({
+      deployFilePath: path.join(dir, "hexclave.deploy.ts"),
+      deploymentGroupIdExport: "test-source",
+      deployExport: () => ({ services: {
+        web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./web" },
+        // Declared, but its directory is not in this checkout at all.
+        worker: { type: "serverless", ports: {}, rootDirectory: "./worker" },
+      } }),
+      mode: "deploy",
+    }).services;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const upload = (deploySet?: string[]) => packageAndUploadSource({
+      auth: TEST_AUTH,
+      authHeaders: () => Promise.resolve({ authorization: "test" }),
+      sourceRoot: dir,
+      services,
+      deploySet,
+    });
+
+    // Deploying everything still reports the missing root.
+    await expect(upload()).rejects.toThrow(/worker declares rootDirectory/);
+    // Deploying only `web` gets past the pre-flight and fails at the first
+    // network call instead.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 503 })));
+    await expect(upload(["web"])).rejects.not.toThrow(/rootDirectory/);
+  });
+
   it("notes an ignored Dockerfile when no dockerfilePath is set", async () => {
     // A Dockerfile in the source is deliberately NOT picked up implicitly — but silently
     // ignoring it would be a trap, so the deploy must say what it is doing instead.

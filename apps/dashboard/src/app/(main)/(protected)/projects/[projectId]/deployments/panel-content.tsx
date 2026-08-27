@@ -535,18 +535,21 @@ export function SourceContent({ deploymentId, project, service, isHexclave }: {
   service: BoardService,
   isHexclave: boolean,
 }) {
-  const skip = isHexclave || service.api?.image != null || deploymentId == null;
+  // An image with a BUILD COMMAND is built from the upload like anything else,
+  // so it has a source listing; only a service that merely runs one has none.
+  const isSourceBuilt = service.api != null && (service.api.image == null || service.api.build_command != null);
+  const skip = isHexclave || !isSourceBuilt || deploymentId == null;
   const { manifest, error, loading } = useSourceManifest(project, skip ? null : deploymentId);
 
   if (isHexclave) {
     return <EmptyPanel>The Hexclave service is deployed for you from no source of yours, so this deploy packaged nothing for it.</EmptyPanel>;
   }
-  // A service that names an image is not built from the upload at all. Said
+  // A service that only runs an image is not built from the upload at all. Said
   // before the manifest is checked, because "nothing was packaged" and "this
   // service has no source" are different facts and only one is about this
   // service.
-  if (service.api?.image != null) {
-    return <EmptyPanel>This service runs an already-built image, so no source is packaged or uploaded for it.</EmptyPanel>;
+  if (service.api != null && !isSourceBuilt) {
+    return <EmptyPanel>This service runs an already-built image with no build command, so no source is packaged or uploaded for it.</EmptyPanel>;
   }
   if (deploymentId == null) {
     return <EmptyPanel>This service has not been deployed yet, so nothing has been packaged for it.</EmptyPanel>;
@@ -649,7 +652,7 @@ export function BuildLogsContent({ deploymentId, hasBuildLogs, outcome, project,
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          <div>Nothing was built for this deploy — every service in it runs an already-built image.</div>
+          <div>Nothing was built for this deploy — every service in it runs an already-built image with no build command.</div>
           {/* The digest still belongs here. It is the only place the exact bytes
               this deploy ran are shown — the Settings panel names the tag the
               author wrote, which is a different fact — and returning early
@@ -1196,22 +1199,37 @@ export function SettingsContent({ service, isHexclave }: {
 
   const servicePorts = portEntriesOf(service.api?.ports ?? {});
   const isPublic = service.api?.public === true;
-  // A service either runs an already-built image or is built from the source, so
-  // the two describe the same slot and only one of them has anything to say. The
-  // source rows on an image service would read "./" and "None (Railpack
-  // auto-detected build)" — both false, and the second actively misleading.
-  const prebuiltImage = service.api?.image ?? null;
-  // `fallback` is optional: the Image row below only exists when it has a value,
-  // so a fallback for it would be unreachable.
+  // An `image` is the whole story only when nothing is built on top of it: with a
+  // build command it is the BASE, the source IS uploaded, and the root directory
+  // is where the build runs. So the source rows are hidden for the first and kept
+  // for the second — on a plain image service they would read "./" and "None
+  // (Railpack auto-detected build)", both false and the second misleading.
+  const image = service.api?.image ?? null;
+  const buildCommand = service.api?.build_command ?? null;
+  const isBuilt = image === null || buildCommand !== null;
+  // `fallback` is optional: the rows that only exist when they have a value have
+  // no unreachable fallback.
   const fields: { label: string, value: string | null | undefined, fallback?: string }[] = [
-    ...(prebuiltImage !== null ? [
-      { label: "Image", value: prebuiltImage },
-    ] : [
+    ...(image !== null ? [{ label: buildCommand !== null ? "Base image" : "Image", value: image }] : []),
+    ...(isBuilt ? [
       { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
-      // A missing dockerfile_path means "Railpack build" only once a definition was actually
-      // synced — before that (there are no ports either) it just means "not synced yet".
-      { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
-    ]),
+      // The row exists when there IS a Dockerfile, and — when there is not — only
+      // for the auto-detected build, where "no Dockerfile" is the fact worth
+      // stating. A base-image build has nothing being detected, so the row would
+      // describe a build this service does not have.
+      ...(service.api?.dockerfile_path != null
+        ? [{ label: "Dockerfile", value: service.api.dockerfile_path }]
+        : image === null && buildCommand === null
+          // A missing dockerfile_path means "Railpack build" only once a definition was
+          // actually synced — before that (there are no ports either) it just means "not
+          // synced yet".
+          ? [{ label: "Dockerfile", value: undefined, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" }]
+          : []),
+    ] : []),
+    ...(buildCommand !== null ? [{ label: "Build command", value: buildCommand }] : []),
+    // Shown for every service that has one, built or not: it is applied by the
+    // runtime, so even a service that only runs an image can carry one.
+    ...(service.api?.start_command != null ? [{ label: "Start command", value: service.api.start_command }] : []),
     // Visibility is the SERVICE's, so it gets a row of its own rather than being
     // repeated on every port.
     { label: "Visibility", value: service.api == null ? undefined : service.api.public ? "Public" : "Private", fallback: "Not synced yet" },
@@ -1240,9 +1258,21 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. {prebuiltImage !== null
+          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. {!isBuilt
             ? <>This service runs an already-built image, so nothing is built for it. A tag is resolved when the image is pulled, so pin it by digest if a deploy must always run the same bytes.</>
-            : <>The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.</>}
+            // The Dockerfile comes FIRST: it describes a complete build, so a
+            // build command alongside it is appended to it rather than deciding
+            // what the service is built on.
+            : service.api?.dockerfile_path != null
+              ? buildCommand !== null
+                ? <>This service is built from its own Dockerfile, with the build command appended to it as a final <span className="font-mono">RUN</span>.</>
+                : <>This service is built from its own Dockerfile.</>
+              : image !== null
+                ? <>This service is built on <span className="font-mono">{image}</span>: your source is copied in and the build command runs in the root directory above.</>
+                : buildCommand !== null
+                  ? <>This service is built on the Hexclave base image (Debian-based, with node, npm, pnpm, yarn and git) rather than being auto-detected, because it declares a <span className="font-mono">buildCommand</span>.</>
+                  : <>The image is auto-detected with Railpack. Set <span className="font-mono">dockerfilePath</span> to build from your own Dockerfile instead, or a <span className="font-mono">buildCommand</span> to say how to build it yourself.</>}
+          {service.api?.start_command != null && <> The start command replaces whatever the image would have started, and is applied when the container starts — changing it never rebuilds anything.</>}
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

@@ -412,15 +412,38 @@ describe("prebuilt images", () => {
     expect(services.get("database")?.devCommand).toBe("docker compose up db");
   });
 
-  it("rejects a service that both names an image and builds from source", () => {
-    // The two say different things — where the code is, versus what to run —
-    // and a service that gave both would leave the deploy with two answers.
+  it("rejects a service that names two things to build from", () => {
+    // Each of them says what the build starts from, so a service that gave both
+    // would leave the deploy with two answers.
+    expect(() => evaluate(() => ({
+      database: { type: "server", ports: {}, image: "postgres:16", dockerfilePath: "Dockerfile" },
+    }))).toThrow(/both `image` and `dockerfilePath`/);
+    // A root directory is only meaningful once something is BUILT from the
+    // upload, which is what a build command makes true.
     expect(() => evaluate(() => ({
       database: { type: "server", ports: {}, image: "postgres:16", rootDirectory: "./database" },
     }))).toThrow(/both `image` and `rootDirectory`/);
     expect(() => evaluate(() => ({
-      database: { type: "server", ports: {}, image: "postgres:16", dockerfilePath: "Dockerfile" },
-    }))).toThrow(/both `image` and `dockerfilePath`/);
+      database: { type: "server", ports: {}, image: "postgres:16", rootDirectory: "./database", buildCommand: "make" },
+    }))).not.toThrow();
+  });
+
+  it("makes an image a BASE once a build command is set", () => {
+    const { services } = evaluate(() => ({
+      web: {
+        type: "serverless", ports: { 3000: { protocol: "http" } },
+        image: "python:3.12-slim", rootDirectory: "./api",
+        buildCommand: "pip install -r requirements.txt",
+        startCommand: "python -m uvicorn main:app --host 0.0.0.0 --port 3000",
+      },
+    }));
+    const definition = services.get("web")?.definition;
+    expect(definition?.image).toBe("docker.io/library/python:3.12-slim");
+    expect(definition?.build_command).toBe("pip install -r requirements.txt");
+    expect(definition?.start_command).toBe("python -m uvicorn main:app --host 0.0.0.0 --port 3000");
+    // The service IS built from the upload now, so it states where in it its
+    // code lives — unlike an image service with nothing built on top.
+    expect(definition?.root_directory).toBe("api");
   });
 
   it("rejects an image that names no version", () => {
@@ -755,5 +778,44 @@ describe("computeDeploymentLevels", () => {
       c: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { X: (service("a") as any).url() } },
     }));
     expect(() => computeDeploymentLevels(services)).toThrow(/circular connection dependency: (a -> b -> c -> a|b -> c -> a -> b|c -> a -> b -> c)/);
+  });
+});
+
+describe("build and start commands", () => {
+  const web = (service: Record<string, unknown>) => () => ({
+    web: { type: "serverless", ports: { 3000: { protocol: "http" } }, ...service },
+  });
+
+  it("carries both commands into the definition", () => {
+    const { services } = evaluate(web({ buildCommand: "pnpm install && pnpm build", startCommand: "pnpm start" }));
+    const definition = services.get("web")?.definition;
+    expect(definition?.build_command).toBe("pnpm install && pnpm build");
+    expect(definition?.start_command).toBe("pnpm start");
+    // Neither of them is a dev command: that one stays on this machine.
+    expect(services.get("web")?.devCommand).toBeUndefined();
+  });
+
+  it("requires a start command when there is no base to inherit one from", () => {
+    // The Hexclave base image starts nothing, so the service would deploy, boot
+    // and immediately exit — caught before anything is packaged.
+    expect(() => evaluate(web({ buildCommand: "npm ci" }))).toThrow(/no `image` or `dockerfilePath`/);
+    // A base that HAS a command of its own needs none.
+    expect(() => evaluate(web({ buildCommand: "npm ci", image: "node:22-bookworm" }))).not.toThrow();
+    expect(() => evaluate(web({ buildCommand: "npm ci", dockerfilePath: "Dockerfile" }))).not.toThrow();
+    // ...and a start command on its own is always fine: it builds nothing.
+    expect(() => evaluate(web({ startCommand: "node server.js" }))).not.toThrow();
+  });
+
+  it("rejects a command that is not a single line", () => {
+    // It becomes a Dockerfile RUN and an argv entry downstream; a newline is a
+    // structural character in both, so it is refused rather than escaped.
+    expect(() => evaluate(web({ buildCommand: "npm ci\nrm -rf /", startCommand: "npm start" }))).toThrow(/buildCommand must be a single/);
+    expect(() => evaluate(web({ startCommand: "npm\tstart" }))).toThrow(/startCommand must be a single/);
+    expect(() => evaluate(web({ startCommand: "   " }))).toThrow(/startCommand must be a single/);
+    expect(() => evaluate(web({ startCommand: "x".repeat(2049) }))).toThrow(/startCommand must be a single/);
+  });
+
+  it("rejects an unknown command field rather than silently dropping it", () => {
+    expect(() => evaluate(web({ runCommand: "node server.js" }))).toThrow(/unknown field "runCommand"/);
   });
 });

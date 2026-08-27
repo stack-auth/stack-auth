@@ -170,7 +170,7 @@ type MockApp = {
   name: string,
   sharedIpv4: string | null,
   dedicatedIps: { id: string, address: string, type: string }[],
-  machines: { id: string, image: string, metadata: Record<string, string>, env: Record<string, string>, mounts: { volume: string, path: string }[] }[],
+  machines: { id: string, image: string, metadata: Record<string, string>, env: Record<string, string>, mounts: { volume: string, path: string }[], init: { exec?: string[] } | null }[],
   volumes: { id: string, name: string, size_gb: number, attached_machine_id: string | null }[],
   certificates: { hostname: string, clientStatus: string }[],
 };
@@ -581,14 +581,14 @@ describe("definition sync", () => {
     expect(stored.root_directory).toBeNull();
     expect(stored.dockerfile_path).toBeNull();
 
-    // A service says where its code is, or what image to run — never both.
+    // `image` and `dockerfile_path` each say what the build starts from.
     const both = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
       body: { source_id: "img-src", services: { db: { type: "server", ports: {}, min_instances: 0, image: "postgres:16", dockerfile_path: "Dockerfile", env: {} } } },
     });
     expect(both.status).toBe(400);
-    expect(JSON.stringify(both.body)).toContain("cannot do both");
+    expect(JSON.stringify(both.body)).toContain("not both");
 
     // An untagged image means ":latest", which moves under a running service.
     const untagged = await niceBackendFetch("/api/v1/deployments/services", {
@@ -598,6 +598,75 @@ describe("definition sync", () => {
     });
     expect(untagged.status).toBe(400);
     expect(JSON.stringify(untagged.body)).toContain("no tag or digest");
+  });
+
+  it("stores build and start commands, and turns an image into a base", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const ok = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        source_id: "cmd-src",
+        services: {
+          // No image and no Dockerfile: built on the Hexclave base image, which
+          // is why the start command is what makes it runnable.
+          web: {
+            type: "serverless", ports: { 3000: { protocol: "http" } }, root_directory: "apps/web",
+            build_command: "pnpm install && pnpm build", start_command: "pnpm start", env: {},
+          },
+          // An image with a build command is a BASE, so it keeps its root
+          // directory — the source is copied onto it and the command runs there.
+          api: {
+            type: "serverless", ports: { 8080: { protocol: "http" } }, image: "python:3.12-slim",
+            root_directory: "api", build_command: "pip install -r requirements.txt",
+            start_command: "python -m uvicorn main:app --host 0.0.0.0 --port 8080", env: {},
+          },
+          // A start command alone builds nothing: it is applied by the runtime.
+          cache: {
+            type: "server", ports: { 6379: { protocol: "tcp" } }, min_instances: 0,
+            image: "redis:7-alpine", start_command: "redis-server --appendonly yes", env: {},
+          },
+        },
+      },
+    });
+    expect(ok.status).toBe(200);
+    const items = (ok.body as any).items;
+    const byId = (id: string) => items.find((item: any) => item.id === id);
+    expect(byId("web").build_command).toBe("pnpm install && pnpm build");
+    expect(byId("web").start_command).toBe("pnpm start");
+    expect(byId("api").image).toBe("docker.io/library/python:3.12-slim");
+    expect(byId("api").root_directory).toBe("api");
+    expect(byId("cache").build_command).toBeNull();
+    expect(byId("cache").start_command).toBe("redis-server --appendonly yes");
+  });
+
+  it("refuses a command that could not survive the file it is written into", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const service = (extra: Record<string, unknown>) => ({
+      source_id: "cmd-bad-src",
+      services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: {}, ...extra } },
+    });
+    // A newline is a second Dockerfile instruction; it is refused rather than escaped.
+    const newline = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin",
+      body: service({ build_command: "npm ci\nrm -rf /", start_command: "npm start" }),
+    });
+    expect(newline.status).toBe(400);
+    expect(JSON.stringify(newline.body)).toContain("build_command");
+    // The Hexclave base image starts nothing on its own.
+    const noStart = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin",
+      body: service({ build_command: "npm ci" }),
+    });
+    expect(noStart.status).toBe(400);
+    expect(JSON.stringify(noStart.body)).toContain("no command of its own");
+    // A root directory on a service that is not built from the upload.
+    const strayRoot = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin",
+      body: service({ image: "postgres:16", root_directory: "db" }),
+    });
+    expect(strayRoot.status).toBe(400);
+    expect(JSON.stringify(strayRoot.body)).toContain("has no `root_directory`");
   });
 
   it("rejects definitions without a port and with a non-container type", async ({ expect }) => {
@@ -925,6 +994,53 @@ describe("deploys against the Marshal runtime", () => {
     const service = (await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" })).body as any;
     expect(service.image).toBe("docker.io/library/postgres:16");
     expect(service.status).toBe("deployed");
+  });
+
+  it("starts a service with its start command, and builds one on a base image", { timeout: 180_000 }, async ({ expect }) => {
+    // The two halves of the feature in one deploy: a start command that costs no
+    // build (the image service still has none), and a build command that turns a
+    // service with no Dockerfile into a base-image build.
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const cacheServiceId = uniqueServiceId("cache");
+    const webServiceId = uniqueServiceId("web");
+    const { syncId: definitionSyncId, sourceId } = await syncServices({
+      [cacheServiceId]: {
+        type: "server", ports: { 6379: { protocol: "tcp" } }, min_instances: 0, max_instances: 1,
+        image: "redis:7-alpine", start_command: "redis-server --appendonly yes", env: {},
+      },
+      [webServiceId]: {
+        type: "serverless", ports: { 3000: { protocol: "http" } },
+        build_command: "npm ci && npm run build", start_command: "node server.js", env: {},
+      },
+    });
+    // The upload is required because of the BUILD COMMAND: without it the web
+    // service would have nothing to build, even though it names no Dockerfile.
+    const { uploadId } = await createUpload();
+    const deploymentId = await startDeploy({ sourceId, uploadId, definitionSyncId, levels: [[cacheServiceId], [webServiceId]] });
+    const deployment = await pollDeploymentToStatus(deploymentId, "deployed");
+    expect(deployment.has_build_logs).toBe(true);
+    expect(serviceOutcome(deployment, cacheServiceId).status).toBe("deployed");
+    expect(serviceOutcome(deployment, webServiceId).status).toBe("deployed");
+    // The image service was NOT built: a start command is applied by the runtime,
+    // so it still runs the reference the author wrote.
+    expect(serviceOutcome(deployment, cacheServiceId).image).toMatch(/^docker\.io\/library\/redis@sha256:[0-9a-f]{64}$/);
+    // ...while the base-image build pushed an image of its own.
+    expect(serviceOutcome(deployment, webServiceId).image).toMatch(/^registry\.fly\.io\/.*@sha256:[0-9a-f]{64}$/);
+
+    // What the machines are actually started with. `exec` (not `cmd`) is what
+    // replaces the image's entrypoint as well as its command — verified against
+    // real Fly, where `cmd` alone is passed TO the entrypoint as arguments.
+    const cacheApp = await findMockApp(cacheServiceId, 1);
+    expect(cacheApp.machines[0].image).toBe("docker.io/library/redis:7-alpine");
+    expect(cacheApp.machines[0].init).toEqual({ exec: ["/bin/sh", "-c", "redis-server --appendonly yes"] });
+    const webApp = await findMockApp(webServiceId, 1);
+    expect(webApp.machines[0].init).toEqual({ exec: ["/bin/sh", "-c", "node server.js"] });
+
+    // Both commands survive the round trip into the service board.
+    const service = (await niceBackendFetch(`/api/v1/deployments/services/${webServiceId}`, { accessType: "admin" })).body as any;
+    expect(service.build_command).toBe("npm ci && npm run build");
+    expect(service.start_command).toBe("node server.js");
   });
 
   it("deploys a mixed source-built and prebuilt deployment in one go", { timeout: 180_000 }, async ({ expect }) => {
