@@ -203,6 +203,7 @@ jobs:
       HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_GROWTH_EVE_URL: "http://127.0.0.1:32872"
       SELECTED_TEST_FILES: ${{ needs.select-tests.outputs.test_files }}
 
     steps:
