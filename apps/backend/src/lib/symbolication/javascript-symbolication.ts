@@ -1027,4 +1027,3 @@ function decodeUtf8(bytes: Uint8Array): string | null {
     return null;
   }
 }
-

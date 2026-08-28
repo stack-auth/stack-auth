@@ -272,4 +272,3 @@ function findLastSourceMappingUrl(source: string): { lineStart: number } | null 
   }
   return last;
 }
-
