@@ -43,6 +43,12 @@ export function declareBreezyPiledriverDatabase(lowLevelDb: LowLevelDatabase, op
       let location = heapCache.getLocation(object);
       if (location === undefined) {
         const serialized = await serialize(await object.get(), childHeapPath, created);
+        // TODO: This payload is unreachable until publication, so its insert does not conceptually
+        // need to require its children; the location could instead combine the child and insert seqs.
+        // Do not do that with the current low-level implementations: each combined seq allocates
+        // promise/map tracking in both instant-availability and LMDB, nearly doubling heap-heavy
+        // benchmark time, while instant-availability's dump-wide write chain prevents parallel
+        // underlying inserts anyway. Revisit together with cheap seq combining and independent dumps.
         const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: serialized.seq });
         const createdHeap: CreatedHeap = { object, key: inserted.keys[0], seq: inserted.seq, buffer: serialized.buffer };
         created.push(createdHeap);
