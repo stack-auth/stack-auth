@@ -5,7 +5,7 @@ import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import type { RowData } from "../../analytics/shared";
 import { getBucketGranularity } from "../bucket-granularity";
-import { queryObservability } from "../filters";
+import { isObservabilityTimeRangeHours, queryObservability, type ObservabilityTimeRangeHours } from "../filters";
 import {
   getServicesSummaryQuery,
   parseServiceSummaryRow,
@@ -13,13 +13,6 @@ import {
   type ServiceSummary,
   type ServiceTimeRangeHours,
 } from "../services/services-data";
-
-export const PERFORMANCE_TIME_RANGES = [
-  { label: "1h", hours: 1 },
-  { label: "24h", hours: 24 },
-  { label: "7d", hours: 168 },
-  { label: "30d", hours: 720 },
-] as const;
 
 export const WEB_VITAL_METRICS = [
   {
@@ -126,7 +119,12 @@ export function webVitalByKey(key: WebVitalMetricKey): WebVitalMetricDefinition 
   return metric;
 }
 
-export type PerformanceTimeRangeHours = (typeof PERFORMANCE_TIME_RANGES)[number]["hours"];
+/**
+ * Performance windows are the observability windows — the page used to keep its
+ * own copy of the same four ranges, which let the time-range pill drift out of
+ * step with the other observability tabs.
+ */
+export type PerformanceTimeRangeHours = ObservabilityTimeRangeHours;
 export type PerformanceMetricType = "gauge" | "sum" | "histogram" | "exponential_histogram" | "summary";
 
 export type PerformanceMetricCatalogEntry = {
@@ -239,10 +237,6 @@ export function isPerformanceMetricType(value: string): value is PerformanceMetr
   return PERFORMANCE_METRIC_TYPES.some((metricType) => metricType === value);
 }
 
-function isPerformanceTimeRangeHours(value: number): value is PerformanceTimeRangeHours {
-  return PERFORMANCE_TIME_RANGES.some((range) => range.hours === value);
-}
-
 function nullableFiniteNumber(value: Json | undefined, field: string): number | null {
   if (value === null) return null;
   return requiredFiniteNumber(value, field);
@@ -294,7 +288,7 @@ export function parsePerformanceMetricResponse(value: Json): PerformanceMetricRe
   const response = requiredRecord(value, "response");
   const window = requiredRecord(response.window, "window");
   const hours = requiredNonNegativeInteger(window.hours, "window.hours");
-  if (!isPerformanceTimeRangeHours(hours)) {
+  if (!isObservabilityTimeRangeHours(hours)) {
     throw new Error(`Native metrics response contains an unsupported time range: ${hours}`);
   }
   const selectedMetricName = response.selected_metric_name;
@@ -395,7 +389,7 @@ function p75IfSql(column: string, predicate: string): string {
 }
 
 function assertPerformanceTimeRange(hours: number): asserts hours is PerformanceTimeRangeHours {
-  if (!isPerformanceTimeRangeHours(hours)) {
+  if (!isObservabilityTimeRangeHours(hours)) {
     throw new Error(`Unsupported performance time range: ${hours}`);
   }
 }

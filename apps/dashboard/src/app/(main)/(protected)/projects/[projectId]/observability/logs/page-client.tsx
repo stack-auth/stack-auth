@@ -1,15 +1,14 @@
 "use client";
 
 import { Link } from "@/components/link";
-import { DesignButton, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
-import { Button, Typography } from "@/components/ui";
+import { DesignButton, DesignSelectorDropdown } from "@/components/design-components";
+import { Button } from "@/components/ui";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { ArrowClockwiseIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ListMagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { AnalyticsEventLimitBanner, RowDetailDialog } from "../../analytics/shared";
+import { RowDetailDialog } from "../../analytics/shared";
 import {
   QueryDataGrid,
   type QueryDataGridColumnConfig,
@@ -24,10 +23,12 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
-import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader, type ObservabilityTimeRangeHours } from "../filters";
+import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader, type ObservabilityTimeRangeHours } from "../filters";
 import { tryParseJson } from "../format";
 import { LogLevelChip } from "../log-level";
 import { issueSearchHref } from "../issues/issue-links";
+import { ObservabilityPageLayout } from "../observability-page-layout";
+import { ObservabilityEmptyState, ObservabilityToolbar, ObservabilityTimeRangeToggle } from "../page-chrome";
 import { TelemetryRowLinks } from "../telemetry-row-links";
 import {
   DEFAULT_LOG_TIME_RANGE_HOURS,
@@ -225,23 +226,20 @@ function LogDetailExtraContent({ row, projectId }: { row: RowData, projectId: st
 
 function LogsEmptyState({ filterActive }: { filterActive: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-16 text-center">
-      <Typography className="font-medium">
-        {filterActive ? "No matching logs" : "No logs yet"}
-      </Typography>
-      <Typography variant="secondary" className="max-w-lg text-sm">
-        {filterActive
-          ? "No logs match the selected filters in this time range. Clear a filter or widen the range."
-          : <>
-            Logs appear automatically once your app uses the SDK — console
-            warnings and errors are captured with no setup. Log explicitly with{" "}
-            <code className="rounded bg-foreground/[0.05] px-1 py-0.5 font-mono text-xs text-foreground">
-              app.logger.info(...)
-            </code>
-            .
-          </>}
-      </Typography>
-    </div>
+    <ObservabilityEmptyState
+      icon={ListMagnifyingGlassIcon}
+      title={filterActive ? "No matching logs" : "No logs yet"}
+      description={filterActive
+        ? "No logs match the selected filters in this time range. Clear a filter or widen the range."
+        : <>
+          Logs appear automatically once your app uses the SDK — console
+          warnings and errors are captured with no setup. Log explicitly with{" "}
+          <code className="rounded bg-foreground/[0.05] px-1 py-0.5 font-mono text-xs text-foreground">
+            app.logger.info(...)
+          </code>
+          .
+        </>}
+    />
   );
 }
 
@@ -332,76 +330,58 @@ export default function PageClient() {
 
   return (
     <AppEnabledGuard appId="observability">
-      <PageLayout fillWidth noPadding containedHeight>
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0">
-            <AnalyticsEventLimitBanner />
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-3 py-3">
-            <div>
-              <Typography type="h2" className="text-xl font-semibold tracking-tight">
-                Logs
-              </Typography>
-              <Typography variant="secondary" className="mt-0.5 text-sm">
-                Logs from your app — console warnings and errors are captured automatically.
-              </Typography>
-            </div>
-            <div className="flex items-center gap-2">
-              <DesignSelectorDropdown
-                value={serviceIdentityToSelectValue(service)}
-                onValueChange={(value) => setService(selectValueToServiceIdentity(value))}
-                options={[
-                  { value: ALL_SERVICES_SELECT_VALUE, label: "All services" },
-                  ...services.map((identity) => ({
-                    value: serviceIdentityToSelectValue(identity),
-                    label: serviceIdentityLabel(identity),
-                  })),
-                ]}
-                size="sm"
-                disabled={servicesLoading}
-              />
-              <DesignSelectorDropdown
-                value={level ?? ALL_LEVELS_SELECT_VALUE}
-                onValueChange={(value) => setLevel(selectValueToLogLevel(value))}
-                options={[
-                  { value: ALL_LEVELS_SELECT_VALUE, label: "All levels" },
-                  ...LOG_LEVELS.map((candidate) => ({
-                    value: candidate,
-                    label: candidate.charAt(0).toUpperCase() + candidate.slice(1),
-                  })),
-                ]}
-                size="sm"
-              />
-              <DesignPillToggle
-                selected={String(hours)}
-                onSelect={(id) => setHours(parseObservabilityTimeRangeId(id))}
-                options={OBSERVABILITY_TIME_RANGE_OPTIONS}
-                size="sm"
-                glassmorphic={false}
-              />
-            </div>
-          </div>
-
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <QueryDataGrid
-              query={logsQuery.query}
-              queryParams={logsQuery.params}
-              mode="one-shot"
-              defaultOrderBy="event_at"
-              defaultOrderDir="desc"
-              columnConfigs={LOG_COLUMN_CONFIGS}
-              onRowClick={setDetailRow}
-              toolbarExtra={renderToolbarExtra}
-              toolbarActions={renderToolbarActions}
-              exportFilename="logs-export"
-              emptyState={<LogsEmptyState filterActive={level != null || service != null} />}
-              fillHeight
-              stickyTop={0}
-              horizontalScrollbarPosition="top"
-            />
-          </div>
-        </div>
+      <ObservabilityPageLayout
+        title="Logs"
+        actions={(
+          <ObservabilityToolbar
+            filters={(
+              <>
+                <DesignSelectorDropdown
+                  value={serviceIdentityToSelectValue(service)}
+                  onValueChange={(value) => setService(selectValueToServiceIdentity(value))}
+                  options={[
+                    { value: ALL_SERVICES_SELECT_VALUE, label: "All services" },
+                    ...services.map((identity) => ({
+                      value: serviceIdentityToSelectValue(identity),
+                      label: serviceIdentityLabel(identity),
+                    })),
+                  ]}
+                  size="sm"
+                  disabled={servicesLoading}
+                />
+                <DesignSelectorDropdown
+                  value={level ?? ALL_LEVELS_SELECT_VALUE}
+                  onValueChange={(value) => setLevel(selectValueToLogLevel(value))}
+                  options={[
+                    { value: ALL_LEVELS_SELECT_VALUE, label: "All levels" },
+                    ...LOG_LEVELS.map((candidate) => ({
+                      value: candidate,
+                      label: candidate.charAt(0).toUpperCase() + candidate.slice(1),
+                    })),
+                  ]}
+                  size="sm"
+                />
+              </>
+            )}
+            range={<ObservabilityTimeRangeToggle hours={hours} onChange={setHours} />}
+          />
+        )}
+      >
+        <QueryDataGrid
+          query={logsQuery.query}
+          queryParams={logsQuery.params}
+          mode="one-shot"
+          defaultOrderBy="event_at"
+          defaultOrderDir="desc"
+          columnConfigs={LOG_COLUMN_CONFIGS}
+          onRowClick={setDetailRow}
+          toolbarExtra={renderToolbarExtra}
+          toolbarActions={renderToolbarActions}
+          exportFilename="logs-export"
+          emptyState={<LogsEmptyState filterActive={level != null || service != null} />}
+          fillHeight={false}
+          horizontalScrollbarPosition="top"
+        />
 
         <RowDetailDialog
           row={detailRow}
@@ -416,7 +396,7 @@ export default function PageClient() {
             <LogDetailExtraContent row={detailRow} projectId={adminApp.projectId} />
           )}
         />
-      </PageLayout>
+      </ObservabilityPageLayout>
     </AppEnabledGuard>
   );
 }

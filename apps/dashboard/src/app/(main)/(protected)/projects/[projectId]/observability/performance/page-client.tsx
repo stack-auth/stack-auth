@@ -17,12 +17,10 @@ import { Link } from "@/components/link";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
-  ArrowClockwiseIcon,
   ArrowUpRightIcon,
   CheckCircleIcon,
   CursorClickIcon,
   MagnifyingGlassIcon,
-  SpinnerGapIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -36,19 +34,25 @@ import {
   YAxis,
 } from "recharts";
 import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
-import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
 import { getBucketGranularity } from "../bucket-granularity";
 import { formatCount, formatDuration } from "../format";
 import { traceDetailHref } from "../issues/issue-links";
+import { observabilityTimeRangeLabel } from "../filters";
+import { ObservabilityPageLayout } from "../observability-page-layout";
+import {
+  ObservabilityErrorState,
+  ObservabilityLoadingState,
+  ObservabilityRefreshButton,
+  ObservabilityTimeRangeToggle,
+  ObservabilityToolbar,
+} from "../page-chrome";
 import {
   fetchPerformanceMetrics,
   fetchPerformancePageModel,
   formatWebVitalValue,
   getPerformanceMetricChartDomain,
   isPerformanceMetricType,
-  PERFORMANCE_TIME_RANGES,
   rankPageInsights,
   selectAvailableTimelineMetric,
   sumPageBehavior,
@@ -950,60 +954,38 @@ function PerformancePageClient() {
     runAsynchronouslyWithAlert(loadMetrics);
   }, [loadMetrics]);
 
-  const rangeLabel = PERFORMANCE_TIME_RANGES.find((range) => range.hours === hours)?.label ?? `${hours}h`;
+  const rangeLabel = observabilityTimeRangeLabel(hours);
   const insights = useMemo(() => rankPageInsights(pages), [pages]);
   const behavior = useMemo(() => sumPageBehavior(pages), [pages]);
   const selectedPage = selectedPath == null ? null : pages.find((page) => page.path === selectedPath) ?? null;
 
   const headerActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <DesignPillToggle
-        selected={String(hours)}
-        onSelect={(id) => {
-          const next = Number(id);
-          const range = PERFORMANCE_TIME_RANGES.find((candidate) => candidate.hours === next);
-          if (range == null) throw new Error(`Unknown performance time range: ${id}`);
-          setHours(range.hours);
-        }}
-        options={PERFORMANCE_TIME_RANGES.map((range) => ({ label: range.label, id: String(range.hours) }))}
-        size="sm"
-        glassmorphic={false}
-      />
-      <DesignButton variant="secondary" size="sm" onClick={load} loading={loading}>
-        <ArrowClockwiseIcon className="mr-1.5 h-3.5 w-3.5" />
-        Refresh
-      </DesignButton>
-    </div>
+    <ObservabilityToolbar
+      range={<ObservabilityTimeRangeToggle hours={hours} onChange={setHours} />}
+      actions={<ObservabilityRefreshButton onRefresh={load} loading={loading} />}
+    />
   );
 
   return (
     <AppEnabledGuard appId="observability">
-      <PageLayout fillWidth>
-        <StickyPageHeader
-          title="Performance"
-          description={`Real-user load, interaction, and on-page behavior for the last ${rangeLabel}.`}
-          actions={headerActions}
-          sticky
-          layoutGroupId="observability-performance-sticky-header"
-        />
-
+      <ObservabilityPageLayout
+        title="Performance"
+        actions={headerActions}
+      >
         {error != null && (
-          <DesignAlert
-            variant="error"
+          <ObservabilityErrorState
             title="Page performance could not be loaded"
             description={error}
+            onRetry={load}
           />
         )}
 
         {loading && overview == null ? (
           <DesignAnalyticsCard gradient="slate">
-            <div className="flex min-h-72 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <SpinnerGapIcon className="h-4 w-4 animate-spin" />
-              Loading real-user performance…
-            </div>
+            <ObservabilityLoadingState label="Loading real-user performance…" />
           </DesignAnalyticsCard>
         ) : overview == null ? null : (
-          <div className="space-y-5">
+          <div className="flex flex-col gap-[var(--page-content-gap)]">
             <section aria-labelledby="core-web-vitals-heading" className="space-y-3">
               <div className="flex flex-wrap items-end justify-between gap-2 px-1">
                 <div>
@@ -1141,7 +1123,7 @@ function PerformancePageClient() {
             )}
           </div>
         )}
-      </PageLayout>
+      </ObservabilityPageLayout>
     </AppEnabledGuard>
   );
 }

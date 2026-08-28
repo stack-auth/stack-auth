@@ -1,9 +1,9 @@
 "use client";
 
-import { DesignAlert, DesignButton, DesignCategoryTabs, DesignDialog, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
+import { DesignAlert, DesignButton, DesignCategoryTabs, DesignDialog, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
 import { TooltipProvider, Typography } from "@/components/ui";
 import { useRouter } from "@/components/router";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsMergeIcon, CheckCircleIcon, MagnifyingGlassIcon, ProhibitIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsMergeIcon, BellRingingIcon, BugBeetleIcon, CheckCircleIcon, MagnifyingGlassIcon, ProhibitIcon } from "@phosphor-icons/react";
 import {
   DataGrid,
   DataGridToolbar,
@@ -13,19 +13,17 @@ import {
   type DataGridState,
   type DataGridToolbarContext,
 } from "@hexclave/dashboard-ui-components";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "@/components/link";
 import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { AnalyticsEventLimitBanner } from "../../analytics/shared";
 import { getErrorMessage } from "../format";
 import { getBucketGranularity } from "../bucket-granularity";
+import { ObservabilityPageLayout } from "../observability-page-layout";
+import { ObservabilityEmptyState, ObservabilityErrorState, ObservabilityToolbar, ObservabilityTimeRangeToggle } from "../page-chrome";
 import {
   ALL_SERVICES_SELECT_VALUE,
-  OBSERVABILITY_TIME_RANGE_OPTIONS,
-  parseObservabilityTimeRangeId,
   readLocationSearch,
   replaceLocationSearch,
 } from "../filters";
@@ -42,7 +40,7 @@ import {
   ISSUE_COLUMNS_HIDDEN_BY_DEFAULT,
   type IssueCellContext,
 } from "./issue-columns";
-import { issueAlertRulesHref, issueDetailHref } from "./issue-links";
+import { issueDetailHref } from "./issue-links";
 import {
   ALL_STATUSES_FILTER_VALUE,
   DEFAULT_ISSUE_FILTERS,
@@ -79,6 +77,11 @@ import { useIssueFacets, useIssueSparklines } from "./use-issue-data";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+const IssueAlertsDialog = lazy(async () => {
+  const issueAlerts = await import("./alerts/page-client");
+  return { default: issueAlerts.IssueAlertsDialog };
+});
+
 const ENVIRONMENT_SELECT_VALUE_PREFIX = "env:";
 
 const HANDLED_FILTER_LABELS = new Map([
@@ -103,19 +106,13 @@ const INITIAL_ISSUE_COLUMN_VISIBILITY: Record<string, boolean> = Object.fromEntr
 
 function IssuesEmptyState({ filtered }: { filtered: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-16 text-center">
-      <Typography className="font-medium">
-        {filtered ? "No matching issues" : "No issues yet"}
-      </Typography>
-      <Typography variant="secondary" className="max-w-lg text-sm">
-        {filtered
-          ? "Nothing matches these filters in the selected range. Clear a filter, widen the range, or switch to another status."
-          : <>
-            Errors are captured automatically once your app uses the SDK — uncaught exceptions,
-            unhandled rejections, and server request errors are grouped here as they arrive.
-          </>}
-      </Typography>
-    </div>
+    <ObservabilityEmptyState
+      icon={BugBeetleIcon}
+      title={filtered ? "No matching issues" : "No issues yet"}
+      description={filtered
+        ? "Nothing matches these filters in the selected range. Clear a filter, widen the range, or switch to another status."
+        : "Errors are captured automatically once your app uses the SDK — uncaught exceptions, unhandled rejections, and server request errors are grouped here as they arrive."}
+    />
   );
 }
 
@@ -133,6 +130,7 @@ export default function PageClient() {
   const [bulkStatusError, setBulkStatusError] = useState<string | null>(null);
   const [bulkStatusBusy, setBulkStatusBusy] = useState<IssueStatus | null>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [alertRulesDialogOpen, setAlertRulesDialogOpen] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -472,45 +470,40 @@ export default function PageClient() {
 
   return (
     <AppEnabledGuard appId="observability">
-      <PageLayout fillWidth noPadding containedHeight>
+      <ObservabilityPageLayout
+        title="Issues"
+        actions={(
+          <ObservabilityToolbar
+            filters={(
+              <IssueSavedViews
+                adminApp={adminApp}
+                filters={filters}
+                onApply={setFilters}
+              />
+            )}
+            range={(
+              <ObservabilityTimeRangeToggle
+                hours={filters.hours}
+                onChange={(hours) => setFilters((current) => ({ ...current, hours }))}
+              />
+            )}
+            actions={(
+              <DesignButton
+                variant="secondary"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => setAlertRulesDialogOpen(true)}
+              >
+                <BellRingingIcon className="h-3.5 w-3.5" />
+                Alert rules
+              </DesignButton>
+            )}
+          />
+        )}
+      >
         <TooltipProvider>
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-col gap-[var(--page-content-gap)]">
             <div className="shrink-0">
-              <AnalyticsEventLimitBanner />
-            </div>
-
-            <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-3 py-3">
-              <div>
-                <Typography type="h2" className="text-xl font-semibold tracking-tight">
-                  Issues
-                </Typography>
-                <Typography variant="secondary" className="mt-0.5 text-sm">
-                  Errors from your app, grouped into issues you can resolve, ignore, merge, and watch for regressions.
-                </Typography>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <IssueSavedViews
-                  adminApp={adminApp}
-                  filters={filters}
-                  onApply={setFilters}
-                />
-                <DesignButton variant="secondary" size="sm" asChild>
-                  <Link href={issueAlertRulesHref(projectId)}>Alert rules</Link>
-                </DesignButton>
-                <DesignPillToggle
-                  selected={String(filters.hours)}
-                  onSelect={(id) => setFilters((current) => ({
-                    ...current,
-                    hours: parseObservabilityTimeRangeId(id),
-                  }))}
-                  options={OBSERVABILITY_TIME_RANGE_OPTIONS}
-                  size="sm"
-                  glassmorphic={false}
-                />
-              </div>
-            </div>
-
-            <div className="shrink-0 px-3">
               <DesignCategoryTabs
                 categories={statusTabs}
                 selectedCategory={filters.status}
@@ -521,7 +514,7 @@ export default function PageClient() {
             </div>
 
             {statusError != null && (
-              <div className="shrink-0 px-3 pt-3">
+              <div className="shrink-0">
                 <DesignAlert
                   variant="error"
                   title="Couldn't update that issue"
@@ -531,7 +524,7 @@ export default function PageClient() {
             )}
 
             {bulkStatusError != null && (
-              <div className="shrink-0 px-3 pt-3">
+              <div className="shrink-0">
                 <DesignAlert
                   variant="error"
                   title="Couldn't update all selected issues"
@@ -541,17 +534,17 @@ export default function PageClient() {
             )}
 
             {gridData.error != null && (
-              <div className="shrink-0 px-3 pt-3">
-                <DesignAlert variant="error" title="Couldn't load issues" description={gridData.error.message}>
-                  <DesignButton variant="secondary" size="sm" className="mt-3" onClick={reload}>
-                    Retry
-                  </DesignButton>
-                </DesignAlert>
+              <div className="shrink-0">
+                <ObservabilityErrorState
+                  title="Couldn't load issues"
+                  description={gridData.error.message}
+                  onRetry={reload}
+                />
               </div>
             )}
 
             {facetsState.error != null && (
-              <div className="shrink-0 px-3 pt-3">
+              <div className="shrink-0">
                 <DesignAlert
                   variant="warning"
                   title="Filter options couldn't be loaded"
@@ -561,7 +554,7 @@ export default function PageClient() {
             )}
 
             {sparklines.error != null && (
-              <div className="shrink-0 px-3 pt-3">
+              <div className="shrink-0">
                 <DesignAlert variant="warning" title="Occurrence graphs couldn't be loaded" description={sparklines.error.message}>
                   <DesignButton variant="secondary" size="sm" className="mt-3" onClick={sparklines.retry}>
                     Retry graphs
@@ -571,7 +564,7 @@ export default function PageClient() {
             )}
 
             {approximate && (
-              <div className="shrink-0 px-3 pt-3">
+              <div className="shrink-0">
                 <DesignAlert
                   variant="info"
                   title="Ranking is approximate"
@@ -580,11 +573,11 @@ export default function PageClient() {
               </div>
             )}
 
-            <div className="shrink-0 px-3 pt-3">
+            <div className="shrink-0">
               <IssueEventSearch adminApp={adminApp} projectId={projectId} filters={filters} />
             </div>
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-3">
+            <div className="flex min-w-0 flex-col">
               <DataGrid<IssueListItem>
                 columns={columns}
                 rows={gridData.rows}
@@ -599,8 +592,7 @@ export default function PageClient() {
                 paginationMode="infinite"
                 selectionMode="multiple"
                 rowHeight={56}
-                fillHeight
-                stickyTop={0}
+                fillHeight={false}
                 horizontalScrollbarPosition="top"
                 toolbar={renderToolbar}
                 footer={false}
@@ -646,8 +638,27 @@ export default function PageClient() {
               <DesignAlert variant="error" title="Couldn't merge issues" description={mergeError} />
             )}
           </DesignDialog>
+          {alertRulesDialogOpen && (
+            <Suspense
+              fallback={(
+                <DesignDialog
+                  open
+                  onOpenChange={setAlertRulesDialogOpen}
+                  size="7xl"
+                  icon={BellRingingIcon}
+                  title="Alert rules"
+                  description="Loading alert rules…"
+                />
+              )}
+            >
+              <IssueAlertsDialog
+                open={alertRulesDialogOpen}
+                onOpenChange={setAlertRulesDialogOpen}
+              />
+            </Suspense>
+          )}
         </TooltipProvider>
-      </PageLayout>
+      </ObservabilityPageLayout>
     </AppEnabledGuard>
   );
 }

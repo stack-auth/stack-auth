@@ -16,6 +16,7 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { anyVersionUuidPattern as UUID_PATTERN } from "@hexclave/shared/dist/utils/uuids";
 import { DEBUG_ID_RE } from "../artifacts/artifact-manifest";
+import type { FinalizedManifest } from "../artifacts/artifact-upload-service";
 
 const RELEASE_VERSION_MAX_BYTES = 250;
 const RELEASE_REF_MAX_BYTES = 250;
@@ -60,6 +61,10 @@ export type ReleaseArtifactLookupRow = Prisma.ReleaseArtifactDebugIdGetPayload<{
   include: { releaseArtifact: { include: { release: true } } },
 }>;
 
+export type ReleaseArtifactCatalogRow = Prisma.ReleaseArtifactGetPayload<{
+  include: { debugIds: true },
+}>;
+
 export type ReleaseDatabase = {
   release: {
     findMany(args: Prisma.ReleaseFindManyArgs): Promise<Release[]>,
@@ -77,12 +82,14 @@ export type ReleaseDatabase = {
     upsert(args: Prisma.ReleaseCommitUpsertArgs): Promise<ReleaseCommit>,
   },
   releaseArtifact: {
+    findMany(args: Omit<Prisma.ReleaseArtifactFindManyArgs, "include" | "select">): Promise<ReleaseArtifactCatalogRow[]>,
     findUnique(args: Prisma.ReleaseArtifactFindUniqueArgs): Promise<ReleaseArtifact | null>,
     upsert(args: Prisma.ReleaseArtifactUpsertArgs): Promise<ReleaseArtifact>,
   },
-    releaseArtifactDebugId: {
-      upsert(args: Prisma.ReleaseArtifactDebugIdUpsertArgs): Promise<ReleaseArtifactDebugId>,
-      findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "select" | "include">): Promise<ReleaseArtifactLookupRow[]>,
+  releaseArtifactDebugId: {
+    findUnique(args: Prisma.ReleaseArtifactDebugIdFindUniqueArgs): Promise<ReleaseArtifactDebugId | null>,
+    upsert(args: Prisma.ReleaseArtifactDebugIdUpsertArgs): Promise<ReleaseArtifactDebugId>,
+    findMany(args: Omit<Prisma.ReleaseArtifactDebugIdFindManyArgs, "select" | "include">): Promise<ReleaseArtifactLookupRow[]>,
   },
 };
 
@@ -153,13 +160,19 @@ export type ReleaseArtifactLookup = {
 
 export type ReleaseList = {
   items: Release[],
-  truncated: boolean,
+  nextCursor: string | null,
+};
+
+export type ReleaseArtifactPage = {
+  items: ReleaseArtifactCatalogRow[],
+  nextCursor: string | null,
 };
 
 export type ReleaseDetail = {
   release: Release,
   commits: ReleaseCommit[],
   deployments: ReleaseDeployment[],
+  artifacts: ReleaseArtifactPage,
 };
 
 export class ReleaseInputError extends Error {
@@ -273,7 +286,7 @@ export class ReleaseService {
     if (release === null) return null;
     const fields = releaseScopeFields(scope);
     const db = await this.resolveDatabase(scope);
-    const [commits, deployments] = await Promise.all([
+    const [commits, deployments, artifacts] = await Promise.all([
       db.releaseCommit.findMany({
         where: { tenancyId: fields.tenancyId, releaseId: release.id },
         orderBy: { position: "asc" },
@@ -284,15 +297,16 @@ export class ReleaseService {
         orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
         take: RELEASE_GRAPH_LIST_LIMIT,
       }),
+      this.listReleaseArtifacts(scope, { releaseId: release.id, limit: DEFAULT_RELEASE_LIST_LIMIT }),
     ]);
     for (const commit of commits) assertGraphRowScope(scope, release, commit);
     for (const deployment of deployments) assertGraphRowScope(scope, release, deployment);
-    return { release, commits, deployments };
+    return { release, commits, deployments, artifacts };
   }
 
   public async listReleases(
     scope: ReleaseScope,
-    input: { limit?: number },
+    input: { limit?: number, cursor?: string | null },
   ): Promise<ReleaseList> {
     const fields = releaseScopeFields(scope);
     const limit = input.limit ?? DEFAULT_RELEASE_LIST_LIMIT;
@@ -301,17 +315,57 @@ export class ReleaseService {
     }
 
     const db = await this.resolveDatabase(scope);
+    const cursor = input.cursor == null ? null : parseCatalogCursor(input.cursor, "release cursor");
+    const where: Prisma.ReleaseWhereInput = { ...fields };
+    if (cursor !== null) {
+      where.OR = [
+        { dateAdded: { lt: cursor.date } },
+        { dateAdded: cursor.date, id: { lt: cursor.id } },
+      ];
+    }
     const rows = await db.release.findMany({
-      where: fields,
+      where,
       orderBy: [{ dateAdded: "desc" }, { id: "desc" }],
       take: limit + 1,
     });
     for (const release of rows) assertReleaseScope(scope, release);
     const items = rows.slice(0, limit);
-    return {
-      items,
-      truncated: rows.length > limit,
+    const last = items.at(-1);
+    return { items, nextCursor: rows.length > limit && last !== undefined ? encodeCatalogCursor(last.dateAdded, last.id) : null };
+  }
+
+  public async listReleaseArtifacts(
+    scope: ReleaseScope,
+    input: { releaseId: string, limit?: number, cursor?: string | null },
+  ): Promise<ReleaseArtifactPage> {
+    const fields = releaseScopeFields(scope);
+    const releaseId = validateUuid(input.releaseId, "releaseId");
+    await this.requireRelease(scope, releaseId);
+    const limit = input.limit ?? DEFAULT_RELEASE_LIST_LIMIT;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RELEASE_LIST_LIMIT) {
+      throw new ReleaseInputError(`artifact list limit must be an integer between 1 and ${MAX_RELEASE_LIST_LIMIT}`);
+    }
+    const cursor = input.cursor == null ? null : parseCatalogCursor(input.cursor, "artifact cursor");
+    const where: Prisma.ReleaseArtifactWhereInput = {
+      ...fields,
+      releaseId,
+      status: PrismaReleaseArtifactStatus.FINALIZED,
     };
+    if (cursor !== null) {
+      where.OR = [
+        { createdAt: { lt: cursor.date } },
+        { createdAt: cursor.date, id: { lt: cursor.id } },
+      ];
+    }
+    const db = await this.resolveDatabase(scope);
+    const rows = await db.releaseArtifact.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+    });
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
+    return { items, nextCursor: rows.length > limit && last !== undefined ? encodeCatalogCursor(last.createdAt, last.id) : null };
   }
 
   public async upsertRelease(scope: ReleaseScope, input: UpsertReleaseInput): Promise<Release> {
@@ -338,7 +392,8 @@ export class ReleaseService {
     if (input.dateAdded !== undefined) create.dateAdded = input.dateAdded;
     if (input.dateStarted !== undefined) create.dateStarted = input.dateStarted;
     if (input.dateReleased !== undefined) create.dateReleased = input.dateReleased;
-    const update: Prisma.ReleaseUncheckedUpdateInput = { status };
+    const update: Prisma.ReleaseUncheckedUpdateInput = {};
+    if (input.status !== undefined) update.status = status;
     if (input.ref !== undefined) update.ref = input.ref;
     if (input.url !== undefined) update.url = input.url;
     if (data !== undefined) update.data = data;
@@ -351,6 +406,68 @@ export class ReleaseService {
     });
     assertReleaseScope(scope, release);
     return release;
+  }
+
+  public async publishFinalizedManifest(
+    scope: ReleaseScope,
+    manifest: FinalizedManifest & { release: string },
+  ): Promise<"published" | "already_published"> {
+    const fields = releaseScopeFields(scope);
+    const release = await this.upsertRelease(scope, { version: manifest.release });
+    const db = await this.resolveDatabase(scope);
+    const artifactWhere = {
+      tenancyId_releaseId_manifestSha256: {
+        tenancyId: fields.tenancyId,
+        releaseId: release.id,
+        manifestSha256: manifest.manifestSha256,
+      },
+    };
+    const existingArtifact = await db.releaseArtifact.findUnique({ where: artifactWhere });
+    if (existingArtifact !== null) {
+      if (existingArtifact.projectId !== fields.projectId
+        || existingArtifact.branchId !== fields.branchId
+        || existingArtifact.dist !== manifest.dist
+        || existingArtifact.environment !== manifest.environment) {
+        throw new ReleaseScopeInvariantError("finalized artifact manifest conflicts with its catalog projection");
+      }
+    }
+    const artifact = await this.upsertArtifact(scope, {
+      releaseId: release.id,
+      manifestSha256: manifest.manifestSha256,
+      dist: manifest.dist ?? undefined,
+      environment: manifest.environment ?? undefined,
+      status: PrismaReleaseArtifactStatus.FINALIZED,
+      finalizedAt: existingArtifact?.finalizedAt ?? new Date(),
+    });
+    let allDebugIdsExisted = existingArtifact?.status === PrismaReleaseArtifactStatus.FINALIZED;
+    for (const item of manifest.artifacts) {
+      const debugIdWhere = {
+        tenancyId_releaseArtifactId_debugId: {
+          tenancyId: fields.tenancyId,
+          releaseArtifactId: artifact.id,
+          debugId: item.debugId,
+        },
+      };
+      const existing = await db.releaseArtifactDebugId.findUnique({ where: debugIdWhere });
+      if (existing !== null) {
+        assertPublishedDebugIdMatches(existing, item);
+        continue;
+      }
+      allDebugIdsExisted = false;
+      await this.upsertArtifactDebugId(scope, {
+        releaseArtifactId: artifact.id,
+        debugId: item.debugId,
+        codeFile: item.codeFile,
+        sourceMapFile: item.sourceMapFile,
+        sourceMapInline: item.sourceMapInline,
+        bundleSha256: item.bundleSha256,
+        bundleBytes: item.bundleBytes,
+        sourceMapSha256: item.sourceMapSha256,
+        sourceMapBytes: item.sourceMapBytes,
+        sourceMapGzippedBytes: item.sourceMapGzippedBytes,
+      });
+    }
+    return allDebugIdsExisted ? "already_published" : "published";
   }
 
   public async upsertDeployment(
@@ -489,7 +606,6 @@ export class ReleaseService {
       status,
     };
     const update: Prisma.ReleaseArtifactUncheckedUpdateInput = {};
-    // Finalization is one-way: a repeated upsert never demotes FINALIZED back to REGISTERED.
     if (status === PrismaReleaseArtifactStatus.FINALIZED) update.status = PrismaReleaseArtifactStatus.FINALIZED;
     for (const target of [create, update]) {
       if (input.dist !== undefined) target.dist = input.dist;
@@ -654,10 +770,15 @@ function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
       upsert: async (args) => await client.releaseCommit.upsert(args),
     },
     releaseArtifact: {
+      findMany: async (args) => await client.releaseArtifact.findMany({
+        ...args,
+        include: { debugIds: { orderBy: [{ codeFile: "asc" }, { debugId: "asc" }] } },
+      }),
       findUnique: async (args) => await client.releaseArtifact.findUnique(args),
       upsert: async (args) => await client.releaseArtifact.upsert(args),
     },
     releaseArtifactDebugId: {
+      findUnique: async (args) => await client.releaseArtifactDebugId.findUnique(args),
       upsert: async (args) => await client.releaseArtifactDebugId.upsert(args),
       findMany: async (args) => await client.releaseArtifactDebugId.findMany({
         ...args,
@@ -665,6 +786,23 @@ function adaptPrismaClient(client: PrismaClientTransaction): ReleaseDatabase {
       }),
     },
   };
+}
+
+function encodeCatalogCursor(date: Date, id: string): string {
+  return Buffer.from(`${date.toISOString()}\n${validateUuid(id, "cursor id")}`, "utf8").toString("base64url");
+}
+
+function parseCatalogCursor(value: string, fieldName: string): { date: Date, id: string } {
+  if (!/^[A-Za-z0-9_-]+$/u.test(value)) throw new ReleaseInputError(`${fieldName} is invalid`);
+  const decoded = Buffer.from(value, "base64url").toString("utf8");
+  const parts = decoded.split("\n");
+  if (parts.length !== 2) throw new ReleaseInputError(`${fieldName} is invalid`);
+  const [dateText, id] = parts;
+  const date = new Date(dateText);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== dateText) {
+    throw new ReleaseInputError(`${fieldName} is invalid`);
+  }
+  return { date, id: validateUuid(id, "cursor id") };
 }
 
 function assertReleaseScope(scope: ReleaseScope, release: Release): void {
@@ -744,6 +882,22 @@ function validateOptionalDate(value: Date | null | undefined, fieldName: string)
 function validateByteSize(value: number, fieldName: string): void {
   if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_DATABASE_INT) {
     throw new ReleaseInputError(`${fieldName} must be a positive database-sized integer`);
+  }
+}
+
+function assertPublishedDebugIdMatches(
+  existing: ReleaseArtifactDebugId,
+  expected: FinalizedManifest["artifacts"][number],
+): void {
+  if (existing.codeFile !== expected.codeFile
+    || existing.sourceMapFile !== expected.sourceMapFile
+    || existing.sourceMapInline !== expected.sourceMapInline
+    || existing.bundleSha256 !== expected.bundleSha256
+    || existing.bundleBytes !== expected.bundleBytes
+    || existing.sourceMapSha256 !== expected.sourceMapSha256
+    || existing.sourceMapBytes !== expected.sourceMapBytes
+    || existing.sourceMapGzippedBytes !== expected.sourceMapGzippedBytes) {
+    throw new ReleaseScopeInvariantError(`debug ID ${expected.debugId} conflicts with its finalized manifest`);
   }
 }
 

@@ -73,14 +73,50 @@ LIMIT 200
 `;
 
 const PATH_COMPARISON_QUERY = `
+WITH
+  {paths:Array(String)} AS selected_paths,
+  arrayMap(
+    selected_path -> concat(
+      '^',
+      replaceAll(
+        regexpQuoteMeta(replaceAll(selected_path, ':id', 'HEXCLAVEDYNAMICPATHSEGMENT')),
+        'HEXCLAVEDYNAMICPATHSEGMENT',
+        '[^/]+'
+      ),
+      '$'
+    ),
+    selected_paths
+  ) AS selected_path_patterns
 SELECT
-  JSONExtractString(data, 'path') AS path,
-  uniqExact(user_id) AS users
-FROM ${pageViewTelemetrySubquery()}
-WHERE user_id != ''
-  AND JSONExtractString(data, 'path') IN {paths:Array(String)}
-GROUP BY path
-ORDER BY path ASC
+  selected_paths[step] AS path,
+  countIf(completed_steps >= step) AS users
+FROM (
+  SELECT
+    user_id,
+    arrayFold(
+      (completed, visited_path) -> if(
+        completed < length(selected_path_patterns)
+          AND match(visited_path, selected_path_patterns[completed + 1]),
+        completed + 1,
+        completed
+      ),
+      arrayMap(
+        visit -> visit.2,
+        arraySort(visit -> visit.1, groupArray((started_at, JSONExtractString(data, 'path'))))
+      ),
+      toUInt64(0)
+    ) AS completed_steps
+  FROM ${pageViewTelemetrySubquery()}
+  WHERE user_id != ''
+    AND arrayExists(
+      selected_pattern -> match(JSONExtractString(data, 'path'), selected_pattern),
+      selected_path_patterns
+    )
+  GROUP BY user_id
+)
+ARRAY JOIN arrayEnumerate(selected_paths) AS step
+GROUP BY step, path
+ORDER BY step ASC
 `;
 
 const MIN_CARD_WIDTH = 100;

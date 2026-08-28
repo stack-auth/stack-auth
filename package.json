@@ -41,6 +41,7 @@
     "db:migration-gen": "pnpm pre && pnpm run --filter=@hexclave/backend db:migration-gen",
     "db:reset": "pnpm pre && pnpm run --filter=@hexclave/backend db:reset",
     "db:seed": "pnpm pre && pnpm run --filter=@hexclave/backend db:seed",
+    "db:seed-source-maps": "pnpm run --filter=@hexclave/backend db:seed-source-maps",
     "db:init": "pnpm pre && pnpm run --filter=@hexclave/backend db:init",
     "db:migrate": "pnpm pre && pnpm run --filter=@hexclave/backend db:migrate",
     "db:backfill-bulldozer-from-prisma": "pnpm pre && pnpm run --filter=@hexclave/backend db:backfill-bulldozer-from-prisma",

@@ -61,6 +61,26 @@ export type ArtifactManifestFinalizeResult = {
   alreadyUploaded: readonly string[],
 };
 
+export type FinalizedManifestArtifact = {
+  debugId: string,
+  codeFile: string,
+  sourceMapFile: string | null,
+  sourceMapInline: boolean,
+  bundleSha256: string,
+  bundleBytes: number,
+  sourceMapSha256: string,
+  sourceMapBytes: number,
+  sourceMapGzippedBytes: number,
+};
+
+export type FinalizedManifest = {
+  manifestSha256: string,
+  release: string | null,
+  dist: string | null,
+  environment: string | null,
+  artifacts: readonly FinalizedManifestArtifact[],
+};
+
 export type ArtifactLookup = {
   manifestSha256: string,
   release: string | null,
@@ -290,6 +310,52 @@ export class ArtifactUploadService {
       artifact: record.artifact,
       bundleObjectKey: record.bundleObjectKey,
       sourceMapObjectKey: record.sourceMapObjectKey,
+    };
+  }
+
+  public async readFinalizedManifest(
+    scopeInput: ArtifactScope,
+    manifestSha256Input: string,
+  ): Promise<FinalizedManifest> {
+    const scope = validateArtifactScope(scopeInput);
+    const manifestSha256 = validateSha256(manifestSha256Input, "manifestSha256");
+    const finalizeBytes = await this.storage.readObject(getFinalizeObjectKey(scope, manifestSha256));
+    if (finalizeBytes === null) {
+      throw new ArtifactServiceError("manifest_not_found", "Artifact manifest has not been finalized.");
+    }
+    const finalizeRecord = readStoredFinalizeRecord(finalizeBytes);
+    if (finalizeRecord.manifestSha256 !== manifestSha256) {
+      throw new ArtifactServiceError("integrity_mismatch", "Stored artifact finalize marker does not match the requested manifest.");
+    }
+    const manifestBytes = await this.storage.readObject(getManifestObjectKey(scope, manifestSha256));
+    if (manifestBytes === null) {
+      throw new ArtifactServiceError("integrity_mismatch", "Finalized artifact manifest is missing.");
+    }
+    const storedManifest = readStoredManifestRecord(manifestBytes, scope);
+    if (storedManifest.manifestSha256 !== manifestSha256) {
+      throw new ArtifactServiceError("integrity_mismatch", "Finalized artifact manifest identity is invalid.");
+    }
+    const artifactDebugIds = new Set(finalizeRecord.artifactDebugIds);
+    if (artifactDebugIds.size !== storedManifest.manifest.artifacts.length
+      || storedManifest.manifest.artifacts.some((artifact) => !artifactDebugIds.has(artifact.debugId))) {
+      throw new ArtifactServiceError("integrity_mismatch", "Finalized artifact marker does not cover the complete manifest.");
+    }
+    return {
+      manifestSha256,
+      release: storedManifest.manifest.release,
+      dist: storedManifest.manifest.dist,
+      environment: storedManifest.manifest.environment,
+      artifacts: storedManifest.manifest.artifacts.map((artifact) => ({
+        debugId: artifact.debugId,
+        codeFile: artifact.codeFile,
+        sourceMapFile: artifact.sourceMapFile,
+        sourceMapInline: artifact.sourceMapInline,
+        bundleSha256: artifact.bundleSha256,
+        bundleBytes: artifact.bundleBytes,
+        sourceMapSha256: artifact.sourceMapSha256,
+        sourceMapBytes: artifact.sourceMapBytes,
+        sourceMapGzippedBytes: artifact.sourceMapGzippedBytes,
+      })),
     };
   }
 

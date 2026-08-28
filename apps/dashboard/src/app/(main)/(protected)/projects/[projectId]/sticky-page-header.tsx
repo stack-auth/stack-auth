@@ -2,7 +2,7 @@
 
 import { cn, Typography } from "@/components/ui";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useState, type MutableRefObject, type ReactNode, type Ref } from "react";
 
 
 const STICKY_HEADER_COMPACT_SCROLL_TOP = 24;
@@ -18,56 +18,66 @@ const reducedStickyHeaderLayoutTransition: Transition = {
 
 const scrollableOverflowValues = new Set(["auto", "scroll", "overlay"]);
 
+/**
+ * Deliberately does not check `scrollHeight > clientHeight`: the container is
+ * resolved once, on mount, and most pages have not loaded their data yet at
+ * that point — so a "is it currently scrollable" test picks nothing, and the
+ * header then watches the window (which never scrolls here) and never compacts.
+ * Overflow alone is stable from first paint.
+ */
 function findScrollContainer(element: HTMLElement): HTMLElement | null {
   let current = element.parentElement;
   while (current != null) {
     const overflowY = window.getComputedStyle(current).overflowY;
-    if (scrollableOverflowValues.has(overflowY) && current.scrollHeight > current.clientHeight) {
-      return current;
-    }
+    if (scrollableOverflowValues.has(overflowY)) return current;
     current = current.parentElement;
   }
 
   return null;
 }
 
-function useStickyHeaderCompacted(enabled: boolean, scrollContainer: "shell" | "main") {
-  const sentinelRef = useRef<HTMLDivElement>(null);
+/**
+ * Reads the scroll offset directly instead of watching a sentinel element.
+ *
+ * The sentinel used to be a 1px node rendered above the header and pulled back
+ * out of the layout with a negative margin. That forced the header to be wrapped
+ * in a container (so the two stayed together), and a wrapper only as tall as the
+ * header gives `position: sticky` a zero-length range — the pill scrolled away
+ * instead of sticking. The scroll offset is what we actually care about, so read
+ * it and let the header stand alone.
+ */
+function useStickyHeaderCompacted(
+  enabled: boolean,
+  scrollContainer: "shell" | "main",
+  headerElement: HTMLDivElement | null,
+) {
   const [compacted, setCompacted] = useState(false);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || headerElement == null) {
       setCompacted(false);
       return;
     }
 
-    const sentinel = sentinelRef.current;
-    if (sentinel == null) return;
+    const scrollRoot = scrollContainer === "main"
+      ? headerElement.closest("main")
+      : findScrollContainer(headerElement);
+    const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
 
-    const observerRoot = scrollContainer === "main" ? sentinel.closest("main") : findScrollContainer(sentinel);
-    const rootTop = observerRoot?.getBoundingClientRect().top ?? 0;
-    const rootScrollTop = observerRoot?.scrollTop ?? window.scrollY;
-    const sentinelStartOffset = sentinel.getBoundingClientRect().top - rootTop + rootScrollTop;
-    const rootMarginTop = STICKY_HEADER_COMPACT_SCROLL_TOP - sentinelStartOffset;
-
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      const nextCompacted = !entry.isIntersecting;
-      setCompacted((current) => current === nextCompacted ? current : nextCompacted);
-    }, {
-      root: observerRoot,
-      rootMargin: `${rootMarginTop}px 0px 0px 0px`,
-      threshold: 0,
-    });
-
-    observer.observe(sentinel);
-
-    return () => {
-      observer.disconnect();
+    const read = () => {
+      const scrollTop = scrollRoot?.scrollTop ?? window.scrollY;
+      const next = scrollTop > STICKY_HEADER_COMPACT_SCROLL_TOP;
+      setCompacted((current) => current === next ? current : next);
     };
-  }, [enabled, scrollContainer]);
 
-  return { compacted, sentinelRef };
+    read();
+    scrollTarget.addEventListener("scroll", read, { passive: true });
+    return () => {
+      scrollTarget.removeEventListener("scroll", read);
+    };
+  }, [enabled, scrollContainer, headerElement]);
+
+  return compacted;
 }
 
 function useRenderWhileClosing(open: boolean, durationMs: number): boolean {
@@ -198,7 +208,15 @@ export function StickyPageHeader({ title, description, actions, sticky, layoutGr
   headerRef?: Ref<HTMLDivElement>,
   scrollContainer?: "shell" | "main",
 }) {
-  const { compacted, sentinelRef } = useStickyHeaderCompacted(sticky, scrollContainer);
+  // A state-backed callback ref, not a plain ref: the compaction hook needs to
+  // re-run once the node exists, which a ref alone would not trigger.
+  const [headerElement, setHeaderElement] = useState<HTMLDivElement | null>(null);
+  const setHeaderNode = useCallback((node: HTMLDivElement | null) => {
+    setHeaderElement(node);
+    if (typeof headerRef === "function") headerRef(node);
+    else if (headerRef != null) (headerRef as MutableRefObject<HTMLDivElement | null>).current = node;
+  }, [headerRef]);
+  const compacted = useStickyHeaderCompacted(sticky, scrollContainer, headerElement);
   const renderTitle = useRenderWhileClosing(!compacted, STICKY_HEADER_TITLE_EXIT_MS);
   const shouldReduceMotion = useReducedMotion();
   const delayedCompacted = useDelayedTrue(compacted, shouldReduceMotion ? 0 : STICKY_HEADER_TITLE_EXIT_MS);
@@ -206,37 +224,26 @@ export function StickyPageHeader({ title, description, actions, sticky, layoutGr
   const layoutTransition = shouldReduceMotion ? reducedStickyHeaderLayoutTransition : stickyHeaderLayoutTransition;
 
   return (
-    <>
-      {sticky && (
-        <div
-          key="sentinel"
-          ref={sentinelRef}
-          aria-hidden
-          className="mb-[calc(0px-var(--page-content-gap,1rem)-1px)] h-px w-px"
-        />
+    <div
+      ref={setHeaderNode}
+      className={cn(
+        "relative z-30 w-full pointer-events-none",
+        sticky && "sticky mb-[var(--page-header-extra-gap,0.5rem)]",
+        sticky && (scrollContainer === "main" ? "top-3" : "top-[4.25rem] dark:top-[5.75rem]"),
       )}
-      <div
-        key="header"
-        ref={headerRef}
-        className={cn(
-          "relative z-30 w-full pointer-events-none",
-          sticky && "sticky mb-[var(--page-header-extra-gap,0.5rem)]",
-          sticky && (scrollContainer === "main" ? "top-3" : "top-[4.25rem] dark:top-[5.75rem]"),
-        )}
-      >
-        <LayoutGroup id={layoutGroupId}>
-          <StickyHeaderChrome
-            title={title}
-            description={description}
-            actions={actions}
-            compacted={sticky ? compacted : false}
-            layoutCompacted={layoutCompacted}
-            renderTitle={sticky ? renderTitle : true}
-            layoutTransition={layoutTransition}
-            animateLayout
-          />
-        </LayoutGroup>
-      </div>
-    </>
+    >
+      <LayoutGroup id={layoutGroupId}>
+        <StickyHeaderChrome
+          title={title}
+          description={description}
+          actions={actions}
+          compacted={sticky ? compacted : false}
+          layoutCompacted={layoutCompacted}
+          renderTitle={sticky ? renderTitle : true}
+          layoutTransition={layoutTransition}
+          animateLayout
+        />
+      </LayoutGroup>
+    </div>
   );
 }

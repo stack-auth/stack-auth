@@ -444,13 +444,11 @@ export const ALL_APPS_FRONTEND = {
     href: "observability",
     navigationItems: [
       { displayName: "Issues", href: "./issues" },
-      { displayName: "Alert rules", href: "./issues/alerts" },
       { displayName: "Logs", href: "./logs" },
       { displayName: "Traces", href: "./traces" },
       { displayName: "Services", href: "./services" },
       { displayName: "Performance", href: "./performance" },
-      { displayName: "Releases", href: "./releases" },
-      { displayName: "Source maps", href: "./source-maps" },
+      { displayName: "Registry", href: "./registry" },
     ],
     screenshots: [],
     storeDescription: (

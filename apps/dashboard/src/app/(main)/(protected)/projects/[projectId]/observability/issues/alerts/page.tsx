@@ -1,7 +1,10 @@
-import PageClient from "./page-client";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Issue alerts" };
+import { issuesListHref } from "../issue-links";
 
-export default function Page() {
-  return <PageClient />;
+export default async function Page(props: {
+  params: Promise<{ projectId: string }>,
+}) {
+  const { projectId } = await props.params;
+  redirect(issuesListHref(projectId));
 }

@@ -1,4 +1,4 @@
-import { ArtifactUploadService } from "@/lib/artifacts/artifact-upload-service";
+import { ArtifactPublicationService } from "@/lib/artifacts/artifact-publication-service";
 import { createArtifactFinalizeRoute } from "@/lib/artifacts/artifact-route-handlers";
 
-export const POST = createArtifactFinalizeRoute(ArtifactUploadService.production());
+export const POST = createArtifactFinalizeRoute(ArtifactPublicationService.production());

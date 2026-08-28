@@ -3,8 +3,8 @@
 import type React from "react";
 import { DesignAlert, DesignButton, DesignInput } from "@/components/design-components";
 import { cn } from "@/lib/utils";
-import { ArrowCounterClockwiseIcon, ArrowsOutIcon, GitDiffIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowCounterClockwiseIcon, ArrowsOutIcon, GitDiffIcon, PlusIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "./force-layout";
 
 const CARD_HEIGHT = 54;
@@ -39,6 +39,11 @@ type PathComparisonState =
   | { kind: "error", message: string }
   | { kind: "ready", results: PathComparisonResult[] };
 
+type FunnelInput = {
+  id: number,
+  path: string,
+};
+
 function edgeOpacity(count: number, maxCount: number): number {
   if (maxCount === 0) return 0.08;
   return 0.08 + 0.52 * Math.sqrt(count / maxCount);
@@ -51,6 +56,129 @@ function edgeWidth(count: number, maxCount: number): number {
 
 function fullNodeLabel(node: GraphNode): string {
   return `${node.domain}${node.label}`;
+}
+
+function funnelHalfHeight(uniqueVisitors: number, baseline: number): number {
+  if (baseline === 0) return 7;
+  return 7 + 47 * Math.max(0, Math.min(1, uniqueVisitors / baseline));
+}
+
+function horizontalFunnelPath(results: PathComparisonResult[], stageWidth: number, centerY: number): string {
+  const baseline = results[0]?.uniqueVisitors ?? 0;
+  const halfHeights = results.map((result) => funnelHalfHeight(result.uniqueVisitors, baseline));
+  const firstHalfHeight = halfHeights[0] ?? 7;
+  let path = `M 0 ${centerY - firstHalfHeight}`;
+
+  for (let index = 0; index < results.length; index += 1) {
+    const startX = index * stageWidth;
+    const endX = startX + stageWidth;
+    const startHalfHeight = halfHeights[index] ?? 7;
+    const endHalfHeight = halfHeights[index + 1] ?? startHalfHeight;
+    path += ` C ${startX + stageWidth * 0.42} ${centerY - startHalfHeight}, ${endX - stageWidth * 0.42} ${centerY - endHalfHeight}, ${endX} ${centerY - endHalfHeight}`;
+  }
+
+  const chartWidth = results.length * stageWidth;
+  const lastHalfHeight = halfHeights[halfHeights.length - 1] ?? 7;
+  path += ` L ${chartWidth} ${centerY + lastHalfHeight}`;
+  for (let index = results.length - 1; index >= 0; index -= 1) {
+    const startX = index * stageWidth;
+    const endX = startX + stageWidth;
+    const startHalfHeight = halfHeights[index] ?? 7;
+    const endHalfHeight = halfHeights[index + 1] ?? startHalfHeight;
+    path += ` C ${endX - stageWidth * 0.42} ${centerY + endHalfHeight}, ${startX + stageWidth * 0.42} ${centerY + startHalfHeight}, ${startX} ${centerY + startHalfHeight}`;
+  }
+  return `${path} Z`;
+}
+
+function HorizontalPathFunnel({ results }: { results: PathComparisonResult[] }) {
+  const clipId = `path-funnel-${useId().replaceAll(":", "")}`;
+  const chartWidth = Math.max(480, results.length * 160);
+  const stageWidth = chartWidth / results.length;
+  const centerY = 70;
+  const baseline = results[0]?.uniqueVisitors ?? 0;
+  const overallConversion = baseline === 0
+    ? 0
+    : Math.round((results[results.length - 1]?.uniqueVisitors ?? 0) / baseline * 100);
+  const bandPath = horizontalFunnelPath(results, stageWidth, centerY);
+
+  return (
+    <div className="mt-3 overflow-x-auto rounded-lg border border-border/50 bg-foreground/[0.025]">
+      <div style={{ minWidth: chartWidth }}>
+        <div className="relative h-36">
+          <svg aria-hidden className="absolute inset-0 h-full w-full" viewBox={`0 0 ${chartWidth} 140`} preserveAspectRatio="none">
+            <defs>
+              <clipPath id={clipId}>
+                <path d={bandPath} />
+              </clipPath>
+            </defs>
+            <g clipPath={`url(#${clipId})`}>
+              {results.map((result, index) => (
+                <rect
+                  key={`${result.path}\0${index}`}
+                  x={index * stageWidth}
+                  y={0}
+                  width={stageWidth}
+                  height={140}
+                  className={index % 2 === 0
+                    ? "fill-zinc-400/35 dark:fill-blue-500/35"
+                    : "fill-zinc-300/35 dark:fill-sky-500/30"}
+                />
+              ))}
+            </g>
+            <path d={bandPath} fill="none" className="stroke-zinc-500/40 dark:stroke-blue-500/45" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+            {results.slice(1).map((result, index) => (
+              <line
+                key={`${result.path}\0${index + 1}`}
+                x1={(index + 1) * stageWidth}
+                x2={(index + 1) * stageWidth}
+                y1={8}
+                y2={132}
+                className="stroke-border"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+          {results.slice(1).map((result, index) => {
+            const currentIndex = index + 1;
+            const previousVisitors = results[index].uniqueVisitors;
+            const stepConversion = previousVisitors === 0 ? 0 : Math.round(result.uniqueVisitors / previousVisitors * 100);
+            const dropOff = 100 - stepConversion;
+            return (
+              <span
+                key={`${result.path}\0${currentIndex}`}
+                aria-hidden
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-background/90 px-2 py-0.5 text-[9px] font-medium tabular-nums text-muted-foreground"
+                style={{ left: `${currentIndex / results.length * 100}%` }}
+              >
+                −{dropOff}%
+              </span>
+            );
+          })}
+          <p className="absolute right-2 top-2 text-[10px] font-semibold tabular-nums text-foreground">{overallConversion}% conversion</p>
+        </div>
+        <ol
+          aria-label="Path conversion funnel"
+          className="grid border-t border-border/50"
+          style={{ gridTemplateColumns: `repeat(${results.length}, minmax(0, 1fr))` }}
+        >
+          {results.map((result, index) => {
+            const conversion = baseline === 0 ? 0 : Math.round(result.uniqueVisitors / baseline * 100);
+            return (
+              <li
+                key={`${result.path}\0${index}`}
+                aria-label={`Step ${index + 1}: ${result.path}, ${result.uniqueVisitors.toLocaleString()} unique visitors, ${conversion}% overall conversion`}
+                className={cn("min-w-0 px-3 py-2", index > 0 && "border-l border-border/50")}
+              >
+                <p className="text-[11px] font-semibold tabular-nums text-foreground">{result.uniqueVisitors.toLocaleString()} visitors</p>
+                <p className="truncate font-mono text-[10px] text-muted-foreground" title={result.path}>{index + 1}. {result.path}</p>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </div>
+  );
 }
 
 function getEdgePath(from: GraphNode, to: GraphNode, bundleOffset: number) {
@@ -113,7 +241,11 @@ export function PathsGraphCanvas({
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   const [manualPositions, setManualPositions] = useState<Map<string, { x: number, y: number }>>(() => new Map());
   const [compareMode, setCompareMode] = useState(initialCompareMode);
-  const [compareInputs, setCompareInputs] = useState(["", "", ""]);
+  const nextFunnelInputIdRef = useRef(2);
+  const [compareInputs, setCompareInputs] = useState<FunnelInput[]>([
+    { id: 0, path: "" },
+    { id: 1, path: "" },
+  ]);
   const [comparison, setComparison] = useState<PathComparisonState>({ kind: "idle" });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
@@ -283,9 +415,13 @@ export function PathsGraphCanvas({
       return;
     }
     setCompareInputs((current) => {
-      const emptyIndex = current.findIndex((path) => path.trim() === "");
-      if (emptyIndex < 0) return [current[0], current[1], nodeId];
-      return current.map((path, index) => index === emptyIndex ? nodeId : path);
+      const emptyInput = current.find((input) => input.path.trim() === "");
+      if (emptyInput == null) {
+        const id = nextFunnelInputIdRef.current;
+        nextFunnelInputIdRef.current += 1;
+        return [...current, { id, path: nodeId }];
+      }
+      return current.map((input) => input.id === emptyInput.id ? { ...input, path: nodeId } : input);
     });
     setComparison({ kind: "idle" });
   }, [compareMode]);
@@ -335,7 +471,7 @@ export function PathsGraphCanvas({
   }, []);
 
   const runComparison = useCallback(async () => {
-    const paths = compareInputs.map((path) => path.trim()).filter((path) => path !== "");
+    const paths = compareInputs.map((input) => input.path.trim()).filter((path) => path !== "");
     if (paths.length < 2) {
       setComparison({ kind: "error", message: "Enter at least two exact paths." });
       return;
@@ -352,8 +488,24 @@ export function PathsGraphCanvas({
     }
   }, [compareInputs, comparePaths]);
 
+  const addFunnelInput = useCallback(() => {
+    const id = nextFunnelInputIdRef.current;
+    nextFunnelInputIdRef.current += 1;
+    setCompareInputs((current) => [...current, { id, path: "" }]);
+    setComparison({ kind: "idle" });
+  }, []);
+
+  const clearFunnelInputs = useCallback(() => {
+    const firstId = nextFunnelInputIdRef.current;
+    nextFunnelInputIdRef.current += 2;
+    setCompareInputs([
+      { id: firstId, path: "" },
+      { id: firstId + 1, path: "" },
+    ]);
+    setComparison({ kind: "idle" });
+  }, []);
+
   const coverage = totalTransitionCount === 0 ? 0 : visibleTransitionCount / totalTransitionCount;
-  const baseline = comparison.kind === "ready" ? comparison.results[0]?.uniqueVisitors ?? 0 : 0;
 
   return (
     <div
@@ -378,67 +530,83 @@ export function PathsGraphCanvas({
             setCompareMode((current) => !current);
             setComparison({ kind: "idle" });
           }}
-          variant={compareMode ? "default" : "secondary"}
+          variant="secondary"
           size="sm"
-          className="gap-1.5 bg-background/85 backdrop-blur"
+          className={cn(
+            "gap-1.5 bg-white/95 backdrop-blur dark:bg-background/85",
+            compareMode && "bg-zinc-100 text-foreground ring-1 ring-zinc-300 hover:bg-zinc-100 dark:bg-primary dark:text-primary-foreground dark:ring-primary/30 dark:hover:bg-primary/90",
+          )}
           aria-pressed={compareMode}
         >
           <GitDiffIcon className="h-3.5 w-3.5" />
           Compare paths
         </DesignButton>
         {manualPositions.size > 0 && (
-          <DesignButton onClick={resetPositions} variant="secondary" size="sm" className="gap-1.5 bg-background/85 backdrop-blur">
+          <DesignButton onClick={resetPositions} variant="secondary" size="sm" className="gap-1.5 bg-white/95 backdrop-blur dark:bg-background/85">
             <ArrowCounterClockwiseIcon className="h-3.5 w-3.5" />
             Reset
           </DesignButton>
         )}
-        <DesignButton onClick={fitView} variant="secondary" size="sm" className="gap-1.5 bg-background/85 backdrop-blur" aria-label="Fit navigation graph to view">
+        <DesignButton onClick={fitView} variant="secondary" size="sm" className="gap-1.5 bg-white/95 backdrop-blur dark:bg-background/85" aria-label="Fit navigation graph to view">
           <ArrowsOutIcon className="h-3.5 w-3.5" />
           Fit
         </DesignButton>
       </div>
 
       {compareMode && (
-        <section className="absolute left-3 top-3 z-20 w-[min(32rem,calc(100%-1.5rem))] rounded-xl border border-border/60 bg-background/95 p-3 shadow-md backdrop-blur" onPointerDown={(event) => event.stopPropagation()}>
+        <section className="absolute left-3 top-3 z-20 w-[min(56rem,calc(100%-1.5rem))] rounded-xl border border-zinc-200 bg-white p-3 shadow-md dark:border-border/60 dark:bg-background/95 dark:backdrop-blur" onPointerDown={(event) => event.stopPropagation()}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold text-foreground">Compare paths</h2>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Unique visitors to 2 or 3 exact paths. Select nodes or edit paths.</p>
+              <h2 className="text-xs font-semibold text-foreground">Path funnel</h2>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Unique visitors who reached each path in order. Select nodes or edit steps.</p>
             </div>
-            <DesignButton size="sm" variant="secondary" loading={comparison.kind === "loading"} onClick={runComparison}>Compare</DesignButton>
+            <div className="flex shrink-0 gap-1">
+              <DesignButton size="icon" variant="secondary" className="h-8 w-8" onClick={clearFunnelInputs} aria-label="Clear funnel steps" title="Clear funnel steps">
+                <XCircleIcon className="h-3.5 w-3.5" />
+              </DesignButton>
+              <DesignButton size="sm" variant="secondary" loading={comparison.kind === "loading"} onClick={runComparison}>Compare</DesignButton>
+            </div>
           </div>
-          <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
-            {compareInputs.map((path, index) => (
-              <DesignInput
-                key={index}
-                aria-label={`Exact path ${index + 1}`}
-                value={path}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setCompareInputs((current) => current.map((currentPath, currentIndex) => currentIndex === index ? value : currentPath));
-                  setComparison({ kind: "idle" });
-                }}
-                placeholder={index === 0 ? "/" : index === 1 ? "/pricing" : "Optional third path"}
-                size="sm"
-                className="min-w-0 font-mono text-[11px]"
-              />
+          <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1">
+            {compareInputs.map((input, index) => (
+              <div key={input.id} className="relative min-w-40 flex-1">
+                <DesignInput
+                  aria-label={`Exact path ${index + 1}`}
+                  value={input.path}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCompareInputs((current) => current.map((currentInput) => currentInput.id === input.id ? { ...currentInput, path: value } : currentInput));
+                    setComparison({ kind: "idle" });
+                  }}
+                  placeholder={index === 0 ? "/" : index === 1 ? "/pricing" : "/next-step"}
+                  size="sm"
+                  className={cn("min-w-0 font-mono text-[11px]", compareInputs.length > 2 && "pr-8")}
+                />
+                {compareInputs.length > 2 && (
+                  <DesignButton
+                    size="icon"
+                    variant="ghost"
+                    className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2"
+                    onClick={() => {
+                      setCompareInputs((current) => current.filter((currentInput) => currentInput.id !== input.id));
+                      setComparison({ kind: "idle" });
+                    }}
+                    aria-label={`Remove step ${index + 1}`}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </DesignButton>
+                )}
+              </div>
             ))}
+            <DesignButton size="icon" variant="secondary" className="h-8 w-8 shrink-0" onClick={addFunnelInput} aria-label="Add funnel step" title="Add funnel step">
+              <PlusIcon className="h-3.5 w-3.5" />
+            </DesignButton>
           </div>
           {comparison.kind === "error" && (
             <DesignAlert className="mt-2" variant="error" title="Can't compare paths" description={comparison.message} />
           )}
           {comparison.kind === "ready" && (
-            <ol className="mt-2 grid gap-1.5 sm:grid-cols-3">
-              {comparison.results.map((result) => (
-                <li key={result.path} className="rounded-lg bg-foreground/[0.035] px-2 py-1.5">
-                  <p className="break-all font-mono text-[10px] text-foreground">{result.path}</p>
-                  <p className="mt-0.5 text-[11px] font-semibold tabular-nums text-foreground">
-                    {result.uniqueVisitors.toLocaleString()} unique visitors
-                    {baseline > 0 ? <span className="font-normal text-muted-foreground"> · {Math.round(result.uniqueVisitors / baseline * 100)}% of first</span> : null}
-                  </p>
-                </li>
-              ))}
-            </ol>
+            <HorizontalPathFunnel results={comparison.results} />
           )}
         </section>
       )}

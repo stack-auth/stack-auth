@@ -31,7 +31,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderCanvas(initialCompareMode = false) {
+function renderCanvas(
+  initialCompareMode = false,
+  comparePaths = async (paths: string[]) => paths.map((path) => ({ path, uniqueVisitors: 1 })),
+) {
   return render(
     <PathsGraphCanvas
       nodes={nodes}
@@ -42,7 +45,7 @@ function renderCanvas(initialCompareMode = false) {
       totalTransitionCount={5}
       visibleTransitionCount={5}
       initialCompareMode={initialCompareMode}
-      comparePaths={async (paths) => paths.map((path) => ({ path, uniqueVisitors: 1 }))}
+      comparePaths={comparePaths}
     />,
   );
 }
@@ -84,7 +87,50 @@ describe("PathsGraphCanvas", () => {
     fireEvent.pointerUp(node, { pointerId: 3, clientX: 20, clientY: 20 });
 
     expect(screen.getByRole("button", { name: "Compare paths" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Compare paths" }).className).toContain("bg-zinc-100");
+    expect(screen.getByRole("button", { name: "Compare paths" }).className).toContain("dark:bg-primary");
+    expect(screen.getByRole("heading", { name: "Path funnel" }).closest("section")?.className).toContain("bg-white");
     expect(screen.getByLabelText("Exact path 1").getAttribute("value")).toBe("/projects/:id/releases");
+  });
+
+  it("renders ordered comparison results as a horizontal conversion funnel", async () => {
+    const { container } = renderCanvas(true, async (paths) => paths.map((path, index) => ({
+      path,
+      uniqueVisitors: [100, 60, 30][index],
+    })));
+    fireEvent.click(screen.getByRole("button", { name: "Add funnel step" }));
+    fireEvent.change(screen.getByLabelText("Exact path 1"), { target: { value: "/landing" } });
+    fireEvent.change(screen.getByLabelText("Exact path 2"), { target: { value: "/signup" } });
+    fireEvent.change(screen.getByLabelText("Exact path 3"), { target: { value: "/welcome" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+
+    const funnel = await screen.findByRole("list", { name: "Path conversion funnel" });
+    const steps = Array.from(funnel.querySelectorAll("li"));
+    expect(steps.map((step) => step.textContent)).toEqual([
+      "100 visitors1. /landing",
+      "60 visitors2. /signup",
+      "30 visitors3. /welcome",
+    ]);
+    const funnelBand = container.querySelector('svg path[class*="stroke-zinc"]');
+    expect(funnelBand?.getAttribute("d")).toContain("C");
+    expect(funnelBand?.getAttribute("class")).toContain("dark:stroke-blue-500/45");
+    expect(screen.getByText("−40%")).toBeTruthy();
+    expect(screen.getByText("30% conversion")).toBeTruthy();
+  });
+
+  it("adds, removes, and clears funnel step inputs", () => {
+    renderCanvas(true);
+    fireEvent.change(screen.getByLabelText("Exact path 1"), { target: { value: "/landing" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add funnel step" }));
+    fireEvent.change(screen.getByLabelText("Exact path 3"), { target: { value: "/welcome" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove step 2" }));
+    expect(screen.getByLabelText("Exact path 2").getAttribute("value")).toBe("/welcome");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear funnel steps" }));
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
+    expect(screen.getByLabelText("Exact path 1").getAttribute("value")).toBe("");
+    expect(screen.getByLabelText("Exact path 2").getAttribute("value")).toBe("");
   });
 
   it("activates focused nodes from the keyboard", () => {

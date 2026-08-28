@@ -123,7 +123,9 @@ describe("Paths page client", () => {
       expect(document.body.getAttribute("data-comparison")).toBe("/:7,/missing:0,/signup:3");
     });
     expect(queryAnalyticsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      query: expect.stringContaining("arrayFold"),
       params: { paths: ["/", "/missing", "/signup"] },
     }));
+    expect(queryAnalyticsMock.mock.calls.at(-1)?.[0].query).toContain("regexpQuoteMeta");
   });
 });

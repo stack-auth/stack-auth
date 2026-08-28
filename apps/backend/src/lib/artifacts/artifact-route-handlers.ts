@@ -17,6 +17,7 @@ import {
   type ArtifactUploadDescriptor,
   ArtifactUploadService,
 } from "./artifact-upload-service";
+import type { ArtifactPublicationFinalizeResult, ArtifactPublicationService } from "./artifact-publication-service";
 
 export type ArtifactRouteTenancy = {
   id: string,
@@ -79,6 +80,7 @@ const artifactFinalizeResponseSchema = yupObject({
   status: yupString().oneOf(["finalized", "already_finalized"]).defined(),
   uploaded: yupArray(yupString().defined()).defined(),
   already_uploaded: yupArray(yupString().defined()).defined(),
+  catalog_status: yupString().oneOf(["published", "already_published", "unversioned"]).defined(),
 }).defined();
 
 const artifactLookupResponseSchema = yupObject({
@@ -111,10 +113,10 @@ export async function registerArtifactManifest(
 }
 
 export async function finalizeArtifactManifest(
-  service: ArtifactUploadService,
+  service: Pick<ArtifactPublicationService, "finalizeManifest">,
   tenancy: ArtifactRouteTenancy,
   input: unknown,
-): Promise<ArtifactManifestFinalizeResult> {
+): Promise<ArtifactPublicationFinalizeResult> {
   return await service.finalizeManifest(
     artifactScopeForTenancy(tenancy),
     parseArtifactManifestFinalizeRequest(input),
@@ -224,7 +226,7 @@ export function createArtifactRegistrationRoute(service: ArtifactUploadService) 
   });
 }
 
-export function createArtifactFinalizeRoute(service: ArtifactUploadService) {
+export function createArtifactFinalizeRoute(service: Pick<ArtifactPublicationService, "finalizeManifest">) {
   return createSmartRouteHandler({
     metadata: {
       summary: "Finalize source-map artifacts",
@@ -330,12 +332,13 @@ function serializeUploadDescriptor(descriptor: ArtifactUploadDescriptor) {
   };
 }
 
-function serializeFinalizeResult(result: ArtifactManifestFinalizeResult) {
+function serializeFinalizeResult(result: ArtifactPublicationFinalizeResult) {
   return {
     manifest_sha256: result.manifestSha256,
     status: result.status,
     uploaded: [...result.uploaded],
     already_uploaded: [...result.alreadyUploaded],
+    catalog_status: result.catalogStatus,
   };
 }
 

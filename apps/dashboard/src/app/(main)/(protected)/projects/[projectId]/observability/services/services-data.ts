@@ -188,10 +188,19 @@ export function getServiceDependenciesQuery(hours: number): {
   return {
     query: `
 /* services:dependencies */
-WITH recent_spans AS (
+WITH
+now64(3) - INTERVAL {hours:UInt32} HOUR AS range_start,
+-- trace_services has one row per trace/service identity, so single-service
+-- traces cannot contain a dependency edge and need not enter the span join.
+multi_service_traces AS (
+  SELECT trace_id
+  FROM default.trace_services
+  GROUP BY trace_id
+  HAVING count() > 1
+),
+child_spans AS (
   SELECT
     trace_id,
-    span_id,
     parent_span_id,
     coalesce(service_namespace, '') AS service_namespace,
     service_name,
@@ -200,7 +209,23 @@ WITH recent_spans AS (
     status_code,
     data
   FROM default.spans
-  WHERE started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+  WHERE trace_id IN multi_service_traces
+    AND started_at >= range_start
+    AND parent_span_id IS NOT NULL
+    AND service_name IS NOT NULL
+    AND service_name != ''
+),
+-- Keep the hash-table side of this high-cardinality join identity-only. A
+-- shared projection would make ClickHouse retain every parent's payload data.
+parent_spans AS (
+  SELECT
+    trace_id,
+    span_id,
+    coalesce(service_namespace, '') AS service_namespace,
+    service_name
+  FROM default.spans
+  WHERE trace_id IN multi_service_traces
+    AND started_at >= range_start
     AND service_name IS NOT NULL
     AND service_name != ''
 ),
@@ -214,12 +239,11 @@ dependency_edges AS (
     child.ended_at AS edge_ended_at,
     child.status_code AS edge_status_code,
     child.data AS edge_data
-  FROM recent_spans AS child
-  INNER JOIN recent_spans AS parent
+  FROM child_spans AS child
+  INNER JOIN parent_spans AS parent
     ON child.trace_id = parent.trace_id
     AND child.parent_span_id = parent.span_id
-  WHERE child.parent_span_id IS NOT NULL
-    AND (
+  WHERE (
       child.service_namespace != parent.service_namespace
       OR child.service_name != parent.service_name
     )

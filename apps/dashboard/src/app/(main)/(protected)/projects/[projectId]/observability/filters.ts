@@ -26,6 +26,12 @@ export const OBSERVABILITY_TIME_RANGE_OPTIONS = OBSERVABILITY_TIME_RANGES.map((r
   id: String(range.hours),
 }));
 
+export function observabilityTimeRangeLabel(hours: ObservabilityTimeRangeHours): string {
+  const range = OBSERVABILITY_TIME_RANGES.find((candidate) => candidate.hours === hours);
+  if (range == null) throw new Error(`Unknown observability time range: ${hours}`);
+  return range.label;
+}
+
 export function parseObservabilityTimeRangeId(id: string): ObservabilityTimeRangeHours {
   const hours = Number(id);
   if (!isObservabilityTimeRangeHours(hours)) {

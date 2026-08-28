@@ -81,12 +81,29 @@ describe("services queries", () => {
     expect(params).toEqual({ hours: 24 });
     expect(query).toContain("child.trace_id = parent.trace_id");
     expect(query).toContain("child.parent_span_id = parent.span_id");
-    expect(query).toContain("WHERE child.parent_span_id IS NOT NULL");
+    expect(query).toContain("AND parent_span_id IS NOT NULL");
     expect(query).toContain("LIMIT 500");
     expect(query).not.toContain("bridged_edges");
     expect(query).not.toContain("UNION ALL");
     expect(query).not.toContain("startsWith(");
     expect(query).not.toContain("parent_span_ids");
+  });
+
+  it("keeps payload columns off the parent side of the dependency join", () => {
+    const { query } = getServiceDependenciesQuery(24);
+    const parentProjection = query.match(/parent_spans AS \(\n([\s\S]*?)\n\),\ndependency_edges/)?.[1];
+
+    expect(query).toContain("now64(3) - INTERVAL {hours:UInt32} HOUR AS range_start");
+    expect(query).toContain("FROM default.trace_services");
+    expect(query).toContain("HAVING count() > 1");
+    expect(query.match(/WHERE trace_id IN multi_service_traces/g)).toHaveLength(2);
+    expect(parentProjection).toBeDefined();
+    expect(parentProjection).toContain("trace_id");
+    expect(parentProjection).toContain("span_id");
+    expect(parentProjection).not.toContain("data");
+    expect(parentProjection).not.toContain("status_code");
+    expect(parentProjection).not.toContain("started_at,");
+    expect(query).not.toContain("recent_spans");
   });
 
   it("uses the same error definition in every query so the panels cannot disagree", () => {

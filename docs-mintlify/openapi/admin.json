@@ -13187,6 +13187,141 @@
                         ]
                       }
                     },
+                    "artifacts": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "debug_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "release_artifact_id": {
+                                      "type": "string"
+                                    },
+                                    "debug_id": {
+                                      "type": "string"
+                                    },
+                                    "code_file": {
+                                      "type": "string"
+                                    },
+                                    "source_map_file": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "source_map_inline": {
+                                      "type": "boolean"
+                                    },
+                                    "bundle_sha256": {
+                                      "type": "string"
+                                    },
+                                    "bundle_bytes": {
+                                      "type": "integer"
+                                    },
+                                    "source_map_sha256": {
+                                      "type": "string"
+                                    },
+                                    "source_map_bytes": {
+                                      "type": "integer"
+                                    },
+                                    "source_map_gzipped_bytes": {
+                                      "type": "integer"
+                                    },
+                                    "created_at": {
+                                      "type": "string"
+                                    },
+                                    "updated_at": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "release_artifact_id",
+                                    "debug_id",
+                                    "code_file",
+                                    "source_map_inline",
+                                    "bundle_sha256",
+                                    "bundle_bytes",
+                                    "source_map_sha256",
+                                    "source_map_bytes",
+                                    "source_map_gzipped_bytes",
+                                    "created_at",
+                                    "updated_at"
+                                  ]
+                                }
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "release_id": {
+                                "type": "string"
+                              },
+                              "manifest_sha256": {
+                                "type": "string"
+                              },
+                              "dist": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "environment": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "registered",
+                                  "finalized"
+                                ]
+                              },
+                              "finalized_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "created_at": {
+                                "type": "string"
+                              },
+                              "updated_at": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "debug_ids",
+                              "id",
+                              "release_id",
+                              "manifest_sha256",
+                              "status",
+                              "created_at",
+                              "updated_at"
+                            ]
+                          }
+                        },
+                        "next_cursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items"
+                      ]
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -13246,6 +13381,7 @@
                   "required": [
                     "commits",
                     "deployments",
+                    "artifacts",
                     "id",
                     "version",
                     "status",
@@ -13395,6 +13531,184 @@
       }
     },
     "/releases/artifacts": {
+      "get": {
+        "summary": "List finalized source-map manifests for a release",
+        "description": "Returns cursor-paginated finalized source-map manifests and their debug IDs without private storage keys.",
+        "parameters": [
+          {
+            "name": "release_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "tags": [
+          "Releases"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/releases/artifacts",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "debug_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "release_artifact_id": {
+                                  "type": "string"
+                                },
+                                "debug_id": {
+                                  "type": "string"
+                                },
+                                "code_file": {
+                                  "type": "string"
+                                },
+                                "source_map_file": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source_map_inline": {
+                                  "type": "boolean"
+                                },
+                                "bundle_sha256": {
+                                  "type": "string"
+                                },
+                                "bundle_bytes": {
+                                  "type": "integer"
+                                },
+                                "source_map_sha256": {
+                                  "type": "string"
+                                },
+                                "source_map_bytes": {
+                                  "type": "integer"
+                                },
+                                "source_map_gzipped_bytes": {
+                                  "type": "integer"
+                                },
+                                "created_at": {
+                                  "type": "string"
+                                },
+                                "updated_at": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "release_artifact_id",
+                                "debug_id",
+                                "code_file",
+                                "source_map_inline",
+                                "bundle_sha256",
+                                "bundle_bytes",
+                                "source_map_sha256",
+                                "source_map_bytes",
+                                "source_map_gzipped_bytes",
+                                "created_at",
+                                "updated_at"
+                              ]
+                            }
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "release_id": {
+                            "type": "string"
+                          },
+                          "manifest_sha256": {
+                            "type": "string"
+                          },
+                          "dist": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "environment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "registered",
+                              "finalized"
+                            ]
+                          },
+                          "finalized_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "debug_ids",
+                          "id",
+                          "release_id",
+                          "manifest_sha256",
+                          "status",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Register a release artifact",
         "description": "Registers an immutable source-map artifact binding inside the authenticated tenant, project, and branch scope.",
@@ -14218,6 +14532,14 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
           }
         ],
         "tags": [
@@ -14304,6 +14626,12 @@
                     },
                     "truncated": {
                       "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [

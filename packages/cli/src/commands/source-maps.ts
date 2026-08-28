@@ -72,6 +72,7 @@ export type SourceMapUploadResult = {
   uploaded: readonly string[],
   /** Debug ids the server already had (a derived id that did not change). */
   alreadyUploaded: readonly string[],
+  catalogStatus: "published" | "already_published" | "unversioned",
   storageNotConfigured: boolean,
 };
 
@@ -293,6 +294,7 @@ type RegistrationResponse = {
 type FinalizeResponse = {
   uploaded: readonly string[],
   alreadyUploaded: readonly string[],
+  catalogStatus: "published" | "already_published" | "unversioned",
 };
 
 export async function createSourceMapAuthHeadersFactory(auth: ProjectAuth): Promise<() => Promise<Record<string, string>>> {
@@ -387,6 +389,7 @@ export async function uploadPreparedSourceMaps(request: SourceMapUploadRequest):
   return {
     uploaded: finalized.uploaded,
     alreadyUploaded: finalized.alreadyUploaded,
+    catalogStatus: finalized.catalogStatus,
     storageNotConfigured: false,
   };
 }
@@ -673,6 +676,10 @@ function parseFinalizeResponse(value: unknown, plan: SourceMapUploadPlan): Final
   const expectedDebugIds = new Set(plan.manifest.artifacts.map((artifact) => artifact.debugId));
   const uploaded = validateFinalizeDebugIds(record.uploaded, expectedDebugIds, "uploaded");
   const alreadyUploaded = validateFinalizeDebugIds(record.already_uploaded, expectedDebugIds, "already_uploaded");
+  const catalogStatus = readResponseString(record, "catalog_status", "finalize");
+  if (catalogStatus !== "published" && catalogStatus !== "already_published" && catalogStatus !== "unversioned") {
+    throw new SourceMapUploadProtocolError("finalize", `unknown catalog status ${JSON.stringify(catalogStatus)}`);
+  }
   const overlap = uploaded.filter((debugId) => alreadyUploaded.includes(debugId));
   if (overlap.length > 0) {
     throw new SourceMapUploadProtocolError("finalize", `debug IDs appeared in both uploaded and already_uploaded: ${overlap.join(", ")}`);
@@ -680,7 +687,7 @@ function parseFinalizeResponse(value: unknown, plan: SourceMapUploadPlan): Final
   if (new Set([...uploaded, ...alreadyUploaded]).size !== expectedDebugIds.size) {
     throw new SourceMapUploadProtocolError("finalize", `expected a result for all ${expectedDebugIds.size} artifacts`);
   }
-  return { uploaded, alreadyUploaded };
+  return { uploaded, alreadyUploaded, catalogStatus };
 }
 
 function validateFinalizeDebugIds(value: unknown, expected: ReadonlySet<string>, field: string): string[] {
@@ -982,6 +989,7 @@ export function registerSourceMapsCommand(program: Command) {
           manifestSha256: uploadRequest.plan.manifestSha256,
           uploaded: result.uploaded,
           alreadyUploaded: result.alreadyUploaded,
+          catalogStatus: result.catalogStatus,
         }, null, 2));
       } else {
         const projectId = auth === null ? resolveOptionalProjectId(opts.cloudProjectId) : auth.projectId;

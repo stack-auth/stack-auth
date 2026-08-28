@@ -151,11 +151,13 @@ function fakeDatabase(overrides: ReleaseDatabaseOverrides = {}): ReleaseDatabase
       ...overrides.releaseCommit,
     },
     releaseArtifact: {
+      findMany: async () => [],
       findUnique: async () => artifact,
       upsert: async () => artifact,
       ...overrides.releaseArtifact,
     },
     releaseArtifactDebugId: {
+      findUnique: async () => null,
       upsert: async () => debugId,
       findMany: async () => [],
       ...overrides.releaseArtifactDebugId,
@@ -203,7 +205,7 @@ describe("release graph persistence", () => {
   it("lists an empty release scope", async () => {
     const result = await new ReleaseService(fakeDatabase()).listReleases(scope, {});
 
-    expect(result).toEqual({ items: [], truncated: false });
+    expect(result).toEqual({ items: [], nextCursor: null });
   });
 
   it("scopes recent releases to the authenticated tenancy, project, and branch", async () => {
@@ -249,8 +251,44 @@ describe("release graph persistence", () => {
 
     const result = await new ReleaseService(db).listReleases(scope, { limit: 2 });
 
-    expect(result).toEqual({ items: releases.slice(0, 2), truncated: true });
+    expect(result.items).toEqual(releases.slice(0, 2));
+    expect(result.nextCursor).toEqual(expect.any(String));
     expect(captured).toMatchObject({ take: 3 });
+
+    await new ReleaseService(db).listReleases(scope, { limit: 2, cursor: result.nextCursor });
+    expect(captured).toMatchObject({
+      where: {
+        OR: [
+          { dateAdded: { lt: now } },
+          { dateAdded: now, id: { lt: releases[1]?.id } },
+        ],
+      },
+    });
+  });
+
+  it("rejects malformed cursors and cursor-paginates finalized manifests", async () => {
+    let captured: Prisma.ReleaseArtifactFindManyArgs | undefined;
+    const catalogArtifact = { ...artifact, debugIds: [debugId] };
+    const db = fakeDatabase({
+      releaseArtifact: {
+        findMany: async (args) => {
+          captured = args;
+          return [catalogArtifact, { ...catalogArtifact, id: "00000000-0000-4000-8000-000000000008" }];
+        },
+      },
+    });
+    const service = new ReleaseService(db);
+
+    await expect(service.listReleases(scope, { cursor: "not+a+cursor" })).rejects.toThrow(ReleaseInputError);
+    const page = await service.listReleaseArtifacts(scope, { releaseId, limit: 1 });
+
+    expect(page.items).toEqual([catalogArtifact]);
+    expect(page.nextCursor).toEqual(expect.any(String));
+    expect(captured).toMatchObject({
+      where: { tenancyId, releaseId, status: PrismaReleaseArtifactStatus.FINALIZED },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+    });
   });
 
   it("loads a bounded commit and deployment graph with a version lookup", async () => {
@@ -273,7 +311,12 @@ describe("release graph persistence", () => {
 
     const result = await new ReleaseService(db).getReleaseDetail(scope, release.version);
 
-    expect(result).toEqual({ release, commits: [commit], deployments: [deployment] });
+    expect(result).toEqual({
+      release,
+      commits: [commit],
+      deployments: [deployment],
+      artifacts: { items: [], nextCursor: null },
+    });
     expect(commitArgs).toMatchObject({
       where: { tenancyId, releaseId },
       orderBy: { position: "asc" },
@@ -452,6 +495,48 @@ describe("release graph persistence", () => {
 
     expect(captured?.update).not.toHaveProperty("status");
     expect(captured?.create).toMatchObject({ status: PrismaReleaseArtifactStatus.REGISTERED });
+  });
+
+  it("publishes a finalized manifest once and treats an exact retry as a no-op", async () => {
+    let storedArtifact: ReleaseArtifact | null = null;
+    let storedDebugId: ReleaseArtifactDebugId | null = null;
+    const db = fakeDatabase({
+      releaseArtifact: {
+        findUnique: async () => storedArtifact,
+        upsert: async () => {
+          storedArtifact = artifact;
+          return artifact;
+        },
+      },
+      releaseArtifactDebugId: {
+        findUnique: async () => storedDebugId,
+        upsert: async () => {
+          storedDebugId = debugId;
+          return debugId;
+        },
+      },
+    });
+    const service = new ReleaseService(db);
+    const manifest = {
+      manifestSha256: artifact.manifestSha256,
+      release: release.version,
+      dist: artifact.dist,
+      environment: artifact.environment,
+      artifacts: [{
+        debugId: debugId.debugId,
+        codeFile: debugId.codeFile,
+        sourceMapFile: debugId.sourceMapFile,
+        sourceMapInline: debugId.sourceMapInline,
+        bundleSha256: debugId.bundleSha256,
+        bundleBytes: debugId.bundleBytes,
+        sourceMapSha256: debugId.sourceMapSha256,
+        sourceMapBytes: debugId.sourceMapBytes,
+        sourceMapGzippedBytes: debugId.sourceMapGzippedBytes,
+      }],
+    };
+
+    await expect(service.publishFinalizedManifest(scope, manifest)).resolves.toBe("published");
+    await expect(service.publishFinalizedManifest(scope, manifest)).resolves.toBe("already_published");
   });
 
   it("upgrades an artifact to finalized through the update clause", async () => {

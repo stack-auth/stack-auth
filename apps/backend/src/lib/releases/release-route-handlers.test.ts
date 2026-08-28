@@ -187,10 +187,12 @@ function database(options: {
       upsert: async () => commit,
     },
     releaseArtifact: {
+      findMany: async () => [],
       findUnique: async () => artifact,
       upsert: async () => artifact,
     },
     releaseArtifactDebugId: {
+      findUnique: async () => null,
       upsert: async () => debugId,
       findMany: async (args) => {
         options.onDebugLookup?.(args);

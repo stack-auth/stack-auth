@@ -1,19 +1,16 @@
 "use client";
 
-import { DesignAlert, DesignButton, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } from "@/components/ui";
+import { DesignAlert, DesignButton, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { ArrowClockwiseIcon, ChartLineIcon, CheckIcon, CopyIcon, LinkSimpleIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, CheckIcon, CopyIcon, LinkSimpleIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
-import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
 import {
-  AnalyticsEventLimitBanner,
   ErrorDisplay,
   RowDetailDialog,
   isDateValue,
@@ -46,8 +43,20 @@ import {
   parseServiceIdentityRow,
   type ServiceIdentity,
 } from "../service-identity";
-import { ALL_SERVICES_SELECT_VALUE, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, queryObservability, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader } from "../filters";
+import { ALL_SERVICES_SELECT_VALUE, queryObservability, readLocationSearch, replaceLocationSearch, useServiceIdentityLoader } from "../filters";
 import { getErrorMessage, tryParseJson } from "../format";
+import { ObservabilityPageLayout } from "../observability-page-layout";
+import {
+  OBSERVABILITY_PANE_CLASSES,
+  ObservabilityEmptyState,
+  ObservabilityLoadingState,
+  ObservabilityPaneBody,
+  ObservabilityPaneHeader,
+  ObservabilityRefreshButton,
+  ObservabilitySplitLayout,
+  ObservabilityTimeRangeToggle,
+  ObservabilityToolbar,
+} from "../page-chrome";
 import { TelemetryRowLinks } from "../telemetry-row-links";
 import {
   DEFAULT_TRACE_PAGE_URL_STATE,
@@ -82,17 +91,6 @@ import {
 } from "./trace-queries";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const CARD_CLASSES = "rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-zinc-900/90";
-
-
-function EmptyState({ title, children }: { title: string, children?: React.ReactNode }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 p-6 py-16 text-center">
-      <Typography variant="secondary" className="text-sm font-medium">{title}</Typography>
-      {children}
-    </div>
-  );
-}
 
 function readInitialTracePageUrlState(): TracePageUrlState {
   if (typeof window === "undefined") return DEFAULT_TRACE_PAGE_URL_STATE;
@@ -473,92 +471,78 @@ export default function PageClient() {
 
   const headerActions = (
     <TooltipProvider>
-      <div className="flex items-center gap-2">
-        <DesignSelectorDropdown
-          value={serviceIdentityToSelectValue(service)}
-          onValueChange={(value) => setService(selectValueToServiceIdentity(value))}
-          options={[
-            { value: ALL_SERVICES_SELECT_VALUE, label: "All services" },
-            ...services.map((identity) => ({
-              value: serviceIdentityToSelectValue(identity),
-              label: serviceIdentityLabel(identity),
-            })),
-          ]}
-          size="sm"
-          disabled={rootLoading}
-        />
-        <div className="flex items-center gap-1 whitespace-nowrap text-xs">
-          <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} ${rootTraces.length === 1 ? "trace" : "traces"}`} />
-          <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
-          <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
-          {selectedLinks.length > 0 && (
-            <HeaderCountStat icon={<LinkSimpleIcon className="h-3.5 w-3.5" />} value={selectedLinks.length} label={`${selectedLinks.length.toLocaleString()} non-hierarchical span ${selectedLinks.length === 1 ? "link" : "links"} in the selected trace`} />
-          )}
-        </div>
-        <span className="h-5 w-px shrink-0 bg-border/60" aria-hidden />
-        <DesignPillToggle
-          selected={String(hours)}
-          onSelect={(id) => setHours(parseObservabilityTimeRangeId(id))}
-          options={OBSERVABILITY_TIME_RANGE_OPTIONS}
-          size="sm"
-          glassmorphic={false}
-        />
-        <DesignButton
-          className="shrink-0 gap-1.5"
-          variant="secondary"
-          size="sm"
-          loading={rootLoading || traceLoading || traceVolumeLoading}
-          onClick={refresh}
-        >
-          <ArrowClockwiseIcon className="h-4 w-4" />
-          Refresh
-        </DesignButton>
-        <DesignButton
-          className="shrink-0"
-          variant="secondary"
-          size="sm"
-          aria-label={shareLinkCopied ? "Link copied" : "Copy link to this view"}
-          title={shareLinkCopied ? "Copied!" : "Copy link to this view"}
-          onClick={() => runAsynchronouslyWithAlert(async () => {
-            const viewedId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedTraceId;
-            if (viewedId != null && pinnedTraceId == null && linkedSelection == null) setPinnedTraceId(viewedId);
-            const params = serializeTracePageUrlState({
-              hours,
-              service,
-              search: search.trim(),
-              traceId: viewedId,
-              spanId: linkedSelection?.spanId ?? highlightSpanId,
-              eventType: linkedSelection != null ? null : highlightEventType,
-              eventAtMs: linkedSelection != null ? null : highlightEventAtMs,
-            }, new URLSearchParams());
-            const query = params.toString();
-            await navigator.clipboard.writeText(
-              `${window.location.origin}${window.location.pathname}${query === "" ? "" : `?${query}`}`,
-            );
-            setShareLinkCopied(true);
-          })}
-        >
-          {shareLinkCopied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
-        </DesignButton>
-      </div>
+      <ObservabilityToolbar
+        filters={(
+          <DesignSelectorDropdown
+            value={serviceIdentityToSelectValue(service)}
+            onValueChange={(value) => setService(selectValueToServiceIdentity(value))}
+            options={[
+              { value: ALL_SERVICES_SELECT_VALUE, label: "All services" },
+              ...services.map((identity) => ({
+                value: serviceIdentityToSelectValue(identity),
+                label: serviceIdentityLabel(identity),
+              })),
+            ]}
+            size="sm"
+            disabled={rootLoading}
+          />
+        )}
+        stats={(
+          <>
+            <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} ${rootTraces.length === 1 ? "trace" : "traces"}`} />
+            <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
+            <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
+            {selectedLinks.length > 0 && (
+              <HeaderCountStat icon={<LinkSimpleIcon className="h-3.5 w-3.5" />} value={selectedLinks.length} label={`${selectedLinks.length.toLocaleString()} non-hierarchical span ${selectedLinks.length === 1 ? "link" : "links"} in the selected trace`} />
+            )}
+          </>
+        )}
+        range={<ObservabilityTimeRangeToggle hours={hours} onChange={setHours} />}
+        actions={(
+          <>
+            <ObservabilityRefreshButton
+              loading={rootLoading || traceLoading || traceVolumeLoading}
+              onRefresh={refresh}
+            />
+            <DesignButton
+              className="shrink-0"
+              variant="secondary"
+              size="sm"
+              aria-label={shareLinkCopied ? "Link copied" : "Copy link to this view"}
+              title={shareLinkCopied ? "Copied!" : "Copy link to this view"}
+              onClick={() => runAsynchronouslyWithAlert(async () => {
+                const viewedId = linkedSelection?.traceId ?? pinnedTraceId ?? selectedTraceId;
+                if (viewedId != null && pinnedTraceId == null && linkedSelection == null) setPinnedTraceId(viewedId);
+                const params = serializeTracePageUrlState({
+                  hours,
+                  service,
+                  search: search.trim(),
+                  traceId: viewedId,
+                  spanId: linkedSelection?.spanId ?? highlightSpanId,
+                  eventType: linkedSelection != null ? null : highlightEventType,
+                  eventAtMs: linkedSelection != null ? null : highlightEventAtMs,
+                }, new URLSearchParams());
+                const query = params.toString();
+                await navigator.clipboard.writeText(
+                  `${window.location.origin}${window.location.pathname}${query === "" ? "" : `?${query}`}`,
+                );
+                setShareLinkCopied(true);
+              })}
+            >
+              {shareLinkCopied ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+            </DesignButton>
+          </>
+        )}
+      />
     </TooltipProvider>
   );
 
   return (
     <AppEnabledGuard appId="observability">
-      <PageLayout fillWidth scrollMain spacing="compact">
-        <StickyPageHeader
-          title="Traces"
-          actions={headerActions}
-          sticky
-          layoutGroupId="traces-sticky-header"
-          scrollContainer="main"
-        />
-
-        <div className="empty:hidden">
-          <AnalyticsEventLimitBanner />
-        </div>
-
+      <ObservabilityPageLayout
+        title="Traces"
+        actions={headerActions}
+      >
         {seedTraceMiss != null && (
           <DesignAlert
             variant="info"
@@ -598,16 +582,12 @@ export default function PageClient() {
           onRetry={loadTraceVolume}
         />
 
-        <div className="grid min-w-0 flex-1 gap-[var(--page-content-gap)] lg:grid-cols-[20rem_minmax(0,1fr)]">
-          <aside className="min-h-0 lg:[contain:size]" aria-label="Trace list">
-            <div
-              className={cn(
-                CARD_CLASSES,
-                "flex h-full max-h-[45dvh] w-full flex-col overflow-hidden",
-                "lg:sticky lg:top-3 lg:max-h-[calc(100cqh-0.75rem)]",
-              )}
-            >
-              <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-3 py-2">
+        <ObservabilitySplitLayout
+          sidebarLabel="Trace list"
+          detailLabel="Selected trace waterfall"
+          sidebar={(
+            <>
+              <ObservabilityPaneHeader>
                 <DesignInput
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -618,24 +598,23 @@ export default function PageClient() {
                 {!rootLoading && rootError == null && (
                   <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{rootTraces.length.toLocaleString()}</span>
                 )}
-              </div>
-              <div className="min-h-0 flex-1">
-                {rootLoading && (
-                  <div className="flex items-center justify-center py-16">
-                    <SpinnerGapIcon className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                )}
+              </ObservabilityPaneHeader>
+              <ObservabilityPaneBody>
+                {rootLoading && <ObservabilityLoadingState label="Loading traces…" />}
                 {!rootLoading && rootError != null && (
                   <ErrorDisplay error={rootError} onRetry={loadRoots} />
                 )}
                 {!rootLoading && rootError == null && rootTraces.length === 0 && (
-                  <EmptyState title={search.trim() !== "" ? "No traces match the filter." : "No spans in this time range."}>
+                  <ObservabilityEmptyState
+                    icon={TreeStructureIcon}
+                    title={search.trim() !== "" ? "No traces match the filter" : "No spans in this time range"}
+                  >
                     {search.trim() === "" && (
-                      <pre className="text-left font-mono text-[11px] text-muted-foreground bg-muted/30 rounded-lg p-3 overflow-auto max-w-full">
+                      <pre className="max-w-full overflow-auto rounded-lg bg-muted/30 p-3 text-left font-mono text-[11px] text-muted-foreground">
                         {`const span = app.startSpan("checkout");\nawait span.trackEvent("item_added",\n  { sku: "T-100" });\nawait span.end();`}
                       </pre>
                     )}
-                  </EmptyState>
+                  </ObservabilityEmptyState>
                 )}
                 {!rootLoading && rootError == null && rootTraces.length > 0 && (
                   <SpanTreeList
@@ -661,92 +640,93 @@ export default function PageClient() {
                     onLoadMore={requestMoreRoots}
                   />
                 )}
-              </div>
-            </div>
-          </aside>
-
-          <section
-            aria-label="Selected trace waterfall"
-            className={cn(CARD_CLASSES, "flex min-h-[420px] min-w-0 self-start flex-col overflow-hidden")}
-          >
-            {linkedSelection !== null && (
-              <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-foreground/[0.03] px-3 py-2">
-                <div className="min-w-0 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Following span link</span>{" "}
-                  <span className="font-mono">{(pinnedTraceId ?? selectedRootTraceId)?.slice(0, 8) ?? "trace"}</span>{" → "}
-                  <span className="font-mono">{linkedSelection.traceId.slice(0, 8)}/{linkedSelection.spanId?.slice(0, 6) ?? "root"}</span>
+              </ObservabilityPaneBody>
+            </>
+          )}
+          detail={(
+            <div className={cn(OBSERVABILITY_PANE_CLASSES, "flex min-h-[420px] min-w-0 flex-1 flex-col overflow-hidden")}>
+              {linkedSelection !== null && (
+                <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-foreground/[0.03] px-3 py-2">
+                  <div className="min-w-0 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Following span link</span>{" "}
+                    <span className="font-mono">{(pinnedTraceId ?? selectedRootTraceId)?.slice(0, 8) ?? "trace"}</span>{" → "}
+                    <span className="font-mono">{linkedSelection.traceId.slice(0, 8)}/{linkedSelection.spanId?.slice(0, 6) ?? "root"}</span>
+                  </div>
+                  <DesignButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setLinkedSelection(null)}
+                  >
+                    Back to originating trace
+                  </DesignButton>
                 </div>
-                <DesignButton
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setLinkedSelection(null)}
-                >
-                  Back to originating trace
-                </DesignButton>
-              </div>
-            )}
-            {traceLoading && (
-              <div className="flex flex-1 items-center justify-center py-24">
-                <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {!traceLoading && traceError == null && selectedTrace == null && linkedSelection === null && (
-              <div className="flex flex-1 items-center justify-center">
-                <EmptyState title="Select a trace to see its waterfall." />
-              </div>
-            )}
-            {!traceLoading && traceError == null && selectedTrace == null && linkedSelection !== null && (
-              <div className="p-4">
-                <DesignAlert
-                  variant="warning"
-                  title="Linked span is unavailable"
-                  description="The link was retained, but its same-project target was not found. The linked trace may have been sampled out independently, expired, or not arrived yet."
+              )}
+              {traceLoading && (
+                <div className="flex flex-1 items-center justify-center">
+                  <ObservabilityLoadingState label="Loading trace…" />
+                </div>
+              )}
+              {!traceLoading && traceError == null && selectedTrace == null && linkedSelection === null && (
+                <div className="flex flex-1 items-center justify-center">
+                  <ObservabilityEmptyState
+                    icon={StackIcon}
+                    title="Select a trace to see its waterfall"
+                  />
+                </div>
+              )}
+              {!traceLoading && traceError == null && selectedTrace == null && linkedSelection !== null && (
+                <div className="p-4">
+                  <DesignAlert
+                    variant="warning"
+                    title="Linked span is unavailable"
+                    description="The link was retained, but its same-project target was not found. The linked trace may have been sampled out independently, expired, or not arrived yet."
+                  />
+                </div>
+              )}
+              {!traceLoading && traceError == null && selectedTrace != null && (
+                <TraceWaterfall
+                  trace={selectedTrace}
+                  services={linkedSelection === null ? selectedTraceServices : []}
+                  nowMs={nowMs}
+                  needle={searchNeedle}
+                  unattachedEventCount={unattachedEventCount}
+                  links={selectedLinks}
+                  highlight={waterfallHighlight}
+                  onSelectSpan={(span) => {
+                    setPinnedTraceId(span.traceId);
+                    setHighlightSpanId(span.id);
+                    setHighlightEventType(null);
+                    setHighlightEventAtMs(null);
+                    runAsynchronouslyWithAlert(openSpanDetail(span));
+                  }}
+                  onSelectEvent={(event) => {
+                    setPinnedTraceId(event.traceId ?? selectedTraceId);
+                    setHighlightSpanId(event.spanId);
+                    setHighlightEventType(event.eventType);
+                    setHighlightEventAtMs(event.atMs);
+                    openEventDetail(event.raw);
+                  }}
+                  onOpenLink={(link) => {
+                    setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId });
+                  }}
                 />
-              </div>
-            )}
-            {!traceLoading && traceError == null && selectedTrace != null && (
-              <TraceWaterfall
-                trace={selectedTrace}
-                services={linkedSelection === null ? selectedTraceServices : []}
-                nowMs={nowMs}
-                needle={searchNeedle}
-                unattachedEventCount={unattachedEventCount}
-                links={selectedLinks}
-                highlight={waterfallHighlight}
-                onSelectSpan={(span) => {
-                  setPinnedTraceId(span.traceId);
-                  setHighlightSpanId(span.id);
-                  setHighlightEventType(null);
-                  setHighlightEventAtMs(null);
-                  runAsynchronouslyWithAlert(openSpanDetail(span));
-                }}
-                onSelectEvent={(event) => {
-                  setPinnedTraceId(event.traceId ?? selectedTraceId);
-                  setHighlightSpanId(event.spanId);
-                  setHighlightEventType(event.eventType);
-                  setHighlightEventAtMs(event.atMs);
-                  openEventDetail(event.raw);
-                }}
-                onOpenLink={(link) => {
-                  setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId });
-                }}
-              />
-            )}
-            {!traceLoading && traceError != null && (
-              <div className="flex flex-1 items-center justify-center py-24">
-                <ErrorDisplay
-                  error={traceError}
-                  onRetry={() => (
-                    selectedTraceId == null
-                      ? Promise.resolve()
-                      : loadSelectedTrace(selectedTraceId)
-                  )}
-                />
-              </div>
-            )}
-          </section>
-        </div>
+              )}
+              {!traceLoading && traceError != null && (
+                <div className="flex flex-1 items-center justify-center py-24">
+                  <ErrorDisplay
+                    error={traceError}
+                    onRetry={() => (
+                      selectedTraceId == null
+                        ? Promise.resolve()
+                        : loadSelectedTrace(selectedTraceId)
+                    )}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        />
 
         <RowDetailDialog
           row={detailRow}
@@ -765,7 +745,7 @@ export default function PageClient() {
             }
           }}
         />
-      </PageLayout>
+      </ObservabilityPageLayout>
     </AppEnabledGuard>
   );
 }

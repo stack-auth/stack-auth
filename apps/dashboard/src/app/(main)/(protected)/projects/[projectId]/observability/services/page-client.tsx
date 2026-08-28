@@ -1,32 +1,35 @@
 "use client";
 
 import {
-  DesignAlert,
   DesignAnalyticsCard,
   DesignAnalyticsCardHeader,
   DesignBadge,
   DesignButton,
   DesignInput,
-  DesignPillToggle,
 } from "@/components/design-components";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
-  ArrowClockwiseIcon,
   ArrowRightIcon,
   CheckCircleIcon,
   GraphIcon,
   MagnifyingGlassIcon,
-  SpinnerGapIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
-import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
 import { getErrorMessage } from "../format";
+import { ObservabilityPageLayout } from "../observability-page-layout";
+import {
+  ObservabilityEmptyState,
+  ObservabilityErrorState,
+  ObservabilityLoadingState,
+  ObservabilityRefreshButton,
+  ObservabilityTimeRangeToggle,
+  ObservabilityToolbar,
+} from "../page-chrome";
 import {
   serviceIdentityEquals,
   serviceIdentityLabel,
@@ -52,7 +55,7 @@ import {
   type ServiceTimeline,
   type ServiceTimeRangeHours,
 } from "./services-data";
-import { isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, OBSERVABILITY_TIME_RANGES, queryObservability } from "../filters";
+import { observabilityTimeRangeLabel, queryObservability } from "../filters";
 import {
   attentionReasonDescription,
   attentionReasonLabel,
@@ -68,12 +71,6 @@ type SortColumn = "attention" | "name" | "requests" | "errors" | "latency" | "la
 
 function identityKey(identity: ServiceIdentity): string {
   return serviceIdentityLabel(identity);
-}
-
-function rangeLabelFor(hours: ServiceTimeRangeHours): string {
-  const range = OBSERVABILITY_TIME_RANGES.find((candidate) => candidate.hours === hours);
-  if (range == null) throw new Error(`Unknown services time range: ${hours}`);
-  return range.label;
 }
 
 function DeltaLabel({
@@ -573,7 +570,7 @@ export default function PageClient() {
   const requestSequenceRef = useRef(0);
 
   const granularity = getServiceBucketGranularity(hours);
-  const rangeLabel = rangeLabelFor(hours);
+  const rangeLabel = observabilityTimeRangeLabel(hours);
 
   const loadServices = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
@@ -642,60 +639,37 @@ export default function PageClient() {
   const sampledServiceCount = services.filter((service) => service.sampledSpanCount > 0).length;
 
   const headerActions = (
-    <div className="flex items-center gap-2">
-      <DesignPillToggle
-        selected={String(hours)}
-        onSelect={(id) => {
-          const parsed = Number(id);
-          if (!isObservabilityTimeRangeHours(parsed)) throw new Error(`Unknown services time range: ${id}`);
-          setHours(parsed);
-        }}
-        options={OBSERVABILITY_TIME_RANGE_OPTIONS}
-        size="sm"
-        glassmorphic={false}
-      />
-      <DesignButton variant="secondary" size="sm" onClick={loadServices} loading={loading}>
-        <ArrowClockwiseIcon className="mr-1.5 h-3.5 w-3.5" />
-        Refresh
-      </DesignButton>
-    </div>
+    <ObservabilityToolbar
+      range={<ObservabilityTimeRangeToggle hours={hours} onChange={setHours} />}
+      actions={<ObservabilityRefreshButton onRefresh={loadServices} loading={loading} />}
+    />
   );
 
   return (
     <AppEnabledGuard appId="observability">
-      <PageLayout fillWidth>
-        <StickyPageHeader
-          title="Services"
-          description={`What changed in the last ${rangeLabel}, measured against the ${rangeLabel} before it.`}
-          actions={headerActions}
-          sticky
-          layoutGroupId="observability-services-sticky-header"
-        />
-
+      <ObservabilityPageLayout
+        title="Services"
+        actions={headerActions}
+      >
         {error != null && (
-          <DesignAlert
-            variant="error"
+          <ObservabilityErrorState
             title="Services could not be loaded"
             description={error}
+            onRetry={loadServices}
           />
         )}
 
         {loading && services.length === 0 ? (
           <DesignAnalyticsCard gradient="slate">
-            <div className="flex min-h-72 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <SpinnerGapIcon className="h-4 w-4 animate-spin" />
-              Loading service telemetry…
-            </div>
+            <ObservabilityLoadingState label="Loading service telemetry…" />
           </DesignAnalyticsCard>
         ) : services.length === 0 && error == null ? (
-          <DesignAnalyticsCard gradient="blue">
-            <div className="flex min-h-72 flex-col items-center justify-center px-6 text-center">
-              <GraphIcon className="h-8 w-8 text-muted-foreground/60" />
-              <h2 className="mt-4 text-sm font-semibold">No instrumented services in this window</h2>
-              <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                Services appear here when spans report an OpenTelemetry service name. Try a longer time range or send a traced request.
-              </p>
-            </div>
+          <DesignAnalyticsCard gradient="slate">
+            <ObservabilityEmptyState
+              icon={GraphIcon}
+              title="No instrumented services in this window"
+              description="Services appear here when spans report an OpenTelemetry service name. Try a longer time range or send a traced request."
+            />
           </DesignAnalyticsCard>
         ) : (
           <>
@@ -743,7 +717,7 @@ export default function PageClient() {
             )}
           </>
         )}
-      </PageLayout>
+      </ObservabilityPageLayout>
     </AppEnabledGuard>
   );
 }

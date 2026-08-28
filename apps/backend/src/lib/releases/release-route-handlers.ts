@@ -15,6 +15,7 @@ import {
   ReleaseNotFoundError,
   ReleaseScopeInvariantError,
   releaseService,
+  type ReleaseDetail,
   type ReleaseService,
 } from "@/lib/releases/release-service";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -76,6 +77,13 @@ const ReleaseLookupQuerySchema = yupObject({
 
 const ReleaseListQuerySchema = yupObject({
   limit: yupString().matches(/^(100|[1-9][0-9]?)$/u).optional(),
+  cursor: yupString().max(512).optional(),
+}).defined();
+
+const ReleaseArtifactListQuerySchema = yupObject({
+  release_id: yupString().uuid().defined(),
+  limit: yupString().matches(/^(100|[1-9][0-9]?)$/u).optional(),
+  cursor: yupString().max(512).optional(),
 }).defined();
 
 const DeploymentRegistrationBodySchema = yupObject({
@@ -152,6 +160,7 @@ const ReleaseResponseSchema = yupObject({
 const ReleaseListResponseSchema = yupObject({
   items: yupArray(ReleaseResponseSchema).defined(),
   truncated: yupBoolean().defined(),
+  next_cursor: yupString().nullable().defined(),
 }).defined();
 
 const DeploymentResponseSchema = yupObject({
@@ -183,11 +192,6 @@ const CommitResponseSchema = yupObject({
   updated_at: yupString().defined(),
 }).defined();
 
-const ReleaseDetailResponseSchema = ReleaseResponseSchema.concat(yupObject({
-  commits: yupArray(CommitResponseSchema).defined(),
-  deployments: yupArray(DeploymentResponseSchema).defined(),
-}).defined());
-
 const ArtifactResponseSchema = yupObject({
   id: yupString().uuid().defined(),
   release_id: yupString().uuid().defined(),
@@ -218,6 +222,20 @@ const DebugIdResponseSchema = yupObject({
   created_at: yupString().defined(),
   updated_at: yupString().defined(),
 }).defined();
+
+const CatalogDebugIdResponseSchema = DebugIdResponseSchema.omit(["bundle_object_key", "source_map_object_key"]);
+const CatalogArtifactResponseSchema = ArtifactResponseSchema.omit(["manifest_object_key"]).concat(yupObject({
+  debug_ids: yupArray(CatalogDebugIdResponseSchema).defined(),
+}).defined());
+const CatalogArtifactPageResponseSchema = yupObject({
+  items: yupArray(CatalogArtifactResponseSchema).defined(),
+  next_cursor: yupString().nullable().defined(),
+}).defined();
+const ReleaseDetailResponseSchema = ReleaseResponseSchema.concat(yupObject({
+  commits: yupArray(CommitResponseSchema).defined(),
+  deployments: yupArray(DeploymentResponseSchema).defined(),
+  artifacts: CatalogArtifactPageResponseSchema,
+}).defined());
 
 const DebugIdLookupResponseSchema = yupObject({
   items: yupArray(yupObject({
@@ -283,16 +301,49 @@ export function createReleaseListRoute(service: ReleaseService = releaseService)
       try {
         const releases = await service.listReleases(
           { tenancy: auth.tenancy },
-          { limit: parseOptionalReleaseLimit(query.limit) },
+          { limit: parseOptionalReleaseLimit(query.limit), cursor: query.cursor },
         );
         return {
           statusCode: 200,
           bodyType: "json",
           body: {
             items: releases.items.map(serializeRelease),
-            truncated: releases.truncated,
+            truncated: releases.nextCursor !== null,
+            next_cursor: releases.nextCursor,
           },
         } as const;
+      } catch (error) {
+        throwReleaseRouteError(error);
+      }
+    },
+  });
+}
+
+export function createReleaseArtifactListRoute(service: ReleaseService = releaseService) {
+  return createSmartRouteHandler({
+    metadata: {
+      summary: "List finalized source-map manifests for a release",
+      description: "Returns cursor-paginated finalized source-map manifests and their debug IDs without private storage keys.",
+      tags: ["Releases"],
+    },
+    request: yupObject({
+      auth: ReleaseAuthSchema,
+      query: ReleaseArtifactListQuerySchema,
+      method: yupString().oneOf(["GET"]).defined(),
+    }),
+    response: yupObject({
+      statusCode: yupNumber().oneOf([200]).defined(),
+      bodyType: yupString().oneOf(["json"]).defined(),
+      body: CatalogArtifactPageResponseSchema,
+    }),
+    handler: async ({ auth, query }) => {
+      try {
+        const page = await service.listReleaseArtifacts({ tenancy: auth.tenancy }, {
+          releaseId: query.release_id,
+          limit: parseOptionalReleaseLimit(query.limit),
+          cursor: query.cursor,
+        });
+        return { statusCode: 200, bodyType: "json", body: serializeArtifactPage(page) };
       } catch (error) {
         throwReleaseRouteError(error);
       }
@@ -573,12 +624,52 @@ function serializeRelease(release: RouteRelease) {
   } as const;
 }
 
-function serializeReleaseDetail(detail: { release: RouteRelease, commits: RouteCommit[], deployments: RouteDeployment[] }) {
+function serializeReleaseDetail(detail: ReleaseDetail) {
   return {
     ...serializeRelease(detail.release),
     commits: detail.commits.map(serializeCommit),
     deployments: detail.deployments.map(serializeDeployment),
+    artifacts: serializeArtifactPage(detail.artifacts),
   } as const;
+}
+
+function serializeArtifactPage(page: Awaited<ReturnType<ReleaseService["listReleaseArtifacts"]>>) {
+  return {
+    items: page.items.map((artifact) => ({
+      id: artifact.id,
+      release_id: artifact.releaseId,
+      manifest_sha256: artifact.manifestSha256,
+      dist: artifact.dist,
+      environment: artifact.environment,
+      status: serializeCatalogArtifactStatus(artifact.status),
+      finalized_at: artifact.finalizedAt?.toISOString() ?? null,
+      created_at: artifact.createdAt.toISOString(),
+      updated_at: artifact.updatedAt.toISOString(),
+      debug_ids: artifact.debugIds.map((debugId) => ({
+        id: debugId.id,
+        release_artifact_id: debugId.releaseArtifactId,
+        debug_id: debugId.debugId,
+        code_file: debugId.codeFile,
+        source_map_file: debugId.sourceMapFile,
+        source_map_inline: debugId.sourceMapInline,
+        bundle_sha256: debugId.bundleSha256,
+        bundle_bytes: debugId.bundleBytes,
+        source_map_sha256: debugId.sourceMapSha256,
+        source_map_bytes: debugId.sourceMapBytes,
+        source_map_gzipped_bytes: debugId.sourceMapGzippedBytes,
+        created_at: debugId.createdAt.toISOString(),
+        updated_at: debugId.updatedAt.toISOString(),
+      })),
+    })),
+    next_cursor: page.nextCursor,
+  };
+}
+
+function serializeCatalogArtifactStatus(status: ReleaseArtifact["status"]): "finalized" {
+  if (status !== PrismaReleaseArtifactStatus.FINALIZED) {
+    throw new Error("Release catalog returned a non-finalized artifact");
+  }
+  return "finalized";
 }
 
 function serializeJson(value: unknown): Json {

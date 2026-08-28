@@ -119,10 +119,13 @@ describe("Analytics, Warehouse, and Observability navigation", () => {
     expect(getParentAppId("observability")).toBeNull();
 
     const observability = ALL_APPS_FRONTEND.observability;
+    expect(observability.navigationItems.map((item) => item.displayName)).not.toContain("Alert rules");
     const logs = observability.navigationItems.find((item) => item.displayName === "Logs");
     const traces = observability.navigationItems.find((item) => item.displayName === "Traces");
-    if (logs == null || traces == null) throw new Error("Observability must define Logs and Traces navigation.");
+    const registry = observability.navigationItems.find((item) => item.displayName === "Registry");
+    if (logs == null || traces == null || registry == null) throw new Error("Observability must define Logs, Traces, and Registry navigation.");
     expect(getItemPath(PROJECT_ID, observability, logs)).toBe("/projects/demo-project/observability/logs");
     expect(getItemPath(PROJECT_ID, observability, traces)).toBe("/projects/demo-project/observability/traces");
+    expect(getItemPath(PROJECT_ID, observability, registry)).toBe("/projects/demo-project/observability/registry");
   });
 });

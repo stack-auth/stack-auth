@@ -761,6 +761,7 @@ describe("hexclave sourcemaps upload — command wiring", () => {
         status: "finalized",
         uploaded: [artifact.debugId],
         already_uploaded: [],
+        catalog_status: "published",
       }), { status: 200 }),
     ];
     const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>(async (input, init) => {
@@ -777,7 +778,12 @@ describe("hexclave sourcemaps upload — command wiring", () => {
 
     const result = await uploadPreparedSourceMaps(request);
 
-    expect(result).toEqual({ uploaded: [artifact.debugId], alreadyUploaded: [], storageNotConfigured: false });
+    expect(result).toEqual({
+      uploaded: [artifact.debugId],
+      alreadyUploaded: [],
+      catalogStatus: "published",
+      storageNotConfigured: false,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchCalls[0]?.input)).toBe("https://api.example.com/api/latest/source-maps/artifacts");
     const registrationHeaders = new Headers(fetchCalls[0]?.init?.headers);
@@ -901,6 +907,7 @@ describe("hexclave sourcemaps upload — command wiring", () => {
         status: "finalized",
         uploaded: [artifact.debugId],
         already_uploaded: [],
+        catalog_status: "published",
       }), { status: 200 }));
 
     const result = await uploadPreparedSourceMaps({
@@ -991,6 +998,7 @@ describe("hexclave sourcemaps upload — command wiring", () => {
         status: "already_finalized",
         uploaded: [],
         already_uploaded: [artifact.debugId],
+        catalog_status: "already_published",
       }), { status: 200 }));
 
     const result = await uploadPreparedSourceMaps({
@@ -1001,6 +1009,7 @@ describe("hexclave sourcemaps upload — command wiring", () => {
 
     expect(result.uploaded).toEqual([]);
     expect(result.alreadyUploaded).toEqual([artifact.debugId]);
+    expect(result.catalogStatus).toBe("already_published");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

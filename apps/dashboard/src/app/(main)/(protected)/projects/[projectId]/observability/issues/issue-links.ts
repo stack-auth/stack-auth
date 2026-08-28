@@ -9,10 +9,6 @@ export function issuesListHref(projectId: string): string {
   return urlString`/projects/${projectId}/observability/issues`;
 }
 
-export function issueAlertRulesHref(projectId: string): string {
-  return urlString`/projects/${projectId}/observability/issues/alerts`;
-}
-
 export function issueSearchHref(projectId: string, search: string): string {
   return `${issuesListHref(projectId)}?status=all&search=${encodeURIComponent(search)}`;
 }

@@ -31,14 +31,10 @@ import {
   DesignMenu,
   DesignSelectorDropdown,
 } from "@/components/design-components";
-import { Link } from "@/components/link";
 import { Label, Textarea, Typography } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { AppEnabledGuard } from "../../../app-enabled-guard";
-import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
 import { getErrorMessage } from "../../format";
-import { issuesListHref } from "../issue-links";
 import {
   buildIssueAlertRule,
   DEFAULT_ALERT_RULE_DRAFT,
@@ -532,7 +528,12 @@ function updateRuleInList(rules: readonly IssueAlertRuleResponse[], saved: Issue
   return rules.map((rule) => rule.id === saved.id ? saved : rule);
 }
 
-export default function PageClient() {
+type IssueAlertsDialogProps = {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+};
+
+export function IssueAlertsDialog(props: IssueAlertsDialogProps) {
   const adminApp = useAdminApp();
   const dashboardUser = useDashboardInternalUser();
   const project = adminApp.useProject();
@@ -691,22 +692,23 @@ export default function PageClient() {
   }, [adminApp]);
 
   return (
-    <AppEnabledGuard appId="observability">
-      <PageLayout
-        title="Issue alerts"
-        description="Route new, regressed, or high-frequency issues to team members through the durable email workflow."
-        actions={(
-          <div className="flex items-center gap-2">
-            <DesignButton variant="secondary" size="sm" asChild>
-              <Link href={issuesListHref(adminApp.projectId)}>Back to issues</Link>
-            </DesignButton>
-            <DesignButton variant="default" size="sm" onClick={openCreate}>
-              <PlusIcon className="mr-1.5 h-3.5 w-3.5" /> New rule
-            </DesignButton>
-          </div>
-        )}
-        scrollMain
-      >
+    <DesignDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      size="7xl"
+      icon={BellRingingIcon}
+      title="Alert rules"
+      description="Route new, regressed, or high-frequency issues to team members through the durable email workflow."
+      headerContent={(
+        <div className="flex justify-end">
+          <DesignButton variant="default" size="sm" onClick={openCreate}>
+            <PlusIcon className="mr-1.5 h-3.5 w-3.5" /> New rule
+          </DesignButton>
+        </div>
+      )}
+      bodyClassName="space-y-4"
+    >
+      <>
         {operationError != null && (
           <DesignAlert variant="error" title="Alert rule action failed" description={operationError} />
         )}
@@ -869,7 +871,7 @@ export default function PageClient() {
           recipients={recipients}
           onSave={saveRule}
         />
-      </PageLayout>
-    </AppEnabledGuard>
+      </>
+    </DesignDialog>
   );
 }
