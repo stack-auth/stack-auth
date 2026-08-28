@@ -2,6 +2,7 @@
 
 import { ActionDialog } from "@/components/ui";
 import type { AdminProject } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 
 /**
  * Shared confirmation dialog for permanently deleting a project. Used both by the project settings
@@ -28,7 +29,9 @@ export function DeleteProjectDialog(props: {
         label: "Delete Project",
         onClick: async () => {
           await props.project.delete();
-          await props.onDeleted();
+          // The project is irreversibly gone at this point, so post-deletion work (list refresh,
+          // redirect) must not keep the dialog open or make the deletion look like it failed.
+          runAsynchronouslyWithAlert(props.onDeleted());
         },
       }}
       cancelButton

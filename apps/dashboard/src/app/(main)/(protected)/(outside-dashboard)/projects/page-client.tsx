@@ -394,8 +394,8 @@ function ProjectsListPage() {
   }, [appInternals, rawProjects.length]);
 
   const handleProjectDeleted = useCallback(async () => {
-    await appInternals.refreshOwnedProjects();
     toast({ title: "Project deleted" });
+    await appInternals.refreshOwnedProjects();
   }, [appInternals]);
 
   const teamIdMap = useMemo(() => {
