@@ -4,6 +4,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
 import { declareBasePiledriverDatabase } from "../../databases/piledriver/implementations/base.js";
+import { declareBreezyPiledriverDatabase } from "../../databases/piledriver/implementations/breezy/index.js";
 import { declareBufferedPiledriverDatabase } from "../../databases/piledriver/implementations/buffered.js";
 import { declareInMemoryPiledriverDatabase } from "../../databases/piledriver/implementations/in-memory.js";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
@@ -48,6 +49,9 @@ const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
 const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
+const piledriverImplementation = process.env.STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION ?? "base";
+if (piledriverImplementation !== "base" && piledriverImplementation !== "breezy") throw new Error("STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION must be base or breezy");
+const declarePerfPiledriverDatabase = piledriverImplementation === "base" ? declareBasePiledriverDatabase : declareBreezyPiledriverDatabase;
 
 const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapshot => ({
   displayName: "Perf Product",
@@ -155,16 +159,16 @@ const newPiledriverDb = () => {
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
     const lowLevel = perfBackend === "lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
-    return declareBasePiledriverDatabase(lowLevel);
+    return declarePerfPiledriverDatabase(lowLevel);
   }
   if (perfBackend === "buffered-lmdb-instant" || perfBackend === "buffered-lmdb") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
     const lowLevel = perfBackend === "buffered-lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
-    return declareBufferedPiledriverDatabase(declareBasePiledriverDatabase(lowLevel));
+    return declareBufferedPiledriverDatabase(declarePerfPiledriverDatabase(lowLevel));
   }
-  return declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+  return declarePerfPiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
 };
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
@@ -277,7 +281,7 @@ describe("payments schema performance", () => {
     }, () => db);
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
-    const summary = { engine: "bulldozer-js", backend: perfBackend, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
+    const summary = { engine: "bulldozer-js", backend: perfBackend, piledriverImplementation, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
     writeFileSync("../../bulldozer-payments-schema-perf-js.untracked.json", JSON.stringify(summary, null, 2));
     process.stdout.write(`\n[bulldozer-payments-schema-perf-js] summary=${JSON.stringify(summary)}\n`);
   });

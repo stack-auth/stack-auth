@@ -4,6 +4,7 @@ import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { asHeapObject, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
 import { declareBasePiledriverDatabase } from "./implementations/base.js";
+import { declareBreezyPiledriverDatabase } from "./implementations/breezy/index.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
   return {
@@ -92,18 +93,49 @@ function failNextMetadataSetAll(lowLevel: LowLevelDatabase): LowLevelDatabase {
   };
 }
 
+function failAvailabilityAfterRootWrite(lowLevel: LowLevelDatabase): LowLevelDatabase {
+  let shouldFail = false;
+  let hasFailed = false;
+  return {
+    ...lowLevel,
+    async waitUntilAvailable(seq) {
+      if (shouldFail) {
+        shouldFail = false;
+        hasFailed = true;
+        throw new Error("injected root availability failure");
+      }
+      await lowLevel.waitUntilAvailable(seq);
+    },
+    declareKvStore(id) {
+      const store = lowLevel.declareKvStore(id);
+      if (id !== "root") return store;
+      return {
+        ...store,
+        async setAll(entries, options) {
+          const result = await store.setAll(entries, options);
+          shouldFail = !hasFailed;
+          return result;
+        },
+      };
+    },
+  };
+}
+
 async function timestampAfter(value: number) {
   while (Date.now() <= value) await new Promise(resolve => setTimeout(resolve, 1));
   return Date.now();
 }
 
-function declareAfterRestart(lowLevel: LowLevelDatabase, cutoffTimestampMillis: number) {
-  return declareBasePiledriverDatabase(lowLevel, {
+const databaseImplementations: { name: string, declareDatabase: typeof declareBasePiledriverDatabase }[] = [
+  { name: "base", declareDatabase: declareBasePiledriverDatabase },
+  { name: "breezy", declareDatabase: declareBreezyPiledriverDatabase },
+];
+
+describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareDatabase: declareBasePiledriverDatabase }) => {
+  const declareAfterRestart = (lowLevel: LowLevelDatabase, cutoffTimestampMillis: number) => declareBasePiledriverDatabase(lowLevel, {
     garbageCollectionProcessStartedAtMillis: cutoffTimestampMillis + 1,
   });
-}
 
-describe("PiledriverDatabase", () => {
   it("round-trips an own __proto__ property", async () => {
     const key = new TextEncoder().encode("proto").buffer;
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
@@ -236,6 +268,18 @@ describe("PiledriverDatabase", () => {
     await timestampAfter(cutoff);
     const restarted = declareAfterRestart(lowLevel, cutoff);
     expect((await restarted.collectGarbage(cutoff)).objects.deleted).toBe(2);
+  });
+
+  it("allows a root mutation to retry after the previous write fails its availability barrier", async () => {
+    const lowLevel = failAvailabilityAfterRootWrite(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const writer = declareBasePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    await writer.setRootObject(rootKey, { value: "first" });
+
+    await expect(writer.setRootObject(rootKey, { value: "blocked" })).rejects.toThrow("injected root availability failure");
+    await expect(writer.setRootObject(rootKey, { value: "retry" })).resolves.toEqual({ seq: expect.anything() });
+    await expect(writer.getRootObject(rootKey)).resolves.toMatchObject({ object: { value: "retry" } });
+    await expect(writer.deleteRootObject(rootKey)).resolves.toEqual({ seq: expect.anything() });
   });
 
   it("batches metadata and candidate writes for created heap objects", async () => {

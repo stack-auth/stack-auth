@@ -29,6 +29,32 @@ export type LowLevelDatabaseDebugSnapshot = {
   dumps: Record<string, LowLevelDatabaseDebugEntry[]>,
 };
 
+export type LowLevelMutationOptions = {
+  /**
+   * Establishes a causal dependency from an earlier mutation to this one. The backend may
+   * satisfy the dependency by committing both mutations atomically, but must not make or
+   * replicate this mutation before the required mutation.
+   *
+   * Waiting locally between mutations is not equivalent:
+   *
+   *     const { seq: a } = await firstStore.setAll(firstEntries);
+   *     await database.waitUntilAvailable(a);
+   *     const { seq: b } = await secondStore.setAll(secondEntries);
+   *     await database.waitUntilAvailable(b);
+   *
+   * Because stores replicate independently, another client could still observe `b` without
+   * observing `a`. The causal relationship must be attached to the second mutation:
+   *
+   *     const { seq: a } = await firstStore.setAll(firstEntries);
+   *     const { seq: b } = await secondStore.setAll(secondEntries, { requiresSeq: a });
+   *     await database.waitUntilAvailable(b);
+   *
+   * An explicit wait is still necessary when application code must inspect the first
+   * mutation's available result before it can construct the second mutation.
+   */
+  requiresSeq?: DatabaseSeq,
+};
+
 /**
  * A simple KV store.
  *
@@ -53,8 +79,8 @@ export type LowLevelKvStore = {
     entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>,
     hasMore: boolean,
   }>,
-  setAll(entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
-  deleteAll(keys: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ seq: DatabaseSeq }>,
+  setAll(entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, options?: LowLevelMutationOptions): Promise<{ seq: DatabaseSeq }>,
+  deleteAll(keys: ArrayBuffer[], options?: LowLevelMutationOptions): Promise<{ seq: DatabaseSeq }>,
 
   /**
    * The returned sequence must cover every successful entry, not just one of them.
@@ -63,7 +89,7 @@ export type LowLevelKvStore = {
    * `options.requiresSeq` or the store's initial sequence. A batch must not contain
    * duplicate keys.
    */
-  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: { requiresSeq?: DatabaseSeq }): Promise<{
+  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: LowLevelMutationOptions): Promise<{
     results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
     seq: DatabaseSeq,
   }>,
@@ -92,5 +118,5 @@ export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSetAll"
    * How the keys are assigned is implementation-dependent, although they must always be unique within a single KV dump.
    * Implementations are encouraged to use keys that make the insert operation as performant as possible.
    */
-  insertAll(values: ArrayBuffer[], options?: { requiresSeq?: DatabaseSeq }): Promise<{ keys: ArrayBuffer[], seq: DatabaseSeq }>,
+  insertAll(values: ArrayBuffer[], options?: LowLevelMutationOptions): Promise<{ keys: ArrayBuffer[], seq: DatabaseSeq }>,
 }
