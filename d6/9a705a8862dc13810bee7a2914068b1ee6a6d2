@@ -1,0 +1,19 @@
+apps/mcp/tsconfig.json
+  s_4fdc20562be921::t_3ed1d99c4e4bfc 3,7-8,21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "d69a705a8862dc13810bee7a2914068b1ee6a6d2",
+  "prompts": {},
+  "sessions": {
+    "s_4fdc20562be921": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a048f9-96ae-7c71-adc3-358d5f991e75",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
