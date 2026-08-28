@@ -79,7 +79,6 @@ export async function executeJavascriptInFreestyleVm(options: {
   try {
     const jobId = crypto.randomUUID();
     const hostJobDirectory = `${RUNTIME_ROOT}/work/${jobId}`;
-    const chrootJobDirectory = `/work/${jobId}`;
     const packageJson = JSON.stringify({
       private: true,
       type: "module",
@@ -95,7 +94,7 @@ export async function executeJavascriptInFreestyleVm(options: {
 
     const exitCode = await runPtyCommand(
       vm,
-      `/usr/local/bin/hexclave-run-job ${chrootJobDirectory}`,
+      `/usr/local/bin/hexclave-run-job ${hostJobDirectory}`,
       executionSignal,
     );
     if (exitCode !== 0) {

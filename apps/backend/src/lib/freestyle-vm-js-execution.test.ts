@@ -80,7 +80,7 @@ describe("executeJavascriptInFreestyleVm", () => {
       dependencies: { react: "19.1.1" },
     });
     expect(fake.commands).toEqual([
-      `/usr/local/bin/hexclave-run-job ${jobDirectory.replace("/opt/hexclave-runtime", "")}`,
+      `/usr/local/bin/hexclave-run-job ${jobDirectory}`,
     ]);
     expect(fake.detach).toHaveBeenCalledOnce();
     expect(fake.deleteVm).toHaveBeenCalledOnce();

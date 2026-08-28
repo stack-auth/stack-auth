@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import { Freestyle, FreestyleApiError } from "freestyle";
 import { DEFAULT_FREESTYLE_SNAPSHOT_ID } from "../src/lib/freestyle-vm-constants";
 
-const ALPINE_MINIROOTFS_URL = "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/alpine-minirootfs-3.24.0-x86_64.tar.gz";
-const ALPINE_MINIROOTFS_SHA256 = "de9a11c0e0e7e9c94db3ed8af7b450eafc0b13687bd7e9199d55050f20aa0a89";
+const NODE_VERSION = "24.18.1";
+const NODE_ARCHIVE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz`;
+const NODE_ARCHIVE_SHA256 = "9f5eb6ac21845a66c493c91a253b1da32fd684e89e9b7202d4936982336be4ca";
 const snapshotId = readHexclaveEnvironmentVariable(
   "HEXCLAVE_FREESTYLE_SNAPSHOT_ID",
   "STACK_FREESTYLE_SNAPSHOT_ID",
@@ -46,20 +47,63 @@ try {
   if (!(error instanceof FreestyleApiError) || error.status !== 404) throw error;
 }
 
-const archiveResponse = await fetch(ALPINE_MINIROOTFS_URL);
+const archiveResponse = await fetch(NODE_ARCHIVE_URL);
 if (!archiveResponse.ok) {
-  throw new Error(`Failed to download Alpine minirootfs (HTTP ${archiveResponse.status})`);
+  throw new Error(`Failed to download Node ${NODE_VERSION} (HTTP ${archiveResponse.status})`);
 }
 const archive = new Uint8Array(await archiveResponse.arrayBuffer());
 const archiveSha256 = createHash("sha256").update(archive).digest("hex");
-if (archiveSha256 !== ALPINE_MINIROOTFS_SHA256) {
-  throw new Error(`Alpine minirootfs checksum mismatch: expected ${ALPINE_MINIROOTFS_SHA256}, received ${archiveSha256}`);
+if (archiveSha256 !== NODE_ARCHIVE_SHA256) {
+  throw new Error(`Node archive checksum mismatch: expected ${NODE_ARCHIVE_SHA256}, received ${archiveSha256}`);
 }
 
-const bootstrapScript = await readFile(
-  new URL("./freestyle-snapshot-bootstrap.sh", import.meta.url),
-  "utf8",
-);
+const [collectorScript, bootstrapScript] = await Promise.all([
+  readFile(new URL("./freestyle-node-runtime-bundle.sh", import.meta.url), "utf8"),
+  readFile(new URL("./freestyle-snapshot-bootstrap.sh", import.meta.url), "utf8"),
+]);
+
+const { vm: collectorVm } = await freestyle.vms.create({
+  snapshotId: "freestyle/ubuntu-sm",
+  ttlSeconds: 15 * 60,
+  automaticRestart: false,
+  metadata: {
+    app: "hexclave",
+    purpose: "javascript-runtime-collector",
+  },
+  firewall: { rules: [] },
+});
+
+let runtimeBundle: Uint8Array;
+let runtimeBundleSha256: string;
+try {
+  await Promise.all([
+    collectorVm.fs.writeFile("/tmp/hexclave-node-archive.tar.gz", archive),
+    collectorVm.fs.writeTextFile(
+      "/tmp/freestyle-node-runtime-bundle.sh",
+      collectorScript,
+      { mode: 0o700 },
+    ),
+  ]);
+  const collection = await collectorVm.exec({
+    command: "/tmp/freestyle-node-runtime-bundle.sh",
+    timeoutMs: 300_000,
+  });
+  if (collection.statusCode !== 0) {
+    throw new Error(`Node runtime collection exited with status ${collection.statusCode}: ${collection.stderr ?? ""}`);
+  }
+  [runtimeBundle, runtimeBundleSha256] = await Promise.all([
+    collectorVm.fs.readFile("/tmp/hexclave-node-runtime.tar.gz"),
+    collectorVm.fs.readTextFile("/tmp/hexclave-node-runtime.sha256"),
+  ]);
+  runtimeBundleSha256 = runtimeBundleSha256.trim();
+  const receivedBundleSha256 = createHash("sha256").update(runtimeBundle).digest("hex");
+  if (receivedBundleSha256 !== runtimeBundleSha256) {
+    throw new Error(`Node runtime bundle checksum mismatch: expected ${runtimeBundleSha256}, received ${receivedBundleSha256}`);
+  }
+} finally {
+  await collectorVm.delete();
+}
+
 const { vm } = await freestyle.vms.create({
   snapshotId: "freestyle/busybox",
   ttlSeconds: 30 * 60,
@@ -76,7 +120,8 @@ const { vm } = await freestyle.vms.create({
 try {
   await vm.resize({ memory: 1024, storage: 2048 });
   await Promise.all([
-    vm.fs.writeFile("/tmp/alpine-minirootfs.tar.gz", archive),
+    vm.fs.writeFile("/opt/hexclave-node-runtime.tar.gz", runtimeBundle),
+    vm.fs.writeTextFile("/opt/hexclave-node-runtime.sha256", `${runtimeBundleSha256}\n`),
     vm.fs.writeTextFile(
       "/tmp/freestyle-snapshot-bootstrap.sh",
       bootstrapScript,
@@ -105,7 +150,7 @@ try {
     ),
   ]);
   const verification = await vm.exec({
-    command: `/usr/local/bin/hexclave-run-job /work/${verificationId}`,
+    command: `/usr/local/bin/hexclave-run-job ${verificationHostDirectory}`,
     timeoutMs: 300_000,
   });
   if (verification.statusCode !== 0) {
@@ -118,7 +163,7 @@ try {
 
   const { snapshot, snapshotId: createdSnapshotId } = await vm.snapshot({
     slug: snapshotId,
-    displayName: "Hexclave JavaScript sandbox (Node 24)",
+    displayName: "Hexclave BusyBox JavaScript sandbox (Node 24)",
   });
   process.stdout.write(`Created Freestyle snapshot ${snapshot.slug ?? createdSnapshotId} (${createdSnapshotId})\n`);
 } finally {

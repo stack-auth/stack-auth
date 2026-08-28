@@ -292,11 +292,11 @@ Custom, manual, and programmatic email sending requires Freestyle. Before starti
 HEXCLAVE_FREESTYLE_API_KEY=... pnpm --filter @hexclave/backend freestyle:bootstrap-snapshot
 ```
 
-The bootstrap starts from Freestyle's public BusyBox image, installs and verifies the Node 24 runtime, captures the private `hexclave-js-node24-v1` snapshot, and deletes the builder VM. Then configure the server:
+The bootstrap downloads the checksum-pinned official Node 24 distribution, uses a temporary Freestyle Ubuntu VM to collect only Node's required shared libraries, and installs that minimal runtime into Freestyle's public BusyBox image. The captured private `hexclave-js-node24-v2` snapshot contains only BusyBox, Node/npm, the required libraries, and CA certificates. Both temporary VMs are deleted. Then configure the server:
 
 ```env
 HEXCLAVE_FREESTYLE_API_KEY=...
-HEXCLAVE_FREESTYLE_SNAPSHOT_ID=hexclave-js-node24-v1
+HEXCLAVE_FREESTYLE_SNAPSHOT_ID=hexclave-js-node24-v2
 ```
 
 Choose a different `HEXCLAVE_FREESTYLE_SNAPSHOT_ID` in both commands if that slug is already in use. Existing `STACK_FREESTYLE_*` environment names remain accepted.
