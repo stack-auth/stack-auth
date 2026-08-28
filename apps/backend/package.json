@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/backend",
-  "version": "1.0.108",
+  "version": "1.0.109",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
