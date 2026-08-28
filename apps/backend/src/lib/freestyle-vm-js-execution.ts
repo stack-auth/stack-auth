@@ -62,9 +62,12 @@ export async function executeJavascriptInFreestyleVm(options: {
   // disappears while create is completing, Freestyle still deletes the
   // otherwise-unreachable VM after the execution budget plus a cleanup grace.
   const runtimeSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-  const vm = await awaitWithAbortSignal(options.createVm({
+  const createVmPromise = options.createVm({
     snapshotId: options.snapshotId,
     automaticRestart: false,
+    // A stopped or max-run-paused VM is immediately deleted. The absolute TTL
+    // remains a provider-owned backstop even if this process disappears.
+    autoDeleteSeconds: 0,
     maxRunSeconds: runtimeSeconds + 60,
     ttlSeconds: runtimeSeconds + VM_TTL_GRACE_SECONDS,
     metadata: {
@@ -74,7 +77,22 @@ export async function executeJavascriptInFreestyleVm(options: {
     firewall: {
       rules: [{ action: "allow", source: {}, destination: { public: true } }],
     },
-  }), executionSignal);
+  });
+
+  let vm: FreestyleExecutionVm;
+  try {
+    vm = await awaitWithAbortSignal(createVmPromise, executionSignal);
+  } catch (error) {
+    if (executionSignal.aborted) {
+      // Cancellation can win before create returns a handle. Keep ownership of
+      // that pending result and delete the VM as soon as it materializes.
+      options.scheduleCleanup(deleteFreestyleVmWhenCreated(
+        createVmPromise,
+        options.onCleanupError,
+      ));
+    }
+    throw error;
+  }
 
   try {
     const jobId = crypto.randomUUID();
@@ -185,6 +203,20 @@ async function deleteFreestyleVmAfterExecution(
   } catch (error) {
     onCleanupError(vm.id, error);
   }
+}
+
+async function deleteFreestyleVmWhenCreated(
+  createVmPromise: Promise<FreestyleExecutionVm>,
+  onCleanupError: (vmId: string, error: unknown) => void,
+): Promise<void> {
+  let vm: FreestyleExecutionVm;
+  try {
+    vm = await createVmPromise;
+  } catch {
+    // Creation failed, so there is no VM to own or delete.
+    return;
+  }
+  await deleteFreestyleVmAfterExecution(vm, onCleanupError);
 }
 
 async function awaitWithAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

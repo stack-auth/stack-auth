@@ -64,6 +64,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     expect(createOptions).toMatchObject({
       snapshotId: "sandbox-snapshot",
       automaticRestart: false,
+      autoDeleteSeconds: 0,
       maxRunSeconds: 690,
       ttlSeconds: 930,
       metadata: { app: "hexclave", purpose: "javascript-execution" },
@@ -144,5 +145,41 @@ describe("executeJavascriptInFreestyleVm", () => {
     expect(scheduleCleanup).toHaveBeenCalledOnce();
     await scheduledCleanup;
     expect(fake.deleteVm).toHaveBeenCalledOnce();
+  });
+
+  test("deletes a VM that finishes creating after the invocation aborts", async () => {
+    const controller = new AbortController();
+    const abortReason = new Error("request ended during VM creation");
+    const fake = createFakeVm();
+    let resolveCreate: (vm: FreestyleExecutionVm) => void = () => {
+      throw new Error("create resolver used before initialization");
+    };
+    const createPromise = new Promise<FreestyleExecutionVm>((resolve) => {
+      resolveCreate = resolve;
+    });
+    let scheduledCleanup: Promise<void> | undefined;
+    const scheduleCleanup = vi.fn((cleanup: Promise<void>) => {
+      scheduledCleanup = cleanup;
+    });
+
+    const execution = executeJavascriptInFreestyleVm({
+      snapshotId: "sandbox-snapshot",
+      code: "export default () => 42;",
+      nodeModules: {},
+      signal: controller.signal,
+      scheduleCleanup,
+      onCleanupError: vi.fn(),
+      createVm: async () => await createPromise,
+    });
+    controller.abort(abortReason);
+
+    await expect(execution).rejects.toBe(abortReason);
+    expect(scheduleCleanup).toHaveBeenCalledOnce();
+    expect(fake.deleteVm).not.toHaveBeenCalled();
+
+    resolveCreate(fake.vm);
+    await scheduledCleanup;
+    expect(fake.deleteVm).toHaveBeenCalledOnce();
+    expect(fake.commands).toEqual([]);
   });
 });
