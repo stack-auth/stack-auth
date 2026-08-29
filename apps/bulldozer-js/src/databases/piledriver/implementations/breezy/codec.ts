@@ -7,10 +7,29 @@
  * module defines the format while the database implementation owns IO and sequence ordering.
  */
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
-import { isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject } from "../../index.js";
+import { PiledriverHeapObject, PiledriverObject } from "../../index.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const isPlannedHeapReferenceSymbol = Symbol("piledriver-planned-heap-reference");
+
+type PlannedHeapReference = {
+  key: ArrayBuffer,
+  [isPlannedHeapReferenceSymbol]: true,
+};
+
+export type PlannedPiledriverObject =
+  | string
+  | number
+  | boolean
+  | null
+  | PlannedPiledriverObject[]
+  | { [key: string]: PlannedPiledriverObject }
+  | PlannedHeapReference;
+
+export function plannedHeapReference(key: ArrayBuffer): PlannedHeapReference {
+  return { key, [isPlannedHeapReferenceSymbol]: true };
+}
 
 const defineOwn = (object: object, key: string, value: unknown) => {
   // Assignment would invoke Object.prototype.__proto__ instead of restoring an own property.
@@ -54,53 +73,29 @@ export function decodePiledriverObject(
 }
 
 /**
- * Encodes one value and reports every heap dependency encountered directly in that value.
+ * Encodes one planned value whose heap objects have already been replaced by key references.
  *
- * `Dependency` is intentionally opaque to the codec. The database uses it for causal sequence
- * tokens, but tests or other storage implementations may attach different dependency metadata.
- * The callback receives an immutable ancestor path so nested heap serialization can reject cycles
- * before it waits on an ancestor.
+ * Planning owns traversal, cycle detection, key assignment, and causal dependencies. Keeping those
+ * concerns out of the codec makes this operation a synchronous conversion to the persisted format.
  */
-export async function encodePiledriverObject<Dependency>(
-  value: PiledriverObject,
-  heapPath: ReadonlySet<PiledriverHeapObject>,
-  resolveHeapObject: (
-    object: PiledriverHeapObject,
-    childHeapPath: ReadonlySet<PiledriverHeapObject>,
-  ) => Promise<{ key: ArrayBuffer, dependency: Dependency }>,
-): Promise<{ buffer: ArrayBuffer, dependencies: Dependency[] }> {
-  const dependencies: Dependency[] = [];
-  // Unlike heap objects, ordinary objects are serialized inline and only need path-local cycle detection.
-  const objectPath = new Set<object>();
-  const encode = async (node: PiledriverObject): Promise<unknown> => {
+export function encodePiledriverObject(value: PlannedPiledriverObject): ArrayBuffer {
+  const encode = (node: PlannedPiledriverObject): unknown => {
     if (typeof node === "number") {
       if (Number.isFinite(node) && !Object.is(node, -0)) return node;
       // JSON would otherwise collapse NaN/infinities to null and -0 to 0.
       return [Object.is(node, -0) ? "-0" : node.toString()];
     }
     if (node === null || typeof node === "string" || typeof node === "boolean") return node;
-    if (isPiledriverHeapObjectSymbol in node) {
-      if (heapPath.has(node)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
-      const resolved = await resolveHeapObject(node, new Set(heapPath).add(node));
-      dependencies.push(resolved.dependency);
-      return ["heap-reference", encodeBase64(new Uint8Array(resolved.key))];
+    if (isPlannedHeapReferenceSymbol in node) {
+      return ["heap-reference", encodeBase64(new Uint8Array(node.key))];
     }
-    if (objectPath.has(node)) throw new Error("Piledriver objects must not contain cycles");
-    objectPath.add(node);
-    let result: unknown;
     if (Array.isArray(node)) {
-      const items: unknown[] = [];
-      for (const item of node) items.push(await encode(item));
-      result = ["array", items];
-    } else {
-      const object: { [key: string]: unknown } = {};
-      for (const [key, child] of Object.entries(node)) defineOwn(object, key, await encode(child));
-      result = object;
+      return ["array", node.map(encode)];
     }
-    objectPath.delete(node);
-    return result;
+    const object: { [key: string]: unknown } = {};
+    for (const [key, child] of Object.entries(node)) defineOwn(object, key, encode(child));
+    return object;
   };
 
-  const jsonable = await encode(value);
-  return { buffer: encoder.encode(JSON.stringify(jsonable)).buffer, dependencies };
+  return encoder.encode(JSON.stringify(encode(value))).buffer;
 }

@@ -56,6 +56,9 @@ export function createPiledriverHeapCache(options: {
           throw error;
         }
       },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     remember(object, { key, seq });

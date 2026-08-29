@@ -171,6 +171,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     };
 
     const result: LowLevelKvStore & LowLevelKvDump = {
+      reserveKeys(count) {
+        return wrappedStore.reserveKeys(count).map(cloneArrayBuffer);
+      },
       async get(key) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.get", attributes }, async (span) => {
           const cached = cachedValues.get(cacheKey(key));
@@ -227,11 +230,15 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       },
       async insertAll(values, insertOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
+          if (insertOptions?.keys !== undefined && insertOptions.keys.length !== values.length) {
+            throw new Error("KV dump insertion must provide exactly one key per value");
+          }
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const valuesForWrapped = values.map(cloneArrayBuffer);
+            const keysForWrapped = insertOptions?.keys?.map(cloneArrayBuffer);
             const requiresSeq = getChainedRequiresSeq(insertOptions?.requiresSeq);
-            const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
+            const { keys, seq: underlyingSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq, keys: keysForWrapped });
             const seq = recordWrite(underlyingSeq, keys.map((key, index) => ({ key, value: valuesForWrapped[index] })));
             return { keys: keys.map(cloneArrayBuffer), seq };
           });

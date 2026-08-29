@@ -418,6 +418,9 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
           throw error;
         }
       },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     heapKeysAndSeqByHeapObjects.set(heapObj, Promise.resolve({ key, seq }));

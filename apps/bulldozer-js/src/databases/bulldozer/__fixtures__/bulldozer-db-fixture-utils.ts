@@ -210,7 +210,9 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
 
   const declare = (kind: "store" | "dump", id: string): LowLevelKvStore & LowLevelKvDump => {
     const map = containerFor(kind, id);
+    const reserveKeys = (count: number) => Array.from({ length: count }, () => crypto.getRandomValues(new Uint8Array(48)).buffer);
     return {
+      reserveKeys,
       async get(key) {
         return { buffer: map.get(encodeBase64(new Uint8Array(key)))?.slice(0) ?? null, seq: seqSentinel };
       },
@@ -237,8 +239,9 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
         for (const key of keys) map.delete(encodeBase64(new Uint8Array(key)));
         return { seq: seqSentinel };
       },
-      async insertAll(values) {
-        const keys = values.map(() => crypto.getRandomValues(new Uint8Array(48)).buffer);
+      async insertAll(values, options) {
+        const keys = options?.keys ?? reserveKeys(values.length);
+        if (keys.length !== values.length) throw new Error("KV dump insertion must provide exactly one key per value");
         keys.forEach((key, index) => map.set(encodeBase64(new Uint8Array(key)), values[index].slice(0)));
         return { keys, seq: seqSentinel };
       },

@@ -131,7 +131,7 @@ const databaseImplementations: { name: string, declareDatabase: typeof declareBa
   { name: "breezy", declareDatabase: declareBreezyPiledriverDatabase },
 ];
 
-describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareDatabase: declareBasePiledriverDatabase }) => {
+describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, declareDatabase: declareBasePiledriverDatabase }) => {
   const declareAfterRestart = (lowLevel: LowLevelDatabase, cutoffTimestampMillis: number) => declareBasePiledriverDatabase(lowLevel, {
     garbageCollectionProcessStartedAtMillis: cutoffTimestampMillis + 1,
   });
@@ -282,7 +282,7 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
     await expect(writer.deleteRootObject(rootKey)).resolves.toEqual({ seq: expect.anything() });
   });
 
-  it("batches metadata and candidate writes for created heap objects", async () => {
+  it("batches metadata initialization for created heap objects", async () => {
     const metadataSetAllEntryCounts: number[] = [];
     const candidateSetAllEntryCounts: number[] = [];
     const lowLevel = wrapWithGcReferenceCounter(
@@ -301,7 +301,7 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
     await writer.setRootObject(rootKey, created);
 
     expect(metadataSetAllEntryCounts).toEqual([20]);
-    expect(candidateSetAllEntryCounts).toEqual([20]);
+    expect(candidateSetAllEntryCounts).toEqual(name === "base" ? [20] : []);
   });
 
   it("removes the candidate using the original eligibility timestamp", async () => {
@@ -318,7 +318,7 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
     expect(await candidateStore.debugEntries?.()).toHaveLength(0);
   });
 
-  it("evicts heap cache entries when creation metadata publication fails", async () => {
+  it("retries after first-reference metadata publication fails", async () => {
     const lowLevel = failNextMetadataSetAll(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
@@ -358,6 +358,9 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
       async get() {
         throw new Error("injected heap serialization failure");
       },
+      getValueIfLocallyCreated() {
+        throw new Error("injected heap serialization failure");
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     const rootKey = new TextEncoder().encode("root").buffer;
@@ -375,11 +378,17 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
       async get() {
         return { firstChildHeapObject };
       },
+      getValueIfLocallyCreated() {
+        return { status: "locally-created", value: { firstChildHeapObject } };
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     const secondHeapObject: PiledriverHeapObject = {
       async get() {
         return { secondChildHeapObject };
+      },
+      getValueIfLocallyCreated() {
+        return { status: "locally-created", value: { secondChildHeapObject } };
       },
       [isPiledriverHeapObjectSymbol]: true,
     };
@@ -477,51 +486,67 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
     )).resolves.toEqual({ seq: expect.anything() });
   });
 
-  it("keeps legacy objects immortal while collecting newly created objects", async () => {
-    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const legacyRootKey = new TextEncoder().encode("legacy-root").buffer;
-    const legacyWriter = declareBasePiledriverDatabase(lowLevel);
-    await legacyWriter.setRootObject(legacyRootKey, {
-      parent: asHeapObject({ child: asHeapObject({ legacy: true }) }),
-    });
-    for (const storeId of [
-      "piledriver-gc-reference-metadata-v3",
-      "piledriver-gc-zero-reference-candidates-v3",
-      "piledriver-gc-state-v3",
-    ]) {
-      const store = lowLevel.declareKvStore(storeId);
-      const entries = await store.listEntries();
-      await store.deleteAll(entries.entries.map(entry => entry.key));
-    }
+  if (name === "base") {
+    it("keeps legacy objects immortal while collecting newly created objects", async () => {
+      const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+      const legacyRootKey = new TextEncoder().encode("legacy-root").buffer;
+      const legacyWriter = declareBasePiledriverDatabase(lowLevel);
+      await legacyWriter.setRootObject(legacyRootKey, {
+        parent: asHeapObject({ child: asHeapObject({ legacy: true }) }),
+      });
+      for (const storeId of [
+        "piledriver-gc-reference-metadata-v3",
+        "piledriver-gc-zero-reference-candidates-v3",
+        "piledriver-gc-state-v3",
+      ]) {
+        const store = lowLevel.declareKvStore(storeId);
+        const entries = await store.listEntries();
+        await store.deleteAll(entries.entries.map(entry => entry.key));
+      }
 
-    let heapListCalls = 0;
-    const trackingWriter = declareBasePiledriverDatabase(wrapWithHeapListCounter(lowLevel, () => heapListCalls++));
-    const legacyRoot = (await trackingWriter.getRootObject(legacyRootKey)).object;
-    if (typeof legacyRoot !== "object" || legacyRoot === null || Array.isArray(legacyRoot) || !("parent" in legacyRoot)) {
-      throw new Error("Expected legacy root to contain its parent reference");
-    }
-    const legacyParent = legacyRoot.parent;
-    if (typeof legacyParent !== "object" || legacyParent === null || Array.isArray(legacyParent) || !(isPiledriverHeapObjectSymbol in legacyParent)) {
-      throw new Error("Expected legacy parent to be a heap reference");
-    }
-    await trackingWriter.setRootObject(legacyRootKey, { replacement: true });
-    expect(heapListCalls).toBe(0);
-    const trackedRootKey = new TextEncoder().encode("tracked-root").buffer;
-    await trackingWriter.setRootObject(trackedRootKey, {
-      parent: asHeapObject({
-        child: asHeapObject({ tracked: true }),
-        legacyParent,
-      }),
+      let heapListCalls = 0;
+      const trackingWriter = declareBasePiledriverDatabase(wrapWithHeapListCounter(lowLevel, () => heapListCalls++));
+      const legacyRoot = (await trackingWriter.getRootObject(legacyRootKey)).object;
+      if (typeof legacyRoot !== "object" || legacyRoot === null || Array.isArray(legacyRoot) || !("parent" in legacyRoot)) {
+        throw new Error("Expected legacy root to contain its parent reference");
+      }
+      const legacyParent = legacyRoot.parent;
+      if (typeof legacyParent !== "object" || legacyParent === null || Array.isArray(legacyParent) || !(isPiledriverHeapObjectSymbol in legacyParent)) {
+        throw new Error("Expected legacy parent to be a heap reference");
+      }
+      await trackingWriter.setRootObject(legacyRootKey, { replacement: true });
+      expect(heapListCalls).toBe(0);
+      const trackedRootKey = new TextEncoder().encode("tracked-root").buffer;
+      await trackingWriter.setRootObject(trackedRootKey, {
+        parent: asHeapObject({
+          child: asHeapObject({ tracked: true }),
+          legacyParent,
+        }),
+      });
+      await trackingWriter.setRootObject(trackedRootKey, { replacement: true });
+      const cutoff = await timestampAfter(Date.now());
+      await timestampAfter(cutoff);
+      const restarted = declareAfterRestart(lowLevel, cutoff);
+      const result = await restarted.collectGarbage(cutoff);
+      expect(result.objects.deleted).toBe(2);
+      expect(result.references.legacyImmortalEdgesIgnored).toBe(1);
+      expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(2);
     });
-    await trackingWriter.setRootObject(trackedRootKey, { replacement: true });
-    const cutoff = await timestampAfter(Date.now());
-    await timestampAfter(cutoff);
-    const restarted = declareAfterRestart(lowLevel, cutoff);
-    const result = await restarted.collectGarbage(cutoff);
-    expect(result.objects.deleted).toBe(2);
-    expect(result.references.legacyImmortalEdgesIgnored).toBe(1);
-    expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(2);
-  });
+  } else {
+    it("rejects decrements for heap objects whose metadata is unexpectedly missing", async () => {
+      const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+      const rootKey = new TextEncoder().encode("root").buffer;
+      const writer = declareBasePiledriverDatabase(lowLevel);
+      await writer.setRootObject(rootKey, { child: asHeapObject({ tracked: true }) });
+      const metadataStore = lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3");
+      const metadata = await metadataStore.listEntries();
+      await metadataStore.deleteAll(metadata.entries.map(entry => entry.key));
+
+      await expect(writer.setRootObject(rootKey, { replacement: true })).rejects.toThrow(
+        "cannot decrement heap object",
+      );
+    });
+  }
 
   it("repairs a missing zero-reference candidate", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
@@ -563,11 +588,18 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ declareD
         if (second === undefined) throw new Error("Second heap object was not initialized");
         return { second };
       },
+      getValueIfLocallyCreated() {
+        if (second === undefined) throw new Error("Second heap object was not initialized");
+        return { status: "locally-created", value: { second } };
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     second = {
       async get() {
         return { first };
+      },
+      getValueIfLocallyCreated() {
+        return { status: "locally-created", value: { first } };
       },
       [isPiledriverHeapObjectSymbol]: true,
     };

@@ -539,8 +539,13 @@ export function declareLmdbLowLevelDatabase(options: {
       useVersions: true,
     }) as VersionedBinaryDatabase;
     const dumpKey = createDumpKeyGenerator();
+    const reserveKeys = (count: number) => {
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error("KV dump reservation count must be a non-negative safe integer");
+      return Array.from({ length: count }, dumpKey);
+    };
 
     const result: LowLevelKvStore & LowLevelKvDump = {
+      reserveKeys,
       async get(key) {
         assertReadAllowed();
         return await trackRead(traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
@@ -603,8 +608,13 @@ export function declareLmdbLowLevelDatabase(options: {
       async insertAll(values, insertOptions) {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
           for (const value of values) validateValue("value", value);
+          const keys = insertOptions?.keys ?? reserveKeys(values.length);
+          if (keys.length !== values.length) throw new Error("KV dump insertion must provide exactly one key per value");
+          for (const key of keys) validateKey(key);
+          if (new Set(keys.map(key => encodeBase64(new Uint8Array(key)))).size !== keys.length) {
+            throw new Error("KV dump insertion keys must be unique");
+          }
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
-          const keys = values.map(() => dumpKey());
           return {
             keys,
             seq: commit(insertOptions?.requiresSeq ?? initialSeq, async version => {

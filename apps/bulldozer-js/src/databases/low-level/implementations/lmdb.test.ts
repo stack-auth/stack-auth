@@ -322,11 +322,14 @@ describe("LMDB low-level database", () => {
       expect(text((await store.get(buffer("a"))).buffer)).toBe(null);
       expect(text((await store.get(buffer("b"))).buffer)).toBe(null);
 
-      const inserted = await dump.insertAll([buffer("first"), buffer("second")]);
+      const reservedKeys = dump.reserveKeys(2);
+      const inserted = await dump.insertAll([buffer("first"), buffer("second")], { keys: reservedKeys });
       await db.waitUntilAvailable(inserted.seq);
-      expect(inserted.keys).toHaveLength(2);
+      expect(inserted.keys).toEqual(reservedKeys);
       expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
       expect(text((await dump.get(inserted.keys[1])).buffer)).toBe("second");
+      await expect(dump.insertAll([buffer("missing-key")], { keys: [] })).rejects.toThrow("exactly one key per value");
+      expect(() => dump.reserveKeys(-1)).toThrow("non-negative safe integer");
     } finally {
       await rm(path, { recursive: true, force: true });
     }

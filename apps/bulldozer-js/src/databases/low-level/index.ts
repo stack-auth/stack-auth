@@ -113,10 +113,16 @@ export type LowLevelKvStore = {
  */
 export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSetAll"> & {
   /**
+   * Reserves unique keys without inserting values. Unused reservations may be abandoned.
+   */
+  reserveKeys(count: number): ArrayBuffer[],
+
+  /**
    * Inserts the values and returns their keys in the same order.
    *
    * How the keys are assigned is implementation-dependent, although they must always be unique within a single KV dump.
    * Implementations are encouraged to use keys that make the insert operation as performant as possible.
+   * Reserved keys may be supplied when values must refer to one another before insertion.
    */
-  insertAll(values: ArrayBuffer[], options?: LowLevelMutationOptions): Promise<{ keys: ArrayBuffer[], seq: DatabaseSeq }>,
+  insertAll(values: ArrayBuffer[], options?: LowLevelMutationOptions & { keys?: ArrayBuffer[] }): Promise<{ keys: ArrayBuffer[], seq: DatabaseSeq }>,
 }

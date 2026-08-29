@@ -1,15 +1,14 @@
 import { DatabaseSeq } from "../../../index.js";
 import { LowLevelDatabase } from "../../../low-level/index.js";
 import { declarePiledriverGarbageCollector } from "../../gc.js";
-import { heapObjectsByObject, PiledriverDatabase, PiledriverHeapObject, PiledriverObject } from "../../index.js";
-import { decodePiledriverObject, encodePiledriverObject } from "./codec.js";
-import { createPiledriverHeapCache, PiledriverHeapLocation } from "./heap-cache.js";
+import { heapObjectsByObject, PiledriverDatabase, PiledriverObject } from "../../index.js";
+import { decodePiledriverObject, encodePiledriverObject, PlannedPiledriverObject } from "./codec.js";
+import { createPiledriverHeapCache } from "./heap-cache.js";
+import { planHeapObjects } from "./heap-plan.js";
 
 const breezyPiledriverProcessStartedAtMillis = Date.now();
 
 export type BreezyPiledriverDatabaseOptions = { disableHeapReadCache?: boolean, garbageCollectionProcessStartedAtMillis?: number };
-
-type CreatedHeap = PiledriverHeapLocation & { object: PiledriverHeapObject, buffer: ArrayBuffer };
 
 export function declareBreezyPiledriverDatabase(lowLevelDb: LowLevelDatabase, options: BreezyPiledriverDatabaseOptions = {}): PiledriverDatabase {
   const processStartedAtMillis = options.garbageCollectionProcessStartedAtMillis ?? breezyPiledriverProcessStartedAtMillis;
@@ -17,7 +16,12 @@ export function declareBreezyPiledriverDatabase(lowLevelDb: LowLevelDatabase, op
 
   const rootStore = lowLevelDb.declareKvStore("root");
   const heapDump = lowLevelDb.declareKvDump("heap");
-  const garbageCollector = declarePiledriverGarbageCollector({ lowLevelDb, heapDump, processStartedAtMillis });
+  const garbageCollector = declarePiledriverGarbageCollector({
+    lowLevelDb,
+    heapDump,
+    processStartedAtMillis,
+    missingMetadataBehavior: "initialize-on-positive-reference",
+  });
   const loadHeapObject = async (key: ArrayBuffer, keyBase64: string) => {
     const stored = await heapDump.get(key);
     if (stored.buffer === null) throw new Error(`Assertion error: Heap object with base64 key "${keyBase64}" not found`);
@@ -38,52 +42,40 @@ export function declareBreezyPiledriverDatabase(lowLevelDb: LowLevelDatabase, op
     return await current;
   };
 
-  const serialize = async (value: PiledriverObject, heapPath: ReadonlySet<PiledriverHeapObject>, created: CreatedHeap[]): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
-    const encoded = await encodePiledriverObject(value, heapPath, async (object, childHeapPath) => {
-      let location = heapCache.getLocation(object);
-      if (location === undefined) {
-        const serialized = await serialize(await object.get(), childHeapPath, created);
-        // TODO: This payload is unreachable until publication, so its insert does not conceptually
-        // need to require its children; the location could instead combine the child and insert seqs.
-        // Do not do that with the current low-level implementations: each combined seq allocates
-        // promise/map tracking in both instant-availability and LMDB, nearly doubling heap-heavy
-        // benchmark time, while instant-availability's dump-wide write chain prevents parallel
-        // underlying inserts anyway. Revisit together with cheap seq combining and independent dumps.
-        const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: serialized.seq });
-        const createdHeap: CreatedHeap = { object, key: inserted.keys[0], seq: inserted.seq, buffer: serialized.buffer };
-        created.push(createdHeap);
-        heapCache.remember(object, createdHeap);
-        location = createdHeap;
-      }
-      return { key: location.key, dependency: location.seq };
-    });
-    return { buffer: encoded.buffer, seq: combineSeqs(encoded.dependencies) };
-  };
+  const serializeKnown = (value: PlannedPiledriverObject) => encodePiledriverObject(value);
 
   /**
-   * Serializes a root value and makes every newly created heap object safe to reference.
+   * Plans the complete graph, then publishes each newly created heap object in order.
    *
-   * Heap payloads are inserted while serializing, but they are not reachable yet. Once the whole
-   * graph is available, creation metadata is recorded for the batch and then every outgoing heap
-   * edge is added to the GC reference counts. The returned sequence covers all three stages, so a
-   * root can use it as the prerequisite for becoming visible.
-   *
-   * If serialization or publication fails, newly memoized locations are forgotten. Their payloads
-   * may remain as unreachable storage, which is fail-safe; a retry must serialize fresh objects
-   * instead of reusing locations whose GC metadata may be incomplete.
+   * Planning replaces heap objects with key-only references, so serialization performs no cache
+   * lookups or IO. A crash before the root is published may leak the unreachable subgraph; that
+   * deliberate tradeoff keeps the normal publication path small and fast.
    */
   const serializeAndPublish = async (value: PiledriverObject) => {
-    const created: CreatedHeap[] = [];
-    try {
-      const serialized = await serialize(value, new Set(), created);
-      if (created.length === 0) return serialized;
-      const creations = await garbageCollector.recordHeapObjectCreations(created.map(({ key, seq }) => ({ key, requiresSeq: seq })));
-      const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(created.map(({ buffer }) => buffer), creations.seq);
-      return { ...serialized, seq: combineSeqs([serialized.seq, references.seq]) };
-    } catch (error) {
-      for (const item of created) heapCache.forget(item.object, item);
-      throw error;
+    const plan = planHeapObjects(
+      value,
+      object => {
+        const location = heapCache.getLocation(object);
+        return location === undefined ? undefined : { key: location.key, dependency: location.seq };
+      },
+      () => heapDump.reserveKeys(1)[0],
+    );
+    const publicationSeqs = [...plan.dependencies];
+    for (const item of plan.heapObjects) {
+      const buffer = serializeKnown(item.value);
+      const inserted = await heapDump.insertAll([buffer], { keys: [item.key] });
+      const references = await garbageCollector.beforeSerializedHeapObjectsBecomeVisible(
+        [buffer],
+        lowLevelDb.initialSeq,
+      );
+      publicationSeqs.push(inserted.seq, references.seq);
     }
+
+    const publishedSeq = combineSeqs(publicationSeqs);
+    for (const item of plan.heapObjects) {
+      heapCache.remember(item.object, { key: item.key, seq: publishedSeq });
+    }
+    return { buffer: serializeKnown(plan.root), seq: publishedSeq };
   };
 
   const readPreviousRoot = async (key: ArrayBuffer) => {
