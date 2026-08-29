@@ -578,7 +578,7 @@ export function declarePiledriverGarbageCollector(options: {
         })),
       );
       const retry: typeof pending = [];
-      const newMetadataEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer }> = [];
+      const newMetadataEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer, delta: number }> = [];
       const compareAndSetEntries: Array<{
         key: ArrayBuffer,
         compare: ArrayBuffer,
@@ -599,13 +599,15 @@ export function declarePiledriverGarbageCollector(options: {
             throw new Error(`Piledriver GC cannot decrement heap object ${encodeBase64(new Uint8Array(key))} without reference metadata`);
           }
           // A missing entry can only be a newly inserted object whose reserved key is not yet
-          // reachable. Initializing it at its first positive edge avoids a separate creation pass.
+          // reachable. Compare against absence below: concurrent first edges must not overwrite
+          // each other's counts, so every loser retries through the normal increment path.
           newMetadataEntries.push({
             key,
             value: encodeJson({
               ...newMetadata(readyGeneration(), createdAtMillis),
               referenceCount: count,
             }),
+            delta: count,
           });
           continue;
         }
@@ -644,7 +646,10 @@ export function declarePiledriverGarbageCollector(options: {
       }
       const newMetadataWrite = newMetadataEntries.length === 0
         ? null
-        : metadataStore.setAll(newMetadataEntries, { requiresSeq });
+        : metadataStore.compareAndSetAll(
+          newMetadataEntries.map(({ key, value }) => ({ key, compare: null, value })),
+          { requiresSeq },
+        );
       const compareAndSetWrite = compareAndSetEntries.length === 0
         ? null
         : metadataStore.compareAndSetAll(
@@ -652,9 +657,17 @@ export function declarePiledriverGarbageCollector(options: {
           { requiresSeq },
         );
       const [newMetadataResult, compareAndSetResult] = await Promise.all([newMetadataWrite, compareAndSetWrite]);
-      if (newMetadataResult !== null) metadataSequences.push(newMetadataResult.seq);
+      if (newMetadataResult !== null) {
+        metadataSequences.push(newMetadataResult.seq);
+        for (const [index, entry] of newMetadataEntries.entries()) {
+          if (newMetadataResult.results[index].wasSet === false) retry.push({ key: entry.key, count: entry.delta });
+        }
+      }
       pending.length = 0;
-      if (compareAndSetResult === null) continue;
+      if (compareAndSetResult === null) {
+        pending.push(...retry);
+        continue;
+      }
       for (const [index, entry] of compareAndSetEntries.entries()) {
         const changed = compareAndSetResult.results[index];
         if (changed.wasSet === false) {

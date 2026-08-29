@@ -478,17 +478,20 @@ export function declareLmdbLowLevelDatabase(options: {
     schedulePendingCommitFlush();
     return trackCommit(seqId, deferred.promise);
   };
-  const commitIfVersion = async (db: BinaryDatabase, key: Buffer, version: number, action: (version: number) => Promise<void>) => {
+  const commitConditionally = async (db: BinaryDatabase, key: Buffer, expectedVersion: number | null, action: (version: number) => Promise<void>) => {
     if (isClosing) throw new Error("LMDB database is closing and cannot accept writes");
     const nextVersionRef: { value: number | null } = { value: null };
     const seqId = nextSeqId();
-    const wasSet = await db.ifVersion(key, version, () => {
+    const write = () => {
       return (async () => {
         nextVersionRef.value = nextVersion();
         await action(nextVersionRef.value);
         await meta.put("seq", nextVersionRef.value);
       })();
-    });
+    };
+    const wasSet = expectedVersion === null
+      ? await db.ifNoExists(key, write)
+      : await db.ifVersion(key, expectedVersion, write);
     if (!wasSet) return null;
     if (nextVersionRef.value === null) throw new Error("Assertion error: LMDB compare-and-set succeeded without assigning a version");
     rememberAvailability(seqId, root.committed);
@@ -628,7 +631,7 @@ export function declareLmdbLowLevelDatabase(options: {
           const keys = new Set<string>();
           for (const { key, compare, value } of entries) {
             validateKey(key);
-            validateValue("compare", compare);
+            if (compare !== null) validateValue("compare", compare);
             validateValue("value", value);
             const keyBase64 = encodeBase64(new Uint8Array(key));
             const previousSize = keys.size;
@@ -640,10 +643,15 @@ export function declareLmdbLowLevelDatabase(options: {
             await waitUntilAllAvailable();
             const keyBuffer = bufferFromArrayBuffer(key);
             const existing = db.getEntry(keyBuffer);
-            if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+            if (compare === null) {
+              if (existing !== undefined) return { wasSet: false as const, seq: null };
+              const seq = await commitConditionally(db, keyBuffer, null, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+              return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
+            }
+            if (existing === undefined || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
               return { wasSet: false as const, seq: null };
             }
-            const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+            const seq = await commitConditionally(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
             return seq === null ? { wasSet: false as const, seq: null } : { wasSet: true as const, seq };
           }));
           const successful = results.filter(result => result.wasSet).map(result => result.seq);

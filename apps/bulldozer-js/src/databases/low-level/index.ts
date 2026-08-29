@@ -86,10 +86,10 @@ export type LowLevelKvStore = {
    * The returned sequence must cover every successful entry, not just one of them.
    * `results[i]` corresponds to `entries[i]`. Failed entries have no sequence because
    * they did not write. When nothing is written, the returned sequence is
-   * `options.requiresSeq` or the store's initial sequence. A batch must not contain
-   * duplicate keys.
+   * `options.requiresSeq` or the store's initial sequence. `compare: null` succeeds
+   * only when the key does not exist. A batch must not contain duplicate keys.
    */
-  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer }>, options?: LowLevelMutationOptions): Promise<{
+  compareAndSetAll(entries: Array<{ key: ArrayBuffer, compare: ArrayBuffer | null, value: ArrayBuffer }>, options?: LowLevelMutationOptions): Promise<{
     results: Array<{ wasSet: true, seq: DatabaseSeq } | { wasSet: false, seq: null }>,
     seq: DatabaseSeq,
   }>,

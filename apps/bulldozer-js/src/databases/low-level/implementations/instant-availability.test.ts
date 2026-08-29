@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { declareInMemoryLowLevelDatabase } from "./in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./instant-availability.js";
 
 const textEncoder = new TextEncoder();
@@ -415,8 +416,10 @@ describe("instant-availability low-level database", () => {
   });
 
   it("only allows a single winner for concurrent compareAndSetAll on the same key", async () => {
-    const slow = createSlowSetDatabase();
-    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-test" });
+    const db = declareInstantAvailabilityLowLevelDatabase(
+      declareInMemoryLowLevelDatabase(crypto.randomUUID()),
+      { dbId: "instant-test" },
+    );
     const store = db.declareKvStore("store");
 
     // Seed the key so both racers observe the same starting value from the in-memory cache.
@@ -435,11 +438,25 @@ describe("instant-availability low-level database", () => {
     expect(winners).toHaveLength(1);
     expect(losers).toHaveLength(1);
     expect(losers[0].seq).toBeNull();
-    // Only the winner's write should have reached the wrapped store (plus the seed set).
-    expect(slow.setCallCount()).toBe(2);
 
     // The stored value must reflect the single winner.
     expect(text((await store.get(buffer("key"))).buffer)).toBe(first.results[0].wasSet ? "a" : "b");
+  });
+
+  it("atomically compares against absence across instant-availability instances", async () => {
+    const underlying = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const first = declareInstantAvailabilityLowLevelDatabase(underlying, { dbId: "instant-first" });
+    const second = declareInstantAvailabilityLowLevelDatabase(underlying, { dbId: "instant-second" });
+    const firstStore = first.declareKvStore("store");
+    const secondStore = second.declareKvStore("store");
+
+    const [firstResult, secondResult] = await Promise.all([
+      firstStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("first") }]),
+      secondStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("second") }]),
+    ]);
+
+    expect([firstResult.results[0].wasSet, secondResult.results[0].wasSet].filter(Boolean)).toHaveLength(1);
+    expect(["first", "second"]).toContain(text((await underlying.declareKvStore("store").get(buffer("key"))).buffer));
   });
 
   it("preserves instant-seq order when a prior underlying write is delayed", async () => {

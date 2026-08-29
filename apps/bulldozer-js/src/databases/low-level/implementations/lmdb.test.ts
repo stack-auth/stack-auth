@@ -200,6 +200,26 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("atomically compares against a missing key across database instances", async () => {
+    const path = await tempLmdbPath();
+    const first = declareLmdbLowLevelDatabase({ path, dbId: "cas-missing" });
+    const second = declareLmdbLowLevelDatabase({ path, dbId: "cas-missing" });
+    try {
+      const firstStore = first.declareKvStore("store");
+      const secondStore = second.declareKvStore("store");
+      const [firstResult, secondResult] = await Promise.all([
+        firstStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("first") }]),
+        secondStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("second") }]),
+      ]);
+
+      expect([firstResult.results[0].wasSet, secondResult.results[0].wasSet].filter(Boolean)).toHaveLength(1);
+      expect(["first", "second"]).toContain(text((await firstStore.get(buffer("key"))).buffer));
+    } finally {
+      await Promise.all([first.close(), second.close()]);
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("supports immutable dump inserts", async () => {
     const path = await tempLmdbPath();
     try {

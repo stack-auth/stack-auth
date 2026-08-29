@@ -131,7 +131,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.compareAndSetAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           for (const { key, compare, value } of entries) {
             if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
-            if (compare.byteLength > 2_000_000_000) throw new Error("KV store compare must be <= 2GB");
+            if (compare !== null && compare.byteLength > 2_000_000_000) throw new Error("KV store compare must be <= 2GB");
             if (value.byteLength > 2_000_000_000) throw new Error("KV store value must be <= 2GB");
           }
           const keys = new Set<string>();
@@ -143,7 +143,9 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           }
           const results = entries.map(({ key, compare }) => {
             const existingValue = base64KeyToValue.get(encodeBase64(new Uint8Array(key)));
-            return existingValue !== undefined && arrayBuffersAreEqual(existingValue, compare);
+            return compare === null
+              ? existingValue === undefined
+              : existingValue !== undefined && arrayBuffersAreEqual(existingValue, compare);
           });
           const matchingEntries = entries.filter((_, index) => results[index]);
           const write = matchingEntries.length === 0

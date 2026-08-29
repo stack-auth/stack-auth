@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { asHeapObject, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
 import { declareBasePiledriverDatabase } from "./implementations/base.js";
 import { declareBreezyPiledriverDatabase } from "./implementations/breezy/index.js";
+import { declarePiledriverGarbageCollector } from "./gc.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
   return {
@@ -72,8 +74,13 @@ function wrapWithGcReferenceCounter(
   };
 }
 
-function failNextMetadataSetAll(lowLevel: LowLevelDatabase): LowLevelDatabase {
+function failNextMetadataWrite(lowLevel: LowLevelDatabase): LowLevelDatabase {
   let shouldFail = true;
+  const failIfRequested = () => {
+    if (!shouldFail) return;
+    shouldFail = false;
+    throw new Error("injected metadata write failure");
+  };
   return {
     ...lowLevel,
     declareKvStore(id) {
@@ -82,11 +89,12 @@ function failNextMetadataSetAll(lowLevel: LowLevelDatabase): LowLevelDatabase {
       return {
         ...store,
         async setAll(entries, options) {
-          if (shouldFail) {
-            shouldFail = false;
-            throw new Error("injected metadata write failure");
-          }
+          failIfRequested();
           return await store.setAll(entries, options);
+        },
+        async compareAndSetAll(entries, options) {
+          failIfRequested();
+          return await store.compareAndSetAll(entries, options);
         },
       };
     },
@@ -283,12 +291,13 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, de
   });
 
   it("batches metadata initialization for created heap objects", async () => {
+    const metadataCompareAndSetEntryCounts: number[] = [];
     const metadataSetAllEntryCounts: number[] = [];
     const candidateSetAllEntryCounts: number[] = [];
     const lowLevel = wrapWithGcReferenceCounter(
       declareInMemoryLowLevelDatabase(crypto.randomUUID()),
       () => {},
-      () => {},
+      count => metadataCompareAndSetEntryCounts.push(count),
       count => metadataSetAllEntryCounts.push(count),
       count => candidateSetAllEntryCounts.push(count),
     );
@@ -300,7 +309,8 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, de
 
     await writer.setRootObject(rootKey, created);
 
-    expect(metadataSetAllEntryCounts).toEqual([20]);
+    expect(metadataCompareAndSetEntryCounts).toEqual([20]);
+    expect(metadataSetAllEntryCounts).toEqual(name === "base" ? [20] : []);
     expect(candidateSetAllEntryCounts).toEqual(name === "base" ? [20] : []);
   });
 
@@ -319,7 +329,7 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, de
   });
 
   it("retries after first-reference metadata publication fails", async () => {
-    const lowLevel = failNextMetadataSetAll(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    const lowLevel = failNextMetadataWrite(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     const writer = declareBasePiledriverDatabase(lowLevel);
     const rootKey = new TextEncoder().encode("root").buffer;
     const heapObject = asHeapObject({ value: "retry-me" });
@@ -605,6 +615,36 @@ describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, de
     };
     const database = declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
     await expect(database.setRootObject(new TextEncoder().encode("root").buffer, { first, second })).rejects.toThrow("must not contain cycles");
+  });
+});
+
+describe("Piledriver garbage-collection metadata", () => {
+  it("does not lose concurrent first-reference increments", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const heapDump = lowLevel.declareKvDump("heap");
+    const options: Parameters<typeof declarePiledriverGarbageCollector>[0] = {
+      lowLevelDb: lowLevel,
+      heapDump,
+      processStartedAtMillis: Date.now(),
+      missingMetadataBehavior: "initialize-on-positive-reference",
+    };
+    const first = declarePiledriverGarbageCollector(options);
+    const second = declarePiledriverGarbageCollector(options);
+    await Promise.all([first.initialize(), second.initialize()]);
+
+    const childKey = crypto.getRandomValues(new Uint8Array(16)).buffer;
+    const reference = new TextEncoder().encode(JSON.stringify([
+      "heap-reference",
+      encodeBase64(new Uint8Array(childKey)),
+    ])).buffer;
+    await Promise.all([
+      first.beforeSerializedHeapObjectsBecomeVisible([reference], lowLevel.initialSeq),
+      second.beforeSerializedHeapObjectsBecomeVisible([reference], lowLevel.initialSeq),
+    ]);
+
+    const stored = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").get(childKey);
+    if (stored.buffer === null) throw new Error("Expected concurrent references to initialize metadata");
+    expect(Reflect.get(JSON.parse(new TextDecoder().decode(stored.buffer)), "referenceCount")).toBe(2);
   });
 });
 

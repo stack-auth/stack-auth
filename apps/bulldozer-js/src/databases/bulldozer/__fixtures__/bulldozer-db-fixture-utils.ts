@@ -248,6 +248,7 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
       async compareAndSetAll(entries) {
         const results = entries.map(({ key, compare }) => {
           const existing = map.get(encodeBase64(new Uint8Array(key)));
+          if (compare === null) return existing === undefined;
           if (existing === undefined || existing.byteLength !== compare.byteLength) return false;
           const compareBytes = new Uint8Array(compare);
           return new Uint8Array(existing).every((byte, index) => byte === compareBytes[index]);
