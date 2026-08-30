@@ -217,12 +217,12 @@ describe("payments schema performance", () => {
           }));
         }
       }
+      await db.waitUntilCurrentStateConsistent();
     }, () => db);
 
-    // The first consistent write after prefill pays one-off costs (LMDB store growth, the first GC
-    // pass over the prefilled heap). Left unwarmed those all land on whichever phase happens to run
-    // first, which reads as a backend difference rather than the startup artifact it is. The
-    // "warmup-" namespace keeps this row out of the transaction count asserted at the end.
+    // The first mutation after the large prefill can pay one-off cache and GC costs. Keep those
+    // outside the measured request phases; the "warmup-" namespace also keeps this row out of the
+    // transaction count asserted at the end.
     await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: "warmup-sub-0", newRowData: subscription(0, "warmup-") as unknown as PiledriverObject }));
 
     // The measured write phases wait for replication and durability, because that is what an HTTP
@@ -323,6 +323,7 @@ describe("transactions listing performance", () => {
     for (let i = from; i < to; i++) {
       await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.manualTransactions, rowIdentifier: refundTxn(i).txnId, newRowData: refundTxn(i) as unknown as PiledriverObject }));
     }
+    await db.waitUntilCurrentStateConsistent();
   };
   const readFirstPage = async (snapshot: Snapshot, schema: ReturnType<typeof createPaymentsSchema>) => {
     const page = [];

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "../low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
+import type { DatabaseSeq } from "../index.js";
 import { declareBasePiledriverDatabase } from "../piledriver/implementations/base.js";
 import { declareInMemoryPiledriverDatabase } from "../piledriver/implementations/in-memory.js";
 import type { PiledriverObject } from "../piledriver/index.js";
@@ -1569,6 +1570,30 @@ describe("Bulldozer (base Piledriver only)", () => {
       if (releaseDurability !== undefined) releaseDurability();
       await db.close();
       await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for the current root write to become consistent", async () => {
+    const piledriver = declareInMemoryPiledriverDatabase(crypto.randomUUID());
+    const waitUntilConsistent = piledriver.waitUntilConsistent.bind(piledriver);
+    let waitedSeq: DatabaseSeq | undefined;
+    piledriver.waitUntilConsistent = async (seq) => {
+      waitedSeq = seq;
+      await waitUntilConsistent(seq);
+    };
+    const db = declareBulldozerDatabase(piledriver, {
+      migrations: [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]],
+    });
+    try {
+      await db.applyRemainingMigrations();
+      waitedSeq = undefined;
+
+      const write = await db.withSnapshot(async snapshot => await set(snapshot, "store", "a", 1));
+      await db.waitUntilCurrentStateConsistent();
+
+      expect(waitedSeq).toBe(write.seq);
+    } finally {
+      await db.close();
     }
   });
 

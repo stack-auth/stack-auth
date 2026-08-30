@@ -896,6 +896,7 @@ export type BulldozerDatabase = {
   withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshotConsistent(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   waitUntilCurrentStateDurable(): Promise<void>,
+  waitUntilCurrentStateConsistent(): Promise<void>,
   getPiledriverGarbageCollectionProcessStartedAtMillis(): number,
   collectPiledriverGarbage(cutoffTimestampMillis: number, maxObjects?: number): Promise<PiledriverGarbageCollectionResult>,
   close(): Promise<void>,
@@ -1055,6 +1056,11 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       // Waiting on the retained write sequence avoids the eviction race where a
       // fresh read sees initialSeq while the original LMDB flush is still pending.
       await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
+    })),
+    waitUntilCurrentStateConsistent: async () => await traceSpan("bulldozer-js.bulldozer.waitUntilCurrentStateConsistent", async () => await withWriteLock(async () => {
+      // Use the retained write sequence for the same reason as the durability barrier above:
+      // reading a fresh snapshot can lose an evicted instant-availability sequence.
+      await piledriverDatabase.waitUntilConsistent(latestRootWriteSeq);
     })),
     getPiledriverGarbageCollectionProcessStartedAtMillis: () => piledriverDatabase.getGarbageCollectionProcessStartedAtMillis(),
     collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => {
