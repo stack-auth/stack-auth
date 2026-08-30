@@ -217,30 +217,30 @@ describe("payments schema performance", () => {
       }
     }, () => db);
 
-    // The first replicated write after prefill pays one-off costs (LMDB store growth, the first GC
+    // The first consistent write after prefill pays one-off costs (LMDB store growth, the first GC
     // pass over the prefilled heap). Left unwarmed those all land on whichever phase happens to run
     // first, which reads as a backend difference rather than the startup artifact it is. The
     // "warmup-" namespace keeps this row out of the transaction count asserted at the end.
-    await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: "warmup-sub-0", newRowData: subscription(0, "warmup-") as unknown as PiledriverObject }));
+    await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: "warmup-sub-0", newRowData: subscription(0, "warmup-") as unknown as PiledriverObject }));
 
-    // The measured write phases replicate, because that is what an HTTP handler waits for before it
-    // can respond; plain withSnapshot only waits for availability and so understates response time.
+    // The measured write phases wait for replication and durability, because that is what an HTTP
+    // handler waits for before responding; plain withSnapshot understates response time.
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
+        await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
       }
     }, () => db);
 
     await measure(metrics, "write one-time purchases", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
+        await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
       }
     }, () => db);
 
     await measure(metrics, "write manual item quantity changes", USER_COUNT * ITEM_UPDATES_PER_USER, async () => {
       for (let userIndex = 0; userIndex < USER_COUNT; userIndex++) {
         for (let updateIndex = 0; updateIndex < ITEM_UPDATES_PER_USER; updateIndex++) {
-          await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
+          await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({
             tableId: schema.manualItemQuantityChanges,
             rowIdentifier: `miqc-${userIndex}-${updateIndex}`,
             newRowData: manualItemQuantityChange(userIndex, updateIndex),
@@ -256,20 +256,20 @@ describe("payments schema performance", () => {
     await measure(metrics, "write subscriptions (concurrent)", CONCURRENT_SUBSCRIPTION_BATCHES * CONCURRENCY, async () => {
       await inConcurrentBatches(CONCURRENT_SUBSCRIPTION_BATCHES, async (batchIndex, slotIndex) => {
         const i = batchIndex * CONCURRENCY + slotIndex;
-        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `concurrent-sub-${i}`, newRowData: subscription(i, "concurrent-") as unknown as PiledriverObject }));
+        await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `concurrent-sub-${i}`, newRowData: subscription(i, "concurrent-") as unknown as PiledriverObject }));
       });
     }, () => db);
 
     await measure(metrics, "write one-time purchases (concurrent)", CONCURRENT_PURCHASE_BATCHES * CONCURRENCY, async () => {
       await inConcurrentBatches(CONCURRENT_PURCHASE_BATCHES, async (batchIndex, slotIndex) => {
         const i = batchIndex * CONCURRENCY + slotIndex;
-        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `concurrent-otp-${i}`, newRowData: oneTimePurchase(i, "concurrent-") as unknown as PiledriverObject }));
+        await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `concurrent-otp-${i}`, newRowData: oneTimePurchase(i, "concurrent-") as unknown as PiledriverObject }));
       });
     }, () => db);
 
     await measure(metrics, "write manual item quantity changes (concurrent)", CONCURRENT_ITEM_UPDATE_BATCHES * CONCURRENCY, async () => {
       await inConcurrentBatches(CONCURRENT_ITEM_UPDATE_BATCHES, async (batchIndex, slotIndex) => {
-        await db.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
+        await db.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({
           tableId: schema.manualItemQuantityChanges,
           rowIdentifier: `concurrent-miqc-${slotIndex}-${batchIndex}`,
           newRowData: manualItemQuantityChange(slotIndex, batchIndex, "concurrent-"),

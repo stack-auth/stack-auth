@@ -77,6 +77,9 @@ function createSlowSetDatabase() {
     async waitUntilReplicated(seq) {
       await seqToPromise.get(seq);
     },
+    async waitUntilConsistent(seq) {
+      await seqToPromise.get(seq);
+    },
     combineSeqs(...seqs) {
       return seqs[seqs.length - 1] ?? initialSeq;
     },
@@ -181,6 +184,9 @@ function createReorderingSetDatabase() {
     async waitUntilReplicated(seq) {
       await seqToPromise.get(seq);
     },
+    async waitUntilConsistent(seq) {
+      await seqToPromise.get(seq);
+    },
     combineSeqs(...seqs) {
       combineSeqArgs.push(seqs);
       return seqs[seqs.length - 1] ?? initialSeq;
@@ -269,6 +275,7 @@ function createDelayedSetImmediateInsertDatabase() {
     waitUntilAvailable: async seq => await seqToPromise.get(seq),
     waitUntilDurable: async seq => await seqToPromise.get(seq),
     waitUntilReplicated: async seq => await seqToPromise.get(seq),
+    waitUntilConsistent: async seq => await seqToPromise.get(seq),
     combineSeqs: (...seqs) => seqs[seqs.length - 1] ?? initialSeq,
     close: async () => {},
     initialSeq,

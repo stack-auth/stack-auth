@@ -202,6 +202,9 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     async waitUntilReplicated() {
       return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
     },
+    async waitUntilConsistent() {
+      return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.waitUntilConsistent", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
+    },
     combineSeqs(...seqs) {
       return this.initialSeq;
     },

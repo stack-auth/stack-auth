@@ -126,14 +126,14 @@ describe("Breezy Piledriver", () => {
     }
   });
 
-  it("persists directly published heap objects before reporting the root durable", async () => {
+  it("persists directly published heap objects before reporting the root consistent", async () => {
     const path = await mkdtemp(join(tmpdir(), "piledriver-breezy-"));
     const lmdbOptions = { path, dbId: crypto.randomUUID() };
     const rootKey = new TextEncoder().encode("root").buffer;
     const writer = declareBreezyPiledriverDatabase(lmdbOptions);
     try {
       const written = await writer.setRootObject(rootKey, asHeapObject({ value: "persisted" }));
-      await writer.waitUntilDurable(written.seq);
+      await writer.waitUntilConsistent(written.seq);
     } finally {
       await writer.close();
     }

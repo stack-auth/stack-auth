@@ -61,8 +61,8 @@ export type LowLevelMutationOptions = {
  * Keys must be <= 64 bytes and value must be <= 2 GB. These restrictions should be strictly enforced by the
  * implementation.
  *
- * Note that durability (or replication) of a modifying function is only guaranteed after `waitUntilDurable(seq)` (or
- * `waitUntilReplicated(seq)` for either the returned `seq` or a `seq` that's greater (determined using `maxSeq`).
+ * Durability and replication of a mutation are guaranteed independently by `waitUntilDurable(seq)` and
+ * `waitUntilReplicated(seq)`. Use `waitUntilConsistent(seq)` when both guarantees are required.
  *
  * Wrapped stores used by the instant-availability implementation must allocate their returned sequence (and dump
  * keys) locally, before any asynchronous commit or IO. Commit completion remains asynchronous and is represented by

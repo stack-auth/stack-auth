@@ -718,9 +718,11 @@ export function declareLmdbLowLevelDatabase(options: {
       await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilDurable(seq));
     },
     async waitUntilReplicated(seq) {
-      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
-        await this.waitUntilAvailable(seq);
-        await this.waitUntilDurable(seq);
+      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await this.waitUntilAvailable(seq));
+    },
+    async waitUntilConsistent(seq) {
+      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilConsistent", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+        await Promise.all([this.waitUntilReplicated(seq), this.waitUntilDurable(seq)]);
       });
     },
     combineSeqs(...seqs) {

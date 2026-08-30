@@ -85,7 +85,7 @@ const fixtureLedgerRows: Record<string, PiledriverObject> = {
 export async function buildFixtureBulldozerDatabase(lowLevel: LowLevelDatabase): Promise<BulldozerDatabase> {
   const db = declareBulldozerDatabase(await declareFixturePiledriverDatabase(lowLevel), { migrations: exampleFungibleLedgerMigrations });
   await db.applyRemainingMigrations();
-  await db.withSnapshotReplicated(async snapshot => {
+  await db.withSnapshotConsistent(async snapshot => {
     for (const [rowIdentifier, rowData] of Object.entries(fixtureLedgerRows)) {
       snapshot = (await snapshot.setOrDeleteRow({ tableId: storedTableId, rowIdentifier, newRowData: rowData })).newSnapshot;
     }
@@ -277,6 +277,7 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
     async waitUntilAvailable() {},
     async waitUntilDurable() {},
     async waitUntilReplicated() {},
+    async waitUntilConsistent() {},
     combineSeqs() {
       return seqSentinel;
     },

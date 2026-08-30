@@ -357,6 +357,9 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     async waitUntilReplicated(seq) {
       await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilReplicated(getUnderlyingSeq(seq)));
     },
+    async waitUntilConsistent(seq) {
+      await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilConsistent", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilConsistent(getUnderlyingSeq(seq)));
+    },
     combineSeqs(...seqs) {
       if (seqs.length === 0) return initialSeq;
       const uniqueSeqs = new Set(seqs);

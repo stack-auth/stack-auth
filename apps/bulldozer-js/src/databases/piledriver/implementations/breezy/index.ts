@@ -432,6 +432,9 @@ export function declareBreezyPiledriverDatabase(
       await lmdbRoot.flushed;
     },
     waitUntilReplicated: waitUntilAvailable,
+    async waitUntilConsistent(seq) {
+      await Promise.all([this.waitUntilReplicated(seq), this.waitUntilDurable(seq)]);
+    },
     async debugSnapshot() {
       const entries = (database: lmdb.Database<Buffer, Uint8Array>) => [...database.getRange()].map(({ key, value }) => {
         const keyBuffer = Buffer.from(key);

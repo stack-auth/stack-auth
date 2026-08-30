@@ -193,7 +193,7 @@ describe("LMDB low-level database", () => {
 
       const succeeded = await store.compareAndSetAll([{ key: buffer("key"), compare: buffer("old"), value: buffer("new") }], { requiresSeq: first.seq });
       expect(succeeded.results).toEqual([{ wasSet: true, seq: succeeded.seq }]);
-      await db.waitUntilReplicated(succeeded.seq);
+      await db.waitUntilConsistent(succeeded.seq);
       expect(text((await store.get(buffer("key"))).buffer)).toBe("new");
     } finally {
       await rm(path, { recursive: true, force: true });

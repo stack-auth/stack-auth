@@ -29,13 +29,17 @@ export type Database = {
    */
   waitUntilDurable(seq: DatabaseSeq): Promise<void>,
   /**
-   * Returns a promise that resolves once it is guaranteed that the given seq is available to all read replicas AND
-   * durable.
+   * Returns a promise that resolves once it is guaranteed that the given seq is available to all read replicas.
    *
-   * Implicitly implies both `waitUntilAvailable` and `waitUntilDurable`. This is the strongest guarantee that can be
-   * achieved, but incurs significantly higher latency.
+   * This does NOT guarantee durability; a coordinated infrastructure failure may still lose the replicated write.
    */
   waitUntilReplicated(seq: DatabaseSeq): Promise<void>,
+  /**
+   * Returns a promise that resolves once the given seq is both replicated and durable.
+   *
+   * This is the strongest guarantee and incurs the latency of both independent barriers.
+   */
+  waitUntilConsistent(seq: DatabaseSeq): Promise<void>,
   combineSeqs(...seqs: DatabaseSeq[]): DatabaseSeq,
   /**
    * Drains pending writes and releases resources. Calls are idempotent.

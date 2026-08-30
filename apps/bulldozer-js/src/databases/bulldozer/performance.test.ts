@@ -106,7 +106,7 @@ const newDb = (migrations: Migration) =>
 const writeSnapshot = async (db: PerfDatabase, updateSnapshot: SnapshotUpdater) =>
   perfSnapshotMode === "plain"
     ? await db.withSnapshot(updateSnapshot)
-    : await db.withSnapshotReplicated(updateSnapshot);
+    : await db.withSnapshotConsistent(updateSnapshot);
 async function initializedSnapshot(migrations: Migration) {
   const db = newDb(migrations);
   await db.applyRemainingMigrations();
