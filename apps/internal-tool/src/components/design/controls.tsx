@@ -1,5 +1,6 @@
 "use client";
 
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { cn } from "./cn";
 
 /**
@@ -8,12 +9,20 @@ import { cn } from "./cn";
  */
 export type ButtonVariant = "default" | "outline" | "ghost" | "destructive";
 
-const buttonVariantClasses: Record<ButtonVariant, string> = {
-  default: "bg-primary text-primary-foreground hover:bg-primary/90",
-  outline: "border border-black/[0.08] dark:border-white/[0.08] bg-card text-foreground hover:bg-foreground/[0.06]",
-  ghost: "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
-  destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-};
+const buttonVariantClasses = new Map<ButtonVariant, string>([
+  ["default", "bg-primary text-primary-foreground hover:bg-primary/90"],
+  ["outline", "border border-black/[0.08] dark:border-white/[0.08] bg-card text-foreground hover:bg-foreground/[0.06]"],
+  ["ghost", "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"],
+  ["destructive", "bg-destructive text-destructive-foreground hover:bg-destructive/90"],
+]);
+
+export type ButtonSize = "xs" | "sm" | "md";
+
+const buttonSizeClasses = new Map<ButtonSize, string>([
+  ["xs", "h-6 rounded-md px-2 text-[11px]"],
+  ["sm", "h-7 rounded-md px-2.5 text-xs"],
+  ["md", "h-9 rounded-lg px-4 text-sm"],
+]);
 
 export function Button({
   children,
@@ -23,13 +32,8 @@ export function Button({
   ...props
 }: {
   variant?: ButtonVariant,
-  size?: "xs" | "sm" | "md",
+  size?: ButtonSize,
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const sizeClasses = {
-    xs: "h-6 rounded-md px-2 text-[11px]",
-    sm: "h-7 rounded-md px-2.5 text-xs",
-    md: "h-9 rounded-lg px-4 text-sm",
-  }[size];
   return (
     <button
       {...props}
@@ -37,8 +41,8 @@ export function Button({
         "inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium",
         "transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         "disabled:pointer-events-none disabled:opacity-40",
-        sizeClasses,
-        buttonVariantClasses[variant],
+        buttonSizeClasses.get(size) ?? throwErr(`No button classes for size ${size}; buttonSizeClasses must cover every ButtonSize`),
+        buttonVariantClasses.get(variant) ?? throwErr(`No button classes for variant ${variant}; buttonVariantClasses must cover every ButtonVariant`),
         className,
       )}
     >

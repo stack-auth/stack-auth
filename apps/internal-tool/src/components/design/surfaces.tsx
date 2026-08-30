@@ -1,5 +1,6 @@
 "use client";
 
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { cn } from "./cn";
 
 /**
@@ -98,21 +99,26 @@ export function Tooltip({
   );
 }
 
+export type AlertVariant = "error" | "warning" | "info";
+
+const alertVariantClasses = new Map<AlertVariant, string>([
+  ["error", "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"],
+  ["warning", "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"],
+  ["info", "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"],
+]);
+
 /** Inline status/error panel. Uses alerts (not toasts) per repo convention for blocking errors. */
 export function Alert({
   variant = "error",
   children,
   className,
 }: {
-  variant?: "error" | "warning" | "info",
+  variant?: AlertVariant,
   children: React.ReactNode,
   className?: string,
 }) {
-  const variantClasses = {
-    error: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-    warning: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    info: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  }[variant];
+  const variantClasses = alertVariantClasses.get(variant)
+    ?? throwErr(`No alert classes for variant ${variant}; alertVariantClasses must cover every AlertVariant`);
   return (
     <div className={cn("rounded-xl border p-4 text-sm", variantClasses, className)}>{children}</div>
   );

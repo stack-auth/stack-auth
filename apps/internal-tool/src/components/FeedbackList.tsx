@@ -5,16 +5,16 @@ import type { FeedbackLogRow } from "../types";
 import { toDate } from "../utils";
 import { Alert, Badge, type BadgeColor, EmptyState, Input, Select } from "./design";
 
-const CATEGORY_COLORS: Record<string, BadgeColor> = {
-  "bug": "red",
-  "docs-gap": "orange",
-  "suggestion": "blue",
-  "praise": "green",
-  "other": "neutral",
-};
+const CATEGORY_COLORS = new Map<string, BadgeColor>([
+  ["bug", "red"],
+  ["docs-gap", "orange"],
+  ["suggestion", "blue"],
+  ["praise", "green"],
+  ["other", "neutral"],
+]);
 
 function categoryColor(category: string): BadgeColor {
-  return CATEGORY_COLORS[category] ?? "neutral";
+  return CATEGORY_COLORS.get(category) ?? "neutral";
 }
 
 function truncate(str: string, max: number): string {

@@ -336,12 +336,13 @@ function QaReviewCard({ row, onRetryReview }: {
       ? "text-amber-700 dark:text-amber-300 bg-amber-500/15"
       : "text-red-700 dark:text-red-400 bg-red-500/15";
 
-  const severityColors: Record<string, string> = {
-    critical: "border-red-500 bg-red-500/10",
-    high: "border-orange-500 bg-orange-500/10",
-    medium: "border-amber-500 bg-amber-500/10",
-    low: "border-border bg-foreground/[0.04]",
-  };
+  const lowSeverityClasses = "border-border bg-foreground/[0.04]";
+  const severityClasses = new Map<string, string>([
+    ["critical", "border-red-500 bg-red-500/10"],
+    ["high", "border-orange-500 bg-orange-500/10"],
+    ["medium", "border-amber-500 bg-amber-500/10"],
+    ["low", lowSeverityClasses],
+  ]);
 
   return (
     <div className={panelClasses}>
@@ -373,7 +374,7 @@ function QaReviewCard({ row, onRetryReview }: {
         {flags.length > 0 && (
           <div className="space-y-1.5">
             {flags.map((flag, i) => (
-              <div key={i} className={cn("rounded-r-lg border-l-4 py-1.5 pl-3 text-sm", severityColors[flag.severity] ?? severityColors.low)}>
+              <div key={i} className={cn("rounded-r-lg border-l-4 py-1.5 pl-3 text-sm", severityClasses.get(flag.severity) ?? lowSeverityClasses)}>
                 <div className="mb-0.5 flex items-center gap-2">
                   <span className="font-mono text-xs text-foreground">{flag.type}</span>
                   <span className="text-[10px] uppercase text-muted-foreground">{flag.severity}</span>
