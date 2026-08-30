@@ -1,7 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { clsx } from "clsx";
 import type { AiQueryLogRow } from "../types";
 import { toDate } from "../utils";
+import {
+  Alert,
+  Badge,
+  BarRow,
+  Button,
+  Card,
+  chartColors,
+  cn,
+  Divider,
+  EmptyState,
+  FieldLabel,
+  Input,
+  LegendItem,
+  MetricCard,
+  Pill,
+  SortHeader,
+  tableClasses,
+} from "./design";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 type AuthFilter = "all" | "authed" | "anon";
@@ -328,117 +345,77 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
   return (
     <div className="space-y-4">
       {connectionState === "error" && (
-        <div className="text-red-600 text-sm rounded-lg border border-red-200 bg-red-50/50 p-4">
+        <Alert>
           <p>
             Failed to connect to SpacetimeDB. Check the browser session response below, then verify the{" "}
             <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
           </p>
           {connectionErrorMessage != null && connectionErrorMessage !== "" && (
-            <pre className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 font-mono text-xs text-red-800">
+            <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 font-mono text-xs">
               {connectionErrorMessage}
             </pre>
           )}
-        </div>
+        </Alert>
       )}
       {/* Filter bar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2 sticky top-0 z-10">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Range</span>
+      <div className="sticky top-0 z-10 space-y-2 rounded-xl border border-black/[0.06] bg-card p-3 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-xl dark:border-white/[0.06] dark:ring-white/[0.04]">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <FieldLabel>Range</FieldLabel>
           {(["24h", "7d", "30d", "all"] as TimeRange[]).map(r => (
-            <button
-              key={r}
-              onClick={() => setTimeRange(r)}
-              className={clsx(
-                "px-2 py-0.5 text-xs rounded",
-                timeRange === r ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              {r}
-            </button>
+            <Pill key={r} active={timeRange === r} onClick={() => setTimeRange(r)}>{r}</Pill>
           ))}
-          <span className="mx-2 w-px h-4 bg-gray-200" />
-          <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Mode</span>
+          <Divider />
+          <FieldLabel>Mode</FieldLabel>
           {(["all", "stream", "generate"] as ModeFilter[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setModeFilter(m)}
-              className={clsx(
-                "px-2 py-0.5 text-xs rounded",
-                modeFilter === m ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              {m}
-            </button>
+            <Pill key={m} active={modeFilter === m} onClick={() => setModeFilter(m)}>{m}</Pill>
           ))}
-          <span className="mx-2 w-px h-4 bg-gray-200" />
-          <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Auth</span>
+          <Divider />
+          <FieldLabel>Auth</FieldLabel>
           {(["all", "authed", "anon"] as AuthFilter[]).map(a => (
-            <button
-              key={a}
-              onClick={() => setAuthFilter(a)}
-              className={clsx(
-                "px-2 py-0.5 text-xs rounded",
-                authFilter === a ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              {a}
-            </button>
+            <Pill key={a} active={authFilter === a} onClick={() => setAuthFilter(a)}>{a}</Pill>
           ))}
-          <span className="mx-2 w-px h-4 bg-gray-200" />
-          <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Status</span>
+          <Divider />
+          <FieldLabel>Status</FieldLabel>
           {(["all", "ok", "error"] as StatusFilter[]).map(s => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={clsx(
-                "px-2 py-0.5 text-xs rounded",
-                statusFilter === s ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              {s}
-            </button>
+            <Pill key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{s}</Pill>
           ))}
-          <span className="mx-2 w-px h-4 bg-gray-200" />
-          <input
+          <Divider />
+          <Input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search messages / response"
-            className="px-2 py-1 text-xs border border-gray-200 rounded w-64"
+            className="w-64"
           />
-          <span className="ml-auto text-[10px] text-gray-400">
+          <span className="ml-auto text-[10px] text-muted-foreground">
             {connectionState === "connected" ? `${filtered.length} / ${rows.length} calls` : connectionState}
           </span>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">System prompt</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <FieldLabel>System prompt</FieldLabel>
           {allSystemPrompts.map(sp => (
-            <button
+            <Pill
               key={sp}
+              mono
+              active={systemPromptFilter.has(sp)}
               onClick={() => toggle(systemPromptFilter, sp, setSystemPromptFilter)}
-              className={clsx(
-                "px-2 py-0.5 text-[11px] rounded font-mono",
-                systemPromptFilter.has(sp) ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
             >
               {sp}
-            </button>
+            </Pill>
           ))}
         </div>
         {allModels.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Model</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <FieldLabel>Model</FieldLabel>
             {allModels.map(m => (
-              <button
+              <Pill
                 key={m}
+                mono
+                active={modelFilter.has(m)}
                 onClick={() => toggle(modelFilter, m, setModelFilter)}
-                className={clsx(
-                  "px-2 py-0.5 text-[11px] rounded font-mono",
-                  modelFilter.has(m) ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
               >
                 {m}
-              </button>
+              </Pill>
             ))}
           </div>
         )}
@@ -454,7 +431,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Errors"
           value={stats.errorCalls.toLocaleString()}
-          valueClass={stats.errorCalls > 0 ? "text-red-600" : undefined}
+          valueClassName={stats.errorCalls > 0 ? "text-red-600 dark:text-red-400" : undefined}
           tooltip="Requests that failed. Counted as rows where errorMessage is non-empty (upstream provider error, timeout, or client abort)."
         />
         <MetricCard
@@ -470,7 +447,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Cache Hit %"
           value={stats.inputTokens > 0 ? `${Math.round((stats.cachedInputTokens / stats.inputTokens) * 100)}%` : "—"}
-          valueClass={stats.inputTokens > 0 && stats.cachedInputTokens / stats.inputTokens > 0.5 ? "text-green-600" : undefined}
+          valueClassName={stats.inputTokens > 0 && stats.cachedInputTokens / stats.inputTokens > 0.5 ? "text-emerald-600 dark:text-emerald-400" : undefined}
           tooltip="Share of input tokens served from cache vs. processed fresh. Computed as sum(cachedInputTokens) / sum(inputTokens). Higher = caching is doing its job."
         />
         <MetricCard
@@ -481,7 +458,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Cache Savings"
           value={`${stats.cacheSavingsUsd >= 0 ? "+" : "−"}${formatUsd(Math.abs(stats.cacheSavingsUsd))}`}
-          valueClass={stats.cacheSavingsUsd >= 0 ? "text-green-600" : "text-red-600"}
+          valueClassName={stats.cacheSavingsUsd >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}
           tooltip="Sum of cache_discount values across filtered requests. Positive (green) means caching net-saved money; negative (red) means cold-start writes outweighed reads. Filter by systemPromptId to judge whether caching is worth keeping on a specific flow."
         />
         <MetricCard
@@ -503,12 +480,12 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
             {stats.timeBuckets.map((b, i) => (
               <div key={i} className="flex-1 flex flex-col items-center" title={`${b.label}: ${b.calls}`}>
                 <div className="w-full flex-1 flex items-end">
-                  <div className="w-full bg-blue-400 rounded-t" style={{ height: `${(b.calls / stats.maxCalls) * 100}%` }} />
+                  <div className={cn("w-full rounded-t", chartColors.blue)} style={{ height: `${(b.calls / stats.maxCalls) * 100}%` }} />
                 </div>
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+          <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
             <span>{stats.timeBuckets[0]?.label}</span>
             <span>{stats.timeBuckets[stats.timeBuckets.length - 1]?.label}</span>
           </div>
@@ -526,15 +503,15 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                   title={`${b.label}: in ${b.inputTokens} / out ${b.outputTokens}`}
                   style={{ height: `${(total / stats.maxTokenTotal) * 100}%` }}
                 >
-                  <div className="bg-emerald-400" style={{ height: `${outPct}%` }} />
-                  <div className="bg-cyan-400 rounded-b" style={{ height: `${100 - outPct}%` }} />
+                  <div className={chartColors.emerald} style={{ height: `${outPct}%` }} />
+                  <div className={cn("rounded-b", chartColors.cyan)} style={{ height: `${100 - outPct}%` }} />
                 </div>
               );
             })}
           </div>
-          <div className="flex gap-3 text-[9px] text-gray-400 mt-1">
-            <span><span className="inline-block w-2 h-2 bg-cyan-400 mr-1 align-middle" />input</span>
-            <span><span className="inline-block w-2 h-2 bg-emerald-400 mr-1 align-middle" />output</span>
+          <div className="flex gap-3 mt-1">
+            <LegendItem colorClass={chartColors.cyan}>input</LegendItem>
+            <LegendItem colorClass={chartColors.emerald}>output</LegendItem>
           </div>
         </Card>
 
@@ -549,65 +526,64 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                   title={`${b.label}: ${b.cachedInputTokens.toLocaleString()} cached / ${b.inputTokens.toLocaleString()} total`}
                   style={{ height: `${(b.inputTokens / stats.maxInputTokens) * 100}%` }}
                 >
-                  <div className="bg-gray-300" style={{ height: `${100 - cachedPct}%` }} />
-                  <div className="bg-green-400 rounded-b" style={{ height: `${cachedPct}%` }} />
+                  <div className={chartColors.neutral} style={{ height: `${100 - cachedPct}%` }} />
+                  <div className={cn("rounded-b", chartColors.green)} style={{ height: `${cachedPct}%` }} />
                 </div>
               );
             })}
           </div>
-          <div className="flex gap-3 text-[9px] text-gray-400 mt-1">
-            <span><span className="inline-block w-2 h-2 bg-gray-300 mr-1 align-middle" />fresh</span>
-            <span><span className="inline-block w-2 h-2 bg-green-400 mr-1 align-middle" />cached</span>
+          <div className="flex gap-3 mt-1">
+            <LegendItem colorClass={chartColors.neutral}>fresh</LegendItem>
+            <LegendItem colorClass={chartColors.green}>cached</LegendItem>
           </div>
         </Card>
 
         <Card title="Cache Hit % by System Prompt">
           {stats.cacheHitBySystemPrompt.length === 0 ? (
-            <p className="text-sm text-gray-400">No data</p>
+            <EmptyState>No data</EmptyState>
           ) : (
             <div className="space-y-1.5">
               {stats.cacheHitBySystemPrompt.map(entry => (
-                <div key={entry.id} className="flex items-center gap-2">
-                  <span className="text-[11px] text-gray-600 font-mono w-40 truncate" title={entry.id}>{entry.id}</span>
-                  <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
-                    <div
-                      className={clsx(
-                        "h-full rounded",
-                        entry.hitPct >= 50 ? "bg-green-500" : entry.hitPct >= 20 ? "bg-yellow-400" : "bg-red-400"
-                      )}
-                      style={{ width: `${entry.hitPct}%` }}
-                    />
-                  </div>
-                  <span className="text-[11px] text-gray-600 w-10 text-right font-mono">{entry.hitPct}%</span>
-                  <span className="text-[10px] text-gray-400 w-12 text-right font-mono">{entry.calls} calls</span>
-                </div>
+                <BarRow
+                  key={entry.id}
+                  title={entry.id}
+                  label={entry.id}
+                  labelClassName="w-40 font-mono"
+                  barClassName={
+                    entry.hitPct >= 50 ? chartColors.emerald : entry.hitPct >= 20 ? chartColors.amber : chartColors.red
+                  }
+                  pct={entry.hitPct}
+                  value={`${entry.hitPct}%`}
+                  extra={<span className="w-12 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{entry.calls} calls</span>}
+                />
               ))}
             </div>
           )}
         </Card>
 
         <Card title="By System Prompt">
-          <DistributionBars items={stats.sysPromptDist} color="bg-purple-400" />
+          <DistributionBars items={stats.sysPromptDist} color={chartColors.purple} />
         </Card>
 
         <Card title="By Model">
-          <DistributionBars items={stats.modelDist} color="bg-indigo-400" />
+          <DistributionBars items={stats.modelDist} color={chartColors.indigo} />
         </Card>
 
         <Card title="Tool Usage (from request)">
-          <DistributionBars items={stats.toolDist} color="bg-orange-400" />
+          <DistributionBars items={stats.toolDist} color={chartColors.orange} />
         </Card>
 
         <Card title="Latency Distribution">
           <div className="space-y-2">
             {stats.latencyBuckets.map(b => (
-              <div key={b.label} className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-20">{b.label}</span>
-                <div className="flex-1 h-5 bg-gray-100 rounded overflow-hidden">
-                  <div className="h-full bg-pink-400 rounded" style={{ width: `${(b.count / stats.maxLatencyBucket) * 100}%` }} />
-                </div>
-                <span className="text-xs text-gray-600 w-8 text-right">{b.count}</span>
-              </div>
+              <BarRow
+                key={b.label}
+                label={b.label}
+                labelClassName="w-20"
+                barClassName={chartColors.pink}
+                pct={(b.count / stats.maxLatencyBucket) * 100}
+                value={b.count}
+              />
             ))}
           </div>
         </Card>
@@ -617,8 +593,8 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
       <Card title={`Calls (${filtered.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">
-              <tr className="border-b border-gray-200">
+            <thead>
+              <tr className={tableClasses.headRow}>
                 <SortHeader align="left" active={sortKey === "createdAt"} dir={sortDir} onClick={() => toggleSort("createdAt")} tooltip="When the request was logged.">Time</SortHeader>
                 <SortHeader align="left" active={sortKey === "systemPromptId"} dir={sortDir} onClick={() => toggleSort("systemPromptId")} tooltip="Which app flow triggered the AI call (e.g. create-dashboard, docs-ask-ai).">System Prompt</SortHeader>
                 <SortHeader align="left" active={sortKey === "modelId"} dir={sortDir} onClick={() => toggleSort("modelId")} tooltip="Which LLM processed the request.">Model</SortHeader>
@@ -649,103 +625,77 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                         onSelect(row);
                       }
                     }}
-                    className={clsx(
-                      "border-b border-gray-100 cursor-pointer hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500",
-                      selectedId === row.id && "bg-blue-50"
-                    )}
+                    className={cn(tableClasses.bodyRow, selectedId === row.id && tableClasses.selectedRow)}
                   >
-                    <td className="py-2 pr-3 text-gray-500 font-mono">
+                    <td className="py-2 pr-3 font-mono text-muted-foreground">
                       {toDate(row.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </td>
                     <td className="py-2 pr-3">
-                      <span className="inline-flex px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[10px]">
-                        {row.systemPromptId}
-                      </span>
+                      <Badge color="purple" mono>{row.systemPromptId}</Badge>
                       {row.conversationId != null && (
-                        <span className="ml-1 inline-flex px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">MCP</span>
+                        <Badge color="orange" size="xs" className="ml-1">MCP</Badge>
                       )}
                       {!row.isAuthenticated && (
-                        <span className="ml-1 inline-flex px-1 py-0.5 rounded bg-gray-100 text-gray-500 text-[9px]">anon</span>
+                        <Badge size="xs" className="ml-1">anon</Badge>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-gray-600 font-mono truncate max-w-[200px]">{row.modelId}</td>
-                    <td className="py-2 pr-3 text-gray-500">{row.mode}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">{row.inputTokens?.toLocaleString() ?? "—"}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">{row.outputTokens?.toLocaleString() ?? "—"}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">
+                    <td className="py-2 pr-3 max-w-[200px] truncate font-mono text-foreground">{row.modelId}</td>
+                    <td className="py-2 pr-3 text-muted-foreground">{row.mode}</td>
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums text-foreground">{row.inputTokens?.toLocaleString() ?? "—"}</td>
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums text-foreground">{row.outputTokens?.toLocaleString() ?? "—"}</td>
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums">
                       {row.cachedInputTokens != null && row.cachedInputTokens > 0 ? (
-                        <span className="text-green-600">{row.cachedInputTokens.toLocaleString()}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{row.cachedInputTokens.toLocaleString()}</span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums">
                       {row.cacheCreationTokens != null && row.cacheCreationTokens > 0 ? (
-                        <span className="text-orange-600">{row.cacheCreationTokens.toLocaleString()}</span>
+                        <span className="text-orange-600 dark:text-orange-400">{row.cacheCreationTokens.toLocaleString()}</span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums">
                       {(() => {
                         const savings = row.cacheDiscountUsd;
-                        if (savings == null) return <span className="text-gray-400">—</span>;
+                        if (savings == null) return <span className="text-muted-foreground">—</span>;
                         const sign = savings >= 0 ? "+" : "−";
-                        const color = savings >= 0 ? "text-green-600" : "text-red-600";
+                        const color = savings >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                         return <span className={color}>{sign}{formatUsd(Math.abs(savings))}</span>;
                       })()}
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">{row.costUsd != null ? formatUsd(row.costUsd) : "—"}</td>
-                    <td className="py-2 pr-3 text-right font-mono text-gray-600">{Number(row.durationMs).toLocaleString()}ms</td>
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums text-foreground">{row.costUsd != null ? formatUsd(row.costUsd) : "—"}</td>
+                    <td className="py-2 pr-3 text-right font-mono tabular-nums text-foreground">{Number(row.durationMs).toLocaleString()}ms</td>
                     <td className="py-2 pr-3">
-                      {isError ? (
-                        <span className="inline-flex px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px]">error</span>
-                      ) : (
-                        <span className="inline-flex px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px]">ok</span>
-                      )}
+                      <Badge color={isError ? "red" : "green"}>{isError ? "error" : "ok"}</Badge>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          <div className="flex items-center justify-between mt-3 text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Page size</span>
+          <div className="mt-3 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <FieldLabel>Page size</FieldLabel>
               {PAGE_SIZES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setPageSize(s)}
-                  className={clsx(
-                    "px-2 py-0.5 text-xs rounded",
-                    pageSize === s ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  )}
-                >
-                  {s}
-                </button>
+                <Pill key={s} active={pageSize === s} onClick={() => setPageSize(s)}>{s}</Pill>
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500">
+              <span className="text-muted-foreground">
                 {sorted.length === 0
                   ? "No results"
                   : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, sorted.length)} of ${sorted.length}`}
               </span>
-              <button
-                onClick={() => setPage(Math.max(0, currentPage - 1))}
-                disabled={currentPage === 0}
-                className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100"
-              >
+              <Button size="xs" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0}>
                 Prev
-              </button>
-              <span className="text-gray-500 font-mono">{currentPage + 1} / {pageCount}</span>
-              <button
-                onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-                disabled={currentPage >= pageCount - 1}
-                className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100"
-              >
+              </Button>
+              <span className="font-mono tabular-nums text-muted-foreground">{currentPage + 1} / {pageCount}</span>
+              <Button size="xs" onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))} disabled={currentPage >= pageCount - 1}>
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -754,102 +704,27 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
   );
 }
 
-function SortHeader({
-  children,
-  align,
-  active,
-  dir,
-  onClick,
-  tooltip,
-}: {
-  children: React.ReactNode,
-  align: "left" | "right",
-  active: boolean,
-  dir: SortDir,
-  onClick: () => void,
-  tooltip?: string,
-}) {
-  return (
-    <th className={clsx("py-2 pr-3 relative group", align === "left" ? "text-left" : "text-right")}>
-      <button
-        onClick={onClick}
-        className={clsx(
-          "inline-flex items-center gap-1 hover:text-gray-700",
-          active ? "text-gray-700" : "text-gray-400",
-        )}
-      >
-        <span>{children}</span>
-        <span className="text-[8px]">
-          {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
-        </span>
-      </button>
-      {tooltip != null && (
-        <div
-          className={clsx(
-            "absolute z-50 invisible group-hover:visible",
-            "top-full mt-1 w-64 px-2.5 py-2 rounded-md shadow-lg",
-            "bg-gray-900 text-white text-[11px] font-normal normal-case leading-snug whitespace-normal",
-            "pointer-events-none",
-            align === "right" ? "right-0" : "left-0",
-          )}
-        >
-          {tooltip}
-        </div>
-      )}
-    </th>
-  );
-}
-
 function formatUsd(value: number): string {
   if (value === 0) return "$0";
   return `$${value.toFixed(4)}`;
 }
 
-function MetricCard({ label, value, valueClass, tooltip }: { label: string, value: string, valueClass?: string, tooltip?: string }) {
-  return (
-    <div className="relative group bg-white border border-gray-200 rounded-lg p-3">
-      <p className="text-[10px] uppercase text-gray-400 font-medium tracking-wider mb-1">{label}</p>
-      <p className={clsx("text-xl font-bold", valueClass ?? "text-gray-900")}>{value}</p>
-      {tooltip != null && (
-        <div
-          className={clsx(
-            "absolute z-50 invisible group-hover:visible",
-            "top-full left-0 mt-1 w-72 px-2.5 py-2 rounded-md shadow-lg",
-            "bg-gray-900 text-white text-[11px] font-normal normal-case leading-snug whitespace-normal",
-            "pointer-events-none",
-          )}
-        >
-          {tooltip}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Card({ title, children }: { title: string, children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
 function DistributionBars({ items, color }: { items: Array<[string, number]>, color: string }) {
   if (items.length === 0) {
-    return <p className="text-sm text-gray-400">No data</p>;
+    return <EmptyState>No data</EmptyState>;
   }
   const max = Math.max(...items.map(i => i[1]), 1);
   return (
     <div className="space-y-1.5">
       {items.map(([label, count]) => (
-        <div key={label} className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-600 font-mono w-40 truncate">{label}</span>
-          <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
-            <div className={clsx("h-full rounded", color)} style={{ width: `${(count / max) * 100}%` }} />
-          </div>
-          <span className="text-[11px] text-gray-600 w-8 text-right">{count}</span>
-        </div>
+        <BarRow
+          key={label}
+          label={label}
+          labelClassName="w-40 font-mono"
+          barClassName={color}
+          pct={(count / max) * 100}
+          value={count}
+        />
       ))}
     </div>
   );

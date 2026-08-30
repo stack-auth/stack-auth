@@ -5,7 +5,7 @@ import { QA_REVIEW_FAILED_THRESHOLD_MS, qaReviewStartedAt, toDate } from "../uti
 import { reviewVisible } from "../lib/mcp-review-api";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { clsx } from "clsx";
+import { Alert, Badge, Button, Card, cn, EmptyState, FieldLabel, Input, Pill, Select, tableClasses } from "./design";
 
 // Matches MAX_BACKFILL_ITEMS in the backfill-visible route — one click enqueues
 // at most this many reviews.
@@ -173,28 +173,28 @@ export function CallLogList({
   }, [textFilter, toolFilter, statusFilter, qaFilter, sortField, sortDir, pageSize]);
 
   if (connectionState === "connecting") {
-    return <div className="text-gray-500 text-sm p-4">Connecting to SpacetimeDB...</div>;
+    return <div className="p-4 text-sm text-muted-foreground">Connecting to SpacetimeDB...</div>;
   }
 
   if (connectionState === "error") {
     return (
-      <div className="text-red-600 text-sm p-4">
+      <Alert>
         <p>
           Failed to connect to SpacetimeDB. Check the browser session response below, then verify the{" "}
           <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
         </p>
         {connectionErrorMessage != null && connectionErrorMessage !== "" && (
-          <pre className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 font-mono text-xs text-red-800">
+          <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 font-mono text-xs">
             {connectionErrorMessage}
           </pre>
         )}
-      </div>
+      </Alert>
     );
   }
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <th
-      className="px-4 py-2 cursor-pointer hover:text-gray-700 select-none"
+      className="cursor-pointer select-none px-4 py-2 transition-colors hover:transition-none hover:text-foreground"
       onClick={() => handleSort(field)}
     >
       <span className="flex items-center gap-1">
@@ -212,17 +212,17 @@ export function CallLogList({
     <div>
       {/* Filters */}
       <div className="mb-4 space-y-2">
-        <input
+        <Input
           type="text"
           placeholder="Search question, reason, or response..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="h-9 px-3 text-sm"
           value={textFilter}
           onChange={(e) => setTextFilter(e.target.value)}
         />
         <div className="flex gap-2 flex-wrap items-center">
           {toolNames.length > 1 && (
-            <select
-              className="px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+            <Select
+              className="w-auto"
               value={toolFilter}
               onChange={(e) => setToolFilter(e.target.value)}
             >
@@ -230,19 +230,19 @@ export function CallLogList({
               {toolNames.map(name => (
                 <option key={name} value={name}>{name}</option>
               ))}
-            </select>
+            </Select>
           )}
-          <select
-            className="px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+          <Select
+            className="w-auto"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           >
             <option value="all">All status</option>
             <option value="ok">OK</option>
             <option value="error">Error</option>
-          </select>
-          <select
-            className="px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+          </Select>
+          <Select
+            className="w-auto"
             value={qaFilter}
             onChange={(e) => setQaFilter(e.target.value as QaFilter)}
           >
@@ -256,10 +256,10 @@ export function CallLogList({
             <option value="needs-review">Needs Review</option>
             <option value="human-reviewed">Human Reviewed</option>
             <option value="not-reviewed">Not Yet Reviewed</option>
-          </select>
+          </Select>
           {hasActiveFilters && (
-            <button
-              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+            <Button
+              variant="ghost"
               onClick={() => {
                 setTextFilter("");
                 setToolFilter("all");
@@ -268,15 +268,10 @@ export function CallLogList({
               }}
             >
               Clear filters
-            </button>
+            </Button>
           )}
-          <button
-            className={clsx(
-              "ml-auto px-2 py-1 text-xs rounded border",
-              reviewableOnPage.length === 0 || reviewing
-                ? "border-gray-200 text-gray-400 bg-white cursor-default"
-                : "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-            )}
+          <Button
+            className="ml-auto"
             onClick={() => { runAsynchronously(handleReviewVisible); }}
             disabled={reviewableOnPage.length === 0 || reviewing}
             title="Run the automated QA review for the not-yet-reviewed rows on this page. Runs in the background."
@@ -288,28 +283,28 @@ export function CallLogList({
                 : reviewableOnPage.length === 0
                   ? "All reviewed"
                   : `Review ${reviewableOnPage.length} on page`}
-          </button>
-          <span className="text-xs text-gray-400">
+          </Button>
+          <span className="text-xs text-muted-foreground">
             {filteredAndSorted.length} of {rows.length} calls
           </span>
         </div>
       </div>
 
       {filteredAndSorted.length === 0 ? (
-        <div className="text-center text-gray-400 py-12">
-          {hasActiveFilters ? (
-            <p className="text-sm">No calls match the current filters</p>
-          ) : (
-            <>
-              <p className="text-lg mb-2">No MCP calls logged yet</p>
-            </>
-          )}
-        </div>
+        <Card>
+          <EmptyState className="py-12">
+            {hasActiveFilters ? (
+              <p className="text-sm">No calls match the current filters</p>
+            ) : (
+              <p className="text-lg">No MCP calls logged yet</p>
+            )}
+          </EmptyState>
+        </Card>
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <Card bodyClassName="p-0" className="overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
+              <tr className={cn(tableClasses.headRow, "bg-foreground/[0.03] text-left")}>
                 <SortHeader field="time">Time</SortHeader>
                 <SortHeader field="tool">Tool</SortHeader>
                 <th className="px-4 py-2">Reason</th>
@@ -326,124 +321,84 @@ export function CallLogList({
                 <tr
                   key={String(row.id)}
                   onClick={() => onSelect(row)}
-                  className={clsx(
-                    "cursor-pointer border-t border-gray-100 hover:bg-blue-50 transition-colors",
-                    selectedId === row.id && "bg-blue-50"
-                  )}
+                  className={cn(tableClasses.bodyRow, selectedId === row.id && tableClasses.selectedRow)}
                 >
-                  <td className="px-4 py-2 whitespace-nowrap text-gray-500" title={format(toDate(row.createdAt), "PPpp")}>
+                  <td className="whitespace-nowrap px-4 py-2 text-muted-foreground" title={format(toDate(row.createdAt), "PPpp")}>
                     {formatDistanceToNow(toDate(row.createdAt), { addSuffix: true })}
                   </td>
                   <td className="px-4 py-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                      {row.toolName}
-                    </span>
+                    <Badge color="purple">{row.toolName}</Badge>
                   </td>
-                  <td className="px-4 py-2 text-gray-600 max-w-[200px]" title={row.reason}>
+                  <td className="max-w-[200px] px-4 py-2 text-muted-foreground" title={row.reason}>
                     {truncate(row.reason, 60)}
                   </td>
-                  <td className="px-4 py-2 text-gray-900 max-w-[300px]" title={row.question}>
+                  <td className="max-w-[300px] px-4 py-2 text-foreground" title={row.question}>
                     {truncate(row.question, 80)}
                   </td>
-                  <td className="px-4 py-2 text-center text-gray-500">{row.stepCount}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-gray-500">
+                  <td className="px-4 py-2 text-center text-muted-foreground tabular-nums">{row.stepCount}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-muted-foreground tabular-nums">
                     {Number(row.durationMs).toLocaleString()}ms
                   </td>
                   <td className="px-4 py-2">
                     <span className="flex items-center gap-1">
                       {row.qaErrorMessage ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                          err
-                        </span>
+                        <Badge color="red">err</Badge>
                       ) : row.qaOverallScore != null ? (
-                        <span className={clsx(
-                          "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
-                          row.qaOverallScore >= 80 && "bg-green-100 text-green-800",
-                          row.qaOverallScore >= 50 && row.qaOverallScore < 80 && "bg-yellow-100 text-yellow-800",
-                          row.qaOverallScore < 50 && "bg-red-100 text-red-800"
-                        )}>
+                        <Badge color={row.qaOverallScore >= 80 ? "green" : row.qaOverallScore >= 50 ? "orange" : "red"}>
                           {row.qaOverallScore}
                           {row.qaNeedsHumanReview && !row.humanReviewedAt && " !"}
-                        </span>
+                        </Badge>
                       ) : isQaReviewFailed(row) ? (
-                        <span
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
-                          title="Review didn't complete — open the row to retry"
-                        >
+                        <Badge color="orange" title="Review didn't complete — open the row to retry">
                           review failed
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="text-xs text-gray-400" title="Review in progress">…</span>
+                        <span className="text-xs text-muted-foreground" title="Review in progress">…</span>
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap">
+                  <td className="whitespace-nowrap px-4 py-2">
                     {row.humanReviewedAt ? (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"
+                      <Badge
+                        color="green"
                         title={`Reviewed ${format(toDate(row.humanReviewedAt), "PPpp")}${row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}`}
                       >
                         &#10003; {formatDistanceToNow(toDate(row.humanReviewedAt), { addSuffix: true })}
-                      </span>
+                      </Badge>
                     ) : (
-                      <span className="text-xs text-gray-300">--</span>
+                      <span className="text-xs text-muted-foreground/60">--</span>
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    {row.errorMessage ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                        error
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                        ok
-                      </span>
-                    )}
+                    <Badge color={row.errorMessage ? "red" : "green"}>{row.errorMessage ? "error" : "ok"}</Badge>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 text-xs text-gray-600 bg-gray-50">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Page size</span>
+          <div className="flex items-center justify-between border-t border-black/[0.06] bg-foreground/[0.02] px-4 py-2 text-xs dark:border-white/[0.06]">
+            <div className="flex items-center gap-1.5">
+              <FieldLabel>Page size</FieldLabel>
               {PAGE_SIZES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setPageSize(s)}
-                  className={clsx(
-                    "px-2 py-0.5 text-xs rounded",
-                    pageSize === s ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
-                  )}
-                >
-                  {s}
-                </button>
+                <Pill key={s} active={pageSize === s} onClick={() => setPageSize(s)}>{s}</Pill>
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500">
+              <span className="text-muted-foreground">
                 {filteredAndSorted.length === 0
                   ? "No results"
                   : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredAndSorted.length)} of ${filteredAndSorted.length}`}
               </span>
-              <button
-                onClick={() => setPage(Math.max(0, currentPage - 1))}
-                disabled={currentPage === 0}
-                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white"
-              >
+              <Button size="xs" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0}>
                 Prev
-              </button>
-              <span className="text-gray-500 font-mono">{currentPage + 1} / {pageCount}</span>
-              <button
-                onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-                disabled={currentPage >= pageCount - 1}
-                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white"
-              >
+              </Button>
+              <span className="font-mono tabular-nums text-muted-foreground">{currentPage + 1} / {pageCount}</span>
+              <Button size="xs" onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))} disabled={currentPage >= pageCount - 1}>
                 Next
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

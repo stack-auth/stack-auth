@@ -2,9 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Design tokens mirrored from apps/dashboard/src/app/globals.css so the internal tool renders in
+   the same light/dark palette as the dashboard. The tool can't import the dashboard's stylesheet
+   (separate Next app, separate Tailwind build), so the token values are duplicated here; keep them
+   in sync when the dashboard palette changes. */
+@layer base {
+  :root {
+    --background: 230 45% 86%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100% / 0.5;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 245 30% 90%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 250 35% 92%;
+    --muted-foreground: 232 12% 38%;
+
+    --accent: 248 32% 91%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 120 40% 50%;
+    --success-foreground: 0 0% 98%;
+
+    --border: 230 25% 78%;
+    --input: 230 20% 72%;
+    --ring: 240 10% 3.9%;
+
+    --radius: 0.5rem;
+
+    --page-ambient:
+      linear-gradient(145deg, hsl(232 42% 88%) 0%, hsl(228 48% 84%) 40%, hsl(244 38% 86%) 100%);
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 9.4% / 0.5;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 120 40% 50%;
+    --success-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 35.9%;
+    --input: 240 3.7% 25.9%;
+    --ring: 240 4.9% 83.9%;
+
+    --page-ambient: none;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--foreground) / 0.22) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--foreground) / 0.18);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground) / 0.28);
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-image: var(--page-ambient);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
 }

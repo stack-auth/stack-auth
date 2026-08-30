@@ -3,7 +3,10 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { McpCallLogRow } from "../types";
 import { toDate } from "../utils";
+import { Badge, Button, cn } from "./design";
 import { markdownComponents } from "./markdown-components";
+
+const microLabelClasses = "text-[10px] font-medium uppercase tracking-wider text-muted-foreground";
 
 type ToolCall = {
   type: string;
@@ -24,7 +27,7 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      className="shrink-0 rounded p-0.5 transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+      className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:transition-none hover:bg-foreground/[0.06] hover:text-foreground"
       onClick={(e) => {
         e.stopPropagation();
         navigator.clipboard.writeText(text).then(() => {
@@ -43,36 +46,36 @@ function CopyButton({ text }: { text: string }) {
 export function ToolCallCard({ call, accent = "purple" }: { call: { toolName: string; args: unknown; result: unknown }; accent?: "purple" | "indigo" }) {
   const [expanded, setExpanded] = useState(false);
   const colors = accent === "indigo"
-    ? { dot: "text-indigo-500", name: "text-indigo-700", bg: "bg-indigo-50", ring: "ring-indigo-200", hover: "hover:bg-indigo-100" }
-    : { dot: "text-purple-500", name: "text-purple-700", bg: "bg-gray-50", ring: "ring-gray-200", hover: "hover:bg-gray-100" };
+    ? { dot: "text-indigo-500 dark:text-indigo-400", name: "text-indigo-700 dark:text-indigo-300", bg: "bg-indigo-500/[0.08]", ring: "ring-indigo-500/20" }
+    : { dot: "text-purple-500 dark:text-purple-400", name: "text-purple-700 dark:text-purple-300", bg: "bg-foreground/[0.04]", ring: "ring-foreground/[0.06]" };
 
   return (
-    <div className={`rounded-lg overflow-hidden ${colors.bg} ring-1 ${colors.ring} transition-all`}>
+    <div className={cn("overflow-hidden rounded-lg ring-1", colors.bg, colors.ring)}>
       <button
-        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${colors.hover} transition-colors`}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:transition-none hover:bg-foreground/[0.05]"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className={`${colors.dot} text-xs`}>&#9673;</span>
-        <span className={`text-xs font-medium ${colors.name} flex-1 font-mono`}>{call.toolName}</span>
-        <span className="text-[10px] text-gray-400">{expanded ? "collapse" : "expand"}</span>
+        <span className={cn("text-xs", colors.dot)}>&#9673;</span>
+        <span className={cn("flex-1 font-mono text-xs font-medium", colors.name)}>{call.toolName}</span>
+        <span className="text-[10px] text-muted-foreground">{expanded ? "collapse" : "expand"}</span>
       </button>
       {expanded && (
-        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-gray-200">
+        <div className="space-y-2 border-t border-black/[0.06] px-3 pb-3 pt-1 dark:border-white/[0.06]">
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Args</span>
+            <div className="mb-1 flex items-center justify-between">
+              <span className={microLabelClasses}>Args</span>
               <CopyButton text={JSON.stringify(call.args, null, 2)} />
             </div>
-            <pre className="text-[11px] font-mono text-gray-600 bg-white rounded px-2 py-1.5 overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap break-all">
+            <pre className="max-h-32 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded bg-card px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
               {JSON.stringify(call.args, null, 2)}
             </pre>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Result</span>
+            <div className="mb-1 flex items-center justify-between">
+              <span className={microLabelClasses}>Result</span>
               <CopyButton text={typeof call.result === "string" ? call.result : JSON.stringify(call.result, null, 2)} />
             </div>
-            <pre className="text-[11px] font-mono text-gray-600 bg-white rounded px-2 py-1.5 overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap break-all">
+            <pre className="max-h-32 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded bg-card px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
               {typeof call.result === "string" ? call.result.slice(0, 500) : JSON.stringify(call.result, null, 2).slice(0, 500)}
             </pre>
           </div>
@@ -85,11 +88,11 @@ export function ToolCallCard({ call, accent = "purple" }: { call: { toolName: st
 export function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex gap-2.5 justify-end">
-      <div className="rounded-xl px-3.5 py-2 max-w-[80%] bg-blue-50 text-gray-900">
-        <p className="text-sm leading-relaxed break-words">{text}</p>
+      <div className="max-w-[80%] rounded-xl bg-blue-500/10 px-3.5 py-2 text-foreground">
+        <p className="break-words text-sm leading-relaxed">{text}</p>
       </div>
-      <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-blue-100 flex items-center justify-center">
-        <span className="text-blue-500 text-xs font-bold">U</span>
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/15">
+        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">U</span>
       </div>
     </div>
   );
@@ -98,8 +101,8 @@ export function UserBubble({ text }: { text: string }) {
 export function AssistantBubble({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
   return (
     <div className="flex gap-2.5 justify-start">
-      <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-purple-100 flex items-center justify-center">
-        <span className="text-purple-500 text-xs font-bold">AI</span>
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-purple-500/15">
+        <span className="text-xs font-bold text-purple-600 dark:text-purple-400">AI</span>
       </div>
       <div className="min-w-0 max-w-[calc(100%-2rem)] flex flex-col gap-2">
         {toolCalls.length > 0 && (
@@ -110,7 +113,7 @@ export function AssistantBubble({ content, toolCalls }: { content: string; toolC
           </div>
         )}
         {content && (
-          <div className="rounded-xl px-3.5 py-2 bg-gray-50">
+          <div className="rounded-xl bg-foreground/[0.04] px-3.5 py-2">
             <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {content}
             </Markdown>
@@ -124,8 +127,8 @@ export function AssistantBubble({ content, toolCalls }: { content: string; toolC
 function QaReviewerBubble({ content, toolCalls, score }: { content: string; toolCalls: Array<{ toolName: string; args: unknown; result: unknown }>; score?: number }) {
   return (
     <div className="flex gap-2.5 justify-start">
-      <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-indigo-100 flex items-center justify-center">
-        <span className="text-indigo-500 text-xs font-bold">QA</span>
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/15">
+        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">QA</span>
       </div>
       <div className="min-w-0 max-w-[calc(100%-2rem)] flex flex-col gap-2">
         {toolCalls.length > 0 && (
@@ -136,14 +139,19 @@ function QaReviewerBubble({ content, toolCalls, score }: { content: string; tool
           </div>
         )}
         {content && (
-          <div className="rounded-xl px-3.5 py-2 bg-indigo-50">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{content.slice(0, 300)}{content.length > 300 ? "..." : ""}</p>
+          <div className="rounded-xl bg-indigo-500/[0.08] px-3.5 py-2">
+            <p className="whitespace-pre-wrap text-sm text-foreground">{content.slice(0, 300)}{content.length > 300 ? "..." : ""}</p>
           </div>
         )}
         {score != null && (
-          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-bold ${
-            score >= 80 ? "bg-green-100 text-green-700" : score >= 50 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
-          }`}>
+          <div className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums",
+            score >= 80
+              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+              : score >= 50
+                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                : "bg-red-500/15 text-red-700 dark:text-red-400",
+          )}>
             Score: {score}
           </div>
         )}
@@ -153,22 +161,22 @@ function QaReviewerBubble({ content, toolCalls, score }: { content: string; tool
 }
 
 function ThinkingIndicator({ label = "Thinking...", color = "purple" }: { label?: string; color?: "purple" | "indigo" }) {
-  const bgColor = color === "indigo" ? "bg-indigo-100" : "bg-purple-100";
-  const textColor = color === "indigo" ? "text-indigo-500" : "text-purple-500";
-  const dotColor = color === "indigo" ? "bg-indigo-400" : "bg-purple-400";
+  const bgColor = color === "indigo" ? "bg-indigo-500/15" : "bg-purple-500/15";
+  const textColor = color === "indigo" ? "text-indigo-600 dark:text-indigo-400" : "text-purple-600 dark:text-purple-400";
+  const dotColor = color === "indigo" ? "bg-indigo-500 dark:bg-indigo-400" : "bg-purple-500 dark:bg-purple-400";
   const avatarText = color === "indigo" ? "QA" : "AI";
 
   return (
     <div className="flex gap-2.5 justify-start">
-      <div className={`shrink-0 w-6 h-6 rounded-full ${bgColor} flex items-center justify-center`}>
-        <span className={`${textColor} text-xs font-bold`}>{avatarText}</span>
+      <div className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full", bgColor)}>
+        <span className={cn("text-xs font-bold", textColor)}>{avatarText}</span>
       </div>
-      <div className="bg-gray-50 rounded-xl px-3.5 py-2">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="rounded-xl bg-foreground/[0.04] px-3.5 py-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="inline-flex gap-0.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColor} animate-pulse`} />
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColor} animate-pulse`} style={{ animationDelay: "150ms" }} />
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColor} animate-pulse`} style={{ animationDelay: "300ms" }} />
+            <span className={cn("h-1.5 w-1.5 animate-pulse rounded-full", dotColor)} />
+            <span className={cn("h-1.5 w-1.5 animate-pulse rounded-full", dotColor)} style={{ animationDelay: "150ms" }} />
+            <span className={cn("h-1.5 w-1.5 animate-pulse rounded-full", dotColor)} style={{ animationDelay: "300ms" }} />
           </span>
           <span>{label}</span>
         </div>
@@ -180,9 +188,9 @@ function ThinkingIndicator({ label = "Thinking...", color = "purple" }: { label?
 function Divider({ text }: { text: string }) {
   return (
     <div className="flex items-center gap-3 py-2">
-      <div className="flex-1 h-px bg-indigo-200" />
-      <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">{text}</span>
-      <div className="flex-1 h-px bg-indigo-200" />
+      <div className="h-px flex-1 bg-indigo-500/30" />
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{text}</span>
+      <div className="h-px flex-1 bg-indigo-500/30" />
     </div>
   );
 }
@@ -190,9 +198,9 @@ function Divider({ text }: { text: string }) {
 function CallDivider({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-3 py-3">
-      <div className="flex-1 h-px bg-gray-300" />
-      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Call {current} of {total}</span>
-      <div className="flex-1 h-px bg-gray-300" />
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Call {current} of {total}</span>
+      <div className="h-px flex-1 bg-border" />
     </div>
   );
 }
@@ -437,44 +445,34 @@ export function ConversationReplay({ row, allRows, onClose }: { row: McpCallLogR
   const totalDuration = conversationRows.reduce((sum, r) => sum + Number(r.durationMs), 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-8">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-8 backdrop-blur-sm">
+      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-black/[0.06] bg-popover text-popover-foreground shadow-2xl dark:border-white/[0.08]">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-3 dark:border-white/[0.06]">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-900">
+            <h2 className="text-sm font-semibold text-foreground">
               {isMultiCall ? "Conversation Replay" : "Call Replay"}
             </h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-              {isMultiCall ? `${conversationRows.length} calls` : currentRow.toolName}
-            </span>
+            <Badge>{isMultiCall ? `${conversationRows.length} calls` : currentRow.toolName}</Badge>
           </div>
           <div className="flex items-center gap-2">
             {phase === "idle" && (
-              <button onClick={startReplay} className="px-3 py-1 text-xs font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700">
-                Play
-              </button>
+              <Button variant="default" onClick={startReplay}>Play</Button>
             )}
             {phase !== "idle" && phase !== "done" && (
-              <button onClick={skipToEnd} className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">
-                Skip
-              </button>
+              <Button onClick={skipToEnd}>Skip</Button>
             )}
             {phase === "done" && (
-              <button onClick={startReplay} className="px-3 py-1 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100">
-                Replay
-              </button>
+              <Button onClick={startReplay}>Replay</Button>
             )}
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm px-2">
-              close
-            </button>
+            <Button variant="ghost" onClick={onClose}>close</Button>
           </div>
         </div>
 
         {/* Conversation area */}
         <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {phase === "idle" && (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Click Play to replay this {isMultiCall ? "conversation" : "call"}
             </div>
           )}
@@ -490,8 +488,8 @@ export function ConversationReplay({ row, allRows, onClose }: { row: McpCallLogR
                     {i > 0 && <CallDivider current={i + 1} total={conversationRows.length} />}
                     {r.userPrompt && (
                       <div className="text-center">
-                        <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Original Prompt</span>
-                        <p className="text-xs text-gray-500 mt-0.5">{r.userPrompt}</p>
+                        <span className={microLabelClasses}>Original Prompt</span>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{r.userPrompt}</p>
                       </div>
                     )}
                     <UserBubble text={r.question} />
@@ -519,8 +517,8 @@ export function ConversationReplay({ row, allRows, onClose }: { row: McpCallLogR
 
                   {currentRow.userPrompt && (
                     <div className="text-center">
-                      <span className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Original Prompt</span>
-                      <p className="text-xs text-gray-500 mt-0.5">{currentRow.userPrompt}</p>
+                      <span className={microLabelClasses}>Original Prompt</span>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{currentRow.userPrompt}</p>
                     </div>
                   )}
 
@@ -563,7 +561,7 @@ export function ConversationReplay({ row, allRows, onClose }: { row: McpCallLogR
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+        <div className="flex items-center justify-between border-t border-black/[0.06] px-4 py-2 text-xs text-muted-foreground dark:border-white/[0.06]">
           <span>
             {totalSteps} step{totalSteps !== 1 ? "s" : ""} {"\u00B7"} {totalDuration.toLocaleString()}ms
             {isMultiCall && ` \u00B7 ${conversationRows.length} calls`}

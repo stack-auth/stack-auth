@@ -1,5 +1,4 @@
 import { useUser } from "@hexclave/next";
-import { clsx } from "clsx";
 import { useCallback, useEffect, useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
@@ -8,15 +7,26 @@ import { CallLogList } from "../components/CallLogList";
 import { FeedbackDetail } from "../components/FeedbackDetail";
 import { FeedbackList } from "../components/FeedbackList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
+import { Button, cn } from "../components/design";
 import { type GetSpacetimeToken, useAiQueryLogs, useFeedbackLog, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
 import { retryReview } from "../lib/mcp-review-api";
 import type { AiQueryLogRow, FeedbackLogRow, McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "usage" | "feedback";
 const TAB_STORAGE_KEY = "internal-tool-active-tab";
-const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "usage", "feedback"];
+const TABS: ReadonlyArray<{ id: Tab, label: string }> = [
+  { id: "calls", label: "MCP Review" },
+  { id: "knowledge", label: "Knowledge Base" },
+  { id: "usage", label: "Unified AI Endpoint Analytics" },
+  { id: "feedback", label: "Feedback" },
+];
+const VALID_TABS: readonly Tab[] = TABS.map(t => t.id);
+
+/** Detail drawer on the right of the split views. */
+const asideClasses = "w-[480px] shrink-0 overflow-y-auto border-l border-black/[0.06] bg-card backdrop-blur-xl dark:border-white/[0.06]";
 
 function readInitialTab(): Tab {
   // sessionStorage is per-tab: reload preserves the active tab, but a brand-new
@@ -92,74 +102,43 @@ export default function App() {
     : rows.find(r => r.conversationId === currentSelectedFeedbackRow.conversationId) ?? null;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      <header className="shrink-0 bg-white border-b border-gray-200 px-6 py-3 grid grid-cols-3 items-center">
+    <div className="flex h-screen flex-col">
+      <header className="grid shrink-0 grid-cols-3 items-center gap-3 border-b border-black/[0.06] bg-card px-6 py-3 backdrop-blur-xl dark:border-white/[0.06]">
         <div className="flex items-center justify-start">
-          <h1 className="text-lg font-semibold text-gray-900">MCP Review Tool</h1>
+          <h1 className="text-base font-semibold tracking-tight text-foreground">MCP Review Tool</h1>
         </div>
         {/* Tabs — centered */}
         <div className="flex justify-center">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => {
-                setTab("calls");
-                setSelectedRow(null);
-              }}
-              className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                tab === "calls" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              MCP Review
-            </button>
-            <button
-              onClick={() => {
-                setTab("knowledge");
-                setSelectedRow(null);
-              }}
-              className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                tab === "knowledge" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              Knowledge Base
-            </button>
-            <button
-              onClick={() => {
-                setTab("usage");
-                setSelectedRow(null);
-              }}
-              className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                tab === "usage" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              Unified AI Endpoint Analytics
-            </button>
-            <button
-              onClick={() => {
-                setTab("feedback");
-                setSelectedRow(null);
-              }}
-              className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                tab === "feedback" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              Feedback
-            </button>
+          <div className="flex gap-0.5 rounded-full border border-black/[0.06] bg-foreground/[0.04] p-0.5 ring-1 ring-black/[0.03] dark:border-white/[0.06] dark:ring-white/[0.03]">
+            {TABS.map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  setTab(id);
+                  setSelectedRow(null);
+                }}
+                aria-pressed={tab === id}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium",
+                  "transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  tab === id
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex items-center justify-end gap-3">
           {tab === "knowledge" && (
-            <button
-              onClick={() => setShowAddQa(true)}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-            >
+            <Button variant="default" onClick={() => setShowAddQa(true)}>
               + Add Q&A
-            </button>
+            </Button>
           )}
-          <span className="text-sm text-gray-500">{user.displayName ?? user.primaryEmail}</span>
+          <span className="max-w-[180px] truncate text-xs text-muted-foreground">{user.displayName ?? user.primaryEmail}</span>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -191,7 +170,7 @@ export default function App() {
               />
             </main>
             {currentSelectedRow && (
-              <aside className="w-[480px] shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+              <aside className={asideClasses}>
                 <CallLogDetail
                   key={String(currentSelectedRow.id)}
                   row={currentSelectedRow}
@@ -258,7 +237,7 @@ export default function App() {
               </div>
             </main>
             {selectedUsageRow && (
-              <aside className="w-[480px] shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+              <aside className={asideClasses}>
                 <UsageDetail
                   row={usageRows.find(r => r.id === selectedUsageRow.id) ?? selectedUsageRow}
                   onClose={() => setSelectedUsageRow(null)}
@@ -282,7 +261,7 @@ export default function App() {
               </div>
             </main>
             {currentSelectedFeedbackRow && (
-              <aside className="w-[480px] shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+              <aside className={asideClasses}>
                 <FeedbackDetail
                   key={String(currentSelectedFeedbackRow.id)}
                   row={currentSelectedFeedbackRow}

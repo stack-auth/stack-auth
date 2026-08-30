@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { clsx } from "clsx";
 import type { McpCallLogRow, QaEntriesRow } from "../types";
 import { toDate } from "../utils";
+import { Badge, BarRow, Card, chartColors, cn, EmptyState, MetricCard } from "./design";
 
 export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntries: QaEntriesRow[] }) {
   const stats = useMemo(() => {
@@ -16,11 +16,11 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
 
     // Score buckets
     const scoreBuckets = [
-      { label: "90-100", min: 90, max: 100, color: "bg-green-500" },
-      { label: "70-89", min: 70, max: 89, color: "bg-green-300" },
-      { label: "50-69", min: 50, max: 69, color: "bg-yellow-400" },
-      { label: "30-49", min: 30, max: 49, color: "bg-orange-400" },
-      { label: "0-29", min: 0, max: 29, color: "bg-red-500" },
+      { label: "90-100", min: 90, max: 100, color: chartColors.emerald },
+      { label: "70-89", min: 70, max: 89, color: chartColors.green },
+      { label: "50-69", min: 50, max: 69, color: chartColors.amber },
+      { label: "30-49", min: 30, max: 49, color: chartColors.orange },
+      { label: "0-29", min: 0, max: 29, color: chartColors.red },
     ].map(b => ({
       ...b,
       count: scores.filter(s => s >= b.min && s <= b.max).length,
@@ -113,16 +113,16 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
         <MetricCard
           label="Avg QA Score"
           value={stats.avgScore.toString()}
-          valueClass={
-            stats.avgScore >= 80 ? "text-green-600" :
-              stats.avgScore >= 50 ? "text-yellow-600" : "text-red-600"
+          valueClassName={
+            stats.avgScore >= 80 ? "text-emerald-600 dark:text-emerald-400" :
+              stats.avgScore >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"
           }
           subtitle={`${reviewRate}% reviewed`}
         />
         <MetricCard
           label="Needs Review"
           value={stats.needsReview.toString()}
-          valueClass={stats.needsReview > 0 ? "text-amber-600" : "text-gray-400"}
+          valueClassName={stats.needsReview > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}
           subtitle={`${humanReviewRate}% human-reviewed`}
         />
         <MetricCard
@@ -139,11 +139,11 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
             <div key={bucket.label} className="flex-1 flex flex-col items-center gap-1" title={`${bucket.label}: ${bucket.count}`}>
               <div className="w-full flex-1 flex items-end">
                 <div
-                  className="w-full bg-blue-400 rounded-t"
+                  className={cn("w-full rounded-t", chartColors.blue)}
                   style={{ height: `${(bucket.count / stats.maxDayCount) * 100}%` }}
                 />
               </div>
-              <span className="text-[9px] text-gray-400">{bucket.label}</span>
+              <span className="text-[9px] text-muted-foreground">{bucket.label}</span>
             </div>
           ))}
         </div>
@@ -153,20 +153,18 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
         {/* QA Score Distribution */}
         <Card title="QA Score Distribution">
           {stats.reviewed === 0 ? (
-            <p className="text-sm text-gray-400">No QA reviews yet</p>
+            <EmptyState>No QA reviews yet</EmptyState>
           ) : (
             <div className="space-y-2">
               {stats.scoreBuckets.map(bucket => (
-                <div key={bucket.label} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 w-16">{bucket.label}</span>
-                  <div className="flex-1 h-5 bg-gray-100 rounded overflow-hidden">
-                    <div
-                      className={clsx("h-full rounded", bucket.color)}
-                      style={{ width: `${(bucket.count / stats.maxScoreBucket) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-600 w-8 text-right">{bucket.count}</span>
-                </div>
+                <BarRow
+                  key={bucket.label}
+                  label={bucket.label}
+                  labelClassName="w-16"
+                  barClassName={bucket.color}
+                  pct={(bucket.count / stats.maxScoreBucket) * 100}
+                  value={bucket.count}
+                />
               ))}
             </div>
           )}
@@ -175,20 +173,18 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
         {/* Top Flag Types */}
         <Card title="Top Flag Types">
           {stats.topFlags.length === 0 ? (
-            <p className="text-sm text-gray-400">No flags raised</p>
+            <EmptyState>No flags raised</EmptyState>
           ) : (
             <div className="space-y-2">
               {stats.topFlags.map(([type, count]) => (
-                <div key={type} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-600 w-32 truncate font-mono">{type}</span>
-                  <div className="flex-1 h-5 bg-gray-100 rounded overflow-hidden">
-                    <div
-                      className="h-full bg-orange-400 rounded"
-                      style={{ width: `${(count / stats.maxFlagCount) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-600 w-8 text-right">{count}</span>
-                </div>
+                <BarRow
+                  key={type}
+                  label={type}
+                  labelClassName="w-32 font-mono"
+                  barClassName={chartColors.orange}
+                  pct={(count / stats.maxFlagCount) * 100}
+                  value={count}
+                />
               ))}
             </div>
           )}
@@ -198,16 +194,16 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
         <Card title="Response Time">
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">Average</span>
-              <span className="font-mono">{stats.avgDuration.toLocaleString()}ms</span>
+              <span className="text-muted-foreground">Average</span>
+              <span className="font-mono tabular-nums">{stats.avgDuration.toLocaleString()}ms</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">p95</span>
-              <span className="font-mono">{stats.p95Duration.toLocaleString()}ms</span>
+              <span className="text-muted-foreground">p95</span>
+              <span className="font-mono tabular-nums">{stats.p95Duration.toLocaleString()}ms</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Max</span>
-              <span className="font-mono">{stats.maxDuration.toLocaleString()}ms</span>
+              <span className="text-muted-foreground">Max</span>
+              <span className="font-mono tabular-nums">{stats.maxDuration.toLocaleString()}ms</span>
             </div>
           </div>
         </Card>
@@ -215,47 +211,19 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
         {/* Tool Usage */}
         <Card title="Tool Usage">
           {stats.toolUsage.length === 0 ? (
-            <p className="text-sm text-gray-400">No calls yet</p>
+            <EmptyState>No calls yet</EmptyState>
           ) : (
             <div className="space-y-2">
               {stats.toolUsage.map(([tool, count]) => (
                 <div key={tool} className="flex items-center justify-between">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                    {tool}
-                  </span>
-                  <span className="text-sm text-gray-600 font-mono">{count}</span>
+                  <Badge color="purple" mono>{tool}</Badge>
+                  <span className="font-mono text-sm tabular-nums text-muted-foreground">{count}</span>
                 </div>
               ))}
             </div>
           )}
         </Card>
       </div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, valueClass, subtitle }: {
-  label: string;
-  value: string;
-  valueClass?: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <p className="text-[10px] uppercase text-gray-400 font-medium tracking-wider mb-1">{label}</p>
-      <p className={clsx("text-2xl font-bold", valueClass ?? "text-gray-900")}>{value}</p>
-      {subtitle && (
-        <p className="text-[10px] text-gray-400 mt-0.5">{subtitle}</p>
-      )}
-    </div>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">{title}</h3>
-      {children}
     </div>
   );
 }
