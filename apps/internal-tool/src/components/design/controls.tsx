@@ -40,7 +40,7 @@ export function Button({
       className={cn(
         "inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium",
         "transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        "disabled:pointer-events-none disabled:opacity-40",
+        "disabled:pointer-events-none disabled:opacity-60",
         buttonSizeClasses.get(size) ?? throwErr(`No button classes for size ${size}; buttonSizeClasses must cover every ButtonSize`),
         buttonVariantClasses.get(variant) ?? throwErr(`No button classes for variant ${variant}; buttonVariantClasses must cover every ButtonVariant`),
         className,
