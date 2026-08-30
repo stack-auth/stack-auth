@@ -55,6 +55,7 @@ const tempPaths: string[] = [];
 const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
 const piledriverImplementation = process.env.STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION ?? "base";
+const bufferedPiledriver = process.env.BULLDOZER_PAYMENTS_PERF_BUFFERED_PILEDRIVER === "1";
 if (piledriverImplementation !== "base" && piledriverImplementation !== "breezy") throw new Error("STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION must be base or breezy");
 const effectivePiledriverImplementation = perfBackend.includes("piledriver-in-memory") ? "in-memory" : piledriverImplementation;
 
@@ -163,7 +164,8 @@ const newPiledriverDb = () => {
     if (perfBackend !== "lmdb") throw new Error("Breezy requires the lmdb performance backend");
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
-    return declareBreezyPiledriverDatabase({ path, dbId: crypto.randomUUID() });
+    const breezy = declareBreezyPiledriverDatabase({ path, dbId: crypto.randomUUID() });
+    return bufferedPiledriver ? declareBufferedPiledriverDatabase(breezy) : breezy;
   }
   if (perfBackend === "lmdb" || perfBackend === "lmdb-instant") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
@@ -293,7 +295,7 @@ describe("payments schema performance", () => {
     }, () => db);
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
-    const summary = { engine: "bulldozer-js", backend: perfBackend, piledriverImplementation: effectivePiledriverImplementation, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
+    const summary = { engine: "bulldozer-js", backend: perfBackend, piledriverImplementation: effectivePiledriverImplementation, bufferedPiledriver, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
     writeFileSync("../../bulldozer-payments-schema-perf-js.untracked.json", JSON.stringify(summary, null, 2));
     process.stdout.write(`\n[bulldozer-payments-schema-perf-js] summary=${JSON.stringify(summary)}\n`);
   });
