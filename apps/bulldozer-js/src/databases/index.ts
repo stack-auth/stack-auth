@@ -1,5 +1,15 @@
 export type DatabaseSeq = (readonly (string | number)[] & { __brand: "hexclave-low-level-kv-store-seq" });
 
+class ConcreteDatabaseSeq extends Array<string | number> {
+  readonly __brand: "hexclave-low-level-kv-store-seq" = "hexclave-low-level-kv-store-seq";
+}
+
+export function createDatabaseSeq(...parts: readonly (string | number)[]): DatabaseSeq {
+  const result = new ConcreteDatabaseSeq();
+  result.push(...parts);
+  return result;
+}
+
 export type Database = {
   getDebugInfo(): any,
   /**

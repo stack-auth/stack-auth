@@ -328,7 +328,7 @@ function aggregateKeys(keys: ArrayBuffer[]) {
   return result;
 }
 
-function aggregateSerializedReferences(buffer: ArrayBuffer | null) {
+export function aggregateSerializedReferences(buffer: ArrayBuffer | null) {
   return aggregateKeys(buffer === null ? [] : serializedHeapReferenceKeys(buffer));
 }
 

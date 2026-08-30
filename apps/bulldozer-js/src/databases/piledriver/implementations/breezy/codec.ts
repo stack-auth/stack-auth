@@ -31,6 +31,23 @@ export function plannedHeapReference(key: ArrayBuffer): PlannedHeapReference {
   return { key, [isPlannedHeapReferenceSymbol]: true };
 }
 
+export function plannedHeapReferenceKeys(value: PlannedPiledriverObject): ArrayBuffer[] {
+  const references: ArrayBuffer[] = [];
+  const pending: PlannedPiledriverObject[] = [value];
+  while (pending.length !== 0) {
+    const node = pending.pop();
+    if (node === undefined || node === null || typeof node !== "object") continue;
+    if (isPlannedHeapReferenceSymbol in node) {
+      references.push(node.key);
+    } else if (Array.isArray(node)) {
+      pending.push(...node);
+    } else {
+      pending.push(...Object.values(node));
+    }
+  }
+  return references;
+}
+
 const defineOwn = (object: object, key: string, value: unknown) => {
   // Assignment would invoke Object.prototype.__proto__ instead of restoring an own property.
   Object.defineProperty(object, key, { value, enumerable: true, configurable: true, writable: true });

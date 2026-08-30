@@ -28,19 +28,24 @@ type Metric = {
 type LockStatsDatabase = { debugWriteLockStats?(): LockStats };
 type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["getSnapshot"]>>["snapshot"];
 
+const readNonNegativeInteger = (name: string, defaultValue: number) => {
+  const value = process.env[name] ?? String(defaultValue);
+  if (!/^\d+$/.test(value)) throw new Error(`${name} must be a non-negative integer`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${name} must be a non-negative safe integer`);
+  return parsed;
+};
+
 const USER_COUNT = 6;
-const ITEM_UPDATES_PER_USER = 10;
+const ITEM_UPDATES_PER_USER = readNonNegativeInteger("BULLDOZER_PAYMENTS_PERF_ITEM_UPDATES_PER_USER", 10);
 // The concurrent phases issue CONCURRENCY writes at once and only then wait for all of them. This is
 // the shape a real request burst has, and unlike the serial phases it actually puts the Bulldozer
 // write lock under contention, so lockWaitMs becomes meaningful instead of pinned near zero.
 const CONCURRENCY = 10;
-const CONCURRENT_SUBSCRIPTION_BATCHES = 6;
-const CONCURRENT_PURCHASE_BATCHES = 6;
-const CONCURRENT_ITEM_UPDATE_BATCHES = 60;
-const prefillUserCountValue = process.env.BULLDOZER_PAYMENTS_PERF_PREFILL_USERS ?? "200";
-if (!/^\d+$/.test(prefillUserCountValue)) throw new Error("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS must be a non-negative integer");
-const PREFILL_USER_COUNT = Number(prefillUserCountValue);
-if (!Number.isSafeInteger(PREFILL_USER_COUNT)) throw new Error("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS must be a non-negative integer");
+const CONCURRENT_SUBSCRIPTION_BATCHES = readNonNegativeInteger("BULLDOZER_PAYMENTS_PERF_CONCURRENT_SUBSCRIPTION_BATCHES", 6);
+const CONCURRENT_PURCHASE_BATCHES = readNonNegativeInteger("BULLDOZER_PAYMENTS_PERF_CONCURRENT_PURCHASE_BATCHES", 6);
+const CONCURRENT_ITEM_UPDATE_BATCHES = readNonNegativeInteger("BULLDOZER_PAYMENTS_PERF_CONCURRENT_ITEM_UPDATE_BATCHES", 60);
+const PREFILL_USER_COUNT = readNonNegativeInteger("BULLDOZER_PAYMENTS_PERF_PREFILL_USERS", 200);
 const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 // Local large-store measurements are ~156s for this suite and ~273s for the listing suite.
@@ -51,7 +56,7 @@ const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
 const piledriverImplementation = process.env.STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION ?? "base";
 if (piledriverImplementation !== "base" && piledriverImplementation !== "breezy") throw new Error("STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION must be base or breezy");
-const declarePerfPiledriverDatabase = piledriverImplementation === "base" ? declareBasePiledriverDatabase : declareBreezyPiledriverDatabase;
+const effectivePiledriverImplementation = perfBackend.includes("piledriver-in-memory") ? "in-memory" : piledriverImplementation;
 
 const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapshot => ({
   displayName: "Perf Product",
@@ -154,21 +159,28 @@ const newPiledriverDb = () => {
   if (perfBackend === "buffered-piledriver-in-memory") {
     return declareBufferedPiledriverDatabase(declareInMemoryPiledriverDatabase(crypto.randomUUID()));
   }
+  if (piledriverImplementation === "breezy") {
+    if (perfBackend !== "lmdb") throw new Error("Breezy requires the lmdb performance backend");
+    const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
+    tempPaths.push(path);
+    return declareBreezyPiledriverDatabase({ path, dbId: crypto.randomUUID() });
+  }
   if (perfBackend === "lmdb" || perfBackend === "lmdb-instant") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
-    const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
+    const lmdbOptions = { path, dbId: crypto.randomUUID() };
+    const lmdb = declareLmdbLowLevelDatabase(lmdbOptions);
     const lowLevel = perfBackend === "lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
-    return declarePerfPiledriverDatabase(lowLevel);
+    return declareBasePiledriverDatabase(lowLevel);
   }
   if (perfBackend === "buffered-lmdb-instant" || perfBackend === "buffered-lmdb") {
     const path = mkdtempSync(join(tmpdir(), "bulldozer-payments-schema-perf-"));
     tempPaths.push(path);
     const lmdb = declareLmdbLowLevelDatabase({ path, dbId: crypto.randomUUID() });
     const lowLevel = perfBackend === "buffered-lmdb-instant" ? declareInstantAvailabilityLowLevelDatabase(lmdb) : lmdb;
-    return declareBufferedPiledriverDatabase(declarePerfPiledriverDatabase(lowLevel));
+    return declareBufferedPiledriverDatabase(declareBasePiledriverDatabase(lowLevel));
   }
-  return declarePerfPiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+  return declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
 };
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
@@ -281,7 +293,7 @@ describe("payments schema performance", () => {
     }, () => db);
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
-    const summary = { engine: "bulldozer-js", backend: perfBackend, piledriverImplementation, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
+    const summary = { engine: "bulldozer-js", backend: perfBackend, piledriverImplementation: effectivePiledriverImplementation, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
     writeFileSync("../../bulldozer-payments-schema-perf-js.untracked.json", JSON.stringify(summary, null, 2));
     process.stdout.write(`\n[bulldozer-payments-schema-perf-js] summary=${JSON.stringify(summary)}\n`);
   });

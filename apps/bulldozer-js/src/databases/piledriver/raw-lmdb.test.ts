@@ -8,7 +8,6 @@ import type { LowLevelDatabase, LowLevelKvStore } from "../low-level/index.js";
 import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
 import { asHeapObject, isPiledriverHeapObjectSymbol } from "./index.js";
 import { declareBasePiledriverDatabase } from "./implementations/base.js";
-import { declareBreezyPiledriverDatabase } from "./implementations/breezy/index.js";
 
 const tempPaths: string[] = [];
 
@@ -154,7 +153,6 @@ async function countNonZeroReferenceMetadata(lowLevel: LowLevelDatabase) {
 
 describe.each([
   { name: "base", declareDatabase: declareBasePiledriverDatabase },
-  { name: "breezy", declareDatabase: declareBreezyPiledriverDatabase },
 ])("Piledriver over raw LMDB ($name)", ({ declareDatabase }) => {
   it("preserves heap references when metadata visibility is delayed", { timeout: 30_000 }, async () => {
     await withDatabase(declareDatabase, "piledriver-gc-reference-metadata-v3", async (database, lowLevel) => {

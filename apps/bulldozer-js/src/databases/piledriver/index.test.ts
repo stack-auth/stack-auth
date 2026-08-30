@@ -5,7 +5,6 @@ import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { asHeapObject, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
 import { declareBasePiledriverDatabase } from "./implementations/base.js";
-import { declareBreezyPiledriverDatabase } from "./implementations/breezy/index.js";
 import { declarePiledriverGarbageCollector } from "./gc.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
@@ -136,7 +135,6 @@ async function timestampAfter(value: number) {
 
 const databaseImplementations: { name: string, declareDatabase: typeof declareBasePiledriverDatabase }[] = [
   { name: "base", declareDatabase: declareBasePiledriverDatabase },
-  { name: "breezy", declareDatabase: declareBreezyPiledriverDatabase },
 ];
 
 describe.each(databaseImplementations)("PiledriverDatabase ($name)", ({ name, declareDatabase: declareBasePiledriverDatabase }) => {

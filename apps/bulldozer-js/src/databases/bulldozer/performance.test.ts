@@ -66,7 +66,6 @@ const perfBackend = process.env.BULLDOZER_PERF_BACKEND ?? "lmdb-instant";
 const perfSnapshotMode = process.env.BULLDOZER_PERF_SNAPSHOT_MODE ?? "plain";
 const piledriverImplementation = process.env.STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION ?? "base";
 if (piledriverImplementation !== "base" && piledriverImplementation !== "breezy") throw new Error("STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION must be base or breezy");
-const declarePerfPiledriverDatabase = piledriverImplementation === "base" ? declareBasePiledriverDatabase : declareBreezyPiledriverDatabase;
 const emptyChanges = (): TableChanges => ({ addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] });
 const trackDatabase = (db: PerfDatabase) => {
   databases.push(db);
@@ -90,13 +89,20 @@ const newLowLevelDb = () => {
   }
   return declareInMemoryLowLevelDatabase(crypto.randomUUID());
 };
+const newPiledriverDb = () => {
+  if (piledriverImplementation === "base") return declareBasePiledriverDatabase(newLowLevelDb());
+  if (perfBackend !== "lmdb") throw new Error("Breezy requires the lmdb performance backend");
+  const path = mkdtempSync(join(tmpdir(), "bulldozer-perf-lmdb-"));
+  lmdbTempPaths.push(path);
+  return declareBreezyPiledriverDatabase({ path, dbId: crypto.randomUUID() });
+};
 afterAll(async () => {
   // An unclosed LMDB environment keeps native handles alive, preventing Vitest's worker and main process from exiting; remove its mapped directory only after closing it.
   for (const db of databases.reverse()) await db.close();
   for (const path of lmdbTempPaths) rmSync(path, { recursive: true, force: true });
 });
 const newDb = (migrations: Migration) =>
-  trackDatabase(declareBulldozerDatabase(declarePerfPiledriverDatabase(newLowLevelDb()), { migrations }));
+  trackDatabase(declareBulldozerDatabase(newPiledriverDb(), { migrations }));
 const writeSnapshot = async (db: PerfDatabase, updateSnapshot: SnapshotUpdater) =>
   perfSnapshotMode === "plain"
     ? await db.withSnapshot(updateSnapshot)
@@ -197,8 +203,7 @@ async function collectRows(snapshot: Snapshot, tableId: string, groupKey: Piledr
 }
 
 async function createPrefilledOldCompatibleBase(rowCount: number) {
-  const lowLevel = newLowLevelDb();
-  const piledriver = declarePerfPiledriverDatabase(lowLevel);
+  const piledriver = newPiledriverDb();
   const baseMigration: Migration[number] = [
     { type: "initTable", tableId: "users", table: defineStoredTable(), inputTables: {} },
     { type: "initTable", tableId: "rules", table: defineStoredTable(), inputTables: {} },
@@ -877,8 +882,7 @@ describe("Bulldozer old-compatible performance", () => {
 
   it("regression: concat queries stay fast after initializing grouped inputs", async () => {
     const rowCount = Math.min(1024, Math.max(...oldCompatibleRowCounts));
-    const lowLevel = newLowLevelDb();
-    const piledriver = declarePerfPiledriverDatabase(lowLevel);
+    const piledriver = newPiledriverDb();
     const baseMigration: Migration[number] = [
       { type: "initTable", tableId: "usersA", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "usersB", table: defineStoredTable(), inputTables: {} },
