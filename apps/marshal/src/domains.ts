@@ -1,15 +1,20 @@
 import { badRequest, conflict, notFound } from "./errors.js";
+import { createDomainVerificationToken, domainVerificationRecord, hasDomainVerificationRecord } from "./domain-verification.js";
 import { ensureDomainGateway } from "./gcp/runtime.js";
 import { tenantContext } from "./gcp/context.js";
 import { withReconciliationLease } from "./reconciliation-lock.js";
 import { withPlatformDomainLease } from "./platform-domain-lock.js";
 import { assertServiceCanHoldADomain, resolveEnv } from "./services.js";
-import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
+import { claimDomain, createPendingDomainClaim, deletePendingDomainClaim, readDomainClaim, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
 import type { DnsRecord } from "./types.js";
 
 // KEPT IN SYNC WITH the backend's HOSTNAME_REGEX (apps/backend/src/lib/deployments/index.tsx),
 // duplicated because Marshal is standalone and takes no @hexclave/shared dependency.
 const HOSTNAME_REGEX = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+// DNS propagation routinely takes longer than an interactive setup session. Pending claims are
+// tenant-local and do not reserve the hostname globally, so keeping the same proof usable for a
+// day improves retry UX without letting an unverified tenant block the real owner.
+const PENDING_DOMAIN_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function normalizeHostnameOrThrow(hostname: string): string {
   const normalized = hostname.trim().toLowerCase().replace(/\.$/, "");
@@ -29,10 +34,48 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     const stored = await readSpec(ns, serviceKey);
     if (stored === null) throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
     assertServiceCanHoldADomain(serviceKey, stored.spec.config.ports, stored.spec.config.public, "Change the service's ports first, then attach the domain.");
-    const existingClaim = await readDomainClaimVersioned(hostname);
+    let existingClaim = await readDomainClaimVersioned(hostname);
     if (existingClaim === null) {
+      let pending = await readPendingDomainClaimVersioned(ns, hostname);
+      if (pending !== null && pending.value.expires_at_millis <= Date.now()) {
+        await deletePendingDomainClaim(pending);
+        pending = null;
+      }
+      if (pending === null) {
+        const now = Date.now();
+        await createPendingDomainClaim({
+          hostname,
+          ns,
+          service_key: serviceKey,
+          verification_token: createDomainVerificationToken(),
+          created_at_millis: now,
+          expires_at_millis: now + PENDING_DOMAIN_CLAIM_TTL_MS,
+        });
+        pending = await readPendingDomainClaimVersioned(ns, hostname);
+        if (pending === null) throw new Error(`pending domain claim for ${hostname} disappeared immediately after creation`);
+      }
+      if (pending.value.service_key !== serviceKey) {
+        throw conflict(`hostname ${JSON.stringify(hostname)} already has a pending attachment to another service in this namespace`);
+      }
+
+      const routingRecords = await withPlatformDomainLease(async (platformLease) => {
+        await lease.assertOwned();
+        await platformLease.assertOwned();
+        return await (await tenantContext(ns)).domains.ensureFrontendDnsRecords(hostname);
+      });
+      const verificationRecord = domainVerificationRecord(hostname, pending.value.verification_token);
+      if (!await hasDomainVerificationRecord(hostname, pending.value.verification_token)) {
+        return { hostname, service_key: serviceKey, verified: false, dns_records: [verificationRecord, ...routingRecords] };
+      }
+
       const claimed = await claimDomain({ hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
-      if (!claimed) throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
+      if (!claimed) {
+        existingClaim = await readDomainClaimVersioned(hostname);
+        if (existingClaim === null || existingClaim.value.ns !== ns || existingClaim.value.service_key !== serviceKey) {
+          throw conflict(`hostname ${JSON.stringify(hostname)} was verified and claimed elsewhere concurrently`);
+        }
+      }
+      await deletePendingDomainClaim(pending);
     } else if (existingClaim.value.ns !== ns) {
       throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
     } else if (existingClaim.value.service_key !== serviceKey) {
@@ -63,7 +106,12 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
 
 export async function readDomain(ns: string, hostname: string): Promise<AttachDomainResult> {
   const claim = await readDomainClaim(hostname);
-  if (claim === null || claim.ns !== ns) throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+  if (claim === null) {
+    const pending = await readPendingDomainClaimVersioned(ns, hostname);
+    if (pending === null) throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+    return await attachDomain(ns, hostname, pending.value.service_key);
+  }
+  if (claim.ns !== ns) throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
   const state = await (await tenantContext(ns)).domains.get(hostname);
   if (state === null) throw notFound(`hostname ${JSON.stringify(hostname)} has no load balancer on service ${JSON.stringify(claim.service_key)}`);
   return { hostname, service_key: claim.service_key, verified: state.verified, dns_records: state.dnsRecords };
@@ -71,7 +119,15 @@ export async function readDomain(ns: string, hostname: string): Promise<AttachDo
 
 export async function detachDomain(ns: string, hostname: string, expectedServiceKey?: string): Promise<void> {
   const claim = await readDomainClaimVersioned(hostname);
-  if (claim === null || claim.value.ns !== ns) throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+  if (claim === null) {
+    const pending = await readPendingDomainClaimVersioned(ns, hostname);
+    if (pending === null || (expectedServiceKey !== undefined && pending.value.service_key !== expectedServiceKey)) {
+      throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+    }
+    await deletePendingDomainClaim(pending);
+    return;
+  }
+  if (claim.value.ns !== ns) throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
   if (expectedServiceKey !== undefined && claim.value.service_key !== expectedServiceKey) {
     throw notFound(`hostname ${JSON.stringify(hostname)} is not attached to service ${JSON.stringify(expectedServiceKey)} in namespace ${JSON.stringify(ns)}`);
   }

@@ -286,10 +286,19 @@ export class TenantProjectManager {
       body: { options: { requestedPolicyVersion: 3 } },
     });
     if (!isRecord(policyValue)) throw new Error(`Google Cloud returned an invalid IAM policy for project ${projectId}`);
-    const existingBindings = Array.isArray(policyValue.bindings) ? policyValue.bindings : [];
+    const defaultComputeMember = `serviceAccount:${projectNumber}-compute@developer.gserviceaccount.com`;
+    const existingBindings = (Array.isArray(policyValue.bindings) ? policyValue.bindings : []).map((binding) => {
+      if (!isRecord(binding) || binding.role !== "roles/editor" || !Array.isArray(binding.members)) return binding;
+      // Older organizations can still grant Editor automatically to the default Compute SA.
+      // Never preserve that project-wide privilege for tenant-controlled runtime code.
+      return { ...binding, members: binding.members.filter((member) => member !== defaultComputeMember) };
+    }).filter((binding) => !isRecord(binding) || !Array.isArray(binding.members) || binding.members.length > 0);
     const additions = [
-      { role: "roles/artifactregistry.writer", member: `serviceAccount:${projectNumber}-compute@developer.gserviceaccount.com` },
-      { role: "roles/logging.logWriter", member: `serviceAccount:${projectNumber}-compute@developer.gserviceaccount.com` },
+      // TODO(security): split this into dedicated builder and runtime service accounts. The
+      // metadata firewall prevents build steps from stealing the token, and Editor is removed
+      // above, but runtime containers still do not need the builder's registry-write role.
+      { role: "roles/artifactregistry.writer", member: defaultComputeMember },
+      { role: "roles/logging.logWriter", member: defaultComputeMember },
       { role: "roles/compute.networkUser", member: `serviceAccount:service-${projectNumber}@serverless-robot-prod.iam.gserviceaccount.com` },
     ];
     const bindings = existingBindings.map((binding) => {

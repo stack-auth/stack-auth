@@ -213,6 +213,16 @@ export class DomainLoadBalancerClient {
     return urlMap;
   }
 
+  async ensureFrontendDnsRecords(hostname: string): Promise<DnsRecord[]> {
+    await this.ensureCertificateMap();
+    await this.ensureSharedFrontend();
+    const address = await this.client.request(this.computeUrl(this.config.platformProjectId, `/global/addresses/${this.sharedStem}-ip`));
+    if (!isRecord(address) || typeof address.address !== "string") {
+      throw new Error("Compute Engine returned an invalid shared custom-domain address");
+    }
+    return [{ type: "A", name: hostname, value: address.address }];
+  }
+
   private async writeRoute(hostname: string, backendService: string | null): Promise<void> {
     const stem = this.domainStem(hostname);
     const urlMapPath = `/global/urlMaps/${this.sharedStem}-map`;

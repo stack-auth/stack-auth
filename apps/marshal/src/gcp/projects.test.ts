@@ -30,7 +30,14 @@ describe("tenant project lifecycle", () => {
       .mockResolvedValueOnce({ name: "operations/services" })
       .mockResolvedValueOnce({ name: "operations/services", done: true })
       .mockResolvedValueOnce({ name: "operations/finished.DONE_OPERATION" })
-      .mockResolvedValueOnce({ version: 3, etag: "etag", bindings: [{ role: "roles/viewer", members: ["user:operator@example.com"] }] })
+      .mockResolvedValueOnce({
+        version: 3,
+        etag: "etag",
+        bindings: [
+          { role: "roles/viewer", members: ["user:operator@example.com"] },
+          { role: "roles/editor", members: ["serviceAccount:123456789-compute@developer.gserviceaccount.com", "user:legacy-admin@example.com"] },
+        ],
+      })
       .mockResolvedValueOnce({ version: 3 });
     const manager = new TenantProjectManager(client, {
       envId: "test",
@@ -57,6 +64,12 @@ describe("tenant project lifecycle", () => {
                 "user:operator@example.com",
               ],
               "role": "roles/viewer",
+            },
+            {
+              "members": [
+                "user:legacy-admin@example.com",
+              ],
+              "role": "roles/editor",
             },
             {
               "members": [

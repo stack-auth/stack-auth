@@ -98,7 +98,7 @@ describe("gcp-mock contract", () => {
       await new ArtifactRegistryClient(client, project.projectId, runtimeConfig.region).ensureRepository();
       const first = await cloudRun.apply({
         name: "contract-web",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: { REVISION: "one" },
         port: 8080,
         public: true,
@@ -113,7 +113,7 @@ describe("gcp-mock contract", () => {
 
       const updated = await cloudRun.apply({
         name: "contract-web",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: { REVISION: "two" },
         port: 8080,
         public: false,

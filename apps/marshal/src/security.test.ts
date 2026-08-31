@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { assertMocksExplicitlyAllowed, resolveGcpMockUrl } from "./config.js";
 import { builderInstanceName, serviceName } from "./naming.js";
 import { validateServiceSpec } from "./services.js";
-import { validateSourceArchive } from "./source-archive.js";
+import { loadAndValidateSourceArchive, validateSourceArchive } from "./source-archive.js";
 
 function writeString(buffer: Uint8Array, offset: number, length: number, value: string): void {
   const bytes = new TextEncoder().encode(value);
@@ -61,6 +61,25 @@ describe("source archive validation", () => {
       validateSourceArchive(sourceArchive("b.ts")),
       validateSourceArchive(sourceArchive("c.ts")),
     ])).resolves.toHaveLength(3);
+  });
+
+  it("bounds queued validation before queued requests download their archives", async () => {
+    const firstLoadGate: { release: () => void } = {
+      release: () => {
+        throw new Error("source-load gate was not initialized");
+      },
+    };
+    const firstLoadsBlocked = new Promise<void>((resolve) => {
+      firstLoadGate.release = resolve;
+    });
+    const accepted = Array.from({ length: 27 }, (_unused, index) => loadAndValidateSourceArchive(async () => {
+      if (index < 2) await firstLoadsBlocked;
+      return sourceArchive(`src/${index}.ts`);
+    }));
+
+    await expect(loadAndValidateSourceArchive(async () => sourceArchive("overflow.ts"))).rejects.toThrow("validation is saturated");
+    firstLoadGate.release();
+    await expect(Promise.all(accepted)).resolves.toHaveLength(27);
   });
 });
 describe("runtime identity", () => {

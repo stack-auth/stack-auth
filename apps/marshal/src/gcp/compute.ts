@@ -169,6 +169,9 @@ echo "MARSHAL_SERVICE_READY $REVISION"
 }
 
 export function builderStartupScript(spec: BuilderVmSpec): string {
+  // TODO(security): replace metadata delivery with a one-time, target-scoped secret broker.
+  // The metadata firewall below is the immediate isolation boundary, but keeping secret
+  // payloads out of persistent instance metadata removes the dangerous copy altogether.
   const fileCommands = spec.files.map((file) => {
     const directory = file.path.split("/").slice(0, -1).join("/") || "/";
     return `mkdir -p ${shellQuote(`/var/lib/marshal-files${directory}`)}\nprintf '%s' ${shellQuote(file.contentsBase64)} | base64 -d > ${shellQuote(`/var/lib/marshal-files${file.path}`)}`;
@@ -187,6 +190,12 @@ mkdir -p /var/lib/marshal-buildkit
 readonly ACCESS_TOKEN="$(curl -fsS -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
 if [[ -z "$ACCESS_TOKEN" ]]; then echo 'MARSHAL_BUILD_FAILED: could not obtain Artifact Registry access token'; exit 1; fi
 readonly REGISTRY_AUTH_B64="$(printf 'oauth2accesstoken:%s' "$ACCESS_TOKEN" | base64 | tr -d '\n')"
+# The startup-script metadata contains every target's file bundle and callback credentials.
+# Fetch the builder's registry token first, then make the metadata endpoint unreachable
+# before any tenant-controlled build step runs. OUTPUT covers the privileged host-network
+# builder; DOCKER-USER covers BuildKit's ordinary bridged executor networks.
+iptables -I OUTPUT -d 169.254.169.254/32 -j REJECT
+iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT
 docker pull ${shellQuote(spec.image)}
 BUILD_EXIT=0
 docker run --rm --privileged --network host --name marshal-builder \

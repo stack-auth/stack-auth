@@ -2,7 +2,7 @@ import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMult
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, MULTIPART_UPLOAD_THRESHOLD_BYTES, UPLOAD_EXPIRY_SECONDS, UPLOAD_PART_SIZE_BYTES } from "./config.js";
 import { decryptString, encryptString } from "./spec-crypto.js";
-import { POOL_PROJECT_STATES, type DomainClaim, type EnvValue, type PoolProjectEntry, type PoolProjectState, type ReconciliationLease, type ServiceSpec, type StoredDeployment, type StoredSpec, type TenantProjectAssignment } from "./types.js";
+import { POOL_PROJECT_STATES, type DomainClaim, type EnvValue, type PendingDomainClaim, type PoolProjectEntry, type PoolProjectState, type ReconciliationLease, type ServiceSpec, type StoredDeployment, type StoredSpec, type TenantProjectAssignment } from "./types.js";
 
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision; env is AES-GCM encrypted
@@ -224,6 +224,9 @@ function parseStoredEnv(serialized: string): Record<string, EnvValue> {
 }
 
 function isLegacyStoredSpec(stored: PersistedStoredSpec): stored is StoredSpec {
+  // TODO(security): delete this format discriminator after the one-time plaintext-spec
+  // migration is complete. Until then a bucket writer can forge the legacy shape and bypass
+  // the AEAD integrity check; compatibility is retained only for pre-encryption records.
   return "env" in stored.spec;
 }
 
@@ -393,24 +396,53 @@ export async function createMultipartUploadSlot(ns: string, id: string, partCoun
 
 // max_bytes on upload slots is advisory — R2 does not enforce presigned constraints
 // (smoke-verified), so the size gate is here, at consume time.
-export async function statUpload(ns: string, id: string): Promise<{ sizeBytes: number } | null> {
+export async function statUpload(ns: string, id: string): Promise<{ sizeBytes: number, etag: string } | null> {
   try {
     const result = await withTransientRetry(async () => await s3().send(new HeadObjectCommand({ Bucket: bucket(), Key: uploadObjectKey(ns, id) })));
-    return { sizeBytes: result.ContentLength ?? 0 };
+    if (result.ETag === undefined) throw new Error(`S3 omitted ETag for upload ${uploadObjectKey(ns, id)}; a validated read cannot be fenced`);
+    return { sizeBytes: result.ContentLength ?? 0, etag: result.ETag };
   } catch (error) {
     if (isNoSuchKey(error)) return null;
     throw error;
   }
 }
 
-export async function readUpload(ns: string, id: string): Promise<Uint8Array | null> {
+export async function readUpload(ns: string, id: string, expectedEtag: string, maxBytes: number): Promise<Uint8Array | null> {
   try {
     return await withTransientRetry(async () => {
-      const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: uploadObjectKey(ns, id) }));
-      return await result.Body?.transformToByteArray() ?? null;
+      const result = await s3().send(new GetObjectCommand({
+        Bucket: bucket(),
+        Key: uploadObjectKey(ns, id),
+        IfMatch: expectedEtag,
+      }));
+      if (result.Body === undefined) return null;
+      if (result.ContentLength !== undefined && result.ContentLength > maxBytes) return null;
+
+      const reader = result.Body.transformToWebStream().getReader();
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        totalBytes += chunk.value.byteLength;
+        if (totalBytes > maxBytes) {
+          await reader.cancel();
+          return null;
+        }
+        chunks.push(chunk.value);
+      }
+      const bytes = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return bytes;
     });
   } catch (error) {
-    if (isNoSuchKey(error)) return null;
+    // A 412 means the still-valid presigned PUT replaced the object after HEAD. Treat it as
+    // unavailable rather than reading unvalidated bytes from a different object version.
+    if (isNoSuchKey(error) || isPreconditionFailed(error)) return null;
     throw error;
   }
 }
@@ -467,23 +499,93 @@ function deploymentLogKey(ns: string, id: string): string {
   return `deployments/${ns}/log/${id}.jsonl`;
 }
 
+type StoredDeploymentOnDisk = Omit<StoredDeployment, "targets"> & {
+  targets: Array<Omit<StoredDeployment["targets"][number], "spec"> & {
+    spec: Omit<StoredDeployment["targets"][number]["spec"], "env">,
+  }>,
+  encrypted_target_env: unknown,
+};
+type PersistedStoredDeployment = StoredDeploymentOnDisk | StoredDeployment;
+
+function deploymentEncryptionContext(ns: string, id: string, stored: Omit<StoredDeploymentOnDisk, "encrypted_target_env">): string {
+  return JSON.stringify({ object_key: deploymentRecordKey(ns, id), stored });
+}
+
+function storedDeploymentForDisk(deployment: StoredDeployment): StoredDeploymentOnDisk {
+  const targetEnvs = deployment.targets.map((target) => target.spec.env);
+  const targets = deployment.targets.map((target) => {
+    const { env: _env, ...spec } = target.spec;
+    return { ...target, spec };
+  });
+  const authenticated = { ...deployment, targets };
+  return {
+    ...authenticated,
+    encrypted_target_env: encryptString(
+      JSON.stringify(targetEnvs),
+      deploymentEncryptionContext(deployment.ns, deployment.id, authenticated),
+      getConfig().dataEncryptionRootKey,
+    ),
+  };
+}
+
+function isLegacyStoredDeployment(stored: PersistedStoredDeployment): stored is StoredDeployment {
+  return !("encrypted_target_env" in stored);
+}
+
+function storedDeploymentFromDisk(stored: PersistedStoredDeployment, expectedNs: string, expectedId: string): StoredDeployment {
+  if (stored.ns !== expectedNs || stored.id !== expectedId) {
+    throw new Error(`stored deployment identity does not match requested object ${expectedNs}/${expectedId}`);
+  }
+  if (isLegacyStoredDeployment(stored)) {
+    // TODO(security): remove plaintext deployment reads after all pre-encryption records have
+    // aged out or been migrated. Keeping this compatibility path temporarily means a bucket
+    // writer can still attempt a legacy-format downgrade; new writes are always encrypted.
+    return stored;
+  }
+  const { encrypted_target_env: encryptedTargetEnv, ...authenticated } = stored;
+  const serialized = decryptString(
+    encryptedTargetEnv,
+    deploymentEncryptionContext(expectedNs, expectedId, authenticated),
+    getConfig().dataEncryptionRootKey,
+  );
+  const parsed: unknown = JSON.parse(serialized);
+  if (!Array.isArray(parsed) || parsed.length !== stored.targets.length) {
+    throw new Error("decrypted stored deployment target environments do not match its targets");
+  }
+  const targets = stored.targets.map((target, index) => ({
+    ...target,
+    spec: { ...target.spec, env: parseStoredEnv(JSON.stringify(parsed[index])) },
+  }));
+  return { ...authenticated, targets };
+}
+
 export async function readDeployment(ns: string, id: string): Promise<StoredDeployment | null> {
-  return await getJson<StoredDeployment>(deploymentRecordKey(ns, id));
+  return (await readDeploymentVersioned(ns, id))?.value ?? null;
 }
 
 export async function readDeploymentVersioned(ns: string, id: string): Promise<Versioned<StoredDeployment> | null> {
-  return await getJsonVersioned<StoredDeployment>(deploymentRecordKey(ns, id));
+  for (;;) {
+    const stored = await getJsonVersioned<PersistedStoredDeployment>(deploymentRecordKey(ns, id));
+    if (stored === null) return null;
+    const value = storedDeploymentFromDisk(stored.value, ns, id);
+    if (!isLegacyStoredDeployment(stored.value)) return { value, etag: stored.etag };
+
+    // Upgrade plaintext historical records opportunistically. The conditional write keeps a
+    // concurrent build completion or deployment advance authoritative.
+    const encryptedEtag = await replaceDeployment(value, stored.etag);
+    if (encryptedEtag !== null) return { value, etag: encryptedEtag };
+  }
 }
 
 // No unconditional deployment write on purpose: every writer races the completion
 // webhook, so they all go through createDeployment (ifNoneMatch) or
 // replaceDeployment (ifMatch) and handle losing.
 export async function createDeployment(deployment: StoredDeployment): Promise<string | null> {
-  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), deployment, { ifNoneMatch: true });
+  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), storedDeploymentForDisk(deployment), { ifNoneMatch: true });
 }
 
 export async function replaceDeployment(deployment: StoredDeployment, previousEtag: string): Promise<string | null> {
-  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), deployment, { ifMatch: previousEtag });
+  return await putJsonConditionally(deploymentRecordKey(deployment.ns, deployment.id), storedDeploymentForDisk(deployment), { ifMatch: previousEtag });
 }
 
 export async function writeDeploymentLog(ns: string, id: string, jsonlBody: string): Promise<void> {
@@ -516,6 +618,35 @@ function domainClaimKey(hostname: string): string {
 
 function domainIndexKey(ns: string, key: string, hostname: string): string {
   return `domain-index/${ns}/${key}/${hostname}`;
+}
+
+function pendingDomainClaimKey(ns: string, hostname: string): string {
+  return `domain-pending/${ns}/${hostname}.json`;
+}
+
+function pendingDomainIndexKey(ns: string, key: string, hostname: string): string {
+  return `domain-pending-index/${ns}/${key}/${hostname}`;
+}
+
+export async function readPendingDomainClaimVersioned(ns: string, hostname: string): Promise<Versioned<PendingDomainClaim> | null> {
+  return await getJsonVersioned<PendingDomainClaim>(pendingDomainClaimKey(ns, hostname));
+}
+
+export async function createPendingDomainClaim(claim: PendingDomainClaim): Promise<string | null> {
+  await putJson(pendingDomainIndexKey(claim.ns, claim.service_key, claim.hostname), {});
+  return await putJsonConditionally(pendingDomainClaimKey(claim.ns, claim.hostname), claim, { ifNoneMatch: true });
+}
+
+export async function deletePendingDomainClaim(claim: Versioned<PendingDomainClaim>): Promise<boolean> {
+  const deleted = await deleteObjectConditionally(pendingDomainClaimKey(claim.value.ns, claim.value.hostname), claim.etag);
+  if (!deleted) return false;
+  await deleteObject(pendingDomainIndexKey(claim.value.ns, claim.value.service_key, claim.value.hostname));
+  return true;
+}
+
+export async function listPendingDomainClaimsForService(ns: string, key: string): Promise<string[]> {
+  const prefix = `domain-pending-index/${ns}/${key}/`;
+  return (await listKeys(prefix)).map((objectKey) => objectKey.slice(prefix.length));
 }
 
 export async function readDomainClaim(hostname: string): Promise<DomainClaim | null> {

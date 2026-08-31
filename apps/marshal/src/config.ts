@@ -79,7 +79,23 @@ export function getConfig(): MarshalConfig {
     throw new Error(`marshal refuses to start: MARSHAL_PORT must be a valid port number (got ${JSON.stringify(process.env.MARSHAL_PORT)})`);
   }
 
-  const publicUrl = (process.env.MARSHAL_PUBLIC_URL || "").replace(/\/$/, "") || null;
+  const publicUrlRaw = (process.env.MARSHAL_PUBLIC_URL || "").replace(/\/$/, "") || null;
+  let publicUrl: string | null = null;
+  if (publicUrlRaw !== null) {
+    let parsed: URL;
+    try {
+      parsed = new URL(publicUrlRaw);
+    } catch (error) {
+      throw new Error(`marshal refuses to start: MARSHAL_PUBLIC_URL must be an absolute URL (got ${JSON.stringify(publicUrlRaw)})`, { cause: error });
+    }
+    if (parsed.username !== "" || parsed.password !== "" || parsed.search !== "" || parsed.hash !== "" || parsed.pathname !== "/") {
+      throw new Error("marshal refuses to start: MARSHAL_PUBLIC_URL must contain only an origin, without credentials, a path, query params, or a fragment");
+    }
+    if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && process.env.MARSHAL_ALLOW_MOCKS === "1")) {
+      throw new Error("marshal refuses to start: MARSHAL_PUBLIC_URL must use HTTPS (HTTP is allowed only with MARSHAL_ALLOW_MOCKS=1)");
+    }
+    publicUrl = parsed.origin;
+  }
   // The real builder machine calls the completion webhook on MARSHAL_PUBLIC_URL — refuse to
   // start without it rather than failing every upload-sourced build at runtime.
   if (builderKind === "gcp" && publicUrl === null) {
@@ -175,7 +191,7 @@ export const RAILPACK_BUILDER_GUEST = { cpu_kind: "performance", cpus: 2, memory
 // before the guest's remaining ~6g is what limits the build, since ENOSPC from inside a
 // buildkit step is a far more confusing failure than running out of memory.
 export const RAILPACK_BUILDKIT_TMPFS_SIZE = "10g";
-export const BUILDER_IMAGE = "moby/buildkit:v0.23.2";
+export const BUILDER_IMAGE = "docker.io/moby/buildkit:v0.23.2@sha256:ddd1ca44b21eda906e81ab14a3d467fa6c39cd73b9a39df1196210edcb8db59e";
 // Railpack (https://railpack.com) builds services that don't declare a Dockerfile: the CLI
 // analyzes the source and emits a build plan that its BuildKit frontend executes. CLI and
 // frontend are pinned to the same release by checksum/digest (not just tags), so neither a
@@ -253,8 +269,3 @@ export const BUILD_DOCKERFILE_DIR = "/marshal-dockerfiles";
 // it. Both must agree: a command the runtime would refuse has to fail at sync
 // time, before an upload has been consumed.
 export const MAX_COMMAND_LENGTH = 2048;
-// Tenant env now reaches the builder, so its values are scrubbed from build logs alongside
-// Marshal's own credentials. Short values are skipped: "1", "true", "5432" and friends are
-// everywhere in a build log, and redacting them would leave a page of <redacted> with no
-// secret actually protected (nothing that short is a credential worth hiding).
-export const MIN_REDACTED_ENV_VALUE_LENGTH = 8;

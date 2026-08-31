@@ -348,8 +348,8 @@ export class MarshalClient {
     return result.services;
   }
 
-  // Read-only. Use this for "is it verified yet?" polling: putDomain is a repoint, so calling
-  // it on a read would move the certificate off whichever service currently owns the hostname.
+  // Safe for "is it verified yet?" polling. Marshal may promote this tenancy's pending TXT
+  // proof, but unlike putDomain this cannot repoint an already claimed hostname.
   async getDomain(ns: string, hostname: string): Promise<MarshalDomainResult> {
     return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/domains/${hostname}`);
   }

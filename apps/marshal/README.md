@@ -27,9 +27,10 @@ Project settings:
 - **Deployment Protection must be off** (or carry a bypass) for the production domain. Two
   callers that hold no Vercel credential must reach it: the Hexclave backend on `/v1/*`, and
   the GCP builder VM on `/internal/deployments/:id/complete`.
-- Attach a **stable custom domain** and set `MARSHAL_PUBLIC_URL` to it. Builder VMs call
+- Attach a **stable custom domain** and set `MARSHAL_PUBLIC_URL` to its HTTPS origin. Builder VMs call
   back on that URL minutes after the request that started them, so a per-deployment URL would
-  break every build the moment a newer deployment replaced it.
+  break every build the moment a newer deployment replaced it. Plain HTTP is accepted only when
+  `MARSHAL_ALLOW_MOCKS=1` for local simulation.
 
 Environment: set everything in `.env` that is marked required, plus `MARSHAL_PUBLIC_URL`.
 `MARSHAL_PORT` is ignored — the platform owns the listener. Never set `MARSHAL_ALLOW_MOCKS`
@@ -58,7 +59,7 @@ Service mapping:
 - `serverless` → Cloud Run with the requested minimum/maximum instances and Direct VPC egress. Cloud Run has one ingress port, so a serverless spec must declare exactly one HTTP port. Marshal uses Cloud Run's recommended disabled Invoker IAM check instead of an `allUsers` binding, so public and load-balanced services work under domain-restricted-sharing organization policies; private services remain protected by their ingress setting.
 - `server` → one `e2-micro` Compute Engine VM. Its persistent disk is grow-only and survives service deletion for later adoption. A public server receives a scale-to-zero Cloud Run nginx gateway; direct Internet ingress to the VM is not permitted by its firewall.
 - source build → a short-lived Container-Optimized OS VM running the existing BuildKit harness. It obtains a short-lived Artifact Registry token from the metadata server; Marshal deletes the VM after recording the completion webhook.
-- custom domain → a per-domain serverless NEG and `EXTERNAL_MANAGED` backend service in the tenant project, routed through one environment-scoped global external Application Load Balancer in `HEXCLAVE_MARSHAL_GCP_PLATFORM_PROJECT_ID`. Certificate Manager certificates/map entries, the global IP, URL map, target HTTPS proxy, forwarding rule, and empty fallback backend remain in that platform project. This keeps Cloud Run and its backend security boundary tenant-local while avoiding one fixed-cost frontend per tenant or domain. Marshal serializes URL-map reconciliation with a distributed lease so concurrent tenant updates cannot discard routes.
+- custom domain → Marshal first returns a tenant-bound TXT record at `_hexclave-verification.<hostname>` plus the shared frontend's A record. The user creates both during domain setup; polling the domain endpoint verifies the TXT proof before Marshal claims or routes the hostname. A verified hostname receives a per-domain serverless NEG and `EXTERNAL_MANAGED` backend service in the tenant project, routed through one environment-scoped global external Application Load Balancer in `HEXCLAVE_MARSHAL_GCP_PLATFORM_PROJECT_ID`. Certificate Manager certificates/map entries, the global IP, URL map, target HTTPS proxy, forwarding rule, and empty fallback backend remain in that platform project. This keeps Cloud Run and its backend security boundary tenant-local while avoiding one fixed-cost frontend per tenant or domain. Marshal serializes URL-map reconciliation with a distributed lease so concurrent tenant updates cannot discard routes.
 
 The platform project and tenant projects must belong to the same organization. Global cross-project backend references do not require Shared VPC, but they do require the controller to have `compute.backendServices.use` on tenant backends. At larger fleet sizes, monitor the URL map's 1 MiB configuration limit and Certificate Manager map-entry quotas and shard tenants across additional environment-scoped frontends before reaching either limit. The shared frontend reduces fixed cost but creates a control-plane blast radius: isolate its project, restrict its administrators, and use the `compute.restrictCrossProjectServices` organization policy to allow only approved platform projects to reference tenant services.
 

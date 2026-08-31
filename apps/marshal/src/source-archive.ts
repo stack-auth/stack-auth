@@ -1,6 +1,6 @@
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
-import { badRequest } from "./errors.js";
+import { MarshalError, badRequest } from "./errors.js";
 
 const TAR_BLOCK_SIZE = 512;
 const MAX_SOURCE_ENTRIES = 50_000;
@@ -21,6 +21,11 @@ const MAX_TERMINAL_PADDING_BYTES = 1024 * 1024;
 // lease heartbeats and every other tenant's requests are served by this process.
 // Two at a time bounds the peak while still overlapping the S3 reads around them.
 const MAX_CONCURRENT_INFLATIONS = 2;
+// Requests wait before downloading their source object, so queued work retains only a
+// callback rather than a compressed archive. The queue is still bounded: otherwise a burst
+// of distinct deployment sources can occupy every HTTP request slot indefinitely even
+// though the inflation memory itself is bounded.
+const MAX_QUEUED_INFLATIONS = 25;
 
 const gunzipAsync = promisify(gunzip);
 
@@ -31,6 +36,9 @@ async function acquireInflationSlot(): Promise<void> {
   if (activeInflations < MAX_CONCURRENT_INFLATIONS) {
     activeInflations++;
     return;
+  }
+  if (waitingInflations.length >= MAX_QUEUED_INFLATIONS) {
+    throw new MarshalError(503, "source_validation_saturated", "source archive validation is saturated; retry the deployment shortly");
   }
   await new Promise<void>((resolve) => waitingInflations.push(resolve));
   activeInflations++;
@@ -128,16 +136,39 @@ export function validateUncompressedSourceTar(bytes: Uint8Array): void {
  * on the libuv threadpool instead. The slot acquired around it bounds how many
  * can be in flight at once; see MAX_CONCURRENT_INFLATIONS.
  */
-export async function validateSourceArchive(bytes: Uint8Array): Promise<void> {
-  await acquireInflationSlot();
+async function validateSourceArchiveWithAcquiredSlot(bytes: Uint8Array): Promise<void> {
   let uncompressed: Buffer;
   try {
     uncompressed = await gunzipAsync(bytes, { maxOutputLength: MAX_UNCOMPRESSED_SOURCE_BYTES });
   } catch (error) {
     if (error instanceof Error) throw badRequest("invalid source archive: gzip decompression failed or exceeded the size limit");
     throw error;
+  }
+  validateUncompressedSourceTar(uncompressed);
+}
+
+export async function validateSourceArchive(bytes: Uint8Array): Promise<void> {
+  await acquireInflationSlot();
+  try {
+    await validateSourceArchiveWithAcquiredSlot(bytes);
   } finally {
     releaseInflationSlot();
   }
-  validateUncompressedSourceTar(uncompressed);
+}
+
+/**
+ * Loads an uploaded archive only after reserving the process-wide inflation capacity.
+ * Keeping the slot around both the S3 read and decompression prevents queued requests from
+ * each retaining a complete compressed upload while they wait for a decompressor.
+ */
+export async function loadAndValidateSourceArchive(load: () => Promise<Uint8Array | null>): Promise<Uint8Array | null> {
+  await acquireInflationSlot();
+  try {
+    const bytes = await load();
+    if (bytes === null) return null;
+    await validateSourceArchiveWithAcquiredSlot(bytes);
+    return bytes;
+  } finally {
+    releaseInflationSlot();
+  }
 }

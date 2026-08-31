@@ -66,7 +66,7 @@ async function ensureServerGateway(stored: StoredSpec, instance: ComputeInstance
   await lease.assertOwned();
   return await context.cloudRun.apply({
     name: gatewayName(config.envId, stored.ns, stored.key),
-    image: "docker.io/library/nginx:1.29-alpine",
+    image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
     env: { TARGET_HOST: instance.internalIp, TARGET_PORT: String(port) },
     port: 8080,
     public: true,

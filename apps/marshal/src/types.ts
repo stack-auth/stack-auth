@@ -337,3 +337,14 @@ export type DomainClaim = {
   service_key: string,
   claimed_at_millis: number,
 };
+
+// A request to attach a hostname is tenant-local until DNS proves control. Keeping pending
+// requests out of the global claim key prevents an unverified tenant from squatting a name.
+export type PendingDomainClaim = {
+  hostname: string,
+  ns: string,
+  service_key: string,
+  verification_token: string,
+  created_at_millis: number,
+  expires_at_millis: number,
+};

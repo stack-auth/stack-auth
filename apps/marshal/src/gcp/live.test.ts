@@ -71,7 +71,7 @@ describe("live disposable GCP tenant", () => {
 
       const first = await cloudRun.apply({
         name: "live-web",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: { MARSHAL_LIVE_REVISION: "one" },
         port: 8080,
         public: true,
@@ -88,7 +88,7 @@ describe("live disposable GCP tenant", () => {
 
       const updated = await cloudRun.apply({
         name: "live-web",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: { MARSHAL_LIVE_REVISION: "two" },
         port: 8080,
         public: true,
@@ -114,7 +114,7 @@ describe("live disposable GCP tenant", () => {
       expect(disk.sizeGb).toBe(10);
       const server = await compute.applyInstance({
         name: "live-server",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: {},
         ports: [8080],
         revision: "server-1",
@@ -125,7 +125,7 @@ describe("live disposable GCP tenant", () => {
       expect(server.status).toMatch(/RUNNING|STAGING/);
       const updatedServer = await compute.applyInstance({
         name: "live-server",
-        image: "docker.io/library/nginx:1.29-alpine",
+        image: "docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
         env: { MARSHAL_LIVE_REVISION: "two" },
         ports: [8080],
         revision: "server-2",

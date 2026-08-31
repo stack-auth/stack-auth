@@ -52,6 +52,9 @@ describe("Compute Engine startup scripts", () => {
     });
     expect(script).toContain("metadata.google.internal");
     expect(script).toContain("oauth2accesstoken");
+    expect(script).toContain("iptables -I OUTPUT -d 169.254.169.254/32 -j REJECT");
+    expect(script).toContain("iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT");
+    expect(script.indexOf("iptables -I OUTPUT")).toBeLessThan(script.indexOf("docker pull"));
     expect(script).not.toContain("private_key");
     expect(script).not.toContain("instances/$INSTANCE_NAME");
     expect(script).toContain("shutdown -h now");

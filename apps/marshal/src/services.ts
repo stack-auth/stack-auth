@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
-import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, VOLUME_ID_REGEX, getConfig } from "./config.js";
+import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, VOLUME_ID_REGEX, getConfig } from "./config.js";
 import { applyErrorMessage } from "./apply-error.js";
+import { domainVerificationRecord } from "./domain-verification.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { privateHostnameForService, serviceName } from "./naming.js";
 import { MutationOutcomeUnknownError, RECONCILIATION_TAKEOVER_GRACE_MS } from "./mutation-safety.js";
 import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
-import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
-import { validateSourceArchive } from "./source-archive.js";
+import { createDeployment, deletePendingDomainClaim, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listPendingDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { loadAndValidateSourceArchive } from "./source-archive.js";
 import { validateImageRef } from "./image-ref.js";
 import { portEntries, targetIsBuilt, targetUsesGeneratedDockerfile, type Deployment, type DeploymentServiceState, type DeploymentTarget, type EnvValue, type PortsConfig, type ServiceKind, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
@@ -808,9 +809,8 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
       const upload = await statUpload(ns, uploadId);
       if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
       if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
-      const archive = await readUpload(ns, uploadId);
-      if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
-      await validateSourceArchive(archive);
+      const archive = await loadAndValidateSourceArchive(async () => await readUpload(ns, uploadId, upload.etag, MAX_UPLOAD_BYTES));
+      if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared, changed, or exceeded the size limit before it could be consumed`);
       validatedArchive = archive;
     }
 
@@ -1336,7 +1336,7 @@ export function deploymentLogRedactionValues(deployment: StoredDeployment): stri
   const values = [computeWebhookToken(deployment.id, deployment.ns)];
   for (const target of deployment.targets) {
     for (const value of Object.values(buildTimeEnv(target.spec.env))) {
-      if (value.length >= MIN_REDACTED_ENV_VALUE_LENGTH) values.push(value);
+      if (value.length > 0) values.push(value);
     }
   }
   return values;
@@ -1399,18 +1399,34 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const config = getConfig();
   const storedForGcp = preloadedSpec !== undefined ? preloadedSpec : await readSpec(ns, key);
   if (storedForGcp === null) throw notFound(`service ${JSON.stringify(key)} not found in namespace ${JSON.stringify(ns)}`);
-  const [observation, resolvedForGcp, domainHostnames] = await Promise.all([
+  const [observation, resolvedForGcp, claimedDomainHostnames, pendingDomainHostnames] = await Promise.all([
     observeRuntimeService(storedForGcp),
     resolveEnv(ns, storedForGcp.spec.env, knownTargets),
     listDomainClaimsForService(ns, key),
+    listPendingDomainClaimsForService(ns, key),
   ]);
   const domainContext = await tenantContext(ns);
-  const domains = await Promise.all(domainHostnames.sort().map(async (hostname) => {
+  const claimedDomains = await Promise.all(claimedDomainHostnames.sort().map(async (hostname) => {
     const domain = await domainContext.domains.get(hostname);
     return domain === null
       ? { hostname, verified: false, dns_records: [], error: "custom-domain infrastructure is missing" }
       : { hostname, verified: domain.verified, dns_records: domain.dnsRecords, error: null };
   }));
+  const pendingDomains = await Promise.all(pendingDomainHostnames.sort().map(async (hostname) => {
+    const pending = await readPendingDomainClaimVersioned(ns, hostname);
+    if (pending === null || pending.value.service_key !== key) return null;
+    const routingRecords = await withPlatformDomainLease(async (platformLease) => {
+      await platformLease.assertOwned();
+      return await domainContext.domains.ensureFrontendDnsRecords(hostname);
+    });
+    return {
+      hostname,
+      verified: false,
+      dns_records: [domainVerificationRecord(hostname, pending.value.verification_token), ...routingRecords],
+      error: null,
+    };
+  }));
+  const domains = [...claimedDomains, ...pendingDomains.filter((domain) => domain !== null)];
   const status: ServiceState["status"] = !resolvedForGcp.ok
     ? "blocked"
     : storedForGcp.last_apply_error !== null
@@ -1481,6 +1497,10 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
       });
       await releaseDomainClaim(claim);
     }
+  }
+  for (const hostname of await listPendingDomainClaimsForService(ns, key)) {
+    const pending = await readPendingDomainClaimVersioned(ns, hostname);
+    if (pending !== null && pending.value.service_key === key) await deletePendingDomainClaim(pending);
   }
   await deleteRuntimeService(storedForGcp, ns, key, lease);
   const versionForGcp = await readSpecVersioned(ns, key);

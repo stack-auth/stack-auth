@@ -1681,7 +1681,14 @@ describe("domains", () => {
     const getPending = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains/${pendingHostname}`, { accessType: "admin" });
     const records = (getPending.body as any).dns_records;
     expect(Array.isArray(records)).toBe(true);
-    expect(records.length).toBeGreaterThan(0);
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "TXT",
+        name: `_hexclave-verification.${pendingHostname}`,
+        value: expect.stringMatching(/^hexclave-domain-verification=[A-Za-z0-9_-]{43}$/),
+      }),
+      expect.objectContaining({ type: "A", name: pendingHostname }),
+    ]));
 
     const deleteResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/domains/${hostname}`, {
       method: "DELETE",
