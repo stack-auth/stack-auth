@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { GcpApiError, GcpClient, type GcpOperation } from "./client.js";
+import { GcpApiError, GcpClient, parseGcpOperation } from "./client.js";
 
 const TENANT_APIS = [
   "artifactregistry.googleapis.com",
@@ -31,11 +31,6 @@ type ProjectResource = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseOperation(value: unknown, operationKind: string): GcpOperation {
-  if (!isRecord(value) || typeof value.name !== "string") throw new Error(`Google Cloud returned an invalid ${operationKind} operation`);
-  return { name: value.name, ...(typeof value.done === "boolean" ? { done: value.done } : {}) };
 }
 
 function parseProject(value: unknown): ProjectResource {
@@ -138,7 +133,7 @@ export class TenantProjectManager {
         ...(this.config.parent === null ? {} : { parent: this.config.parent }),
       };
       const created = await this.client.request("https://cloudresourcemanager.googleapis.com/v3/projects", { method: "POST", body });
-      await this.client.waitForOperation(parseOperation(created, "project-create"));
+      await this.client.waitForOperation(parseGcpOperation(created));
       project = await this.waitForActiveProject(projectId);
     } else if (project.state !== "ACTIVE") {
       project = await this.waitForActiveProject(projectId);
@@ -166,7 +161,7 @@ export class TenantProjectManager {
       method: "POST",
       body: { serviceIds },
     });
-    return parseOperation(result, "service-enable").name;
+    return parseGcpOperation(result).name;
   }
 
   async isEnableApisDone(operationName: string): Promise<boolean> {
@@ -272,7 +267,7 @@ export class TenantProjectManager {
   private async ensureServiceIdentity(projectNumber: string, service: string): Promise<void> {
     const result = await this.client.request(`https://serviceusage.googleapis.com/v1beta1/projects/${projectNumber}/services/${service}:generateServiceIdentity`, { method: "POST", body: {} });
     if (isRecord(result) && typeof result.name === "string") {
-      const operation = parseOperation(result, "service-identity");
+      const operation = parseGcpOperation(result);
       // Service Usage uses this sentinel when the identity already exists. It is a
       // completed operation marker, not an operation ID accepted by operations.get.
       if (operation.name === "operations/finished.DONE_OPERATION") return;
@@ -318,7 +313,7 @@ export class TenantProjectManager {
   }
 
   async deleteDisposableProject(projectId: string): Promise<void> {
-    if (!projectId.startsWith(`${sanitizeProjectFragment(this.config.projectPrefix, 8)}-`)) {
+    if (!projectId.startsWith(`${projectIdPrefix(this.config)}-`)) {
       throw new Error(`refusing to delete project ${JSON.stringify(projectId)} because it is outside Marshal's configured project prefix`);
     }
     let deleted: unknown | null;
@@ -331,7 +326,7 @@ export class TenantProjectManager {
       if (await this.findProject(projectId) !== null) throw error;
       return;
     }
-    if (deleted !== null) await this.client.waitForOperation(parseOperation(deleted, "project-delete"));
+    if (deleted !== null) await this.client.waitForOperation(parseGcpOperation(deleted));
   }
 }
 

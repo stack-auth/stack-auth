@@ -52,7 +52,7 @@ describe("Cloud Run reconciliation", () => {
       template: {
         vpcAccess: {
           networkInterfaces: [{ network: "hexclave-runtime", subnetwork: "hexclave-runtime" }],
-          egress: "ALL_TRAFFIC",
+          egress: "PRIVATE_RANGES_ONLY",
         },
         containers: [{ env: [{ name: "MESSAGE", value: "hello" }], ports: [{ name: "http1", containerPort: 8080 }] }],
       },

@@ -2,7 +2,7 @@ import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { assertMocksExplicitlyAllowed, resolveGcpMockUrl } from "./config.js";
 import { builderInstanceName, serviceName } from "./naming.js";
-import { validateServiceSpec } from "./services.js";
+import { redactBuildLogLines, validateServiceSpec } from "./services.js";
 import { loadAndValidateSourceArchive, validateSourceArchive } from "./source-archive.js";
 
 function writeString(buffer: Uint8Array, offset: number, length: number, value: string): void {
@@ -119,6 +119,13 @@ describe("source archive validation", () => {
 
     await expect(Promise.all([first, second, third, fourth])).resolves.toHaveLength(4);
     expect(maximumActiveLoads).toBe(2);
+  });
+});
+
+describe("build log redaction", () => {
+  it("redacts multiline secrets before splitting the serial stream", () => {
+    expect(redactBuildLogLines("before first\nsecond after\n", ["first\nsecond"]))
+      .toEqual(["before <redacted> after"]);
   });
 });
 describe("runtime identity", () => {

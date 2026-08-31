@@ -132,6 +132,7 @@ export function serviceStartupScript(spec: ComputeInstanceSpec): string {
     spec.image,
     ...(spec.startCommand === null ? [] : ["-c", spec.startCommand]),
   ];
+  const portChecks = spec.ports.map((port) => `timeout 1 bash -c '</dev/tcp/127.0.0.1/${port}' || return 1`).join("\n  ");
   return `#!/bin/bash
 set -euo pipefail
 readonly REVISION=${shellQuote(spec.revision)}
@@ -161,6 +162,19 @@ for attempt in $(seq 1 12); do
   echo "MARSHAL_SERVICE_START_RETRY $attempt"
   sleep 10
 done
+# 'docker run --detach' only proves the container process was created. Wait until it remains
+# running and every declared port accepts a connection before publishing the ready marker;
+# otherwise a crash-looping container is recorded as a successful deployment forever.
+service_is_ready() {
+  [[ "$(docker inspect --format '{{.State.Running}}' marshal-service 2>/dev/null)" == "true" ]] || return 1
+  ${portChecks}
+}
+SERVICE_READY=0
+for attempt in $(seq 1 120); do
+  if service_is_ready; then SERVICE_READY=1; break; fi
+  sleep 2
+done
+if [[ "$SERVICE_READY" -ne 1 ]]; then echo 'MARSHAL_SERVICE_NOT_READY'; exit 1; fi
 readonly RESOLVED_IMAGE="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
 if [[ -z "$RESOLVED_IMAGE" ]]; then echo 'MARSHAL_SERVICE_IMAGE_UNRESOLVED'; exit 1; fi
 echo "MARSHAL_IMAGE_REF $RESOLVED_IMAGE"

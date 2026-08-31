@@ -5,8 +5,10 @@ import type { ServiceKind, StoredSpec } from "../types.js";
 const fakes = vi.hoisted(() => ({
   cloudRunApply: vi.fn(),
   cloudRunDelete: vi.fn(),
+  cloudRunGet: vi.fn(),
   computeApply: vi.fn(),
   computeDelete: vi.fn(),
+  computeGet: vi.fn(),
   ensureDisk: vi.fn(),
 }));
 
@@ -17,12 +19,12 @@ vi.mock("../config.js", async (importOriginal) => ({
 
 vi.mock("./context.js", () => ({
   tenantContext: async () => ({
-    cloudRun: { apply: fakes.cloudRunApply, delete: fakes.cloudRunDelete },
-    compute: { applyInstance: fakes.computeApply, deleteInstance: fakes.computeDelete, ensureDisk: fakes.ensureDisk },
+    cloudRun: { apply: fakes.cloudRunApply, delete: fakes.cloudRunDelete, get: fakes.cloudRunGet },
+    compute: { applyInstance: fakes.computeApply, deleteInstance: fakes.computeDelete, ensureDisk: fakes.ensureDisk, getInstance: fakes.computeGet },
   }),
 }));
 
-import { applyRuntimeService, deleteRuntimeService } from "./runtime.js";
+import { applyRuntimeService, deleteRuntimeService, observeRuntimeService } from "./runtime.js";
 
 const lease: ReconciliationLeaseGuard = { assertOwned: async () => {} };
 
@@ -46,6 +48,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   fakes.cloudRunApply.mockResolvedValue({ ready: true });
   fakes.computeApply.mockResolvedValue({ name: "server", internalIp: "10.128.0.2" });
+  fakes.cloudRunGet.mockResolvedValue(null);
+  fakes.computeGet.mockResolvedValue(null);
 });
 
 describe("GCP runtime transitions", () => {
@@ -71,5 +75,20 @@ describe("GCP runtime transitions", () => {
     expect(fakes.cloudRunDelete).toHaveBeenCalledTimes(2);
     expect(fakes.computeDelete).toHaveBeenCalledOnce();
     expect(fakes.ensureDisk).not.toHaveBeenCalled();
+  });
+
+  it("does not publish an internal URL until GCP assigns the VM an IP", async () => {
+    fakes.computeGet.mockResolvedValue({
+      name: "server",
+      status: "RUNNING",
+      internalIp: null,
+      imageRef: null,
+      revision: "revision-1",
+    });
+
+    await expect(observeRuntimeService(stored("server", false))).resolves.toMatchObject({
+      hostname: null,
+      internalUrl: null,
+    });
   });
 });

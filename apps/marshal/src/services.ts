@@ -9,7 +9,7 @@ import { MutationOutcomeUnknownError, RECONCILIATION_TAKEOVER_GRACE_MS } from ".
 import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
-import { createDeployment, deletePendingDomainClaim, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listPendingDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { beginDomainClaimDeletion, createDeployment, deletePendingDomainClaim, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listPendingDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { loadAndValidateSourceArchive } from "./source-archive.js";
 import { validateImageRef } from "./image-ref.js";
 import { portEntries, targetIsBuilt, targetUsesGeneratedDockerfile, type Deployment, type DeploymentServiceState, type DeploymentTarget, type EnvValue, type PortsConfig, type ServiceKind, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
@@ -551,6 +551,18 @@ async function specIsStillOwned(ns: string, key: string, etag: string): Promise<
   return (await readSpecVersioned(ns, key))?.etag === etag;
 }
 
+async function currentDomainClaimsForService(ns: string, key: string): Promise<string[]> {
+  const indexed = await listDomainClaimsForService(ns, key);
+  const claims = await Promise.all(indexed.map(async (hostname) => ({ hostname, claim: await readDomainClaimVersioned(hostname) })));
+  // Index entries are intentionally written before the global claim CAS so a crash cannot
+  // create an undiscoverable claim. The tradeoff is harmless orphan indexes; every reader
+  // must revalidate them against the authenticated global authority before treating them as
+  // service state.
+  return claims
+    .filter(({ claim }) => claim !== null && claim.value.ns === ns && claim.value.service_key === key)
+    .map(({ hostname }) => hostname);
+}
+
 export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, options?: { knownTargets?: Map<string, KnownTarget>, lease?: ReconciliationLeaseGuard }): Promise<ApplyResult> {
   // A deployment already holds the lease for its whole source, so it passes its
   // own rather than taking a second one per service — the lease is not
@@ -567,7 +579,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   // at attach time. The domain's public IPs outlive the attach: a later PUT that adds a
   // private sibling port would hand it to the proxy on those IPs, so the whole rule is
   // re-checked here rather than only its HTTP-port half.
-  if ((await listDomainClaimsForService(ns, key)).length > 0) {
+  if ((await currentDomainClaimsForService(ns, key)).length > 0) {
     assertServiceCanHoldADomain(key, spec.config.ports, spec.config.public, "Detach the service's custom domains first if this port set is what you want.");
   }
   const revision = computeRevision(spec);
@@ -1293,7 +1305,9 @@ async function persistDeploymentLog(deployment: StoredDeployment): Promise<void>
   try {
     const context = await tenantContext(deployment.ns);
     const output = await context.compute.getSerialOutput(deployment.builder_machine_id);
-    const lines = output.split("\n").filter((line) => line !== "").map((text, index) => ({
+    // Redact before splitting: a secret may itself contain newlines, in which case no
+    // individual line contains the whole value and line-by-line redaction leaks every part.
+    const lines = redactBuildLogLines(output, deploymentLogRedactionValues(deployment)).map((text, index) => ({
       at_millis: deployment.started_at_millis + index,
       stream: "stdout" as const,
       instance: deployment.builder_machine_id,
@@ -1303,9 +1317,7 @@ async function persistDeploymentLog(deployment: StoredDeployment): Promise<void>
     // ingestion lag) must not freeze `has_logs:true, lines:[], complete:true`. Leaving no
     // object makes the logs route fall back to the live proxy instead.
     if (lines.length === 0) return;
-    const redactionValues = deploymentLogRedactionValues(deployment);
     const jsonl = lines
-      .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
       .map((line) => JSON.stringify(line))
       .join("\n");
     await writeDeploymentLog(deployment.ns, deployment.id, jsonl);
@@ -1348,6 +1360,12 @@ export function redactBuildLogText(text: string, values: string[]): string {
     // isn't persisted anywhere Marshal can recompute.
     .replace(/X-Amz-Signature=[A-Za-z0-9%]+/gi, "X-Amz-Signature=<redacted>")
     .replace(/X-Amz-Credential=[A-Za-z0-9%/]+/gi, "X-Amz-Credential=<redacted>");
+}
+
+export function redactBuildLogLines(serialOutput: string, values: string[]): string[] {
+  // This ordering is a security boundary: multiline values must be removed while they are
+  // still contiguous in the original stream, before callers turn it into line records.
+  return redactBuildLogText(serialOutput, values).split("\n").filter((line) => line !== "");
 }
 
 export function builderOutputIsTerminal(serialOutput: string): boolean {
@@ -1402,11 +1420,13 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const [observation, resolvedForGcp, claimedDomainHostnames, pendingDomainHostnames] = await Promise.all([
     observeRuntimeService(storedForGcp),
     resolveEnv(ns, storedForGcp.spec.env, knownTargets),
-    listDomainClaimsForService(ns, key),
+    currentDomainClaimsForService(ns, key),
     listPendingDomainClaimsForService(ns, key),
   ]);
   const domainContext = await tenantContext(ns);
   const claimedDomains = await Promise.all(claimedDomainHostnames.sort().map(async (hostname) => {
+    const claim = await readDomainClaimVersioned(hostname);
+    if (claim === null || claim.value.ns !== ns || claim.value.service_key !== key) return null;
     const domain = await domainContext.domains.get(hostname);
     return domain === null
       ? { hostname, verified: false, dns_records: [], error: "custom-domain infrastructure is missing" }
@@ -1426,7 +1446,7 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
       error: null,
     };
   }));
-  const domains = [...claimedDomains, ...pendingDomains.filter((domain) => domain !== null)];
+  const domains = [...claimedDomains.filter((domain) => domain !== null), ...pendingDomains.filter((domain) => domain !== null)];
   const status: ServiceState["status"] = !resolvedForGcp.ok
     ? "blocked"
     : storedForGcp.last_apply_error !== null
@@ -1498,11 +1518,12 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
           || current.etag !== claim.etag
           || current.value.ns !== ns
           || current.value.service_key !== key) return;
-        // Transfer store ownership before deleting the shared provider route. A newly verified
-        // claimant can win the store race, but its provider ensure remains behind this platform
-        // lease and therefore runs only after this stale route has been removed.
-        if (!await releaseDomainClaim(current)) return;
+        const deleting = await beginDomainClaimDeletion(current, Date.now());
+        if (deleting === null) return;
         await domainContext.domains.delete(hostname);
+        await lease.assertOwned();
+        await platformLease.assertOwned();
+        if (!await releaseDomainClaim(deleting)) throw conflict(`domain ${JSON.stringify(hostname)} cleanup changed concurrently; retry service deletion`);
       });
     }
   }

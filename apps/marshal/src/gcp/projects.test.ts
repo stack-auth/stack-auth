@@ -110,6 +110,21 @@ describe("tenant project lifecycle", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it("accepts the normalized prefix used by generated project ids", async () => {
+    const client = new GcpClient();
+    const request = vi.spyOn(client, "request").mockResolvedValueOnce(null);
+    const manager = new TenantProjectManager(client, {
+      envId: "test",
+      billingAccount: "unused",
+      parent: null,
+      projectPrefix: "123",
+    });
+
+    await manager.deleteDisposableProject("h123-test-project");
+
+    expect(request).toHaveBeenCalledWith(expect.stringContaining("/projects/h123-test-project"), expect.objectContaining({ method: "DELETE" }));
+  });
+
   it("does not issue a permission-hidden delete when the disposable project is absent", async () => {
     const client = new GcpClient();
     const request = vi.spyOn(client, "request")

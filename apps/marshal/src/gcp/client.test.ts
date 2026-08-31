@@ -3,7 +3,7 @@ import { MutationOutcomeUnknownError } from "../mutation-safety.js";
 
 vi.mock("./auth.js", () => ({ googleAccessToken: async () => "test-access-token" }));
 
-import { GcpApiError, GcpClient } from "./client.js";
+import { GcpApiError, GcpClient, parseGcpOperation } from "./client.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -32,6 +32,30 @@ describe("Google Cloud API transport", () => {
       method: "PATCH",
       body: { name: "web" },
     })).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
+  });
+
+  it("bounds a hung mutation before reconciliation takeover is allowed", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => await new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })));
+
+    const request = new GcpClient().request("https://run.googleapis.com/v2/projects/tenant/services/web", {
+      method: "PATCH",
+      body: { name: "web" },
+    });
+    const rejection = expect(request).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejection;
+  });
+
+  it("does not discard an immediately failed long-running operation", async () => {
+    const client = new GcpClient();
+    await expect(client.waitForOperation(parseGcpOperation({
+      name: "operations/failed",
+      done: true,
+      error: { code: 7, message: "permission denied" },
+    }))).rejects.toMatchObject({ status: 7, providerMessage: "permission denied" });
   });
 
   it("never sends Google credentials to a non-Google origin", async () => {

@@ -132,6 +132,9 @@ type AuthenticatedControlPlaneState = {
 };
 
 function authenticatedControlPlaneState(key: string, value: unknown): AuthenticatedControlPlaneState {
+  // TODO(security): bind a monotonically increasing generation to an authority outside this
+  // bucket. The MAC prevents forgery and moving values between keys, but an attacker who can
+  // overwrite objects can still replay an older, validly authenticated version of a value.
   const serialized = JSON.stringify(value);
   return {
     authentication_version: 1,
@@ -145,6 +148,9 @@ function readAuthenticatedControlPlaneState(key: string, stored: unknown): unkno
     || stored.authentication_version !== 1
     || !("value" in stored)
     || typeof stored.mac_base64 !== "string") {
+    // TODO(operations): provide an offline migration command that authenticates a trusted
+    // snapshot before rollout. Doing this automatically at runtime would turn attacker-written
+    // unsigned state into authoritative state, so this path must continue to fail closed.
     // Deliberately no legacy fallback: accepting an unsigned object once and signing it would
     // authenticate an attacker's forged claim or project assignment after a bucket compromise.
     throw new Error(`authoritative state ${JSON.stringify(key)} is unsigned; migrate it before starting this Marshal version`);
@@ -161,6 +167,9 @@ async function deleteObject(key: string): Promise<void> {
 }
 
 async function deleteObjectConditionally(key: string, etag: string): Promise<boolean> {
+  // TODO(reliability): represent an interrupted conditional delete as outcome-unknown instead
+  // of blindly retrying it. A retry can observe a replacement object's ETag after the original
+  // request succeeded, making it impossible for this layer to distinguish the two outcomes.
   try {
     await withTransientRetry(async () => await s3().send(new DeleteObjectCommand({
       Bucket: bucket(),
@@ -699,7 +708,9 @@ export async function readDomainClaimVersioned(hostname: string): Promise<Versio
     || typeof value.service_key !== "string"
     || typeof value.claimed_at_millis !== "number"
     || !Number.isSafeInteger(value.claimed_at_millis)
-    || value.claimed_at_millis < 0) {
+    || value.claimed_at_millis < 0
+    || (value.deleting_at_millis !== undefined
+      && (typeof value.deleting_at_millis !== "number" || !Number.isSafeInteger(value.deleting_at_millis) || value.deleting_at_millis < 0))) {
     throw new Error(`authenticated domain claim for ${JSON.stringify(hostname)} is malformed`);
   }
   return {
@@ -709,6 +720,7 @@ export async function readDomainClaimVersioned(hostname: string): Promise<Versio
       ns: value.ns,
       service_key: value.service_key,
       claimed_at_millis: value.claimed_at_millis,
+      ...(value.deleting_at_millis === undefined ? {} : { deleting_at_millis: value.deleting_at_millis }),
     },
   };
 }
@@ -735,6 +747,16 @@ export async function rewriteDomainClaim(previous: Versioned<DomainClaim>, next:
   if (rewritten === null) return false;
   await deleteObject(domainIndexKey(previous.value.ns, previous.value.service_key, previous.value.hostname));
   return true;
+}
+
+// Marks a claim as deleting without touching its index. The tombstone remains the global
+// ownership authority while fallible provider cleanup runs, making retries recoverable.
+export async function beginDomainClaimDeletion(previous: Versioned<DomainClaim>, deletingAtMillis: number): Promise<Versioned<DomainClaim> | null> {
+  if (previous.value.deleting_at_millis !== undefined) return previous;
+  const key = domainClaimKey(previous.value.hostname);
+  const value = { ...previous.value, deleting_at_millis: deletingAtMillis };
+  const etag = await putJsonConditionally(key, authenticatedControlPlaneState(key, value), { ifMatch: previous.etag });
+  return etag === null ? null : { value, etag };
 }
 
 // Deleting by ETag is the ownership check and deletion in one S3 operation. A plain
@@ -890,10 +912,16 @@ const POOL_CREATION_LEDGER_KEY = "gcp-project-pool-ledger.json";
 export async function readPoolCreationLedger(): Promise<number[]> {
   const stored = await getJson<unknown>(POOL_CREATION_LEDGER_KEY);
   if (stored === null) return [];
-  if (!isRecord(stored) || !Array.isArray(stored.created_at_millis)) throw new Error("the tenant project pool creation ledger is malformed");
-  return stored.created_at_millis.filter((value): value is number => typeof value === "number" && Number.isSafeInteger(value));
+  const value = readAuthenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, stored);
+  if (!isRecord(value)
+    || !Array.isArray(value.created_at_millis)
+    || !value.created_at_millis.every((timestamp): timestamp is number => typeof timestamp === "number" && Number.isSafeInteger(timestamp) && timestamp >= 0)) {
+    throw new Error("the authenticated tenant project pool creation ledger is malformed");
+  }
+  return value.created_at_millis;
 }
 
 export async function writePoolCreationLedger(createdAtMillis: number[]): Promise<void> {
-  await putJson(POOL_CREATION_LEDGER_KEY, { created_at_millis: createdAtMillis });
+  const value = { created_at_millis: createdAtMillis };
+  await putJson(POOL_CREATION_LEDGER_KEY, authenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, value));
 }

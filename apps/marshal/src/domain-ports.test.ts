@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 // execution reach that line, not to model the rest of the apply.
 
 const domainClaims = vi.hoisted(() => vi.fn(async (_ns: string, _key: string): Promise<string[]> => []));
+const domainClaim = vi.hoisted(() => vi.fn(async (hostname: string): Promise<{
+  value: { hostname: string, ns: string, service_key: string, claimed_at_millis: number },
+  etag: string,
+} | null> => ({
+  value: { hostname, ns: "namespace", service_key: "web", claimed_at_millis: 1 },
+  etag: "claim-etag",
+})));
 
 vi.mock("./config.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./config.js")>(),
@@ -23,6 +30,7 @@ vi.mock("./reconciliation-lock.js", async (importOriginal) => ({
 vi.mock("./store.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./store.js")>(),
   listDomainClaimsForService: domainClaims,
+  readDomainClaimVersioned: domainClaim,
 }));
 
 import { applyServiceSpec, assertServiceCanHoldADomain, validateServiceSpec } from "./services.js";
@@ -105,5 +113,14 @@ describe("a spec write against a service that holds a domain", () => {
     const error = await apply({ "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
     expect(error).not.toBeNull();
     expect(String(error)).not.toMatch(/may not declare a private port alongside others|need an HTTP port/);
+  });
+
+  it("does not treat an orphaned domain index as current ownership", async () => {
+    domainClaims.mockResolvedValue(["orphan.example.com"]);
+    domainClaim.mockResolvedValueOnce(null);
+
+    const error = await apply({ "3000": { protocol: "http" }, "5432": { protocol: "tcp" } }).then(() => null, (caught: unknown) => caught);
+    expect(error).not.toBeNull();
+    expect(String(error)).not.toMatch(/may not declare more than one port|need an HTTP port/);
   });
 });

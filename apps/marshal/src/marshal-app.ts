@@ -27,7 +27,7 @@ import {
   getServiceState,
   listServices,
   maybeFinalizeStaleDeployment,
-  redactBuildLogText,
+  redactBuildLogLines,
   startSourceDeployment,
   validateNamespace,
   validateServiceKey,
@@ -313,11 +313,11 @@ export function createMarshalApp() {
       }
       const output = await (await tenantContext(ns)).compute.getSerialOutput(checked.builder_machine_id);
       const redactionValues = deploymentLogRedactionValues(checked);
-      const allLines = output.split("\n").filter((line) => line !== "").map((text, index) => ({
+      const allLines = redactBuildLogLines(output, redactionValues).map((text, index) => ({
         at_millis: checked.started_at_millis + index,
         stream: "stdout" as const,
         instance: null,
-        text: redactBuildLogText(text, redactionValues),
+        text,
       }));
       const lines = allLines.filter((line) => sinceMillis === undefined || line.at_millis >= sinceMillis);
       const lastAtMillis = lines.length === 0 ? null : lines[lines.length - 1].at_millis;

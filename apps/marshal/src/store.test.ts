@@ -30,7 +30,7 @@ vi.mock("./config.js", () => ({
   UPLOAD_EXPIRY_SECONDS: 1,
 }));
 
-import { assignTenantProject, claimDomain, createDeployment, createPoolProject, readDeployment, readDomainClaimVersioned, readPoolProject, readSpec, readTenantProjectAssignment, readUpload, releaseDomainClaim, writeSpec } from "./store.js";
+import { assignTenantProject, claimDomain, createDeployment, createPoolProject, readDeployment, readDomainClaimVersioned, readPoolCreationLedger, readPoolProject, readSpec, readTenantProjectAssignment, readUpload, releaseDomainClaim, writePoolCreationLedger, writeSpec } from "./store.js";
 
 describe("domain claim release", () => {
   const claim = {
@@ -117,6 +117,19 @@ describe("authoritative state authentication", () => {
 
     send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ project_id: "hxc-tenant-b" }) } });
     await expect(readTenantProjectAssignment("tenant-a")).rejects.toThrow("is unsigned");
+  });
+
+  it("authenticates the project creation-rate ledger", async () => {
+    send.mockResolvedValueOnce({});
+    await writePoolCreationLedger([100, 200]);
+    const body = send.mock.calls[0][0].input.Body;
+    expect(typeof body).toBe("string");
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => body } });
+    await expect(readPoolCreationLedger()).resolves.toEqual([100, 200]);
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ created_at_millis: [100, 200] }) } });
+    await expect(readPoolCreationLedger()).rejects.toThrow("is unsigned");
   });
 
   it("does not let an unsigned ready-pool record become a signed tenant assignment", async () => {

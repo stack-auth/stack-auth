@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { DnsRecord } from "../types.js";
-import { GcpApiError, GcpClient, type GcpOperation } from "./client.js";
+import { GcpApiError, GcpClient, parseGcpOperation } from "./client.js";
 
 export type DomainLoadBalancerConfig = {
   tenantProjectId: string,
@@ -35,12 +35,6 @@ function parseComputeOperation(value: unknown): ComputeOperation {
     ? value.error.errors.flatMap((entry) => isRecord(entry) && typeof entry.message === "string" ? [entry.message] : [])
     : [];
   return { selfLink: value.selfLink, status: value.status, error: messages.length === 0 ? null : messages.join("; ") };
-}
-
-function parseLongRunningOperation(value: unknown): GcpOperation {
-  if (!isRecord(value) || typeof value.name !== "string") throw new Error("Certificate Manager returned an invalid operation");
-  if (value.done !== undefined && typeof value.done !== "boolean") throw new Error(`Certificate Manager operation ${value.name} has an invalid done field`);
-  return { name: value.name, ...(value.done === undefined ? {} : { done: value.done }) };
 }
 
 function parseUrlMap(value: unknown): UrlMap {
@@ -93,7 +87,7 @@ export class DomainLoadBalancerClient {
   }
 
   private async waitCertificateManager(value: unknown): Promise<void> {
-    await this.client.waitForOperation(parseLongRunningOperation(value), { apiBaseUrl: "https://certificatemanager.googleapis.com/v1/" });
+    await this.client.waitForOperation(parseGcpOperation(value), { apiBaseUrl: "https://certificatemanager.googleapis.com/v1/" });
   }
 
   private async ensureComputeResource(projectId: string, path: string, collectionPath: string, body: unknown): Promise<unknown> {
@@ -255,6 +249,9 @@ export class DomainLoadBalancerClient {
   }
 
   async get(hostname: string): Promise<DomainLoadBalancerState | null> {
+    // TODO(reliability): include the certificate-map entry and the path matcher's backend in
+    // this health observation. Today this proves certificate readiness and host-rule presence,
+    // but a partially deleted or externally edited route can still appear healthy.
     const stem = this.domainStem(hostname);
     const [address, certificate, urlMapValue] = await Promise.all([
       this.client.request(this.computeUrl(this.config.platformProjectId, `/global/addresses/${this.sharedStem}-ip`), { allow404: true }),

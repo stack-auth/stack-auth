@@ -39,10 +39,11 @@ in production; without it the mock builder and existing-project test override bo
 Source uploads never pass through the function: `POST /v1/namespaces/:ns/uploads` returns a
 presigned bucket URL that the CLI uploads the tarball to directly.
 
-Domain claims, project-pool entries, and namespace-to-project assignments are authenticated with
+Domain claims, project-pool entries and its creation ledger, and namespace-to-project assignments are authenticated with
 `HEXCLAVE_MARSHAL_DATA_ENCRYPTION_KEY`, with their object key bound into the MAC. Marshal fails
 closed on the older unsigned shape: before rolling this version into an environment that already
-has `domains/*.json`, `gcp-project-pool/*.json`, or `tenants/*.json`, migrate or recreate those records from a trusted
+has `domains/*.json`, `gcp-project-pool/*.json`, `gcp-project-pool-ledger.json`, or
+`tenants/*.json`, migrate or recreate those records from a trusted
 snapshot. Automatically trusting and rewriting an unsigned object would authenticate exactly the
 forgery this boundary is intended to detect.
 

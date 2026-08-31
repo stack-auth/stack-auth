@@ -184,7 +184,7 @@ export async function observeRuntimeService(stored: StoredSpec): Promise<Runtime
     atTarget: ready && instance.revision === stored.revision && (gateway === null || gateway.targetRevision === stored.revision),
     hostname: privateHostname,
     platformUrl: gateway?.uri ?? null,
-    internalUrl: instance === null || port === null ? null : `http://${privateHostname}:${port}`,
+    internalUrl: privateHostname === null || port === null ? null : `http://${privateHostname}:${port}`,
     error: gateway?.error ?? null,
   };
 }

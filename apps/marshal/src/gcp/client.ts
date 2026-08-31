@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { MutationOutcomeUnknownError } from "../mutation-safety.js";
+import { MutationOutcomeUnknownError, PROVIDER_MUTATION_TIMEOUT_MS, PROVIDER_READ_TIMEOUT_MS } from "../mutation-safety.js";
 import { googleAccessToken } from "./auth.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,7 +66,7 @@ export type GcpOperation = {
   response?: unknown,
 };
 
-function parseOperation(value: unknown): GcpOperation {
+export function parseGcpOperation(value: unknown): GcpOperation {
   if (!isRecord(value) || typeof value.name !== "string") throw new Error("Google Cloud returned an invalid operation");
   const done = value.done;
   if (done !== undefined && typeof done !== "boolean") throw new Error(`Google Cloud operation ${value.name} has an invalid done field`);
@@ -102,16 +102,22 @@ export class GcpClient {
     body?: unknown,
     allow404?: boolean,
   }): Promise<unknown | null> {
+    // TODO(reliability): add a small, bounded retry policy for transient idempotent reads and
+    // operation polls. Mutations must remain outcome-unknown after transport failure unless a
+    // provider idempotency key makes replay demonstrably safe.
     const method = options?.method ?? "GET";
     const startedAt = performance.now();
     let retryDelayMillis = 1000;
     for (;;) {
       let response: Response;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new Error(`Google Cloud ${method} request timed out`)), method === "GET" ? PROVIDER_READ_TIMEOUT_MS : PROVIDER_MUTATION_TIMEOUT_MS);
       try {
         response = await fetch(this.requestUrl(url), {
           method,
+          signal: controller.signal,
           headers: {
-            authorization: `Bearer ${this.mock?.token ?? await googleAccessToken()}`,
+            authorization: `Bearer ${this.mock?.token ?? await googleAccessToken(controller.signal)}`,
             accept: "application/json",
             ...(options?.body === undefined ? {} : { "content-type": "application/json" }),
           },
@@ -120,6 +126,8 @@ export class GcpClient {
       } catch (error) {
         if (method === "GET") throw error;
         throw new MutationOutcomeUnknownError(`Google Cloud mutation ${method} ${new URL(url).pathname} ended without a response`, { cause: error });
+      } finally {
+        clearTimeout(timeout);
       }
       if (options?.allow404 === true && response.status === 404) return null;
       const text = await response.text();
@@ -149,7 +157,7 @@ export class GcpClient {
   // Throws when the operation itself failed, exactly as waitForOperation does.
   async pollOperation(operationName: string, options?: { apiBaseUrl?: string }): Promise<GcpOperation> {
     const url = operationUrl(operationName, options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/");
-    const current = parseOperation(await this.request(url) ?? throwError(`Google Cloud operation ${operationName} disappeared`));
+    const current = parseGcpOperation(await this.request(url) ?? throwError(`Google Cloud operation ${operationName} disappeared`));
     if (current.error !== undefined) {
       throw new GcpApiError(current.error.code ?? 500, current.name, current.error.message ?? "operation failed");
     }
@@ -166,7 +174,7 @@ export class GcpClient {
       }
       await delay(1000);
       const url = operationUrl(current.name, options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/");
-      current = parseOperation(await this.request(url) ?? throwError(`Google Cloud operation ${current.name} disappeared`));
+      current = parseGcpOperation(await this.request(url) ?? throwError(`Google Cloud operation ${current.name} disappeared`));
     }
     if (current.error !== undefined) {
       throw new GcpApiError(current.error.code ?? 500, current.name, current.error.message ?? "operation failed");

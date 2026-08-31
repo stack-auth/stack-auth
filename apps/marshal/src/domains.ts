@@ -5,7 +5,7 @@ import { tenantContext } from "./gcp/context.js";
 import { withReconciliationLease } from "./reconciliation-lock.js";
 import { withPlatformDomainLease } from "./platform-domain-lock.js";
 import { assertServiceCanHoldADomain, resolveEnv } from "./services.js";
-import { claimDomain, createPendingDomainClaim, deletePendingDomainClaim, readDomainClaim, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
+import { beginDomainClaimDeletion, claimDomain, createPendingDomainClaim, deletePendingDomainClaim, readDomainClaim, readDomainClaimVersioned, readPendingDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
 import type { DnsRecord } from "./types.js";
 
 // KEPT IN SYNC WITH the backend's HOSTNAME_REGEX (apps/backend/src/lib/deployments/index.tsx),
@@ -76,6 +76,8 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
         }
       }
       await deletePendingDomainClaim(pending);
+    } else if (existingClaim.value.deleting_at_millis !== undefined) {
+      throw conflict(`hostname ${JSON.stringify(hostname)} is still being detached; retry shortly`);
     } else if (existingClaim.value.ns !== ns) {
       throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
     } else if (existingClaim.value.service_key !== serviceKey) {
@@ -148,11 +150,12 @@ export async function detachDomain(ns: string, hostname: string, expectedService
         || current.etag !== claim.etag
         || current.value.ns !== ns
         || current.value.service_key !== claim.value.service_key) return false;
-      // Release while holding the platform lease, before touching provider state. A new owner
-      // may claim concurrently, but its provider reconciliation cannot pass this lease until
-      // the old route is gone; releasing after deletion would reopen a stale-delete race.
-      if (!await releaseDomainClaim(current)) return false;
+      const deleting = await beginDomainClaimDeletion(current, Date.now());
+      if (deleting === null) return false;
       await (await tenantContext(ns)).domains.delete(hostname);
+      await lease.assertOwned();
+      await platformLease.assertOwned();
+      if (!await releaseDomainClaim(deleting)) throw conflict(`hostname ${JSON.stringify(hostname)} cleanup changed concurrently; retry the detach`);
       return true;
     });
     if (!detached) throw notFound(`hostname ${JSON.stringify(hostname)} changed owners while it was being detached`);

@@ -1,13 +1,4 @@
-import { GcpClient, type GcpOperation } from "./client.js";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseOperation(value: unknown): GcpOperation {
-  if (!isRecord(value) || typeof value.name !== "string") throw new Error("Artifact Registry returned an invalid operation");
-  return { name: value.name, ...(typeof value.done === "boolean" ? { done: value.done } : {}) };
-}
+import { GcpClient, parseGcpOperation } from "./client.js";
 
 export class ArtifactRegistryClient {
   constructor(
@@ -39,6 +30,6 @@ export class ArtifactRegistryClient {
         dockerConfig: { immutableTags: false },
       },
     });
-    await this.client.waitForOperation(parseOperation(operation), { apiBaseUrl: "https://artifactregistry.googleapis.com/v1/", timeoutMillis: 10 * 60 * 1000 });
+    await this.client.waitForOperation(parseGcpOperation(operation), { apiBaseUrl: "https://artifactregistry.googleapis.com/v1/", timeoutMillis: 10 * 60 * 1000 });
   }
 }

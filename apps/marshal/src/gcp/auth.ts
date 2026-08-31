@@ -36,7 +36,7 @@ function base64Url(value: string | Buffer): string {
   return Buffer.from(value).toString("base64url");
 }
 
-async function serviceAccountToken(credential: ServiceAccountCredential): Promise<AccessToken> {
+async function serviceAccountToken(credential: ServiceAccountCredential, signal?: AbortSignal): Promise<AccessToken> {
   const issuedAtSeconds = Math.floor(Date.now() / 1000);
   const expiresAtSeconds = issuedAtSeconds + 3600;
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
@@ -54,6 +54,7 @@ async function serviceAccountToken(credential: ServiceAccountCredential): Promis
   const assertion = `${unsigned}.${base64Url(signer.sign(credential.privateKey))}`;
   const response = await fetch(credential.tokenUri, {
     method: "POST",
+    signal,
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -67,8 +68,8 @@ async function serviceAccountToken(credential: ServiceAccountCredential): Promis
   return { value: body.access_token, expiresAtMillis: Date.now() + body.expires_in * 1000 };
 }
 
-async function metadataToken(): Promise<AccessToken> {
-  const response = await fetch(METADATA_TOKEN_URL, { headers: { "Metadata-Flavor": "Google" } });
+async function metadataToken(signal?: AbortSignal): Promise<AccessToken> {
+  const response = await fetch(METADATA_TOKEN_URL, { signal, headers: { "Metadata-Flavor": "Google" } });
   const body: unknown = await response.json();
   if (!response.ok || !isRecord(body) || typeof body.access_token !== "string" || typeof body.expires_in !== "number") {
     throw new Error(`Google metadata token request failed with HTTP ${response.status}`);
@@ -80,11 +81,11 @@ let cachedToken: AccessToken | null = null;
 let cachedCredential: ServiceAccountCredential | null = null;
 let cachedCredentialPath: string | null = null;
 
-async function applicationCredential(): Promise<ServiceAccountCredential | null> {
+async function applicationCredential(signal?: AbortSignal): Promise<ServiceAccountCredential | null> {
   const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (path === undefined || path === "") return null;
   if (cachedCredential !== null && cachedCredentialPath === path) return cachedCredential;
-  const serialized = await readFile(path, "utf8");
+  const serialized = await readFile(path, { encoding: "utf8", signal });
   // Never include credential contents in errors. The path is operational configuration;
   // private key material remains confined to this module and the OAuth assertion.
   const parsed: unknown = JSON.parse(serialized);
@@ -93,10 +94,10 @@ async function applicationCredential(): Promise<ServiceAccountCredential | null>
   return cachedCredential;
 }
 
-export async function googleAccessToken(): Promise<string> {
+export async function googleAccessToken(signal?: AbortSignal): Promise<string> {
   if (cachedToken !== null && cachedToken.expiresAtMillis - TOKEN_REFRESH_SKEW_MILLIS > Date.now()) return cachedToken.value;
-  const credential = await applicationCredential();
-  cachedToken = credential === null ? await metadataToken() : await serviceAccountToken(credential);
+  const credential = await applicationCredential(signal);
+  cachedToken = credential === null ? await metadataToken(signal) : await serviceAccountToken(credential, signal);
   return cachedToken.value;
 }
 

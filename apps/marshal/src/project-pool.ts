@@ -25,7 +25,7 @@ import { getConfig } from "./config.js";
 import { createTenantProjectManager } from "./gcp/manager.js";
 import { pooledProjectId, type TenantProject, TenantProjectManager } from "./gcp/projects.js";
 import { RECONCILIATION_TAKEOVER_GRACE_MS } from "./mutation-safety.js";
-import { ReconciliationLeaseLostError, withReconciliationLease, type LeaseTimings } from "./reconciliation-lock.js";
+import { ReconciliationLeaseLostError, withReconciliationLease, type LeaseTimings, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import type { PoolProjectEntry, PoolProjectState } from "./types.js";
 import {
   assignTenantProject,
@@ -70,8 +70,17 @@ export async function tenantProjectForNamespace(ns: string, manager: TenantProje
   // Empty (or disabled) pool: today's lazy path. The deterministic id keeps concurrent first
   // deploys for one namespace converging on the same project even without the pool.
   const project = await manager.ensureForNamespace(ns);
-  await assignTenantProject(ns, project.projectId);
-  return project;
+  const assignedProjectId = await assignTenantProject(ns, project.projectId);
+  if (assignedProjectId === project.projectId) return project;
+  // A pooled project won while the deterministic fallback was being provisioned. The
+  // assignment is authoritative; never deploy into the losing project and split one tenant
+  // across two GCP boundaries. The loser contains no runtime resources yet.
+  try {
+    await manager.deleteDisposableProject(project.projectId);
+  } catch (error) {
+    console.error(`deleting unassigned fallback project ${JSON.stringify(project.projectId)} failed`, error);
+  }
+  return await manager.describeActiveProject(assignedProjectId);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +135,9 @@ const POOL_LEASE_TIMINGS: LeaseTimings = {
 
 // Contention is a no-op, not an error: the cron would otherwise report a failure for the
 // entirely normal case of two ticks overlapping.
-async function withProjectPoolLease<T>(action: () => Promise<T>): Promise<T | null> {
+async function withProjectPoolLease<T>(action: (lease: ReconciliationLeaseGuard) => Promise<T>): Promise<T | null> {
   try {
-    return await withReconciliationLease("__platform__", "project-pool", async () => await action(), POOL_LEASE_TIMINGS);
+    return await withReconciliationLease("__platform__", "project-pool", action, POOL_LEASE_TIMINGS);
   } catch (error) {
     if (error instanceof ReconciliationLeaseLostError) return null;
     throw error;
@@ -201,8 +210,9 @@ type AdvanceOutcome = "ready" | "parked" | "condemned" | "failed" | "raced" | "g
 // identity and IAM are seconds and run inline; only a real GCP wait or the tick deadline stops
 // it. Every write is CAS-fenced, so an overlapping tick that got the same project simply loses
 // and stops rather than double-stepping it.
-async function advanceProject(manager: TenantProjectManager, projectId: string, deadline: number): Promise<AdvanceOutcome> {
+async function advanceProject(manager: TenantProjectManager, projectId: string, deadline: number, lease: ReconciliationLeaseGuard): Promise<AdvanceOutcome> {
   for (;;) {
+    await lease.assertOwned();
     const current = await readPoolProject(projectId);
     if (current === null) return "gone";
     const { value: entry, etag } = current;
@@ -212,7 +222,9 @@ async function advanceProject(manager: TenantProjectManager, projectId: string, 
     let step: Step;
     try {
       step = await stepProject(manager, projectId, entry);
+      await lease.assertOwned();
     } catch (error) {
+      await lease.assertOwned();
       const attempts = entry.attempts + 1;
       // Condemned rather than retried forever: the reaper deletes the GCP project, which stops
       // it billing and stops every later tick from spending its budget on a lost cause.
@@ -235,22 +247,27 @@ async function advanceProject(manager: TenantProjectManager, projectId: string, 
 // Consumes the creation-rate budget BEFORE anything is created, and returns how many creations
 // this tick may actually start. Recording first is deliberate: a freeze between the ledger
 // write and the create must over-count, never under-count.
-async function consumeCreationBudget(wanted: number, now: number): Promise<number> {
+async function consumeCreationBudget(wanted: number, now: number, lease: ReconciliationLeaseGuard): Promise<number> {
   if (wanted <= 0) return 0;
+  await lease.assertOwned();
   const recent = (await readPoolCreationLedger()).filter((at) => at > now - CREATION_WINDOW_MILLIS);
   const allowed = Math.max(0, Math.min(wanted, MAX_CREATIONS_PER_HOUR - recent.length));
-  if (allowed > 0) await writePoolCreationLedger([...recent, ...Array.from({ length: allowed }, () => now)]);
+  if (allowed > 0) {
+    await lease.assertOwned();
+    await writePoolCreationLedger([...recent, ...Array.from({ length: allowed }, () => now)]);
+  }
   return allowed;
 }
 
-async function createAndAdvance(manager: TenantProjectManager, deadline: number): Promise<AdvanceOutcome | "collided"> {
+async function createAndAdvance(manager: TenantProjectManager, deadline: number, lease: ReconciliationLeaseGuard): Promise<AdvanceOutcome | "collided"> {
   const config = getConfig();
   const projectId = pooledProjectId({ envId: config.envId, projectPrefix: config.gcp.projectPrefix });
   // THE record comes first. Nothing exists in GCP yet, so an id that is somehow already taken
   // costs nothing to abandon — unlike the old order, where a collision meant tearing a real
   // project back down and a freeze meant leaking one.
+  await lease.assertOwned();
   if (!await createPoolProject(projectId, newEntry(Date.now()))) return "collided";
-  return await advanceProject(manager, projectId, deadline);
+  return await advanceProject(manager, projectId, deadline, lease);
 }
 
 export type PoolStepResult = {
@@ -270,7 +287,7 @@ function tally(outcomes: string[]): Record<string, number> {
 // One cron tick. Advances every in-flight project concurrently, then starts as many new ones
 // as the deficit and the caps allow.
 export async function stepProjectPool(): Promise<PoolStepResult> {
-  const result = await withProjectPoolLease(async () => {
+  const result = await withProjectPoolLease(async (lease) => {
     const deadline = performance.now() + TICK_BUDGET_MILLIS;
     const size = getConfig().gcp.projectPoolSize;
     const manager = createTenantProjectManager();
@@ -280,8 +297,9 @@ export async function stepProjectPool(): Promise<PoolStepResult> {
       // One project's failure must not abandon the others: advanceProject records what it can
       // and this is the backstop for a store failure it could not.
       try {
-        return await advanceProject(manager, projectId, deadline);
+        return await advanceProject(manager, projectId, deadline, lease);
       } catch (error) {
+        if (error instanceof ReconciliationLeaseLostError) throw error;
         console.error(`advancing pooled project ${JSON.stringify(projectId)} failed`, error);
         return "failed" as const;
       }
@@ -289,15 +307,17 @@ export async function stepProjectPool(): Promise<PoolStepResult> {
 
     // Recount rather than deriving from the outcomes above: a concurrent claim can consume a
     // ready project between the two reads, and over-creating is the expensive mistake here.
+    await lease.assertOwned();
     const after = await listPoolProjects();
     const ready = after.filter(({ entry }) => entry.state === "ready").length;
     const stillInFlight = after.filter(({ entry }) => isInFlight(entry.state)).length;
     const wanted = Math.min(size - ready - stillInFlight, MAX_IN_FLIGHT - stillInFlight);
-    const allowed = await consumeCreationBudget(wanted, Date.now());
+    const allowed = await consumeCreationBudget(wanted, Date.now(), lease);
     const created = await Promise.all(Array.from({ length: allowed }, async () => {
       try {
-        return await createAndAdvance(manager, deadline);
+        return await createAndAdvance(manager, deadline, lease);
       } catch (error) {
+        if (error instanceof ReconciliationLeaseLostError) throw error;
         console.error("creating a pooled tenant project failed", error);
         return "failed" as const;
       }
@@ -336,7 +356,7 @@ export type PoolReapResult = {
 //     is what bounds listPoolProjects() by POOL SIZE instead of by lifetime tenant count: that
 //     listing is a LIST plus a GET per entry, and it runs on the deploy path.
 export async function reapProjectPool(): Promise<PoolReapResult> {
-  const result = await withProjectPoolLease(async () => {
+  const result = await withProjectPoolLease(async (lease) => {
     const manager = createTenantProjectManager();
     const now = Date.now();
     let condemned = 0;
@@ -345,6 +365,7 @@ export async function reapProjectPool(): Promise<PoolReapResult> {
     let forgotten = 0;
 
     for (const { projectId } of await listPoolProjects()) {
+      await lease.assertOwned();
       // Re-read under the lease so a decision is never made on a stale entry, and so the CAS
       // below fences a claim that landed since the listing.
       const current = await readPoolProject(projectId);
@@ -353,13 +374,16 @@ export async function reapProjectPool(): Promise<PoolReapResult> {
 
       const stalled = isInFlight(entry.state) && now - entry.created_at_millis > STALL_MILLIS;
       if (stalled) {
+        await lease.assertOwned();
         if (!await updatePoolProject(projectId, { ...entry, state: "condemned", state_since_millis: now }, etag)) continue;
         condemned += 1;
       }
       if (stalled || entry.state === "condemned") {
         // GCP first, THEN the record: dropping the record first and freezing would leave the
         // billed project with nothing left that knows to delete it.
+        await lease.assertOwned();
         await manager.deleteDisposableProject(projectId);
+        await lease.assertOwned();
         const latest = await readPoolProject(projectId);
         if (latest !== null && await deletePoolProject(projectId, latest.etag)) deleted += 1;
         continue;
@@ -368,12 +392,14 @@ export async function reapProjectPool(): Promise<PoolReapResult> {
       if (entry.state !== "claimed" || entry.ns === null) continue;
       const assigned = await readTenantProjectAssignment(entry.ns);
       if (assigned === projectId) {
+        await lease.assertOwned();
         if (await deletePoolProject(projectId, etag)) forgotten += 1;
         continue;
       }
       // The grace is what makes this safe: a live claim is a claim write followed by an
       // assignment write, and in between it looks exactly like a stranded one.
       if (now - entry.state_since_millis <= CLAIM_GRACE_MILLIS) continue;
+      await lease.assertOwned();
       if (await updatePoolProject(projectId, { ...entry, state: "ready", state_since_millis: now, ns: null }, etag)) restored += 1;
     }
 

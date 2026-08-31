@@ -246,6 +246,21 @@ describe("claiming from the pool", () => {
     expect(assignments.get("ns-1")).toBe("hxc-tena-dev-ns1");
   });
 
+  it("uses and describes an assignment that wins while lazy provisioning is in flight", async () => {
+    seed({ pool: [], size: 0 });
+    const manager = fakeManager();
+    vi.mocked((await import("./store.js")).assignTenantProject).mockImplementationOnce(async () => {
+      assignments.set("ns-1", "hxc-tena-pooled-winner");
+      return "hxc-tena-pooled-winner";
+    });
+
+    const project = await tenantProjectForNamespace("ns-1", manager);
+
+    expect(project.projectId).toBe("hxc-tena-pooled-winner");
+    expect(manager.deleteDisposableProject).toHaveBeenCalledWith("hxc-tena-dev-ns1");
+    expect(manager.describeActiveProject).toHaveBeenCalledWith("hxc-tena-pooled-winner");
+  });
+
   it("puts a claim back when it lost the assignment race for its own namespace", async () => {
     seed({ pool: [["hxc-tena-ready", entry("ready")], ["hxc-tena-winner", entry("ready")]] });
     const manager = fakeManager();

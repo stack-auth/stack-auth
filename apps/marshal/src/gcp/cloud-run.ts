@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { GcpApiError, GcpClient, type GcpOperation } from "./client.js";
+import { GcpApiError, GcpClient, parseGcpOperation } from "./client.js";
 
 export type CloudRunConfig = {
   projectId: string,
@@ -34,11 +34,6 @@ export type CloudRunObservation = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseOperation(value: unknown): GcpOperation {
-  if (!isRecord(value) || typeof value.name !== "string") throw new Error("Cloud Run returned an invalid operation");
-  return { name: value.name, ...(typeof value.done === "boolean" ? { done: value.done } : {}) };
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -132,7 +127,10 @@ export class CloudRunClient {
         timeout: "300s",
         vpcAccess: {
           networkInterfaces: [{ network: this.config.network, subnetwork: this.config.subnetwork }],
-          egress: "ALL_TRAFFIC",
+          // Marshal provisions no Cloud NAT. Route only private ranges through Direct VPC
+          // egress so service-to-service/VM traffic stays private while ordinary Internet
+          // calls keep using Cloud Run's managed outbound path.
+          egress: "PRIVATE_RANGES_ONLY",
         },
         containers: [{
           image: spec.image,
@@ -154,7 +152,7 @@ export class CloudRunClient {
       // (an empty `env` array does remove the container's environment, also verified).
       ? await this.client.request(this.serviceUrl(spec.name), { method: "PATCH", body: { ...service, name: resourceName } })
       : await this.client.request(`https://run.googleapis.com/v2/projects/${this.config.projectId}/locations/${this.config.region}/services?serviceId=${encodeURIComponent(spec.name)}`, { method: "POST", body: service });
-    await this.client.waitForOperation(parseOperation(result), { apiBaseUrl: "https://run.googleapis.com/v2/", timeoutMillis: 10 * 60 * 1000 });
+    await this.client.waitForOperation(parseGcpOperation(result), { apiBaseUrl: "https://run.googleapis.com/v2/", timeoutMillis: 10 * 60 * 1000 });
     const observation = await this.waitForReadyRevision(spec.name, spec.revision);
     if (!observation.ready) throw new GcpApiError(502, resourceName, observation.error ?? "Cloud Run service did not become ready");
     if (observation.latestReadyRevision === null) throw new Error(`ready Cloud Run service ${resourceName} reported no ready revision`);
@@ -181,7 +179,7 @@ export class CloudRunClient {
 
   async delete(serviceName: string): Promise<void> {
     const result = await this.client.request(this.serviceUrl(serviceName), { method: "DELETE", allow404: true });
-    if (result !== null) await this.client.waitForOperation(parseOperation(result), { apiBaseUrl: "https://run.googleapis.com/v2/", timeoutMillis: 10 * 60 * 1000 });
+    if (result !== null) await this.client.waitForOperation(parseGcpOperation(result), { apiBaseUrl: "https://run.googleapis.com/v2/", timeoutMillis: 10 * 60 * 1000 });
   }
 }
 

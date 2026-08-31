@@ -5,6 +5,7 @@ let pending: { value: PendingDomainClaim, etag: string } | null = null;
 let claimed: { value: DomainClaim, etag: string } | null = null;
 const hasDomainVerificationRecord = vi.hoisted(() => vi.fn());
 const claimDomain = vi.hoisted(() => vi.fn());
+const beginDomainClaimDeletion = vi.hoisted(() => vi.fn());
 const readDomainClaimVersioned = vi.hoisted(() => vi.fn());
 const releaseDomainClaim = vi.hoisted(() => vi.fn());
 const ensureDomainGateway = vi.hoisted(() => vi.fn());
@@ -50,6 +51,7 @@ vi.mock("./store.js", () => ({
     return true;
   },
   claimDomain,
+  beginDomainClaimDeletion,
   rewriteDomainClaim: vi.fn(),
   releaseDomainClaim,
 }));
@@ -62,6 +64,7 @@ describe("custom-domain ownership", () => {
     claimed = null;
     hasDomainVerificationRecord.mockReset();
     claimDomain.mockReset();
+    beginDomainClaimDeletion.mockReset();
     readDomainClaimVersioned.mockReset();
     releaseDomainClaim.mockReset();
     ensureDomainGateway.mockReset();
@@ -77,6 +80,11 @@ describe("custom-domain ownership", () => {
     claimDomain.mockImplementation(async (value: DomainClaim) => {
       claimed = { value, etag: "claim-etag" };
       return true;
+    });
+    beginDomainClaimDeletion.mockImplementation(async (current: { value: DomainClaim, etag: string }, deletingAtMillis: number) => {
+      const deleting = { value: { ...current.value, deleting_at_millis: deletingAtMillis }, etag: "deleting-etag" };
+      claimed = deleting;
+      return deleting;
     });
     releaseDomainClaim.mockImplementation(async () => {
       claimed = null;
@@ -116,7 +124,7 @@ describe("custom-domain ownership", () => {
     expect(deleteDomain).not.toHaveBeenCalled();
   });
 
-  it("releases the current claim before deleting its provider route", async () => {
+  it("keeps a tombstone until its provider route has been deleted", async () => {
     const order: string[] = [];
     claimed = { value: { hostname: "app.example.com", ns: "tenant-a", service_key: "web", claimed_at_millis: 1 }, etag: "claim-etag" };
     releaseDomainClaim.mockImplementationOnce(async () => {
@@ -127,8 +135,23 @@ describe("custom-domain ownership", () => {
     deleteDomain.mockImplementationOnce(async () => {
       order.push("provider-delete");
     });
+    beginDomainClaimDeletion.mockImplementationOnce(async (current: { value: DomainClaim, etag: string }) => {
+      order.push("tombstone");
+      const deleting = { value: { ...current.value, deleting_at_millis: 2 }, etag: "deleting-etag" };
+      claimed = deleting;
+      return deleting;
+    });
 
     await expect(detachDomain("tenant-a", "app.example.com", "web")).resolves.toBeUndefined();
-    expect(order).toEqual(["release", "provider-delete"]);
+    expect(order).toEqual(["tombstone", "provider-delete", "release"]);
+  });
+
+  it("retains the deletion tombstone when provider cleanup fails so retry can resume", async () => {
+    claimed = { value: { hostname: "app.example.com", ns: "tenant-a", service_key: "web", claimed_at_millis: 1 }, etag: "claim-etag" };
+    deleteDomain.mockRejectedValueOnce(new Error("provider unavailable"));
+
+    await expect(detachDomain("tenant-a", "app.example.com", "web")).rejects.toThrow("provider unavailable");
+    expect(claimed.value.deleting_at_millis).toBeDefined();
+    expect(releaseDomainClaim).not.toHaveBeenCalled();
   });
 });

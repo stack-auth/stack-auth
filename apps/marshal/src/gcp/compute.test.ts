@@ -22,6 +22,10 @@ describe("Compute Engine startup scripts", () => {
     expect(script).toContain("mkdir -p /mnt/disks/hexclave-data");
     expect(script).toContain("'--log-driver=gcplogs'");
     expect(script).toContain("MARSHAL_SERVICE_READY $REVISION");
+    expect(script).toContain("docker inspect --format '{{.State.Running}}' marshal-service");
+    expect(script).toContain("/dev/tcp/127.0.0.1/8080");
+    expect(script).toContain("/dev/tcp/127.0.0.1/9000");
+    expect(script.indexOf("MARSHAL_SERVICE_NOT_READY")).toBeLessThan(script.indexOf("MARSHAL_SERVICE_READY $REVISION"));
     expect(script).toContain("MARSHAL_IMAGE_REF $RESOLVED_IMAGE");
     expect(script).not.toContain("configure-docker");
   });

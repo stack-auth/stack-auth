@@ -336,6 +336,9 @@ export type DomainClaim = {
   ns: string,
   service_key: string,
   claimed_at_millis: number,
+  // Present while provider cleanup is in progress. The global reservation remains until
+  // cleanup succeeds, so a failed delete can be retried without a new owner racing it.
+  deleting_at_millis?: number,
 };
 
 // A request to attach a hostname is tenant-local until DNS proves control. Keeping pending
