@@ -92,7 +92,7 @@ function SidebarResizer() {
       aria-valuemax={MAX_SIDEBAR_WIDTH}
       aria-valuemin={MIN_SIDEBAR_WIDTH}
       aria-valuenow={width}
-      className="resizer-grip absolute inset-y-0 right-0 z-30 hidden group-data-[state=expanded]/sidebar:block"
+      className="resizer-grip absolute inset-y-0 right-0 z-30 hidden w-2 select-none group-data-[state=expanded]/sidebar:block"
       onDoubleClick={() => commitWidth(DEFAULT_SIDEBAR_WIDTH)}
       ref={handleRef}
       onKeyDown={(event) => {

@@ -171,12 +171,10 @@
   }
 }
 
-/* The sidebar's drag handle widens its hit area far beyond its 1px visual line. */
+/* The drag handle is a wide invisible strip inside the sidebar panel; its 1px visual line is drawn
+   by the pseudo-element on the trailing edge. The strip must not grow past the panel, which clips
+   overflow, and it must not set `position` itself — placement comes from the element's utilities. */
 .resizer-grip {
-  position: relative;
-  flex: 0 0 auto;
-  width: 1px;
-  background: var(--border);
   cursor: col-resize;
   touch-action: none;
 }
@@ -184,13 +182,16 @@
 .resizer-grip::after {
   content: "";
   position: absolute;
-  inset: 0 -4px;
-  background: transparent;
+  inset-block: 0;
+  right: 0;
+  width: 1px;
+  background: var(--border);
   transition: background 120ms ease;
 }
 
 .resizer-grip:hover::after,
 .resizer-grip:focus-visible::after {
+  width: 2px;
   background: rgb(var(--primary) / 0.55);
 }
 
@@ -200,6 +201,7 @@ body.resizing-sidebar {
 }
 
 body.resizing-sidebar .resizer-grip::after {
+  width: 2px;
   background: rgb(var(--primary) / 0.55);
 }
 
