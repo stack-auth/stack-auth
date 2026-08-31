@@ -2,6 +2,11 @@
 
 ---
 
+## 8/28/26
+
+- The CLI can now access and analyze session replays with AI.
+- Fixed `getUser({ or: "redirect" })` crashing in React server components.
+
 ## 8/21/26
 
 ![AI answering a natural language query in Cmd+K](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-cmdk-ai-search.gif)
