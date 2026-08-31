@@ -438,13 +438,17 @@ describe("Stack CLI", () => {
       fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
       fs.mkdirSync(path.join(deployDir, "db"));
       fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
+      // api has neither a Dockerfile nor an image, but declares commands — so it
+      // is built on the Hexclave base image instead of being auto-detected.
+      fs.mkdirSync(path.join(deployDir, "api"));
+      fs.writeFileSync(path.join(deployDir, "api", "server.js"), "console.log('api');\n");
       // Two files: the project config, and the deploy file holding the services.
       const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"),
         `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };\n`);
       fs.writeFileSync(path.join(deployDir, "hexclave.deploy.ts"), [
-        // The `id` export names this deployment source — which deploy file (and
-        // so which repository) these services belong to.
-        'export const id = "cli-e2e";',
+        // The `deploymentGroupId` export names this deployment group — which
+        // deploy file (and so which repository) these services belong to.
+        'export const deploymentGroupId = "cli-e2e";',
         "export const deploy = ({ isDev, secret, service, hexclave }: any) => ({",
         "  services: {",
         "    web: {",
@@ -460,6 +464,15 @@ describe("Stack CLI", () => {
         "      },",
         "    },",
         '    db: { type: "serverless", ports: { 5432: { protocol: "http" } }, rootDirectory: "./db" },',
+        "    api: {",
+        '      type: "serverless",',
+        '      ports: { 8080: { protocol: "http" } },',
+        '      rootDirectory: "./api",',
+        // No image and no dockerfilePath: the base-image build, where the start
+        // command is what makes the result runnable at all.
+        '      buildCommand: "node -e \\"process.exit(0)\\"",',
+        '      startCommand: "node server.js",',
+        "    },",
         "  },",
         "});",
         "",
@@ -482,6 +495,7 @@ describe("Stack CLI", () => {
       expect(summary.status).toBe("deployed");
       expect(summary.services.db.status).toBe("deployed");
       expect(summary.services.web.status).toBe("deployed");
+      expect(summary.services.api.status).toBe("deployed");
       expect(summary.services.db.url).toBeNull();
       expect(summary.services.web.url).toBeNull();
       // Both services shipped from ONE deploy — one upload, one build. Assert
@@ -504,7 +518,7 @@ describe("Stack CLI", () => {
       // else, so the default was never persisted.
       const execRes = await runCli([
         "exec", "--cloud-project-id", createdProjectId,
-        "const p = await hexclaveServerApp.getProject(); const services = await p.listDeploymentServices(); const svc = services.find(s => s.id === 'web'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI'), webDockerfile: svc.dockerfile_path, dbDockerfile: services.find(s => s.id === 'db').dockerfile_path });",
+        "const p = await hexclaveServerApp.getProject(); const services = await p.listDeploymentServices(); const svc = services.find(s => s.id === 'web'); const api = services.find(s => s.id === 'api'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI'), webDockerfile: svc.dockerfile_path, dbDockerfile: services.find(s => s.id === 'db').dockerfile_path, apiBuild: api.build_command, apiStart: api.start_command, apiRoot: api.root_directory, webStart: svc.start_command });",
       ]);
       if (execRes.exitCode !== 0) {
         throw new Error(`exec exited ${execRes.exitCode}. stderr: ${execRes.stderr}`);
@@ -520,12 +534,19 @@ describe("Stack CLI", () => {
         webDockerfile: "web/Dockerfile",
         // No dockerfilePath at all: db is built by Railpack auto-detection.
         dbDockerfile: null,
+        // The commands reach the server; a service that declares none has null,
+        // which is what keeps "auto-detected" distinguishable from "told what to
+        // do" all the way through.
+        apiBuild: 'node -e "process.exit(0)"',
+        apiStart: "node server.js",
+        apiRoot: "api",
+        webStart: null,
       });
 
       // A secret with NO default and no stored value fails before anything is
       // packaged, naming every key that needs a dashboard value.
       fs.writeFileSync(path.join(deployDir, "missing-secret.deploy.ts"), [
-        'export const id = "cli-e2e-missing-secret";',
+        'export const deploymentGroupId = "cli-e2e-missing-secret";',
         "export const deploy = ({ secret }: any) => ({",
         "  services: {",
         '    web: { type: "serverless", ports: { 3000: { protocol: "http" } }, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',

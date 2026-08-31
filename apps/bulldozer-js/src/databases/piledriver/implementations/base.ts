@@ -418,6 +418,9 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
           throw error;
         }
       },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
+      },
       [isPiledriverHeapObjectSymbol]: true,
     };
     heapKeysAndSeqByHeapObjects.set(heapObj, Promise.resolve({ key, seq }));
@@ -927,6 +930,9 @@ export function declareBasePiledriverDatabase(lowLevelDb: LowLevelDatabase, opti
     },
     waitUntilReplicated(seq) {
       return traceSpan("bulldozer-js.piledriver.waitUntilReplicated", async () => await lowLevelDb.waitUntilReplicated(seq));
+    },
+    waitUntilConsistent(seq) {
+      return traceSpan("bulldozer-js.piledriver.waitUntilConsistent", async () => await lowLevelDb.waitUntilConsistent(seq));
     },
     async debugSnapshot() {
       return await traceSpan("bulldozer-js.piledriver.debugSnapshot", async () => ({

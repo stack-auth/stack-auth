@@ -42,6 +42,8 @@ const corsAllowedResponseHeaders = [
   "content-type",
   "x-stack-actual-status",
   "x-stack-known-error",
+  // Needed so browser SDKs can tell smart-wrapped 4xx from Next/proxy junk and avoid false failover.
+  "x-stack-request-id",
 ];
 
 function withHexclaveHeaderAliases(headers: string[]): string[] {

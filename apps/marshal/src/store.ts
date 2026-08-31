@@ -1,6 +1,6 @@
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
+import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, UploadPartCommand, type ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getConfig, MAX_UPLOAD_BYTES, UPLOAD_EXPIRY_SECONDS } from "./config.js";
+import { getConfig, MAX_UPLOAD_BYTES, MULTIPART_UPLOAD_THRESHOLD_BYTES, UPLOAD_EXPIRY_SECONDS, UPLOAD_PART_SIZE_BYTES } from "./config.js";
 import { decryptString, encryptString } from "./spec-crypto.js";
 import type { DomainClaim, EnvValue, ReconciliationLease, ServiceSpec, StoredDeployment, StoredSpec } from "./types.js";
 
@@ -320,6 +320,73 @@ export async function createUploadSlot(ns: string, id: string): Promise<{ upload
 
 export function uploadObjectKey(ns: string, id: string): string {
   return `uploads/${ns}/${id}.tar.gz`;
+}
+
+/**
+ * The multipart half of an upload slot: everything the client needs to send the
+ * source in parts and assemble it, as presigned URLs.
+ *
+ * WHY THE CLIENT DRIVES THE WHOLE LIFECYCLE. `CreateMultipartUpload` is the only
+ * step that has to run here — it is what mints the upload id. Uploading a part,
+ * completing and aborting are all ordinary S3 operations that SigV4 can presign
+ * (verified against R2), so handing the client signed URLs for them keeps this
+ * to one Marshal route and no new backend route: the alternative was a
+ * create/complete/abort endpoint on both services relaying calls this client can
+ * make for itself.
+ */
+export type MultipartUploadSlot = {
+  uploadId: string,
+  partSizeBytes: number,
+  /** One presigned PUT per part, in part-number order (1-based on the wire). */
+  partUrls: string[],
+  /** POST the `<CompleteMultipartUpload>` part list here, as application/xml. */
+  completeUrl: string,
+  /** DELETE here to discard the parts when the upload is abandoned. */
+  abortUrl: string,
+};
+
+/**
+ * Whether a source of `sizeBytes` should be uploaded in parts, and how many.
+ * Null when a single PUT is the better trade — see MULTIPART_UPLOAD_THRESHOLD_BYTES.
+ *
+ * An unknown or over-limit size gets no multipart slot: the size gate at consume
+ * time is what rejects an oversize source, and starting a multipart upload for
+ * one would just leave parts to be cleaned up.
+ */
+export function multipartPartCount(sizeBytes: number | undefined): number | null {
+  if (sizeBytes === undefined || !Number.isSafeInteger(sizeBytes)) return null;
+  if (sizeBytes <= MULTIPART_UPLOAD_THRESHOLD_BYTES || sizeBytes > MAX_UPLOAD_BYTES) return null;
+  return Math.ceil(sizeBytes / UPLOAD_PART_SIZE_BYTES);
+}
+
+/**
+ * Starts a multipart upload against the slot's key and presigns every step of it.
+ *
+ * Costs one round trip to the store and leaves state there, so it is only called
+ * when the source is actually big enough to want it: an upload started and never
+ * completed holds its parts until the bucket's AbortIncompleteMultipartUpload
+ * lifecycle rule sweeps them, and those parts are billed in the meantime.
+ */
+export async function createMultipartUploadSlot(ns: string, id: string, partCount: number): Promise<MultipartUploadSlot> {
+  const Bucket = bucket();
+  const Key = uploadObjectKey(ns, id);
+  const created = await withTransientRetry(async () => await s3().send(new CreateMultipartUploadCommand({
+    Bucket,
+    Key,
+    ContentType: "application/gzip",
+  })));
+  const UploadId = created.UploadId;
+  if (UploadId === undefined) throw new Error("the object store started a multipart upload without returning an id");
+  // Presigning is local HMAC work, not a request — the whole set costs nothing.
+  const partUrls = await Promise.all(Array.from({ length: partCount }, async (_unused, index) =>
+    await getSignedUrl(s3(), new UploadPartCommand({ Bucket, Key, UploadId, PartNumber: index + 1 }), { expiresIn: UPLOAD_EXPIRY_SECONDS })));
+  return {
+    uploadId: UploadId,
+    partSizeBytes: UPLOAD_PART_SIZE_BYTES,
+    partUrls,
+    completeUrl: await getSignedUrl(s3(), new CompleteMultipartUploadCommand({ Bucket, Key, UploadId }), { expiresIn: UPLOAD_EXPIRY_SECONDS }),
+    abortUrl: await getSignedUrl(s3(), new AbortMultipartUploadCommand({ Bucket, Key, UploadId }), { expiresIn: UPLOAD_EXPIRY_SECONDS }),
+  };
 }
 
 // max_bytes on upload slots is advisory — R2 does not enforce presigned constraints
