@@ -18,7 +18,7 @@ function CopyBtn({ text, size = "xs" }: { text: string; size?: "xs" | "sm" }) {
       className={clsx(
         "shrink-0 rounded transition-colors hover:transition-none",
         size === "xs" ? "p-0.5" : "p-1",
-        copied ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+        copied ? "text-success" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
       )}
       title={copied ? "Copied!" : "Copy"}
       type="button"
@@ -39,7 +39,7 @@ const InlineCode = memo(function InlineCode({ children }: { children?: React.Rea
 
   return (
     <code className="inline-flex max-w-full items-center gap-1 break-all rounded bg-foreground/[0.07] px-1.5 py-0.5 font-mono text-[11px] leading-relaxed">
-      <span className={clsx("min-w-0", isUrl ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
+      <span className={clsx("min-w-0", isUrl ? "text-chart-1" : "text-foreground")}>
         {text}
       </span>
       {showCopy && <CopyBtn text={text} size="xs" />}
@@ -52,8 +52,8 @@ const CodeBlock = memo(function CodeBlock({ children, className }: { children?: 
   const language = className?.replace("language-", "").toUpperCase() ?? "";
 
   return (
-    <div className="group relative my-2.5 overflow-hidden rounded-lg bg-foreground/[0.04] ring-1 ring-foreground/[0.08]">
-      <div className="flex items-center justify-between border-b border-black/[0.06] bg-foreground/[0.03] px-3 py-1.5 dark:border-white/[0.06]">
+    <div className="group relative my-2.5 overflow-hidden rounded-lg bg-panel-raised ring-1 ring-foreground/[0.08]">
+      <div className="flex items-center justify-between border-b border-border bg-panel px-3 py-1.5">
         <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
           {language || "CODE"}
         </span>
@@ -72,7 +72,7 @@ const SmartLink = memo(function SmartLink({ href, children }: { href?: string; c
   return (
     <a
       href={href}
-      className="break-all text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+      className="break-all text-chart-1 underline-offset-2 hover:underline"
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -114,10 +114,10 @@ export const markdownComponents = {
     </div>
   ),
   thead: ({ children }: { children?: React.ReactNode }) => (
-    <thead className="border-b border-black/[0.06] bg-foreground/[0.04] dark:border-white/[0.06]">{children}</thead>
+    <thead className="border-b border-border bg-panel-raised">{children}</thead>
   ),
   tbody: ({ children }: { children?: React.ReactNode }) => (
-    <tbody className="divide-y divide-black/[0.06] dark:divide-white/[0.06]">{children}</tbody>
+    <tbody className="divide-y divide-border">{children}</tbody>
   ),
   tr: ({ children }: { children?: React.ReactNode }) => <tr>{children}</tr>,
   th: ({ children }: { children?: React.ReactNode }) => (
@@ -136,7 +136,7 @@ export const markdownComponents = {
     <h3 className="mb-1 mt-2.5 text-[13px] font-semibold text-foreground first:mt-0">{children}</h3>
   ),
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="my-2 border-l-2 border-purple-500/60 pl-3 italic text-muted-foreground">{children}</blockquote>
+    <blockquote className="my-2 border-l-2 border-chart-1/60 pl-3 italic text-muted-foreground">{children}</blockquote>
   ),
   hr: () => <hr className="my-3 border-border" />,
 };

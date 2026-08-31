@@ -5,15 +5,14 @@ import { Tooltip } from "./surfaces";
 
 /** Shared class strings for the dense data tables (header row, body row, selected row). */
 export const tableClasses = {
-  headRow: "border-b border-black/[0.06] text-[10px] font-medium uppercase tracking-wider text-muted-foreground dark:border-white/[0.06]",
+  headRow: "border-b border-border text-[10px] font-semibold uppercase tracking-[0.09em] text-faint",
   bodyRow: cn(
-    "border-b border-black/[0.04] dark:border-white/[0.04]",
-    "cursor-pointer transition-colors hover:transition-none hover:bg-foreground/[0.04]",
-    "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+    "border-b border-border",
+    "cursor-pointer transition-colors hover:transition-none hover:bg-panel",
   ),
-  selectedRow: "bg-foreground/[0.06]",
-  cell: "py-2 pr-3 text-foreground",
-  mutedCell: "py-2 pr-3 text-muted-foreground",
+  selectedRow: "bg-panel-raised",
+  cell: "py-[7px] pr-3 text-[12px] text-foreground",
+  mutedCell: "py-[7px] pr-3 text-[12px] text-muted-foreground",
 } as const;
 
 /** Sortable `<th>`: click to toggle direction, optional hover explainer for the metric. */

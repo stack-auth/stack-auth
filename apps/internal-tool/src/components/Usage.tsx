@@ -351,14 +351,14 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
             <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
           </p>
           {connectionErrorMessage != null && connectionErrorMessage !== "" && (
-            <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 font-mono text-xs">
+            <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-destructive/30 bg-destructive/10 p-3 font-mono text-xs">
               {connectionErrorMessage}
             </pre>
           )}
         </Alert>
       )}
       {/* Filter bar */}
-      <div className="sticky top-0 z-10 space-y-2 rounded-xl border border-black/[0.06] bg-card p-3 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-xl dark:border-white/[0.06] dark:ring-white/[0.04]">
+      <div className="sticky top-0 z-10 space-y-2 rounded-2xl bg-surface p-2.5 ring-1 ring-inset ring-border">
         <div className="flex items-center gap-1.5 flex-wrap">
           <FieldLabel>Range</FieldLabel>
           {(["24h", "7d", "30d", "all"] as TimeRange[]).map(r => (
@@ -431,7 +431,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Errors"
           value={stats.errorCalls.toLocaleString()}
-          valueClassName={stats.errorCalls > 0 ? "text-red-600 dark:text-red-400" : undefined}
+          valueClassName={stats.errorCalls > 0 ? "text-destructive" : undefined}
           tooltip="Requests that failed. Counted as rows where errorMessage is non-empty (upstream provider error, timeout, or client abort)."
         />
         <MetricCard
@@ -447,7 +447,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Cache Hit %"
           value={stats.inputTokens > 0 ? `${Math.round((stats.cachedInputTokens / stats.inputTokens) * 100)}%` : "—"}
-          valueClassName={stats.inputTokens > 0 && stats.cachedInputTokens / stats.inputTokens > 0.5 ? "text-emerald-600 dark:text-emerald-400" : undefined}
+          valueClassName={stats.inputTokens > 0 && stats.cachedInputTokens / stats.inputTokens > 0.5 ? "text-success" : undefined}
           tooltip="Share of input tokens served from cache vs. processed fresh. Computed as sum(cachedInputTokens) / sum(inputTokens). Higher = caching is doing its job."
         />
         <MetricCard
@@ -458,7 +458,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
         <MetricCard
           label="Cache Savings"
           value={`${stats.cacheSavingsUsd >= 0 ? "+" : "−"}${formatUsd(Math.abs(stats.cacheSavingsUsd))}`}
-          valueClassName={stats.cacheSavingsUsd >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}
+          valueClassName={stats.cacheSavingsUsd >= 0 ? "text-success" : "text-destructive"}
           tooltip="Sum of cache_discount values across filtered requests. Positive (green) means caching net-saved money; negative (red) means cold-start writes outweighed reads. Filter by systemPromptId to judge whether caching is worth keeping on a specific flow."
         />
         <MetricCard
@@ -645,14 +645,14 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                     <td className="py-2 pr-3 text-right font-mono tabular-nums text-foreground">{row.outputTokens?.toLocaleString() ?? "—"}</td>
                     <td className="py-2 pr-3 text-right font-mono tabular-nums">
                       {row.cachedInputTokens != null && row.cachedInputTokens > 0 ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">{row.cachedInputTokens.toLocaleString()}</span>
+                        <span className="text-success">{row.cachedInputTokens.toLocaleString()}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="py-2 pr-3 text-right font-mono tabular-nums">
                       {row.cacheCreationTokens != null && row.cacheCreationTokens > 0 ? (
-                        <span className="text-orange-600 dark:text-orange-400">{row.cacheCreationTokens.toLocaleString()}</span>
+                        <span className="text-warning">{row.cacheCreationTokens.toLocaleString()}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -662,7 +662,7 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                         const savings = row.cacheDiscountUsd;
                         if (savings == null) return <span className="text-muted-foreground">—</span>;
                         const sign = savings >= 0 ? "+" : "−";
-                        const color = savings >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+                        const color = savings >= 0 ? "text-success" : "text-destructive";
                         return <span className={color}>{sign}{formatUsd(Math.abs(savings))}</span>;
                       })()}
                     </td>

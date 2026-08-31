@@ -2,82 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens mirrored from apps/dashboard/src/app/globals.css so the internal tool renders in
-   the same light/dark palette as the dashboard. The tool can't import the dashboard's stylesheet
-   (separate Next app, separate Tailwind build), so the token values are duplicated here; keep them
-   in sync when the dashboard palette changes. */
+/* Design tokens ported from the Hexclank observability dashboard
+   (hexclave-imessage-agent/observability/app/globals.css): a carbon mono palette with washed
+   translucent panels instead of hard borders — a darker sidebar canvas with a slightly lighter
+   main stage inset into it.
+
+   The source palette is dark-only. `.light` mirrors it by inverting the canvas relationship
+   (sidebar slightly darker than the stage, panels tinted with black instead of white) so this app
+   keeps its light/dark/system toggle.
+
+   Channel-triplet vars exist for every color that callers tint with an opacity modifier
+   (`bg-muted/70`, `bg-foreground/[0.06]`); the already-translucent panel/border tokens are plain
+   colors because tinting a tint is meaningless. */
 @layer base {
   :root {
-    --background: 230 45% 86%;
-    --foreground: 240 10% 3.9%;
+    --sidebar: 16 16 16;
+    --background: 19 19 19;
+    --surface: 28 28 28;
+    --surface-raised: 38 38 38;
+    --surface-overlay: 48 48 48;
+    --panel: rgb(255 255 255 / 0.03);
+    --panel-raised: rgb(255 255 255 / 0.05);
 
-    --card: 0 0% 100% / 0.5;
-    --card-foreground: 240 10% 3.9%;
+    --foreground: 250 250 250;
+    --foreground-muted: 185 185 185;
+    --foreground-faint: 143 143 143;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --border: rgb(255 255 255 / 0.06);
+    --border-strong: rgb(255 255 255 / 0.1);
 
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
+    --primary: 240 240 240;
+    --primary-foreground: 19 19 19;
 
-    --secondary: 245 30% 90%;
-    --secondary-foreground: 240 5.9% 10%;
+    --success: 99 201 139;
+    --danger: 239 106 106;
+    --warning: 232 195 92;
 
-    --muted: 250 35% 92%;
-    --muted-foreground: 232 12% 38%;
-
-    --accent: 248 32% 91%;
-    --accent-foreground: 240 5.9% 10%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-
-    --success: 120 40% 50%;
-    --success-foreground: 0 0% 98%;
-
-    --border: 230 25% 78%;
-    --input: 230 20% 72%;
-    --ring: 240 10% 3.9%;
-
-    --radius: 0.5rem;
-
-    --page-ambient:
-      linear-gradient(145deg, hsl(232 42% 88%) 0%, hsl(228 48% 84%) 40%, hsl(244 38% 86%) 100%);
+    /* Categorical hues for the charts. Distinct enough to stay legible at 6px tall. */
+    --chart-1: 78 167 252;
+    --chart-2: 154 160 255;
+    --chart-3: 99 201 139;
+    --chart-4: 232 195 92;
+    --chart-5: 239 106 106;
+    --chart-6: 168 168 168;
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+  :root.light {
+    --sidebar: 242 242 243;
+    --background: 251 251 252;
+    --surface: 244 244 245;
+    --surface-raised: 233 233 236;
+    --surface-overlay: 255 255 255;
+    --panel: rgb(0 0 0 / 0.035);
+    --panel-raised: rgb(0 0 0 / 0.06);
 
-    --card: 240 10% 9.4% / 0.5;
-    --card-foreground: 0 0% 98%;
+    --foreground: 24 24 25;
+    --foreground-muted: 92 92 96;
+    --foreground-faint: 129 129 135;
 
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --border: rgb(0 0 0 / 0.08);
+    --border-strong: rgb(0 0 0 / 0.14);
 
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
+    --primary: 28 28 28;
+    --primary-foreground: 250 250 250;
 
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
+    --success: 23 134 74;
+    --danger: 201 59 59;
+    --warning: 154 117 17;
 
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 98%;
-
-    --success: 120 40% 50%;
-    --success-foreground: 0 0% 98%;
-
-    --border: 240 3.7% 35.9%;
-    --input: 240 3.7% 25.9%;
-    --ring: 240 4.9% 83.9%;
-
-    --page-ambient: none;
+    --chart-1: 37 116 205;
+    --chart-2: 96 104 214;
+    --chart-3: 23 134 74;
+    --chart-4: 154 117 17;
+    --chart-5: 201 59 59;
+    --chart-6: 110 110 116;
   }
 }
 
@@ -85,8 +83,70 @@
   * {
     @apply border-border;
 
+    min-width: 0;
+  }
+
+  html {
+    background: rgb(var(--sidebar));
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-sidebar text-foreground antialiased;
+
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    /* The reference dashboard's UI text is small and tightly tracked. */
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: -0.006em;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* Avoid iOS tap-highlight flashing on dense dashboard chrome. */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    font-weight: 590;
+    letter-spacing: -0.02em;
+  }
+
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--primary));
+    outline-offset: 1px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: rgb(var(--primary) / 0.35);
+    color: rgb(var(--foreground));
+  }
+}
+
+@layer utilities {
+  /* Numeric columns only line up if the digits share a width. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer base {
+  * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--foreground) / 0.22) transparent;
+    scrollbar-color: var(--border-strong) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -99,24 +159,91 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--foreground) / 0.18);
-    border-radius: 9999px;
+    background: var(--border-strong);
     border: 2px solid transparent;
-    background-clip: padding-box;
+    background-clip: content-box;
+    border-radius: 999px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--foreground) / 0.28);
+    background: rgb(var(--foreground-faint) / 0.7);
+    background-clip: content-box;
   }
+}
 
-  body {
-    @apply bg-background text-foreground antialiased;
+/* The sidebar's drag handle widens its hit area far beyond its 1px visual line. */
+.resizer-grip {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1px;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
 
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background-image: var(--page-ambient);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
-    background-size: cover;
+.resizer-grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.resizer-grip:hover::after,
+.resizer-grip:focus-visible::after {
+  background: rgb(var(--primary) / 0.55);
+}
+
+body.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing-sidebar .resizer-grip::after {
+  background: rgb(var(--primary) / 0.55);
+}
+
+/* Collapsed navigation is a compact control rail, not a squeezed version of the expanded sidebar.
+   Keep one centerline for every hit target, and remove the invisible group label's reserved
+   height. */
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-panel {
+  border-right: 1px solid var(--border);
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-content {
+  gap: 4px;
+  padding: 12px 10px 8px;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-group {
+  padding: 4px 0;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-nav-button {
+  width: 40px;
+  min-height: 40px;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+  border-radius: 10px;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-nav-button[aria-current="page"] {
+  color: rgb(var(--foreground));
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-footer {
+  align-items: center;
+  padding: 8px 10px max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

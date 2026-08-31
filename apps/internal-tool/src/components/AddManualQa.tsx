@@ -44,9 +44,9 @@ export function AddManualQa({ onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-8 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-xl border border-black/[0.06] bg-popover text-popover-foreground shadow-2xl dark:border-white/[0.08]">
+      <div className="w-full max-w-lg rounded-2xl bg-surface-overlay text-foreground shadow-2xl ring-1 ring-inset ring-border-strong">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-3 dark:border-white/[0.06]">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <h2 className="text-sm font-semibold text-foreground">Add Q&A</h2>
           <Button variant="ghost" onClick={onClose}>close</Button>
         </div>
@@ -54,7 +54,7 @@ export function AddManualQa({ onClose, onSave }: {
         {/* Form */}
         <div className="p-5 space-y-4">
           {saved && (
-            <Alert variant="info" className="border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            <Alert variant="info" className="bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
               Saved successfully
             </Alert>
           )}

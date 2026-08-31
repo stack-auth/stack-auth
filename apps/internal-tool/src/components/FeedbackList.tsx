@@ -71,7 +71,7 @@ export function FeedbackList({
           <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
         </p>
         {connectionErrorMessage != null && connectionErrorMessage !== "" && (
-          <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-red-500/10 p-3 font-mono text-xs">
+          <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-destructive/10 p-3 font-mono text-xs">
             {connectionErrorMessage}
           </pre>
         )}
@@ -104,18 +104,18 @@ export function FeedbackList({
       </div>
 
       {visibleRows.length === 0 ? (
-        <EmptyState className="rounded-xl border border-dashed border-border p-4 text-xs">
+        <EmptyState className="rounded-2xl bg-panel p-4 text-xs">
           {rows.length === 0 ? "No feedback yet." : "No feedback matches this filter."}
         </EmptyState>
       ) : (
-        <div className="divide-y divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.06] bg-card ring-1 ring-black/[0.04] backdrop-blur-xl dark:divide-white/[0.06] dark:border-white/[0.06] dark:ring-white/[0.04]">
+        <div className="divide-y divide-border overflow-hidden rounded-2xl bg-panel">
           {visibleRows.map(row => (
             <button
               key={String(row.id)}
               onClick={() => onSelect(row)}
               className={clsx(
                 "flex w-full items-start gap-3 px-3 py-2 text-left transition-colors hover:transition-none",
-                row.id === selectedId ? "bg-foreground/[0.06]" : "hover:bg-foreground/[0.04]",
+                row.id === selectedId ? "bg-foreground/[0.06]" : "hover:bg-panel-raised",
               )}
             >
               <Badge color={categoryColor(row.category)} size="xs" className="mt-0.5 shrink-0">

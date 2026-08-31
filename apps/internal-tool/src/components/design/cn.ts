@@ -1,10 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-/**
- * The dashboard's `cn` also runs tailwind-merge, which isn't a dependency of this app. The design
- * primitives here therefore never rely on later classes overriding earlier ones — callers pass
- * additive classes only.
- */
+/** Same `cn` as the dashboard and the observability reference: later classes win over earlier ones. */
 export function cn(...classes: ClassValue[]): string {
-  return clsx(classes);
+  return twMerge(clsx(classes));
 }

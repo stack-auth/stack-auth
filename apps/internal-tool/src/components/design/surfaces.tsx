@@ -2,11 +2,11 @@
 
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { cn } from "./cn";
+import { Eyebrow } from "./observability";
 
 /**
- * Glassmorphic card matching the dashboard's DesignCard surface (translucent card background,
- * hairline border + ring, soft shadow), but with the tighter padding and uppercase micro-title an
- * internal tool wants.
+ * Washed panel matching the observability dashboard's surfaces: a translucent white/black tint on
+ * the stage rather than a bordered card, with a hairline only under the optional title row.
  */
 export function Card({
   title,
@@ -22,22 +22,16 @@ export function Card({
   bodyClassName?: string,
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-black/[0.06] bg-card shadow-sm ring-1 ring-black/[0.04] backdrop-blur-xl",
-        "dark:border-white/[0.06] dark:ring-white/[0.04]",
-        className,
-      )}
-    >
+    <div className={cn("rounded-2xl bg-panel", className)}>
       {(title != null || actions != null) && (
-        <div className="flex items-center justify-between gap-2 border-b border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
           {title != null && (
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+            <Eyebrow>{title}</Eyebrow>
           )}
           {actions}
         </div>
       )}
-      <div className={cn("p-4", bodyClassName)}>{children}</div>
+      <div className={cn("p-3", bodyClassName)}>{children}</div>
     </div>
   );
 }
@@ -57,15 +51,10 @@ export function MetricCard({
   tooltip?: string,
 }) {
   return (
-    <div
-      className={cn(
-        "group relative rounded-xl border border-black/[0.06] bg-card p-3 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-xl",
-        "dark:border-white/[0.06] dark:ring-white/[0.04]",
-      )}
-    >
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn("text-xl font-bold tabular-nums", valueClassName ?? "text-foreground")}>{value}</p>
-      {subtitle != null && <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>}
+    <div className="group relative min-w-0 rounded-2xl bg-panel px-3 py-2.5">
+      <Eyebrow>{label}</Eyebrow>
+      <p className={cn("tabular mt-1 text-[20px] font-medium tracking-tight", valueClassName ?? "text-foreground")}>{value}</p>
+      {subtitle != null && <p className="mt-1 text-[11px] text-muted-foreground">{subtitle}</p>}
       {tooltip != null && <Tooltip>{tooltip}</Tooltip>}
     </div>
   );
@@ -87,9 +76,8 @@ export function Tooltip({
   return (
     <div
       className={cn(
-        "invisible pointer-events-none absolute top-full z-50 mt-1 w-72 rounded-md px-2.5 py-2 shadow-lg group-hover:visible",
-        "border border-black/[0.06] bg-popover text-[11px] font-normal normal-case leading-snug text-popover-foreground",
-        "dark:border-white/[0.08]",
+        "invisible pointer-events-none absolute top-full z-50 mt-1 w-72 rounded-lg px-2.5 py-2 shadow-xl group-hover:visible",
+        "bg-surface-overlay text-[11px] font-normal normal-case leading-snug text-foreground ring-1 ring-inset ring-border-strong",
         align === "right" ? "right-0" : "left-0",
         className,
       )}
@@ -102,9 +90,9 @@ export function Tooltip({
 export type AlertVariant = "error" | "warning" | "info";
 
 const alertVariantClasses = new Map<AlertVariant, string>([
-  ["error", "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"],
-  ["warning", "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"],
-  ["info", "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"],
+  ["error", "bg-destructive/10 text-destructive"],
+  ["warning", "bg-warning/10 text-warning"],
+  ["info", "bg-panel-raised text-muted-foreground"],
 ]);
 
 /** Inline status/error panel. Uses alerts (not toasts) per repo convention for blocking errors. */
@@ -120,13 +108,13 @@ export function Alert({
   const variantClasses = alertVariantClasses.get(variant)
     ?? throwErr(`No alert classes for variant ${variant}; alertVariantClasses must cover every AlertVariant`);
   return (
-    <div className={cn("rounded-xl border p-4 text-sm", variantClasses, className)}>{children}</div>
+    <div className={cn("rounded-2xl px-3 py-2.5 text-[13px]", variantClasses, className)}>{children}</div>
   );
 }
 
 /** Placeholder for "nothing here yet" regions. */
 export function EmptyState({ children, className }: { children: React.ReactNode, className?: string }) {
   return (
-    <div className={cn("py-8 text-center text-sm text-muted-foreground", className)}>{children}</div>
+    <div className={cn("px-8 py-12 text-center text-[13px] leading-relaxed text-muted-foreground", className)}>{children}</div>
   );
 }

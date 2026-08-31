@@ -120,7 +120,7 @@ function ConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-8 backdrop-blur-sm" onClick={onCancel}>
       <div
-        className="w-full max-w-md rounded-xl border border-black/[0.06] bg-popover p-6 text-popover-foreground shadow-2xl dark:border-white/[0.08]"
+        className="w-full max-w-md rounded-2xl bg-surface-overlay p-5 text-foreground shadow-2xl ring-1 ring-inset ring-border-strong"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-2 text-base font-semibold text-foreground">{title}</h2>
@@ -132,7 +132,7 @@ function ConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfi
             className={cn(
               "inline-flex h-7 items-center justify-center rounded-md px-2.5 text-xs font-medium text-white",
               "transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              confirmClassName ?? "bg-blue-600 hover:bg-blue-700",
+              confirmClassName ?? "bg-primary text-primary-foreground hover:bg-primary/85",
             )}
           >
             {confirmLabel}
@@ -183,9 +183,10 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
     }
   };
 
+  // Subtle state tint on the card edge: published = green, unpublished draft = amber.
   const cardTint = row.published
-    ? "border-emerald-500/25 bg-emerald-500/[0.06]"
-    : "border-amber-500/25 bg-amber-500/[0.06]";
+    ? "ring-success/25"
+    : "ring-warning/25";
 
   const hasUnsavedChanges = editQuestion !== row.question || editAnswer !== row.answer;
   const saveAction = hasUnsavedChanges
@@ -198,7 +199,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
 
   if (isEditing) {
     return (
-      <div className={clsx("space-y-3 rounded-xl border p-4 backdrop-blur-xl", cardTint)}>
+      <div className={clsx("space-y-3 rounded-2xl bg-panel p-3 ring-1 ring-inset", cardTint)}>
         <div>
           <FieldLabel className="mb-1 block">Question</FieldLabel>
           <Input
@@ -235,9 +236,9 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
   }
 
   return (
-    <div className={clsx("overflow-hidden rounded-xl border backdrop-blur-xl", cardTint)}>
+    <div className={clsx("overflow-hidden rounded-2xl bg-panel ring-1 ring-inset", cardTint)}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-inherit px-4 py-2">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
           {row.published
             ? <Badge color="green" size="xs">&#10003; Published</Badge>
@@ -270,7 +271,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           <Button
             size="xs"
             variant="ghost"
-            className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            className="text-destructive hover:text-destructive/80"
             onClick={() => setPending("delete")}
             disabled={busy != null}
           >
@@ -303,7 +304,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           title="Publish this Q&A?"
           message="Publishing makes this Q&A visible on the public knowledge base."
           confirmLabel="Publish"
-          confirmClassName="bg-emerald-600 hover:bg-emerald-700"
+          confirmClassName="bg-success text-primary-foreground hover:bg-success/85"
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);
@@ -316,7 +317,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           title="Unpublish this Q&A?"
           message="This Q&A will no longer appear on the public knowledge base."
           confirmLabel="Unpublish"
-          confirmClassName="bg-amber-600 hover:bg-amber-700"
+          confirmClassName="bg-warning text-primary-foreground hover:bg-warning/85"
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);
@@ -329,7 +330,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           title="Delete this Q&A?"
           message="This permanently removes the entry. Telemetry from the originating call (if any) is preserved."
           confirmLabel="Delete"
-          confirmClassName="bg-red-600 hover:bg-red-700"
+          confirmClassName="bg-destructive text-primary-foreground hover:bg-destructive/85"
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);

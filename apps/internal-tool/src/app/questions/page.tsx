@@ -48,7 +48,7 @@ export default function QuestionsPage() {
       ) : (
         <div className="space-y-8">
           {publishedQa.map(row => (
-            <article key={String(row.id)} className="border-b border-black/[0.06] pb-8 last:border-b-0 dark:border-white/[0.06]">
+            <article key={String(row.id)} className="border-b border-border pb-8 last:border-b-0">
               <h2 className="mb-3 text-lg font-semibold text-foreground">{row.question}</h2>
               <div className="prose prose-sm max-w-none text-foreground dark:prose-invert">
                 <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>

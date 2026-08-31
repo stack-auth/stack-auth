@@ -10,9 +10,9 @@ import { ConversationReplay } from "./ConversationReplay";
 import { Alert, Badge, Button, cn, Input, Textarea } from "./design";
 import { markdownComponents } from "./markdown-components";
 
-/** Panel surface for the detail cards — same glass treatment as the design Card, tint-able. */
-const panelClasses = "overflow-hidden rounded-xl border border-black/[0.06] bg-card shadow-sm ring-1 ring-black/[0.04] dark:border-white/[0.06] dark:ring-white/[0.04]";
-const sectionLabelClasses = "text-[10px] font-medium uppercase tracking-wider text-muted-foreground";
+/** Panel surface for the detail cards — same translucent treatment as the design Card, tint-able. */
+const panelClasses = "overflow-hidden rounded-2xl bg-panel ring-1 ring-inset ring-transparent";
+const sectionLabelClasses = "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint";
 
 // ─── Shared ────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
   return (
     <div className={panelClasses}>
       {/* Metadata bar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-black/[0.06] px-4 py-2.5 text-xs text-muted-foreground dark:border-white/[0.06]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
         <Badge color="purple">{row.toolName}</Badge>
         <span title={format(toDate(row.createdAt), "PPpp")}>
           {formatDistanceToNow(toDate(row.createdAt), { addSuffix: true })}
@@ -172,7 +172,7 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
             <h4 className={sectionLabelClasses}>AI Response</h4>
             <CopyButton text={row.response} />
           </div>
-          <div className="max-h-64 overflow-auto rounded-lg bg-foreground/[0.04] p-3 text-sm">
+          <div className="max-h-64 overflow-auto rounded-lg bg-panel-raised p-3 text-sm">
             {row.response ? (
               <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {row.response}
@@ -208,13 +208,13 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
 function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string; args: unknown; result: unknown } }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="rounded-lg border border-black/[0.06] dark:border-white/[0.06]">
+    <div className="rounded-xl bg-panel-raised">
       <button
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:transition-none hover:bg-foreground/[0.04]"
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-[12px] transition-colors hover:transition-none hover:bg-muted"
         onClick={() => setExpanded(prev => !prev)}
       >
         <span className="font-mono text-xs">
-          <span className="text-purple-600 dark:text-purple-400">{call.toolName}</span>
+          <span className="text-chart-1">{call.toolName}</span>
           <span className="ml-2 text-muted-foreground">#{call.toolCallId.slice(0, 8)}</span>
         </span>
         <span className="text-xs text-muted-foreground">{expanded ? "collapse" : "expand"}</span>
@@ -223,11 +223,11 @@ function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string;
         <div className="px-3 pb-2 space-y-2">
           <div>
             <p className="mb-1 text-xs text-muted-foreground">Args:</p>
-            <pre className="max-h-40 overflow-auto rounded-lg bg-foreground/[0.04] p-2 text-xs">{JSON.stringify(call.args, null, 2)}</pre>
+            <pre className="max-h-40 overflow-auto rounded-lg bg-panel-raised p-2 text-xs">{JSON.stringify(call.args, null, 2)}</pre>
           </div>
           <div>
             <p className="mb-1 text-xs text-muted-foreground">Result:</p>
-            <pre className="max-h-40 overflow-auto rounded-lg bg-foreground/[0.04] p-2 text-xs">{JSON.stringify(call.result, null, 2)}</pre>
+            <pre className="max-h-40 overflow-auto rounded-lg bg-panel-raised p-2 text-xs">{JSON.stringify(call.result, null, 2)}</pre>
           </div>
         </div>
       )}
@@ -316,7 +316,7 @@ function QaReviewCard({ row, onRetryReview }: {
       <div className={cn(panelClasses, "p-4")}>
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">AI QA Review</h3>
-          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-chart-2 border-t-transparent" />
           <span className="text-xs text-muted-foreground">Reviewing...</span>
         </div>
       </div>
@@ -331,25 +331,25 @@ function QaReviewCard({ row, onRetryReview }: {
   }
 
   const scoreColor = row.qaOverallScore >= 80
-    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/15"
+    ? "text-success bg-success/12"
     : row.qaOverallScore >= 50
-      ? "text-amber-700 dark:text-amber-300 bg-amber-500/15"
-      : "text-red-700 dark:text-red-400 bg-red-500/15";
+      ? "text-warning bg-warning/12"
+      : "text-destructive bg-destructive/12";
 
-  const lowSeverityClasses = "border-border bg-foreground/[0.04]";
+  const lowSeverityClasses = "border-border bg-panel-raised";
   const severityClasses = new Map<string, string>([
-    ["critical", "border-red-500 bg-red-500/10"],
-    ["high", "border-orange-500 bg-orange-500/10"],
-    ["medium", "border-amber-500 bg-amber-500/10"],
+    ["critical", "border-destructive bg-destructive/10"],
+    ["high", "border-destructive/60 bg-destructive/[0.07]"],
+    ["medium", "border-warning bg-warning/10"],
     ["low", lowSeverityClasses],
   ]);
 
   return (
     <div className={panelClasses}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">AI QA Review</h3>
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.09em] text-foreground">AI QA Review</h3>
           {row.qaNeedsHumanReview && !row.humanReviewedAt && (
             <Badge color="orange">Needs Review</Badge>
           )}
@@ -499,17 +499,17 @@ function HumanCorrectionCard({ row, qa, onSave }: {
 
   // Subtle state tint on the card edge: published = green, unpublished draft = amber.
   const cardTint = isPublished
-    ? "ring-emerald-500/20"
+    ? "ring-success/25"
     : hasDraft
-      ? "ring-amber-500/25"
+      ? "ring-warning/30"
       : "";
 
   return (
     <div className={cn(panelClasses, cardTint)}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">Human Correction</h3>
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.09em] text-foreground">Human Correction</h3>
           {isPublished ? (
             <Badge color="green">&#10003; Published</Badge>
           ) : hasDraft ? (
@@ -526,7 +526,7 @@ function HumanCorrectionCard({ row, qa, onSave }: {
           {isPublished && (
             <button
               onClick={() => void handleSave(false)}
-              className="text-red-600 transition-colors hover:transition-none hover:text-red-500 dark:text-red-400"
+              className="text-destructive transition-colors hover:transition-none hover:text-destructive/80"
             >
               Unpublish
             </button>
@@ -538,10 +538,10 @@ function HumanCorrectionCard({ row, qa, onSave }: {
         {/* Feedback toast */}
         {lastAction && (
           <div className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium",
-            lastAction === "published" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
-              lastAction === "deepwiki-error" || lastAction === "error" ? "bg-red-500/15 text-red-700 dark:text-red-400" :
-                "bg-blue-500/15 text-blue-700 dark:text-blue-400"
+            "rounded-lg px-2.5 py-1 text-[11px] font-medium",
+            lastAction === "published" ? "bg-success/12 text-success" :
+              lastAction === "deepwiki-error" || lastAction === "error" ? "bg-destructive/12 text-destructive" :
+                "bg-chart-1/12 text-chart-1"
           )}>
             {lastAction === "published" ? "Published to /questions" :
               lastAction === "deepwiki-error" ? "Failed to fetch from DeepWiki" :
@@ -602,7 +602,7 @@ function HumanCorrectionCard({ row, qa, onSave }: {
             {deepWikiLoading ? "Fetching..." : "Pre-fill from DeepWiki"}
           </Button>
           {hasUnsavedChanges && (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400">unsaved changes</span>
+            <span className="text-[10px] text-warning">unsaved changes</span>
           )}
           <div className="ml-auto flex items-center gap-2">
             <Button
@@ -679,7 +679,7 @@ function QaToolStep({ step }: { step: QaStep }) {
 
   return (
     <div className="relative pl-5">
-      <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+      <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-chart-2" />
       <p className={cn(sectionLabelClasses, "mb-1.5")}>
         Step {step.step} — Verification
       </p>
@@ -689,7 +689,7 @@ function QaToolStep({ step }: { step: QaStep }) {
         ))}
       </div>
       {step.text && (
-        <div className="mt-2 rounded-lg bg-foreground/[0.04] p-2">
+        <div className="mt-2 rounded-lg bg-panel-raised p-2">
           <p className="whitespace-pre-wrap text-xs text-foreground">{step.text}</p>
         </div>
       )}
@@ -704,11 +704,11 @@ function QaToolCard({ pair }: { pair: { toolName: string; args: unknown; result:
     : typeof pair.result === "string" ? pair.result : JSON.stringify(pair.result, null, 2);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-black/[0.06] bg-foreground/[0.02] dark:border-white/[0.06]">
-      <div className="bg-indigo-500/10 px-3 py-1.5">
-        <span className="font-mono text-xs text-indigo-700 dark:text-indigo-300">{pair.toolName}</span>
+    <div className="overflow-hidden rounded-xl bg-panel">
+      <div className="bg-chart-2/10 px-3 py-1.5">
+        <span className="font-mono text-[11px] text-chart-2">{pair.toolName}</span>
       </div>
-      <div className="border-t border-black/[0.06] px-3 py-2 dark:border-white/[0.06]">
+      <div className="border-t border-border px-3 py-2">
         <div className="mb-1 flex items-center justify-between">
           <p className={sectionLabelClasses}>Args</p>
           <CopyButton text={JSON.stringify(pair.args, null, 2)} />
@@ -716,7 +716,7 @@ function QaToolCard({ pair }: { pair: { toolName: string; args: unknown; result:
         <pre className="max-h-24 overflow-auto text-xs text-muted-foreground">{JSON.stringify(pair.args, null, 2)}</pre>
       </div>
       {resultStr != null && (
-        <div className="border-t border-black/[0.06] px-3 py-2 dark:border-white/[0.06]">
+        <div className="border-t border-border px-3 py-2">
           <div className={cn("flex w-full items-center justify-between", sectionLabelClasses)}>
             <button
               className="transition-colors hover:transition-none hover:text-foreground"
@@ -746,7 +746,7 @@ function QaConclusionStep({ step }: { step: QaStep }) {
       <p className={cn(sectionLabelClasses, "mb-1.5")}>
         Step {step.step} — Conclusion
       </p>
-      <div className="rounded-lg bg-foreground/[0.04] p-3">
+      <div className="rounded-lg bg-panel-raised p-3">
         <p className="whitespace-pre-wrap text-xs text-muted-foreground">
           {expanded ? text : truncated}
         </p>

@@ -36,7 +36,7 @@ export function FeedbackDetail({
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </div>
 
-      <div className="whitespace-pre-wrap break-words rounded-xl border border-black/[0.06] bg-foreground/[0.04] p-3 text-xs text-foreground dark:border-white/[0.06]">
+      <div className="whitespace-pre-wrap break-words rounded-xl border border-border bg-panel-raised p-3 text-xs text-foreground">
         {row.message}
       </div>
 
@@ -46,7 +46,7 @@ export function FeedbackDetail({
           {relatedCall != null ? (
             <button
               onClick={() => onOpenRelatedCall(relatedCall)}
-              className="w-full rounded-lg border border-black/[0.08] px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:transition-none hover:bg-foreground/[0.05] dark:border-white/[0.08]"
+              className="w-full rounded-lg border border-border-strong px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:transition-none hover:bg-panel-raised"
             >
               <span className="font-mono text-[10px] text-muted-foreground">{relatedCall.toolName}</span>
               <span className="block truncate">{relatedCall.question}</span>
@@ -59,7 +59,7 @@ export function FeedbackDetail({
         </div>
       )}
 
-      <div className="space-y-1 border-t border-black/[0.06] pt-3 dark:border-white/[0.06]">
+      <div className="space-y-1 border-t border-border pt-3">
         <Field label="correlationId" value={row.correlationId} />
         <Field label="conversationId" value={row.conversationId} />
         <Field label="transport" value={row.transport} />

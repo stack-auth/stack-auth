@@ -184,7 +184,7 @@ export function CallLogList({
           <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
         </p>
         {connectionErrorMessage != null && connectionErrorMessage !== "" && (
-          <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 font-mono text-xs">
+          <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-destructive/30 bg-destructive/10 p-3 font-mono text-xs">
             {connectionErrorMessage}
           </pre>
         )}
@@ -304,7 +304,7 @@ export function CallLogList({
         <Card bodyClassName="p-0" className="overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className={cn(tableClasses.headRow, "bg-foreground/[0.03] text-left")}>
+              <tr className={cn(tableClasses.headRow, "bg-panel text-left")}>
                 <SortHeader field="time">Time</SortHeader>
                 <SortHeader field="tool">Tool</SortHeader>
                 <th className="px-4 py-2">Reason</th>
@@ -376,7 +376,7 @@ export function CallLogList({
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between border-t border-black/[0.06] bg-foreground/[0.02] px-4 py-2 text-xs dark:border-white/[0.06]">
+          <div className="flex items-center justify-between border-t border-border bg-panel px-4 py-2 text-xs">
             <div className="flex items-center gap-1.5">
               <FieldLabel>Page size</FieldLabel>
               {PAGE_SIZES.map(s => (

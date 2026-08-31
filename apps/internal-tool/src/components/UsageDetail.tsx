@@ -82,7 +82,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-3 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge color="purple" size="xs" mono>{row.systemPromptId}</Badge>
@@ -110,7 +110,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
               const savings = row.cacheDiscountUsd;
               if (savings == null) return null;
               const sign = savings >= 0 ? "+" : "−";
-              const color = savings >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+              const color = savings >= 0 ? "text-success" : "text-destructive";
               return <>{" · "}<span className={color}>cache {sign}${Math.abs(savings).toFixed(4)}</span></>;
             })()}
           </p>
@@ -127,7 +127,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
         )}
 
         {/* Metadata panel */}
-        <div className="m-4 space-y-1 rounded-lg bg-foreground/[0.04] p-3 text-xs">
+        <div className="m-4 space-y-1 rounded-lg bg-panel-raised p-3 text-xs">
           <MetaRow label="Quality / Speed" value={`${row.quality} / ${row.speed}`} />
           <MetaRow label="Authed" value={row.isAuthenticated ? "yes" : "no"} />
           {row.projectId && <MetaRow label="Project" value={row.projectId} />}
@@ -156,7 +156,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground/10">
                   <span className="text-[10px] font-bold text-muted-foreground">T</span>
                 </div>
-                <div className="max-w-[80%] rounded-xl bg-foreground/[0.04] px-3.5 py-2">
+                <div className="max-w-[80%] rounded-xl bg-panel-raised px-3.5 py-2">
                   <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-muted-foreground">{text}</pre>
                 </div>
               </div>
@@ -178,10 +178,10 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
               )}
               {bubble.text && (
                 <div className="flex gap-2.5 justify-start">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-purple-500/15">
-                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400">AI</span>
+                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-chart-1/15">
+                    <span className="text-xs font-bold text-chart-1">AI</span>
                   </div>
-                  <div className="min-w-0 max-w-[calc(100%-2rem)] rounded-xl bg-foreground/[0.04] px-3.5 py-2">
+                  <div className="min-w-0 max-w-[calc(100%-2rem)] rounded-xl bg-panel-raised px-3.5 py-2">
                     <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                       {bubble.text}
                     </Markdown>
@@ -194,7 +194,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
           {row.finalText && assistantBubbles.length === 0 && (
             <>
               <h3 className={`${sectionLabelClasses} pt-2`}>Final Response</h3>
-              <div className="rounded-xl bg-blue-500/10 px-3.5 py-2">
+              <div className="rounded-xl bg-chart-1/10 px-3.5 py-2">
                 <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {row.finalText}
                 </Markdown>

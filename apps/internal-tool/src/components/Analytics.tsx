@@ -114,15 +114,15 @@ export function Analytics({ rows, qaEntries }: { rows: McpCallLogRow[], qaEntrie
           label="Avg QA Score"
           value={stats.avgScore.toString()}
           valueClassName={
-            stats.avgScore >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-              stats.avgScore >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"
+            stats.avgScore >= 80 ? "text-success" :
+              stats.avgScore >= 50 ? "text-warning" : "text-destructive"
           }
           subtitle={`${reviewRate}% reviewed`}
         />
         <MetricCard
           label="Needs Review"
           value={stats.needsReview.toString()}
-          valueClassName={stats.needsReview > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}
+          valueClassName={stats.needsReview > 0 ? "text-warning" : "text-muted-foreground"}
           subtitle={`${humanReviewRate}% human-reviewed`}
         />
         <MetricCard

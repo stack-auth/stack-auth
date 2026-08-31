@@ -1,32 +1,35 @@
 import { useUser } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { useCallback, useEffect, useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
+import { AppSidebar } from "../components/AppSidebar";
 import { CallLogDetail } from "../components/CallLogDetail";
 import { CallLogList } from "../components/CallLogList";
 import { FeedbackDetail } from "../components/FeedbackDetail";
 import { FeedbackList } from "../components/FeedbackList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
-import { ThemeToggle } from "../components/ThemeToggle";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
-import { Button, cn } from "../components/design";
+import { Button } from "../components/design";
+import { ViewHeader } from "../components/design/observability";
+import { AnimatedSidebarInset, AnimatedSidebarProvider } from "../components/motion/animated-sidebar";
 import { type GetSpacetimeToken, useAiQueryLogs, useFeedbackLog, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
 import { retryReview } from "../lib/mcp-review-api";
 import type { AiQueryLogRow, FeedbackLogRow, McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "usage" | "feedback";
 const TAB_STORAGE_KEY = "internal-tool-active-tab";
-const TABS: ReadonlyArray<{ id: Tab, label: string }> = [
-  { id: "calls", label: "MCP Review" },
-  { id: "knowledge", label: "Knowledge Base" },
-  { id: "usage", label: "Unified AI Endpoint Analytics" },
-  { id: "feedback", label: "Feedback" },
+const TABS: ReadonlyArray<{ id: Tab, label: string, subtitle: string }> = [
+  { id: "calls", label: "MCP Review", subtitle: "QA-scored MCP tool calls" },
+  { id: "knowledge", label: "Knowledge Base", subtitle: "Curated question/answer pairs" },
+  { id: "usage", label: "Unified AI Endpoint Analytics", subtitle: "Requests across the AI endpoint" },
+  { id: "feedback", label: "Feedback", subtitle: "Ratings left on answers" },
 ];
 const VALID_TABS: readonly Tab[] = TABS.map(t => t.id);
 
 /** Detail drawer on the right of the split views. */
-const asideClasses = "w-[480px] shrink-0 overflow-y-auto border-l border-black/[0.06] bg-card backdrop-blur-xl dark:border-white/[0.06]";
+const asideClasses = "w-[480px] shrink-0 overflow-y-auto border-l border-border bg-surface";
 
 function readInitialTab(): Tab {
   // sessionStorage is per-tab: reload preserves the active tab, but a brand-new
@@ -101,182 +104,177 @@ export default function App() {
     ? null
     : rows.find(r => r.conversationId === currentSelectedFeedbackRow.conversationId) ?? null;
 
+  const activeTab = TABS.find(t => t.id === tab)
+    ?? throwErr(`No tab metadata for ${tab}; TABS must cover every Tab`);
+
+  const connectionForTab = new Map<Tab, typeof connectionState>([
+    ["calls", connectionState],
+    ["knowledge", qaConnectionState],
+    ["usage", usageConnectionState],
+    ["feedback", feedbackConnectionState],
+  ]);
+
   return (
-    <div className="flex h-screen flex-col">
-      <header className="grid shrink-0 grid-cols-3 items-center gap-3 border-b border-black/[0.06] bg-card px-6 py-3 backdrop-blur-xl dark:border-white/[0.06]">
-        <div className="flex items-center justify-start">
-          <h1 className="text-base font-semibold tracking-tight text-foreground">MCP Review Tool</h1>
-        </div>
-        {/* Tabs — centered */}
-        <div className="flex justify-center">
-          <div className="flex gap-0.5 rounded-full border border-black/[0.06] bg-foreground/[0.04] p-0.5 ring-1 ring-black/[0.03] dark:border-white/[0.06] dark:ring-white/[0.03]">
-            {TABS.map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => {
-                  setTab(id);
-                  setSelectedRow(null);
-                }}
-                aria-pressed={tab === id}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium",
-                  "transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                  tab === id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-3">
-          {tab === "knowledge" && (
-            <Button variant="default" onClick={() => setShowAddQa(true)}>
-              + Add Q&A
-            </Button>
-          )}
-          <span className="max-w-[180px] truncate text-xs text-muted-foreground">{user.displayName ?? user.primaryEmail}</span>
-          <ThemeToggle />
-        </div>
-      </header>
+    <AnimatedSidebarProvider className="h-dvh min-h-0 overflow-hidden bg-sidebar">
+      <AppSidebar
+        onSelectView={(next) => {
+          setTab(next);
+          setSelectedRow(null);
+        }}
+        userLabel={user.displayName ?? user.primaryEmail ?? "Signed in"}
+        view={tab}
+      />
 
-      {showAddQa && (
-        <AddManualQa
-          onClose={() => setShowAddQa(false)}
-          onSave={async (question, answer, publish, requestId) => {
-            await callQaReducer(conn => conn.reducers.addManualQa({
-              question,
-              answer,
-              publish,
-              requestId,
-            }));
-          }}
+      <AnimatedSidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:my-2 md:mr-2 md:rounded-2xl">
+        <ViewHeader
+          connection={connectionForTab.get(tab) ?? throwErr(`No connection state for tab ${tab}; connectionForTab must cover every Tab`)}
+          subtitle={activeTab.subtitle}
+          title={activeTab.label}
+          toolbar={tab === "knowledge"
+            ? (
+              <Button variant="default" onClick={() => setShowAddQa(true)}>
+                  Add Q&A
+              </Button>
+            )
+            : undefined}
         />
-      )}
 
-      <div className="flex-1 overflow-hidden flex">
-        {tab === "calls" && (
-          <>
-            <main className="flex-1 overflow-y-auto p-6 space-y-6">
-              <Analytics rows={rows} qaEntries={qaRows} />
-              <CallLogList
-                rows={rows}
-                connectionState={connectionState}
-                connectionErrorMessage={connectionErrorMessage}
-                onSelect={setSelectedRow}
-                selectedId={selectedRow?.id}
-              />
-            </main>
-            {currentSelectedRow && (
-              <aside className={asideClasses}>
-                <CallLogDetail
-                  key={String(currentSelectedRow.id)}
-                  row={currentSelectedRow}
-                  allRows={rows}
-                  qaEntries={qaRows}
-                  onClose={() => setSelectedRow(null)}
-                  onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
-                    callMcpReducer(conn => conn.reducers.upsertQaFromCallAndMarkReviewed({
-                      correlationId,
-                      question: correctedQuestion,
-                      answer: correctedAnswer,
+        {showAddQa && (
+          <AddManualQa
+            onClose={() => setShowAddQa(false)}
+            onSave={async (question, answer, publish, requestId) => {
+              await callQaReducer(conn => conn.reducers.addManualQa({
+                question,
+                answer,
+                publish,
+                requestId,
+              }));
+            }}
+          />
+        )}
+
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {tab === "calls" && (
+            <>
+              <main className="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
+                <Analytics rows={rows} qaEntries={qaRows} />
+                <CallLogList
+                  rows={rows}
+                  connectionState={connectionState}
+                  connectionErrorMessage={connectionErrorMessage}
+                  onSelect={setSelectedRow}
+                  selectedId={selectedRow?.id}
+                />
+              </main>
+              {currentSelectedRow && (
+                <aside className={asideClasses}>
+                  <CallLogDetail
+                    key={String(currentSelectedRow.id)}
+                    row={currentSelectedRow}
+                    allRows={rows}
+                    qaEntries={qaRows}
+                    onClose={() => setSelectedRow(null)}
+                    onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
+                      callMcpReducer(conn => conn.reducers.upsertQaFromCallAndMarkReviewed({
+                        correlationId,
+                        question: correctedQuestion,
+                        answer: correctedAnswer,
+                        publish,
+                      }))
+                    }
+                    onSetReviewed={(correlationId, reviewed) =>
+                      callMcpReducer(conn => conn.reducers.setHumanReviewed({
+                        correlationId,
+                        reviewed,
+                      }))
+                    }
+                    onRetryReview={(correlationId, payload) =>
+                      retryReview({ correlationId, ...payload })
+                    }
+                  />
+                </aside>
+              )}
+            </>
+          )}
+
+          {tab === "knowledge" && (
+            <main className="flex-1 overflow-y-auto px-3 pb-3">
+              <div className="mx-auto max-w-4xl">
+                <KnowledgeBase
+                  rows={qaRows}
+                  connectionState={qaConnectionState}
+                  connectionErrorMessage={qaConnectionErrorMessage}
+                  onSave={(qaId, question, answer, publish) =>
+                    callQaReducer(conn => conn.reducers.updateQaEntryWithPublish({
+                      qaId,
+                      question,
+                      answer,
                       publish,
                     }))
                   }
-                  onSetReviewed={(correlationId, reviewed) =>
-                    callMcpReducer(conn => conn.reducers.setHumanReviewed({
-                      correlationId,
-                      reviewed,
-                    }))
+                  onDelete={(qaId) =>
+                    callQaReducer(conn => conn.reducers.deleteQaEntry({ qaId }))
                   }
-                  onRetryReview={(correlationId, payload) =>
-                    retryReview({ correlationId, ...payload })
-                  }
-                />
-              </aside>
-            )}
-          </>
-        )}
-
-        {tab === "knowledge" && (
-          <main className="flex-1 overflow-y-auto">
-            <div className="p-6 max-w-4xl mx-auto">
-              <KnowledgeBase
-                rows={qaRows}
-                connectionState={qaConnectionState}
-                connectionErrorMessage={qaConnectionErrorMessage}
-                onSave={(qaId, question, answer, publish) =>
-                  callQaReducer(conn => conn.reducers.updateQaEntryWithPublish({
-                    qaId,
-                    question,
-                    answer,
-                    publish,
-                  }))
-                }
-                onDelete={(qaId) =>
-                  callQaReducer(conn => conn.reducers.deleteQaEntry({ qaId }))
-                }
-              />
-            </div>
-          </main>
-        )}
-
-        {tab === "usage" && (
-          <>
-            <main className="flex-1 overflow-y-auto">
-              <div className="p-6 max-w-6xl mx-auto">
-                <Usage
-                  rows={usageRows}
-                  connectionState={usageConnectionState}
-                  connectionErrorMessage={usageConnectionErrorMessage}
-                  onSelect={setSelectedUsageRow}
-                  selectedId={selectedUsageRow?.id}
                 />
               </div>
             </main>
-            {selectedUsageRow && (
-              <aside className={asideClasses}>
-                <UsageDetail
-                  row={usageRows.find(r => r.id === selectedUsageRow.id) ?? selectedUsageRow}
-                  onClose={() => setSelectedUsageRow(null)}
-                />
-              </aside>
-            )}
-          </>
-        )}
+          )}
 
-        {tab === "feedback" && (
-          <>
-            <main className="flex-1 overflow-y-auto">
-              <div className="p-6 max-w-4xl mx-auto">
-                <FeedbackList
-                  rows={feedbackRows}
-                  connectionState={feedbackConnectionState}
-                  connectionErrorMessage={feedbackConnectionErrorMessage}
-                  onSelect={setSelectedFeedbackRow}
-                  selectedId={currentSelectedFeedbackRow?.id}
-                />
-              </div>
-            </main>
-            {currentSelectedFeedbackRow && (
-              <aside className={asideClasses}>
-                <FeedbackDetail
-                  key={String(currentSelectedFeedbackRow.id)}
-                  row={currentSelectedFeedbackRow}
-                  relatedCall={relatedCallForFeedback}
-                  onClose={() => setSelectedFeedbackRow(null)}
-                  onOpenRelatedCall={(call) => {
-                    setSelectedRow(call);
-                    setTab("calls");
-                  }}
-                />
-              </aside>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+          {tab === "usage" && (
+            <>
+              <main className="flex-1 overflow-y-auto px-3 pb-3">
+                <div className="mx-auto max-w-6xl">
+                  <Usage
+                    rows={usageRows}
+                    connectionState={usageConnectionState}
+                    connectionErrorMessage={usageConnectionErrorMessage}
+                    onSelect={setSelectedUsageRow}
+                    selectedId={selectedUsageRow?.id}
+                  />
+                </div>
+              </main>
+              {selectedUsageRow && (
+                <aside className={asideClasses}>
+                  <UsageDetail
+                    row={usageRows.find(r => r.id === selectedUsageRow.id) ?? selectedUsageRow}
+                    onClose={() => setSelectedUsageRow(null)}
+                  />
+                </aside>
+              )}
+            </>
+          )}
+
+          {tab === "feedback" && (
+            <>
+              <main className="flex-1 overflow-y-auto px-3 pb-3">
+                <div className="mx-auto max-w-4xl">
+                  <FeedbackList
+                    rows={feedbackRows}
+                    connectionState={feedbackConnectionState}
+                    connectionErrorMessage={feedbackConnectionErrorMessage}
+                    onSelect={setSelectedFeedbackRow}
+                    selectedId={currentSelectedFeedbackRow?.id}
+                  />
+                </div>
+              </main>
+              {currentSelectedFeedbackRow && (
+                <aside className={asideClasses}>
+                  <FeedbackDetail
+                    key={String(currentSelectedFeedbackRow.id)}
+                    row={currentSelectedFeedbackRow}
+                    relatedCall={relatedCallForFeedback}
+                    onClose={() => setSelectedFeedbackRow(null)}
+                    onOpenRelatedCall={(call) => {
+                      setSelectedRow(call);
+                      setTab("calls");
+                    }}
+                  />
+                </aside>
+              )}
+            </>
+          )}
+        </div>
+      </AnimatedSidebarInset>
+    </AnimatedSidebarProvider>
   );
 }

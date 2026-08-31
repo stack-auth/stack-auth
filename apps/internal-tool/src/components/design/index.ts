@@ -1,9 +1,8 @@
 /**
- * Local design primitives for the internal tool. They deliberately mirror the dashboard's
- * design-components (same tokens, same glassmorphic surfaces, same badge/button palettes) without
- * importing them: the internal tool is a separate Next app with its own Tailwind build, and pulling
- * in `@hexclave/dashboard-ui-components` would drag along the dashboard's provider stack. Keep the
- * visuals here in sync with apps/dashboard/DESIGN-GUIDE.md.
+ * Local design primitives for the internal tool. They mirror the hexclave-imessage-agent
+ * observability dashboard (carbon palette, washed panels, 13px tight-tracked type) rather than
+ * importing shared components: the internal tool is a separate Next app with its own Tailwind
+ * build, and `@hexclave/dashboard-ui-components` would drag along the dashboard's provider stack.
  */
 export { cn } from "./cn";
 export { Badge, type BadgeColor } from "./badge";
@@ -11,3 +10,4 @@ export { Button, type ButtonVariant, Divider, FieldLabel, Input, Pill, Select, T
 export { BarRow, type ChartColor, chartColors, chartTrackClass, LegendItem } from "./charts";
 export { SortHeader, tableClasses } from "./table";
 export { Alert, Card, EmptyState, MetricCard, Tooltip } from "./surfaces";
+export { type ConnectionState, ConnectionPill, type DotTone, Eyebrow, StatusDot, ViewHeader } from "./observability";
