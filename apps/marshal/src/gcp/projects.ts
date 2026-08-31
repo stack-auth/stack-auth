@@ -85,6 +85,13 @@ function normalizeBillingAccount(value: string): string {
   return value.startsWith("billingAccounts/") ? value : `billingAccounts/${value}`;
 }
 
+// A newly ACTIVE Resource Manager project can briefly be unknown to Cloud Billing. This
+// matches ONLY its exact readiness response, so account and permission failures stay loud —
+// the check is deliberately narrow and must stay that way.
+function isBillingPropagationError(error: unknown): boolean {
+  return error instanceof GcpApiError && error.status === 400 && error.providerMessage === "Precondition check failed.";
+}
+
 const inFlightProjects = new Map<string, Promise<TenantProject>>();
 
 export class TenantProjectManager {
@@ -106,10 +113,72 @@ export class TenantProjectManager {
     }
   }
 
-  // A pooled project: provisioned up front with a generic display name, before any
-  // tenant exists to name it after. Same full provisioning sequence as ensureForNamespace.
-  async provisionPooledProject(projectId: string): Promise<TenantProject> {
-    return await this.provisionProject(projectId, "Hexclave tenant pool");
+  // ---------------------------------------------------------------------------
+  // Per-state provisioning steps.
+  //
+  // The pool advancer (src/project-pool.ts) drives these one resume point at a time, because
+  // it runs on a cron in a serverless function that is frozen at response time and therefore
+  // cannot hold a multi-minute wait. provisionProject below composes the same steps for the
+  // lazy per-namespace path, which IS a synchronous request and keeps its blocking waits.
+
+  // Idempotent. Creates the project if Resource Manager does not have it and returns the
+  // project number once it is ACTIVE. The caller must already have recorded its intent to
+  // create this id: a create that succeeds and is never recorded is an invisible billed
+  // project.
+  async ensureProjectActive(projectId: string, displayName: string): Promise<string> {
+    let project = await this.findProject(projectId);
+    if (project === null) {
+      const body = {
+        projectId,
+        displayName,
+        labels: {
+          "hexclave-environment": sanitizeProjectFragment(this.config.envId, 63),
+          "hexclave-managed": "true",
+        },
+        ...(this.config.parent === null ? {} : { parent: this.config.parent }),
+      };
+      const created = await this.client.request("https://cloudresourcemanager.googleapis.com/v3/projects", { method: "POST", body });
+      await this.client.waitForOperation(parseOperation(created, "project-create"));
+      project = await this.waitForActiveProject(projectId);
+    } else if (project.state !== "ACTIVE") {
+      project = await this.waitForActiveProject(projectId);
+    }
+    return projectNumberFromName(project.name);
+  }
+
+  // ONE billing PUT. Returns false when Cloud Billing does not know the project yet — the
+  // pool's only genuinely slow wait, and the reason billing_pending exists as a resume point.
+  // Every other failure throws, so a wrong account or a missing role stays loud.
+  async attachBillingOnce(projectId: string): Promise<boolean> {
+    try {
+      await this.putBillingInfo(projectId);
+      return true;
+    } catch (error) {
+      if (!isBillingPropagationError(error)) throw error;
+      return false;
+    }
+  }
+
+  // Starts (or restarts) API enablement and returns the operation name to poll later.
+  async beginEnableApis(projectId: string): Promise<string> {
+    const serviceIds = [...new Set([...TENANT_APIS, ...(this.config.additionalApis ?? [])])];
+    const result = await this.client.request(`https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/services:batchEnable`, {
+      method: "POST",
+      body: { serviceIds },
+    });
+    return parseOperation(result, "service-enable").name;
+  }
+
+  async isEnableApisDone(operationName: string): Promise<boolean> {
+    const operation = await this.client.pollOperation(operationName, { apiBaseUrl: "https://serviceusage.googleapis.com/v1/" });
+    return operation.done === true;
+  }
+
+  // Service identity plus the runtime bindings. Seconds, and idempotent, so the advancer runs
+  // it inline rather than parking on it.
+  async ensureProjectIam(projectId: string, projectNumber: string): Promise<void> {
+    await this.ensureServiceIdentity(projectNumber, "run.googleapis.com");
+    await this.ensureRuntimeIam(projectId, projectNumber);
   }
 
   // The project side of describing an already-provisioned project: no provisioning, only
@@ -153,29 +222,13 @@ export class TenantProjectManager {
   // already-provisioned project, which is how a pooled project is claimed with zero GCP
   // work and how the lazy fallback provisions one from scratch.
   private async provisionProject(projectId: string, displayName: string): Promise<TenantProject> {
-    let project = await this.findProject(projectId);
-    if (project === null) {
-      const body = {
-        projectId,
-        displayName,
-        labels: {
-          "hexclave-environment": sanitizeProjectFragment(this.config.envId, 63),
-          "hexclave-managed": "true",
-        },
-        ...(this.config.parent === null ? {} : { parent: this.config.parent }),
-      };
-      const created = await this.client.request("https://cloudresourcemanager.googleapis.com/v3/projects", { method: "POST", body });
-      await this.client.waitForOperation(parseOperation(created, "project-create"));
-      project = await this.waitForActiveProject(projectId);
-    } else if (project.state !== "ACTIVE") {
-      project = await this.waitForActiveProject(projectId);
-    }
-
-    await this.attachBilling(projectId);
-    await this.enableApis(projectId);
-    const projectNumber = projectNumberFromName(project.name);
-    await this.ensureServiceIdentity(projectNumber, "run.googleapis.com");
-    await this.ensureRuntimeIam(projectId, projectNumber);
+    const projectNumber = await this.ensureProjectActive(projectId, displayName);
+    await this.waitForBilling(projectId);
+    await this.client.waitForOperation({ name: await this.beginEnableApis(projectId) }, {
+      apiBaseUrl: "https://serviceusage.googleapis.com/v1/",
+      timeoutMillis: 10 * 60 * 1000,
+    });
+    await this.ensureProjectIam(projectId, projectNumber);
     return { projectId, projectNumber };
   }
 
@@ -189,43 +242,31 @@ export class TenantProjectManager {
     }
   }
 
-  private async attachBilling(projectId: string): Promise<void> {
+  private async putBillingInfo(projectId: string): Promise<void> {
+    await this.client.request(`https://cloudbilling.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/billingInfo`, {
+      method: "PUT",
+      body: { billingAccountName: normalizeBillingAccount(this.config.billingAccount) },
+    });
+  }
+
+  // The blocking form, for the LAZY per-namespace path only: that path runs inside a request
+  // that must return a usable project, so it has nowhere to yield to. The pool never calls
+  // this — it parks in billing_pending between cron ticks instead, which is the whole point
+  // of the state machine.
+  private async waitForBilling(projectId: string): Promise<void> {
     const startedAt = performance.now();
     let retryDelayMillis = 1000;
     for (;;) {
-      try {
-        await this.client.request(`https://cloudbilling.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/billingInfo`, {
-          method: "PUT",
-          body: { billingAccountName: normalizeBillingAccount(this.config.billingAccount) },
-        });
-        return;
-      } catch (error) {
-        // A newly ACTIVE Resource Manager project can briefly be unknown to Cloud Billing.
-        // Retry only its exact readiness response so account/permission failures stay loud.
-        // "Briefly" is doing heavy lifting: on reseller/offline-billing organizations the
-        // window is regularly longer than ten minutes, so the patience here has to exceed
-        // any realistic propagation delay — this loop also backs the background pool, which
-        // has no request budget to violate.
-        if (!(error instanceof GcpApiError)
-          || error.status !== 400
-          || error.providerMessage !== "Precondition check failed."
-          || performance.now() - startedAt > 20 * 60 * 1000) throw error;
-        await delay(retryDelayMillis);
-        retryDelayMillis = Math.min(retryDelayMillis * 2, 30_000);
+      if (await this.attachBillingOnce(projectId)) return;
+      // "Briefly" does heavy lifting in isBillingPropagationError: on reseller/offline-billing
+      // organizations the window is regularly longer than ten minutes, so the patience here
+      // has to exceed any realistic propagation delay.
+      if (performance.now() - startedAt > 20 * 60 * 1000) {
+        throw new GcpApiError(408, `projects/${projectId}/billingInfo`, "timed out waiting for Cloud Billing to accept the newly created project");
       }
+      await delay(retryDelayMillis);
+      retryDelayMillis = Math.min(retryDelayMillis * 2, 30_000);
     }
-  }
-
-  private async enableApis(projectId: string): Promise<void> {
-    const serviceIds = [...new Set([...TENANT_APIS, ...(this.config.additionalApis ?? [])])];
-    const result = await this.client.request(`https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/services:batchEnable`, {
-      method: "POST",
-      body: { serviceIds },
-    });
-    await this.client.waitForOperation(parseOperation(result, "service-enable"), {
-      apiBaseUrl: "https://serviceusage.googleapis.com/v1/",
-      timeoutMillis: 10 * 60 * 1000,
-    });
   }
 
   private async ensureServiceIdentity(projectNumber: string, service: string): Promise<void> {

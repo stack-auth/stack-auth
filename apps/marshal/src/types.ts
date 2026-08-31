@@ -288,11 +288,45 @@ export type TenantProjectAssignment = {
 // One entry of the pre-provisioned tenant project pool. A project enters the pool only
 // after it is fully provisioned (created, billed, APIs enabled, runtime IAM granted), so
 // claiming one is a pure bucket operation — no GCP latency in the deploy-start path.
+//
+// The states before `ready` are RESUME POINTS, not scheduled stages: provisioning runs on
+// a cron-driven advancer whose process can be frozen at any instruction (Vercel freezes the
+// sandbox the moment a response is written), so every step has to be re-enterable from
+// whatever the bucket last recorded. `creating` in particular is written BEFORE the Resource
+// Manager POST — a freeze between the POST and the record would otherwise leave a billable
+// GCP project that nothing in the bucket knows about, and therefore nothing can ever reap.
+//
+//   creating        — the record exists; the project may or may not exist yet in GCP
+//   billing_pending — the project is ACTIVE; Cloud Billing has not accepted it yet
+//   apis_pending    — billing attached; `operation_name` is the batchEnable to poll
+//   iam_pending     — APIs enabled; service identity and runtime bindings still to grant
+//   ready           — fully provisioned and claimable
+//   claimed         — assigned to `ns`
+//   condemned       — given up on; the reaper deletes the GCP project and the entry
+export const POOL_PROJECT_STATES = ["creating", "billing_pending", "apis_pending", "iam_pending", "ready", "claimed", "condemned"] as const;
+
+export type PoolProjectState = (typeof POOL_PROJECT_STATES)[number];
+
+// Deliberately a flat record rather than a discriminated union: every state transition is a
+// read-modify-CAS-write of the whole entry, and a union would make each one restate fields
+// that are simply carried forward. `ns` is meaningful only in `claimed`.
 export type PoolProjectEntry = {
-  state: "ready",
-} | {
-  state: "claimed",
-  ns: string,
+  state: PoolProjectState,
+  // When the entry was first written — which, because the record precedes the create call,
+  // is also the earliest moment a billable project could exist. The reaper's stall check
+  // measures from here.
+  created_at_millis: number,
+  // When the state last changed. The reaper's claim grace measures from HERE, not from
+  // created_at_millis: a project claimed weeks after it was provisioned must not be treated
+  // as instantly past its grace.
+  state_since_millis: number,
+  attempts: number,
+  last_error: string | null,
+  // The in-flight Service Usage batchEnable operation. Stored so a tick resuming after a
+  // freeze polls the enablement already running instead of starting a second one.
+  operation_name: string | null,
+  project_number: string | null,
+  ns: string | null,
 };
 
 // Global hostname-uniqueness registry entry (the infrastructure provider does not enforce

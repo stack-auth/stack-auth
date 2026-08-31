@@ -14,6 +14,7 @@ import { MarshalError } from "./errors.js";
 import { MutationOutcomeUnknownError } from "./mutation-safety.js";
 import { ReconciliationLeaseLostError } from "./reconciliation-lock.js";
 import { GcpApiError } from "./gcp/client.js";
+import { reapProjectPool, stepProjectPool } from "./project-pool.js";
 import { tenantContext } from "./gcp/context.js";
 import { runtimeLogs } from "./gcp/runtime.js";
 import {
@@ -202,6 +203,19 @@ export function createMarshalApp() {
         },
       });
     }))
+
+    // Maintenance crons (apps/marshal/vercel.json). Deliberately under /v1/ and NOT /internal/:
+    // that prefix carries the per-deployment webhook auth bypass above and 404s anything it
+    // does not recognize, so a route placed there would either be unauthenticated or dead.
+    // Under /v1/ they use the ordinary bearer check — Vercel's CRON_SECRET is set to
+    // MARSHAL_API_KEY, so the platform's cron invocation authenticates like any other caller.
+    //
+    // GET because that is what Vercel Cron issues. Both are idempotent in the sense that
+    // matters: each is a single leased pass over durable state, safe to repeat and safe to
+    // overlap (contention is reported as skipped, not as an error).
+    .get("/v1/maintenance/project-pool/step", () => handle(async () => await stepProjectPool()))
+
+    .get("/v1/maintenance/project-pool/reap", () => handle(async () => await reapProjectPool()))
 
     .get("/v1/namespaces/:ns", ({ params }) => handle(async () => {
       const ns = validateNamespace(params.ns);

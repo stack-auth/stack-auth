@@ -114,6 +114,21 @@ export class GcpClient {
     }
   }
 
+  // A SINGLE poll of a long-running operation, for callers that must not block: the project
+  // pool advancer runs on a cron in a serverless function that is frozen at response time, so
+  // it stores the operation name and re-polls it on a later tick instead of waiting here.
+  // Throws when the operation itself failed, exactly as waitForOperation does.
+  async pollOperation(operationName: string, options?: { apiBaseUrl?: string }): Promise<GcpOperation> {
+    const operationUrl = operationName.startsWith("http://") || operationName.startsWith("https://")
+      ? operationName
+      : `${options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/"}${operationName.replace(/^\//, "")}`;
+    const current = parseOperation(await this.request(operationUrl) ?? throwError(`Google Cloud operation ${operationName} disappeared`));
+    if (current.error !== undefined) {
+      throw new GcpApiError(current.error.code ?? 500, current.name, current.error.message ?? "operation failed");
+    }
+    return current;
+  }
+
   async waitForOperation(operation: GcpOperation, options?: { timeoutMillis?: number, apiBaseUrl?: string }): Promise<GcpOperation> {
     const timeoutMillis = options?.timeoutMillis ?? 10 * 60 * 1000;
     const startedAt = performance.now();

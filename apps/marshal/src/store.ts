@@ -2,7 +2,7 @@ import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMult
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, MULTIPART_UPLOAD_THRESHOLD_BYTES, UPLOAD_EXPIRY_SECONDS, UPLOAD_PART_SIZE_BYTES } from "./config.js";
 import { decryptString, encryptString } from "./spec-crypto.js";
-import type { DomainClaim, EnvValue, PoolProjectEntry, ReconciliationLease, ServiceSpec, StoredDeployment, StoredSpec, TenantProjectAssignment } from "./types.js";
+import { POOL_PROJECT_STATES, type DomainClaim, type EnvValue, type PoolProjectEntry, type PoolProjectState, type ReconciliationLease, type ServiceSpec, type StoredDeployment, type StoredSpec, type TenantProjectAssignment } from "./types.js";
 
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision; env is AES-GCM encrypted
@@ -605,48 +605,102 @@ function poolProjectKey(projectId: string): string {
   return `gcp-project-pool/${projectId}.json`;
 }
 
+// Read as unknown and validated, not cast: a malformed pool entry would otherwise flow into
+// the claim logic and the advancer with a trusted-looking shape. Entries written before the
+// state machine existed carry only `state`, so every added field has a defined-and-safe
+// default: a zero timestamp reads as "long ago", which is exactly right for a legacy
+// `claimed` entry the reaper should now resolve one way or the other.
+function parsePoolProjectEntry(projectId: string, stored: unknown): PoolProjectEntry {
+  const malformed = (): never => {
+    throw new Error(`stored project pool entry ${JSON.stringify(projectId)} is malformed`);
+  };
+  if (!isRecord(stored)) return malformed();
+  if (typeof stored.state !== "string" || !(POOL_PROJECT_STATES as readonly string[]).includes(stored.state)) return malformed();
+  const optionalString = (value: unknown): string | null => (value === undefined || value === null ? null : typeof value === "string" ? value : malformed());
+  const optionalMillis = (value: unknown): number => (value === undefined ? 0 : typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : malformed());
+  const state = stored.state as PoolProjectState;
+  const ns = optionalString(stored.ns);
+  if (state === "claimed" && ns === null) return malformed();
+  return {
+    state,
+    created_at_millis: optionalMillis(stored.created_at_millis),
+    state_since_millis: optionalMillis(stored.state_since_millis),
+    attempts: optionalMillis(stored.attempts),
+    last_error: optionalString(stored.last_error),
+    operation_name: optionalString(stored.operation_name),
+    project_number: optionalString(stored.project_number),
+    ns,
+  };
+}
+
 export async function listPoolProjects(): Promise<{ projectId: string, entry: PoolProjectEntry }[]> {
   const prefix = "gcp-project-pool/";
   const projects: { projectId: string, entry: PoolProjectEntry }[] = [];
   for (const objectKey of await listKeys(prefix)) {
     if (!objectKey.endsWith(".json")) continue;
     const projectId = objectKey.slice(prefix.length, -".json".length);
-    // Read as unknown and validated here, not cast: a malformed pool entry would otherwise
-    // flow into the claim logic with a trusted-looking shape.
     const stored: unknown = await getJson<unknown>(objectKey);
     if (stored === null) continue;
-    if (!isRecord(stored)) throw new Error(`stored project pool entry ${JSON.stringify(projectId)} is malformed`);
-    const entry: PoolProjectEntry | null = stored.state === "ready"
-      ? { state: "ready" }
-      : stored.state === "claimed" && typeof stored.ns === "string"
-        ? { state: "claimed", ns: stored.ns }
-        : null;
-    if (entry === null) throw new Error(`stored project pool entry ${JSON.stringify(projectId)} is malformed`);
-    projects.push({ projectId, entry });
+    projects.push({ projectId, entry: parsePoolProjectEntry(projectId, stored) });
   }
   return projects;
 }
 
-// Registers a fully provisioned project as available. Fails (false) only when the id
-// already exists — then the caller must tear the newly provisioned project back down,
-// or it would sit in the account unbilled-to-anyone and unknown to the pool.
-export async function registerPoolProject(projectId: string): Promise<boolean> {
-  return await putJsonConditionally(poolProjectKey(projectId), { state: "ready" } satisfies PoolProjectEntry, { ifNoneMatch: true }) !== null;
+export async function readPoolProject(projectId: string): Promise<Versioned<PoolProjectEntry> | null> {
+  const stored = await getJsonVersioned<unknown>(poolProjectKey(projectId));
+  return stored === null ? null : { etag: stored.etag, value: parsePoolProjectEntry(projectId, stored.value) };
 }
 
-// The ETag fence is the distributed arbiter: exactly one caller can flip a ready entry
-// to claimed, so two Marshal replicas (or two concurrent deploys) cannot be handed the
-// same tenant project.
+// Writes the `creating` record. This must happen BEFORE the Resource Manager create call —
+// the record is the only thing that makes a project reapable, so a freeze after the POST but
+// before the record would leak a billed project nothing can ever find. Fails (false) only
+// when the id already exists, which for a random pooled id means another replica got there.
+export async function createPoolProject(projectId: string, entry: PoolProjectEntry): Promise<boolean> {
+  return await putJsonConditionally(poolProjectKey(projectId), entry, { ifNoneMatch: true }) !== null;
+}
+
+// The ETag fence is the distributed arbiter for every state transition: two overlapping
+// advancer ticks cannot both move the same project forward, and the loser simply stops.
+export async function updatePoolProject(projectId: string, entry: PoolProjectEntry, previousEtag: string): Promise<boolean> {
+  return await putJsonConditionally(poolProjectKey(projectId), entry, { ifMatch: previousEtag }) !== null;
+}
+
+export async function deletePoolProject(projectId: string, previousEtag: string): Promise<boolean> {
+  return await deleteObjectConditionally(poolProjectKey(projectId), previousEtag);
+}
+
+// The same ETag fence applied to the claim: exactly one caller can flip a ready entry to
+// claimed, so two Marshal replicas (or two concurrent deploys) cannot be handed the same
+// tenant project.
 export async function claimPoolProject(projectId: string, ns: string): Promise<boolean> {
-  const entry = await getJsonVersioned<PoolProjectEntry>(poolProjectKey(projectId));
+  const entry = await readPoolProject(projectId);
   if (entry === null || entry.value.state !== "ready") return false;
-  return await putJsonConditionally(poolProjectKey(projectId), { state: "claimed", ns } satisfies PoolProjectEntry, { ifMatch: entry.etag }) !== null;
+  return await updatePoolProject(projectId, { ...entry.value, state: "claimed", state_since_millis: Date.now(), ns }, entry.etag);
 }
 
 // Puts a claimed entry back. Only succeeds while `ns` still owns the claim, so a
 // caller that lost its assignment race cannot release someone else's claim.
 export async function unclaimPoolProject(projectId: string, ns: string): Promise<boolean> {
-  const entry = await getJsonVersioned<PoolProjectEntry>(poolProjectKey(projectId));
+  const entry = await readPoolProject(projectId);
   if (entry === null || entry.value.state !== "claimed" || entry.value.ns !== ns) return false;
-  return await putJsonConditionally(poolProjectKey(projectId), { state: "ready" } satisfies PoolProjectEntry, { ifMatch: entry.etag }) !== null;
+  return await updatePoolProject(projectId, { ...entry.value, state: "ready", state_since_millis: Date.now(), ns: null }, entry.etag);
+}
+
+// The creation-rate ledger. Project creation has to be rate-limited across replicas AND
+// across ticks, and the pool entries themselves cannot carry that count: the reaper deletes
+// entries (a claimed project that reached its tenant, a condemned one), which would silently
+// hand back budget. Deleted GCP projects hold organization quota for 30 days, so a runaway
+// advancer would exhaust the org rather than just spend money. Read-modify-write is safe
+// without a CAS because every creation happens under the project-pool lease.
+const POOL_CREATION_LEDGER_KEY = "gcp-project-pool-ledger.json";
+
+export async function readPoolCreationLedger(): Promise<number[]> {
+  const stored = await getJson<unknown>(POOL_CREATION_LEDGER_KEY);
+  if (stored === null) return [];
+  if (!isRecord(stored) || !Array.isArray(stored.created_at_millis)) throw new Error("the tenant project pool creation ledger is malformed");
+  return stored.created_at_millis.filter((value): value is number => typeof value === "number" && Number.isSafeInteger(value));
+}
+
+export async function writePoolCreationLedger(createdAtMillis: number[]): Promise<void> {
+  await putJson(POOL_CREATION_LEDGER_KEY, { created_at_millis: createdAtMillis });
 }
