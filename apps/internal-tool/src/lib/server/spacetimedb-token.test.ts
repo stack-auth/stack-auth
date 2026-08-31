@@ -140,9 +140,9 @@ describe("internalToolBaseUrl", () => {
     expect(internalToolBaseUrl()).toBe("https://internal.example.com");
   });
 
-  it("throws when unset or blank", () => {
+  it.each(["", "   ", "REPLACE_ME", "REPLACE_ME///"])("throws when the base URL is unconfigured (%j)", (baseUrl) => {
     stubDefaultEnv();
-    vi.stubEnv("HEXCLAVE_INTERNAL_TOOL_BASE_URL", "   ");
+    vi.stubEnv("HEXCLAVE_INTERNAL_TOOL_BASE_URL", baseUrl);
 
     expect(() => internalToolBaseUrl()).toThrow("HEXCLAVE_INTERNAL_TOOL_BASE_URL is not configured");
   });

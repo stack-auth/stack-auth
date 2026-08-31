@@ -19,7 +19,7 @@ const USER_TOKEN_TTL = "30m";
 /** This deployment's public base URL (no trailing slash). Used as JWT `iss` and OIDC discovery origin. */
 export function internalToolBaseUrl(): string {
   const baseUrl = getEnvVariable("HEXCLAVE_INTERNAL_TOOL_BASE_URL", "").trim().replace(/\/+$/, "");
-  if (baseUrl === "") {
+  if (baseUrl === "" || baseUrl === "REPLACE_ME") {
     throw new HexclaveAssertionError("HEXCLAVE_INTERNAL_TOOL_BASE_URL is not configured for the internal tool.");
   }
   return baseUrl;
