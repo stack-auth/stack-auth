@@ -23,11 +23,11 @@ vi.mock("./gcp/runtime.js", async (importOriginal) => ({
 }));
 
 import { resolveEnv } from "./services.js";
-import { privateHostnameForService } from "./naming.js";
 
-// Built from the real helper rather than spelled out: app names carry a hash, so
-// a literal here would pin this test to the naming scheme instead of the rule.
-const dbHost = privateHostnameForService("test", "ns", "db");
+// A private server is reached at its VM's internal IP. There is no name-derived
+// hostname on GCP: nothing publishes "<service>.internal", so a ref that cannot see
+// a running VM must block rather than hand out a name that fails to resolve.
+const dbIp = "10.128.0.5";
 
 const ports = (config: PortsConfig): PortsConfig => config;
 const storedSpec = (isPublic: boolean, type: "server" | "serverless" = "server") => ({
@@ -43,22 +43,26 @@ describe("url() resolution against a target being changed in the same deploy", (
     // so a sibling applied first baked in a platform URL that the flip was about
     // to take away — silently, with no blocked ref and no error.
     readSpec.mockResolvedValue(storedSpec(true));
+    runtimeAddress.mockResolvedValue({ hostname: dbIp, platformUrl: null, internalUrl: null });
     const resolved = await resolveEnv(
       "ns",
       { DB: { ref: "db.url:8080" } },
       new Map([["db", { type: "server", ports: ports({ "8080": { protocol: "http" } }), public: false }]]),
     );
-    expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbHost}:8080` } });
-    // The stored spec must not have been consulted at all for an in-flight target.
-    expect(readSpec).not.toHaveBeenCalled();
+    // The private form proves the point: the stored spec says PUBLIC, so a platform URL
+    // is what a stored-spec read would have produced. Visibility still comes from the
+    // deployment. (The store IS read now, for the target's runtime ADDRESS — an internal
+    // IP is a runtime fact that no spec can answer.)
+    expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbIp}:8080` } });
   });
 
   it("still falls back to the stored spec for a target outside this deploy", async () => {
     // A service of another deployment source is not in `knownTargets`, so its
     // stored spec is the only thing that can answer.
     readSpec.mockResolvedValue(storedSpec(false));
+    runtimeAddress.mockResolvedValue({ hostname: dbIp, platformUrl: null, internalUrl: null });
     const resolved = await resolveEnv("ns", { DB: { ref: "db.url:8080" } }, new Map());
-    expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbHost}:8080` } });
+    expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbIp}:8080` } });
     expect(readSpec).toHaveBeenCalled();
   });
 
@@ -68,10 +72,21 @@ describe("url() resolution against a target being changed in the same deploy", (
     expect(resolved).toEqual({ ok: false, blockedRefs: ["db.url:8080"] });
   });
 
-  it("resolves a persistent server hostname from its deterministic private identity", async () => {
+  it("resolves a persistent server hostname to the VM's internal IP", async () => {
     readSpec.mockResolvedValue(storedSpec(false));
+    runtimeAddress.mockResolvedValue({ hostname: dbIp, platformUrl: null, internalUrl: null });
     const resolved = await resolveEnv("ns", { HOST: { ref: "db.hostname" } }, new Map());
-    expect(resolved).toEqual({ ok: true, env: { HOST: dbHost } });
+    expect(resolved).toEqual({ ok: true, env: { HOST: dbIp } });
+  });
+
+  // REGRESSION: a private server ref used to resolve to "<service>.internal" no matter
+  // what the runtime said. That name is a Fly leftover — GCP publishes no such record —
+  // so a Cloud Run service handed it got ENOTFOUND at request time, with a green deploy.
+  it("blocks a private server ref while the VM has no address yet", async () => {
+    readSpec.mockResolvedValue(storedSpec(false));
+    runtimeAddress.mockResolvedValue({ hostname: null, platformUrl: null, internalUrl: null });
+    const resolved = await resolveEnv("ns", { HOST: { ref: "db.hostname" }, URL: { ref: "db.url:8080" } }, new Map());
+    expect(resolved).toEqual({ ok: false, blockedRefs: ["db.hostname", "db.url:8080"] });
   });
 
   it("uses the deployed Cloud Run URI for private serverless references", async () => {

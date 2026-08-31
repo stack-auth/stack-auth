@@ -16,7 +16,10 @@ describe("Compute Engine startup scripts", () => {
     expect(script).toContain("google-hxv-data");
     expect(script).toContain('resize2fs "$DATA_DEVICE"');
     expect(script).toContain("'QUOTE=don'\"'\"'t expand $HOME'");
-    expect(script).toContain("'--mount' 'type=bind,src=/mnt/hexclave-data,dst=/data'");
+    // Must be under /mnt/disks: COS's root filesystem is read-only, so any other mount point
+    // fails mkdir and kills the whole `set -e` startup script before the container starts.
+    expect(script).toContain("'--mount' 'type=bind,src=/mnt/disks/hexclave-data,dst=/data'");
+    expect(script).toContain("mkdir -p /mnt/disks/hexclave-data");
     expect(script).toContain("'--log-driver=gcplogs'");
     expect(script).toContain("MARSHAL_SERVICE_READY $REVISION");
     expect(script).toContain("MARSHAL_IMAGE_REF $RESOLVED_IMAGE");

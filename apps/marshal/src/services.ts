@@ -335,10 +335,6 @@ export async function resolveEnv(ns: string, env: Record<string, EnvValue>, know
           blockedRefs.push(value.ref);
           break;
         }
-        if (target.type === "server") {
-          resolved.set(key, privateHostnameForService(envId, ns, targetKey));
-          break;
-        }
         if (!addressCache.has(targetKey)) addressCache.set(targetKey, await computeServiceAddress(ns, targetKey));
         const hostname = addressCache.get(targetKey)?.hostname ?? null;
         if (hostname === null) blockedRefs.push(value.ref);
@@ -379,13 +375,17 @@ export async function resolveEnv(ns: string, env: Record<string, EnvValue>, know
         // Read from `target`, which prefers this deployment's own specs — see
         // targetOf. Reading it from the STORED spec instead reintroduced exactly
         // the deploy-order dependence knownTargets exists to remove.
-        if (!target.public && target.type === "server") {
-          resolved.set(key, `http://${privateHostnameForService(envId, ns, targetKey)}:${port.port}`);
-          break;
-        }
         if (!addressCache.has(targetKey)) addressCache.set(targetKey, await computeServiceAddress(ns, targetKey));
         const address = addressCache.get(targetKey) ?? null;
-        const url = target.public ? address?.platformUrl ?? null : address?.internalUrl ?? null;
+        // A private server is addressed by the VM's internal IP and the requested port —
+        // NOT by internalUrl, which only answers for a sole HTTP port and is null for the
+        // tcp-only services (a database, say) that private url() refs exist to reach.
+        const privateServerUrl = address?.hostname === null || address?.hostname === undefined
+          ? null
+          : `http://${address.hostname}:${port.port}`;
+        const url = target.public
+          ? address?.platformUrl ?? null
+          : (target.type === "server" ? privateServerUrl : address?.internalUrl ?? null);
         if (url === null) {
           blockedRefs.push(value.ref);
         } else {
@@ -1430,6 +1430,9 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
     revision: observation.revision,
     target_revision: observation.atTarget ? null : storedForGcp.revision,
     outputs: {
+      // A service with no running VM has no address. The name-derived value below is a
+      // stable PLACEHOLDER for the API's non-null field, not something that resolves on
+      // GCP — connection refs deliberately no longer use it (see resolveEnv).
       hostname: observation.hostname ?? privateHostnameForService(config.envId, ns, key),
       internal_url: observation.internalUrl,
       url: observation.platformUrl,

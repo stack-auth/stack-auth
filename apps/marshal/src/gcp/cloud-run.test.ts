@@ -106,5 +106,10 @@ describe("Cloud Run reconciliation", () => {
     expect(patchCall?.[1]?.body).toMatchObject({
       name: "projects/tenant-project/locations/us-central1/services/service",
     });
+    // No updateMask, ever: real Cloud Run reads `updateMask=*` as an empty field list and
+    // silently no-ops the whole update (200, done operation, unchanged resource), which
+    // strands the revision waiter until it times out. The mock reproduces this, but only an
+    // end-to-end run would notice — so pin the URL here, where the mask would be re-added.
+    expect(patchCall?.[0]).toBe("https://run.googleapis.com/v2/projects/tenant-project/locations/us-central1/services/service");
   });
 });

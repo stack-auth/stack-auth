@@ -145,7 +145,14 @@ export class CloudRunClient {
     };
     const existing = await this.get(spec.name);
     const result = existing.exists
-      ? await this.client.request(`${this.serviceUrl(spec.name)}?updateMask=*`, { method: "PATCH", body: { ...service, name: resourceName } })
+      // Deliberately NO updateMask. Cloud Run v2 treats `updateMask=*` as an empty field
+      // list: it answers 200 with a DONE operation carrying the UNCHANGED resource, never
+      // bumps the generation, and does not even validate the body — verified against real
+      // Cloud Run, where every update silently no-opped and the revision waiter then timed
+      // out on a `hexclave-revision` label that could never appear. With the mask omitted,
+      // the patch updates the fields the body carries and clears the ones it leaves empty
+      // (an empty `env` array does remove the container's environment, also verified).
+      ? await this.client.request(this.serviceUrl(spec.name), { method: "PATCH", body: { ...service, name: resourceName } })
       : await this.client.request(`https://run.googleapis.com/v2/projects/${this.config.projectId}/locations/${this.config.region}/services?serviceId=${encodeURIComponent(spec.name)}`, { method: "POST", body: service });
     await this.client.waitForOperation(parseOperation(result), { apiBaseUrl: "https://run.googleapis.com/v2/", timeoutMillis: 10 * 60 * 1000 });
     const observation = await this.waitForReadyRevision(spec.name, spec.revision);

@@ -1,7 +1,7 @@
 import { getConfig } from "../config.js";
 import { badRequest } from "../errors.js";
 import { pinToDigest } from "../image-ref.js";
-import { diskNameForVolume, instanceNameForService, privateHostnameForService, serviceName } from "../naming.js";
+import { diskNameForVolume, instanceNameForService, serviceName } from "../naming.js";
 import type { ReconciliationLeaseGuard } from "../reconciliation-lock.js";
 import { portEntries, type LogLine, type ServiceSpec, type StoredSpec } from "../types.js";
 import type { CloudRunObservation } from "./cloud-run.js";
@@ -169,7 +169,13 @@ export async function observeRuntimeService(stored: StoredSpec): Promise<Runtime
   const gateway = stored.spec.config.public ? await context.cloudRun.get(gatewayName(config.envId, stored.ns, stored.key)) : null;
   const ready = instance?.status === "RUNNING" && (gateway === null || gateway.ready);
   const port = soleHttpPortOrNull(stored.spec);
-  const privateHostname = instance?.internalIp ?? privateHostnameForService(config.envId, stored.ns, stored.key);
+  // The VM's internal IP, or nothing. There is deliberately NO name-derived fallback:
+  // Fly answered "<app>.internal" from its own 6PN DNS, but GCP publishes no such record
+  // (its internal DNS is "<instance>.<zone>.c.<project>.internal", and the instance also
+  // carries a "-vm" suffix). Handing that name out produced an env var that every consumer
+  // failed to resolve — verified end to end, where a Cloud Run service reached its Postgres
+  // VM only to get ENOTFOUND. A null blocks the ref instead, which is what blockedRefs is for.
+  const privateHostname = instance?.internalIp ?? null;
   return {
     exists: instance !== null,
     ready,

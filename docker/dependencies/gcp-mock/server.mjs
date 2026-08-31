@@ -267,6 +267,11 @@ function handleCloudRun(req, res, host, path, url, body) {
     if (req.method === "PATCH") {
       if (existing === undefined) return error(res, 404, "Service not found");
       if (body.name !== `projects/${project.projectId}/locations/${specific[1]}/services/${serviceId}`) return error(res, 400, "Service name must match the resource name on update");
+      // Real Cloud Run reads `updateMask=*` as an EMPTY field list: it answers 200 with a
+      // done operation and leaves the service exactly as it was, without validating the
+      // body. Reproduced because a mock that helpfully applied the update hid a real bug —
+      // every update silently no-opped against live Cloud Run while the suite stayed green.
+      if (url.searchParams.get("updateMask") === "*") return sendJson(res, 200, operation("run.googleapis.com", "v2"));
       return applyCloudRun(res, project, specific[1], serviceId, body, existing);
     }
     if (req.method === "DELETE") {
@@ -277,6 +282,8 @@ function handleCloudRun(req, res, host, path, url, body) {
   }
   return error(res, 404, `mock: unhandled Cloud Run request ${req.method} ${host}${path}`);
 }
+
+const SERIAL_PREFIX = "[   32.663629] google_metadata_script_runner_adapt[791]: startup-script: ";
 
 function applyCloudRun(res, project, region, serviceId, body, previous) {
   const revisionName = `${serviceId}-${String(++revisionNumber).padStart(5, "0")}`;
@@ -354,6 +361,13 @@ function handleCompute(req, res, path, body) {
   }
   const instanceCollection = /^\/zones\/([^/]+)\/instances$/.exec(resourcePath);
   if (instanceCollection !== null && req.method === "POST") {
+    // Compute Engine rejects this combination outright. Reproduced because the mock happily
+    // created the instance, so the builder VM's invalid scheduling only surfaced on a real
+    // deploy — every test and the live test (which never builds from source) passed.
+    const machineType = String(body.machineType ?? "").split("/").at(-1) ?? "";
+    if (machineType.startsWith("e2-") && body.scheduling?.onHostMaintenance === "TERMINATE" && body.scheduling?.provisioningModel !== "SPOT") {
+      return error(res, 400, "e2 instances do not support onHostMaintenance=TERMINATE unless they are preemptible.");
+    }
     const startupScript = body.metadata?.items?.find((item) => item.key === "startup-script")?.value ?? "";
     const revision = body.metadata?.items?.find((item) => item.key === "hexclave-revision")?.value ?? null;
     const image = parseServiceImage(startupScript);
@@ -363,7 +377,11 @@ function handleCompute(req, res, path, body) {
       id,
       status: "RUNNING",
       networkInterfaces: [{ ...body.networkInterfaces?.[0], networkIP: `10.128.0.${instanceNumber + 10}` }],
-      serialOutput: revision === null ? "MARSHAL_BUILD_COMPLETE 0\n" : `MARSHAL_IMAGE_REF ${pinImage(image)}\nMARSHAL_SERVICE_READY ${revision}\n`,
+      // Prefixed exactly as the real serial console does. A mock that emitted bare markers at
+      // the start of a line hid a line-anchored parser that could never match real output.
+      serialOutput: revision === null
+        ? `${SERIAL_PREFIX}MARSHAL_BUILD_COMPLETE 0\n`
+        : `${SERIAL_PREFIX}MARSHAL_IMAGE_REF ${pinImage(image)}\n${SERIAL_PREFIX}MARSHAL_SERVICE_READY ${revision}\n`,
     };
     project.instances.set(body.name, instance);
     appendLog(project, { type: "gce_instance", labels: { project_id: project.projectId, instance_id: id, zone: instanceCollection[1] } }, `Instance ${body.name} ready`, { instanceId: id });

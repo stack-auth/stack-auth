@@ -86,8 +86,14 @@ function parseInstance(value: unknown): ComputeInstance {
   return { id: value.id, name: value.name, status: value.status, revision: metadataValue(value, "hexclave-revision"), internalIp, imageRef: null };
 }
 
+// Deliberately NOT anchored to line boundaries. The serial console prefixes every line the
+// startup script prints ("[   32.66] google_metadata_script_runner_adapt[791]: startup-script:
+// MARSHAL_IMAGE_REF ..."), and kernel messages can splice themselves into the middle of a
+// line, so `^...$` never matched real output — the VM came up and reconciliation then failed
+// claiming it had reported no image. Requiring the digest shape instead of `\S+` keeps a
+// spliced line from yielding a truncated ref.
 function imageRefFromSerialOutput(output: string): string | null {
-  const matches = [...output.matchAll(/^MARSHAL_IMAGE_REF (\S+)$/gm)];
+  const matches = [...output.matchAll(/MARSHAL_IMAGE_REF (\S+@sha256:[0-9a-f]{64})/g)];
   return matches.at(-1)?.[1] ?? null;
 }
 
@@ -103,6 +109,14 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+// Container-Optimized OS mounts its root filesystem READ-ONLY, so the persistent disk has to
+// land under /mnt/disks — the writable mount point COS provides for exactly this. Anything
+// else (/mnt/hexclave-data, say) fails `mkdir` with "Read-only file system", and because the
+// startup script runs under `set -e` that aborts it before Docker ever starts: the VM reaches
+// RUNNING, never prints MARSHAL_SERVICE_READY, and the readiness waiter times out five
+// minutes later with nothing to explain why. Verified on real COS.
+const DATA_MOUNT = "/mnt/disks/hexclave-data";
+
 export function serviceStartupScript(spec: ComputeInstanceSpec): string {
   const registryHost = spec.image.split("/")[0];
   const registryCredentialSetup = registryHost.endsWith(".pkg.dev") || registryHost.endsWith(".gcr.io") || registryHost === "gcr.io"
@@ -113,7 +127,7 @@ export function serviceStartupScript(spec: ComputeInstanceSpec): string {
     "--log-driver=gcplogs", "--log-opt", "gcp-log-cmd=true", "--log-opt", "labels=hexclave-service",
     ...Object.entries(spec.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
     ...spec.ports.flatMap((port) => ["--publish", `${port}:${port}`]),
-    ...(spec.volume === null ? [] : ["--mount", `type=bind,src=/mnt/hexclave-data,dst=${spec.volume.path}`]),
+    ...(spec.volume === null ? [] : ["--mount", `type=bind,src=${DATA_MOUNT},dst=${spec.volume.path}`]),
     ...(spec.startCommand === null ? [] : ["--entrypoint", "/bin/sh"]),
     spec.image,
     ...(spec.startCommand === null ? [] : ["-c", spec.startCommand]),
@@ -125,14 +139,28 @@ readonly IMAGE=${shellQuote(spec.image)}
 ${spec.volume === null ? "" : `readonly DATA_DEVICE=/dev/disk/by-id/google-${spec.volume.diskName}
 until [[ -e "$DATA_DEVICE" ]]; do sleep 1; done
 if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then mkfs.ext4 -F "$DATA_DEVICE"; fi
-mkdir -p /mnt/hexclave-data
-mountpoint -q /mnt/hexclave-data || mount "$DATA_DEVICE" /mnt/hexclave-data
+mkdir -p ${DATA_MOUNT}
+mountpoint -q ${DATA_MOUNT} || mount "$DATA_DEVICE" ${DATA_MOUNT}
 resize2fs "$DATA_DEVICE"
 `}
 ${registryCredentialSetup}
-docker pull "$IMAGE"
-docker rm --force marshal-service >/dev/null 2>&1 || true
-docker ${dockerArgs.map(shellQuote).join(" ")}
+# Retry the pull and the run. A brand-new tenant project grants the VM's service account
+# artifactregistry.writer and logging.logWriter moments before this VM boots, and those
+# bindings are NOT effective immediately: the first deploy into a fresh project reliably
+# lost the race and Docker died with PermissionDenied on the gcplogs driver
+# ("logging.logEntries.create denied on .../logs/ping"), which under set -e killed the
+# whole script before the container existed. Verified on real GCP.
+start_service() {
+  docker pull "$IMAGE" || return 1
+  docker rm --force marshal-service >/dev/null 2>&1 || true
+  docker ${dockerArgs.map(shellQuote).join(" ")} || return 1
+}
+for attempt in $(seq 1 12); do
+  if start_service; then break; fi
+  if [[ "$attempt" -eq 12 ]]; then echo 'MARSHAL_SERVICE_START_FAILED'; exit 1; fi
+  echo "MARSHAL_SERVICE_START_RETRY $attempt"
+  sleep 10
+done
 readonly RESOLVED_IMAGE="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
 if [[ -z "$RESOLVED_IMAGE" ]]; then echo 'MARSHAL_SERVICE_IMAGE_UNRESOLVED'; exit 1; fi
 echo "MARSHAL_IMAGE_REF $RESOLVED_IMAGE"
@@ -321,13 +349,39 @@ export class ComputeClient {
     return { ...ready, imageRef };
   }
 
+  // Compute Engine serializes serial-port reads PER INSTANCE and answers an overlapping
+  // fetch with a 400 (SERIAL_PORT_OUTPUT_IN_PROGRESS). It is a "come back in a moment",
+  // not a failure — but it reached callers as a fatal GcpApiError and failed the whole
+  // deploy of a VM that was RUNNING and healthy. Two readers are enough to trigger it: the
+  // readiness poll below and any concurrent observation of the same service.
+  private async readSerialPort(name: string, options?: { allow404?: boolean }): Promise<unknown | null> {
+    const url = this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}/serialPort?port=1`);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.client.request(url, options);
+      } catch (error) {
+        const contended = error instanceof GcpApiError
+          && error.status === 400
+          && error.providerMessage.includes("SERIAL_PORT_OUTPUT_IN_PROGRESS");
+        if (!contended || attempt >= 5) throw error;
+        await delay(1000);
+      }
+    }
+  }
+
   async waitForServiceReady(name: string, revision: string): Promise<string> {
     const startedAt = performance.now();
     for (;;) {
-      const output = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}/serialPort?port=1`));
+      const output = await this.readSerialPort(name);
       if (!isRecord(output) || typeof output.contents !== "string") throw new Error(`Compute Engine returned invalid serial output for ${name}`);
       if (output.contents.includes(`MARSHAL_SERVICE_READY ${revision}`)) {
         return imageRefFromSerialOutput(output.contents) ?? throwError(`Compute Engine instance ${name} became ready without reporting its resolved image`);
+      }
+      // The startup script runs under `set -e`, so a failure there means the container will
+      // never report ready. Say what actually happened instead of burning the full five
+      // minutes and reporting a bare timeout with no cause.
+      if (/Script "startup-script" failed/.test(output.contents)) {
+        throw new GcpApiError(502, `instances/${name}/serialPort`, `the service container failed to start; last serial output: ${output.contents.trim().split("\n").slice(-3).join(" | ").slice(0, 500)}`);
       }
       if (performance.now() - startedAt > 5 * 60 * 1000) throw new GcpApiError(408, `instances/${name}/serialPort`, "timed out waiting for the service container to become ready");
       await delay(2000);
@@ -335,7 +389,7 @@ export class ComputeClient {
   }
 
   async getSerialOutput(name: string): Promise<string> {
-    const output = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}/serialPort?port=1`), { allow404: true });
+    const output = await this.readSerialPort(name, { allow404: true });
     if (output === null) return "";
     if (!isRecord(output) || typeof output.contents !== "string") throw new Error(`Compute Engine returned invalid serial output for ${name}`);
     return output.contents;
@@ -379,7 +433,12 @@ export class ComputeClient {
           { key: "serial-port-logging-enable", value: "TRUE" },
         ] },
         serviceAccounts: [{ email: "default", scopes: ["https://www.googleapis.com/auth/cloud-platform"] }],
-        scheduling: { automaticRestart: false, onHostMaintenance: "TERMINATE", provisioningModel: "STANDARD" },
+        // MIGRATE, not TERMINATE: Compute Engine rejects onHostMaintenance=TERMINATE on a
+        // non-preemptible E2 instance ("e2 instances do not support onHostMaintenance=
+        // TERMINATE unless they are preemptible"), and the builder is an e2-standard-2/4.
+        // Live migration is transparent to the build; automaticRestart stays false so a
+        // builder that dies is not silently resurrected behind the deployment's back.
+        scheduling: { automaticRestart: false, onHostMaintenance: "MIGRATE", provisioningModel: "STANDARD" },
         shieldedInstanceConfig: { enableSecureBoot: true, enableVtpm: true, enableIntegrityMonitoring: true },
       },
     }), 5 * 60 * 1000);
