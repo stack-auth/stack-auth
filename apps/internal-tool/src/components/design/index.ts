@@ -6,8 +6,8 @@
  */
 export { cn } from "./cn";
 export { Badge, type BadgeColor } from "./badge";
-export { Button, type ButtonVariant, Divider, FieldLabel, Input, Pill, Select, Textarea } from "./controls";
-export { BarRow, type ChartColor, chartColors, chartTrackClass, LegendItem } from "./charts";
+export { Button, Divider, FieldLabel, Input, Pill, Select, Textarea } from "./controls";
+export { BarRow, chartColors, LegendItem } from "./charts";
 export { SortHeader, tableClasses } from "./table";
 export { Alert, Card, EmptyState, MetricCard, Tooltip } from "./surfaces";
-export { type ConnectionState, ConnectionPill, type DotTone, Eyebrow, StatusDot, ViewHeader } from "./observability";
+export { type ConnectionState, ViewHeader } from "./observability";
