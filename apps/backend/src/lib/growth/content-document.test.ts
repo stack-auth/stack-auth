@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileGrowthDocument } from "./content-document";
+import { collectGrowthDocumentActionIds, collectStoredGrowthDocumentActionIds, compileGrowthDocument } from "./content-document";
 
 const trendData = {
   id: "signup-trend",
@@ -31,6 +31,7 @@ describe("compileGrowthDocument", () => {
             "type": "heading",
           },
           {
+            "actionId": null,
             "children": [],
             "confidence": null,
             "dataId": "signup-trend",
@@ -38,6 +39,7 @@ describe("compileGrowthDocument", () => {
             "type": "component",
           },
           {
+            "actionId": null,
             "children": [
               {
                 "children": [
@@ -115,6 +117,51 @@ describe("compileGrowthDocument", () => {
 
   it("rejects overwhelming paragraphs", () => {
     expect(() => compileGrowthDocument({ format: "growth-mdx-v1", source_mdx: "a".repeat(361), data: [] })).toThrow(/at most 360 characters/);
+  });
+
+  it("compiles an action reference and nothing else about the action", () => {
+    const compiled = compileGrowthDocument({
+      format: "growth-mdx-v1",
+      source_mdx: "Ready when you are.\n\n<ActionButton action=\"8f1c0c9e-1f0e-4f1e-9b4a-1c0e5f8a2b31\" />",
+      data: [],
+    });
+    expect(compiled.blocks[1]).toEqual({
+      type: "component",
+      name: "ActionButton",
+      dataId: null,
+      confidence: null,
+      actionId: "8f1c0c9e-1f0e-4f1e-9b4a-1c0e5f8a2b31",
+      children: [],
+    });
+    expect(collectGrowthDocumentActionIds(compiled.blocks)).toEqual(["8f1c0c9e-1f0e-4f1e-9b4a-1c0e5f8a2b31"]);
+  });
+
+  it.each([
+    ["an action reference with no action", "<ActionButton />"],
+    ["a label that could contradict what the action does", "<ActionButton action=\"abc\">Deploy everything</ActionButton>"],
+    ["attributes other than the reference", "<ActionButton action=\"abc\" onClick=\"run()\" />"],
+  ])("rejects %s", (_label, source_mdx) => {
+    expect(() => compileGrowthDocument({ format: "growth-mdx-v1", source_mdx, data: [] })).toThrow(/Invalid Growth document/);
+  });
+
+  it("collects each referenced action once, including from inside lists", () => {
+    const compiled = compileGrowthDocument({
+      format: "growth-mdx-v1",
+      source_mdx: "<ActionButton action=\"first\" />\n\n<Experiment>\n\n<ActionButton action=\"second\" />\n\n</Experiment>\n\n<ActionButton action=\"first\" />",
+      data: [],
+    });
+    expect(collectGrowthDocumentActionIds(compiled.blocks)).toEqual(["first", "second"]);
+  });
+
+  it("collects the same references off a stored document, which is plain JSON", () => {
+    const compiled = compileGrowthDocument({
+      format: "growth-mdx-v1",
+      source_mdx: "<ActionButton action=\"first\" />\n\n<Experiment>\n\n<ActionButton action=\"second\" />\n\n</Experiment>",
+      data: [],
+    });
+    expect(collectStoredGrowthDocumentActionIds(JSON.parse(JSON.stringify(compiled)))).toEqual(["first", "second"]);
+    expect(collectStoredGrowthDocumentActionIds(null)).toEqual([]);
+    expect(collectStoredGrowthDocumentActionIds({ blocks: [{ type: "paragraph", children: [] }] })).toEqual([]);
   });
 
   it("requires a currency before rendering monetary minor units", () => {

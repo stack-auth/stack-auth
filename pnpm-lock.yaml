@@ -733,11 +733,11 @@ importers:
         specifier: 2.8.0
         version: 2.8.0
       ai:
-        specifier: 7.0.38
-        version: 7.0.38(zod@4.4.3)
+        specifier: 7.0.66
+        version: 7.0.66(zod@4.4.3)
       eve:
-        specifier: 0.30.8
-        version: 0.30.8(@electric-sql/pglite@0.3.2)(@opentelemetry/api@1.9.1)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(ai@7.0.38(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2)
+        specifier: 0.38.3
+        version: 0.38.3(@electric-sql/pglite@0.3.2)(@opentelemetry/api@1.9.1)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(ai@7.0.66(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2)
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -2761,8 +2761,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@4.0.29':
-    resolution: {integrity: sha512-x63ILOnzMjbavVb55ckuoQLZB8KTdrJFzk3nSt1QbecokLac4FGEYQDUKQSvRV93lFWol+8tr0ZR+IHWhGtmJw==}
+  '@ai-sdk/gateway@4.0.52':
+    resolution: {integrity: sha512-SXUM8jzzuTUJRq+EOgPd5to6DSx0EKslVn+IVZHbUEX6k/3vCPNrvjckbK26HnNxHU/STxm+zTSJteqrO+7Z0w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2791,8 +2791,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.13':
-    resolution: {integrity: sha512-fScDJMDnTbx32kLDQqp0MvPjvwkgiwvlBxlmIg7XW5PbS91LG6JjH3PQG+34oMFglqfpQA355e24OdGj5PPoDw==}
+  '@ai-sdk/provider-utils@5.0.27':
+    resolution: {integrity: sha512-EzAn4pdgG5g0xXtH6lE2zyNmfjDQIDjATkfqzuidEI35g++hh4+07vnjzkT/RmGmIClPZiRj/Q2GMPV2V7mkHw==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2801,8 +2801,8 @@ packages:
     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
     engines: {node: '>=18'}
 
-  '@ai-sdk/provider@4.0.4':
-    resolution: {integrity: sha512-tbHKNLirllUNF3ZlkCsXnwab2ZV1Sl4b1H/Cp9ruCce15IBmskE8Gwkk0yo9xDWY+jho2of7lVXtwSsyrq7cwQ==}
+  '@ai-sdk/provider@4.0.7':
+    resolution: {integrity: sha512-6or44XprPzKbr8zkmzosowSE0pxkvJcoojBL+mCZvPUt3kvXp3XSNqeVun9golb1acEfSo6yaEBRT18h2VU+1Q==}
     engines: {node: '>=22'}
 
   '@ai-sdk/react@3.0.143':
@@ -10599,8 +10599,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  ai@7.0.38:
-    resolution: {integrity: sha512-14biRrfd9lGNBT1rNw3QkQs4VDI6u7iBaw6TesP7r09GH4FFY+l22qkza5gQzzSNp/+nn8AM0+q8br0W72nLhQ==}
+  ai@7.0.66:
+    resolution: {integrity: sha512-wBUyoCYF3GVr+62nelBgR8YbpTSsMZrzFyOOjiwijylNSM2TFCW35C+Pml2vc59/WLMpyhS/LWZ55M+B9DAcSg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -12588,13 +12588,13 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
-  eve@0.30.8:
-    resolution: {integrity: sha512-ATF9CHJQBNce7+3leWH87w6Cc7TlsNlfpGAENzmkD4d7oBpSI+P7KB3cvtGM75t+9gT+nJ0R+u7u8hF8BJdBiw==}
+  eve@0.38.3:
+    resolution: {integrity: sha512-Ds942WB9JyhKZYCEG60fxRpsDbzsByPwbW/8iMxFP3xYe9TpKdGBiOxmqukI8KsdoKdyudXWnHY2KMVeSd3Iig==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.38
+      ai: ^7.0.58
       braintrust: ^3.0.0
       just-bash: ^3.0.0
       microsandbox: ^0.5.0
@@ -18827,10 +18827,10 @@ snapshots:
       '@vercel/oidc': 3.1.0
       zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.29(zod@4.4.3)':
+  '@ai-sdk/gateway@4.0.52(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider': 4.0.4
-      '@ai-sdk/provider-utils': 5.0.13(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.7
+      '@ai-sdk/provider-utils': 5.0.27(zod@4.4.3)
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
@@ -18869,19 +18869,20 @@ snapshots:
       eventsource-parser: 3.0.6
       zod: 4.4.3
 
-  '@ai-sdk/provider-utils@5.0.13(zod@4.4.3)':
+  '@ai-sdk/provider-utils@5.0.27(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider': 4.0.4
+      '@ai-sdk/provider': 4.0.7
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
+      undici: 7.29.0
       zod: 4.4.3
 
   '@ai-sdk/provider@3.0.8':
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/provider@4.0.4':
+  '@ai-sdk/provider@4.0.7':
     dependencies:
       json-schema: 0.4.0
 
@@ -29846,11 +29847,11 @@ snapshots:
       '@opentelemetry/api': 1.9.0
       zod: 4.1.12
 
-  ai@7.0.38(zod@4.4.3):
+  ai@7.0.66(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.29(zod@4.4.3)
-      '@ai-sdk/provider': 4.0.4
-      '@ai-sdk/provider-utils': 5.0.13(zod@4.4.3)
+      '@ai-sdk/gateway': 4.0.52(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.7
+      '@ai-sdk/provider-utils': 5.0.27(zod@4.4.3)
       zod: 4.4.3
 
   ajv-draft-04@1.0.0(ajv@8.17.1):
@@ -32454,9 +32455,9 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.30.8(@electric-sql/pglite@0.3.2)(@opentelemetry/api@1.9.1)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(ai@7.0.38(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2):
+  eve@0.38.3(@electric-sql/pglite@0.3.2)(@opentelemetry/api@1.9.1)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(ai@7.0.66(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2):
     dependencies:
-      ai: 7.0.38(zod@4.4.3)
+      ai: 7.0.66(zod@4.4.3)
       nitro: 3.0.260610-beta(@electric-sql/pglite@0.3.2)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2)
       undici: 8.9.0
     optionalDependencies:

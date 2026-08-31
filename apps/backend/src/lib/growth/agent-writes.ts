@@ -437,6 +437,10 @@ export async function replaceGrowthInterviewQuestions(options: {
     if (interview.status !== "pending" || interview.questions.some((question) => question.answeredAt != null)) {
       throw new StatusError(409, "The interview has already started; the question plan can no longer be replaced.");
     }
+    const keys = new Set(options.questions.map((question) => question.questionKey));
+    if (keys.size !== options.questions.length) {
+      throw new StatusError(400, "Every question_key in the plan must be unique.");
+    }
     await tx.growthInterviewQuestion.deleteMany({ where: { interviewId: interview.id } });
     await tx.growthInterviewQuestion.createMany({
       data: options.questions.map((question, orderIndex) => ({
@@ -472,7 +476,7 @@ export async function appendGrowthInterviewQuestion(options: {
     await requireRunInTenancy(tx, options.tenancy, options.runId);
     const interview = await tx.growthInterview.findUnique({
       where: { runId: options.runId },
-      include: { questions: { select: { orderIndex: true } } },
+      include: { questions: { select: { orderIndex: true, questionKey: true } } },
     });
     if (interview == null) {
       // Append cannot bootstrap an interview: adaptive questions only make sense once a plan exists,
@@ -481,6 +485,9 @@ export async function appendGrowthInterviewQuestion(options: {
     }
     if (interview.status !== "pending" && interview.status !== "active") {
       throw new StatusError(409, `The interview is ${interview.status}; adaptive questions can no longer be added.`);
+    }
+    if (interview.questions.some((question) => question.questionKey === options.question.questionKey)) {
+      throw new StatusError(409, "A question with this question_key already exists in this interview; adaptive follow-ups need a new key.");
     }
     // max+1 rather than count: a retried append that already landed must not collide with the
     // (interviewId, orderIndex) unique in a way that corrupts ordering.

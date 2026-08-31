@@ -2,10 +2,11 @@
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCategoryTabs } from "@/components/design-components";
 import { Link } from "@/components/link";
-import { cn } from "@/components/ui";
+import { cn, CopyPromptButton } from "@/components/ui";
 import { getGrowthOverview } from "@/lib/growth/growth-api";
 import { getGrowthPublishedQuiz } from "@/lib/growth/games/growth-games-api";
 import type { GrowthPublishedQuiz } from "@/lib/growth/games/growth-games-types";
+import { buildGrowthItemPagePrompt } from "@/lib/growth/growth-page-prompt";
 import { buildGrowthDemoOverview, buildGrowthDemoPublishedQuiz, GROWTH_DEMO_NOW_MILLIS } from "@/lib/growth/growth-demo-data";
 import { useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_CATEGORIES, type GrowthActionItem, type GrowthCategory, type GrowthOverview, type GrowthOverviewFinding, type GrowthStatus } from "@/lib/growth/growth-types";
@@ -15,8 +16,10 @@ import { ArrowRightIcon, /* CaretDownIcon, */ CoinsIcon, CubeIcon, CursorClickIc
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
+import { GrowthDocumentActionsProvider, GrowthDocumentRenderer } from "./growth-document";
 import { QuizBanner } from "./games/quiz-banner";
 import { QuizDialog } from "./games/quiz-dialog";
+import { GrowthActionStatusPicker, GrowthAddNoteRow, GrowthCategoryBadge, GrowthCategoryScoreBadge, GrowthEditableText, GrowthTagBadges, useGrowthWorkspaceEditors, type GrowthWorkspaceItem, type GrowthWorkspaceItemPatch } from "./workspace-edit";
 
 const CATEGORY_PRESENTATION = new Map<GrowthCategory, { label: string, icon: typeof UsersThreeIcon }>([
   ["product", { label: "Product", icon: CubeIcon }],
@@ -120,33 +123,47 @@ function GrowthJourney(props: { categories: GrowthOverview["categories"], select
   );
 }
 
-function Badges(props: { category: GrowthCategory | null, tags: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      <DesignBadge label={categoryLabel(props.category)} color={props.category == null ? "orange" : "cyan"} size="sm" />
-      {props.tags.map((tag) => <DesignBadge key={tag} label={tag} color="blue" size="sm" />)}
-    </div>
-  );
-}
-
-function SuggestionRow(props: { item: { kind: "finding", value: GrowthOverviewFinding } | { kind: "action", value: GrowthActionItem }, projectId: string }) {
+function SuggestionRow(props: { item: GrowthWorkspaceItem, projectId: string }) {
   const withQuery = useGrowthHref();
+  const editors = useGrowthWorkspaceEditors();
   const value = props.item.value;
   const href = props.item.kind === "action"
     ? `/projects/${props.projectId}/gtm/actions/${value.id}`
     : `/projects/${props.projectId}/gtm/findings/${value.id}`;
   const body = props.item.kind === "action" ? props.item.value.description : props.item.value.body;
+  const item = props.item;
+  const save = async (patch: GrowthWorkspaceItemPatch): Promise<boolean> => await (
+    editors ?? throwErr("A Growth workspace row saved a field without an edit provider, but its fields are only editable inside one.")
+  ).saveItem(item, patch);
+  const prompt = value.category == null ? null : item.kind === "action"
+    ? buildGrowthItemPagePrompt({ kind: "action", category: value.category, action: item.value })
+    : buildGrowthItemPagePrompt({ kind: item.value.kind === "note" ? "note" : "finding", category: value.category, finding: item.value });
+  const callToAction = <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">{props.item.kind === "action" ? "Review action" : "Read evidence"}<ArrowRightIcon className="size-3.5" /></span>;
   const content = (
     <article className="grid gap-3 border-b border-foreground/[0.08] px-1 py-5 text-left last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-start">
       <time className="text-xs text-muted-foreground">{formatDate(value.createdAtMillis)}</time>
       <div className="min-w-0">
-        <h4 className="text-sm font-semibold leading-6 tracking-tight">{value.title}</h4>
-        <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{body}</p>
-        <div className="mt-3"><Badges category={value.category} tags={value.tags} /></div>
+        <h4 className="text-sm font-semibold leading-6 tracking-tight">
+          <GrowthEditableText value={value.title} label="Title" onSave={async (title) => await save({ title })} />
+        </h4>
+        <p className={cn("mt-1 text-sm leading-6 text-muted-foreground", editors == null && "line-clamp-2")}>
+          <GrowthEditableText value={body} label={item.kind === "action" ? "Description" : "Body"} multiline onSave={async (next) => await save({ body: next })} />
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <GrowthCategoryBadge category={value.category} label={categoryLabel(value.category)} onSave={async (category) => await save({ category })} />
+          <GrowthTagBadges tags={value.tags} onSave={async (tags) => await save({ tags })} />
+          {item.kind === "action" && <GrowthActionStatusPicker status={item.value.status} onSave={async (status) => await editors?.saveActionStatus(item.value, status)} />}
+        </div>
       </div>
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">{props.item.kind === "action" ? "Review action" : "Read evidence"}<ArrowRightIcon className="size-3.5" /></span>
+      {editors == null ? callToAction : (
+        <div className="flex flex-wrap items-center gap-3">
+          {prompt != null && <CopyPromptButton content={prompt} size="sm" variant="outline">Copy prompt</CopyPromptButton>}
+          <Link href={withQuery(href)} className="rounded-xl focus-visible:outline-none focus-visible:ring-2">{callToAction}</Link>
+        </div>
+      )}
     </article>
   );
+  if (editors != null) return content;
   return <Link href={withQuery(href)} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2">{content}</Link>;
 }
 
@@ -193,24 +210,31 @@ export function GrowthWorkspaceContent(props: {
   status?: GrowthStatus,
   projectId: string,
   projectName: string,
+  demo: boolean,
   /**
    * Rendered directly above the stage/insights section. Passed in rather than fetched here because
-   * this component is ALSO the admin page's read-only preview of a customer workspace, and that page
-   * has no business firing the customer's own quiz request. The customer wrapper below passes the
-   * live banner; the admin preview passes nothing.
    */
   quizBanner?: ReactNode,
+  onRefresh?: () => Promise<void>,
+  categoryPageEditor?: (category: GrowthCategory) => ReactNode,
 }) {
   const withQuery = useGrowthHref();
+  const editors = useGrowthWorkspaceEditors();
   const [selected, setSelected] = useState<GrowthCategory>("conversion");
   const [lane, setLane] = useState<"suggestions" | "notes">("suggestions");
   const category = props.overview.categories.find((item) => item.category === selected)
     ?? throwErr(`Growth overview response omitted ${selected}.`);
-  const suggestions: Array<{ kind: "finding", value: GrowthOverviewFinding } | { kind: "action", value: GrowthActionItem }> = [];
+  const suggestions: GrowthWorkspaceItem[] = [];
   for (const value of props.overview.findings.filter((item) => item.category === selected)) suggestions.push({ kind: "finding", value });
   for (const value of props.overview.actions.filter((item) => item.category === selected)) suggestions.push({ kind: "action", value });
   suggestions.sort((left, right) => right.value.createdAtMillis - left.value.createdAtMillis);
   const notes = props.overview.notes.filter((item) => item.category === selected);
+  const publishedPage = props.overview.categoryPages.find((page) => page.category === selected) ?? null;
+  const showLanes = editors != null || publishedPage == null;
+  const awaitingStage: GrowthWorkspaceItem[] = editors == null ? [] : [
+    ...[...props.overview.findings, ...props.overview.notes].filter((item) => item.category == null).map((value) => ({ kind: "finding" as const, value })),
+    ...[...props.overview.actions, ...props.overview.archive].filter((item) => item.category == null).map((value) => ({ kind: "action" as const, value })),
+  ];
   // const highlight = selectGrowthHighlight(props.overview, props.projectId);
   const rerunActive = props.status?.latestReport != null && props.status.analysis.state === "running";
   const unreadReport = getUnreadGrowthReport(props.status);
@@ -261,9 +285,22 @@ export function GrowthWorkspaceContent(props: {
         <header className="mx-auto max-w-2xl text-center"><p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">{props.projectName} growth journey</p><h2 className="mt-3 text-balance font-serif text-4xl leading-none tracking-tight sm:text-5xl">From product to revenue.</h2><p className="mx-auto mt-4 text-sm text-muted-foreground">Choose a stage to focus the workspace.</p></header>
         <GrowthJourney categories={props.overview.categories} selected={selected} projectName={props.projectName} onSelect={setSelected} />
         {props.overview.needsCategoryCount > 0 && <p className="mt-5 text-center text-xs text-muted-foreground">{props.overview.needsCategoryCount} items are awaiting a stage.</p>}
+        {awaitingStage.length > 0 && (
+          <div className="mt-5 border-y border-foreground/[0.08]">
+            {awaitingStage.map((item) => <SuggestionRow key={`awaiting-${item.kind}-${item.value.id}`} item={item} projectId={props.projectId} />)}
+          </div>
+        )}
         <div className="mt-4 border-t border-foreground/[0.09] pt-9">
-          <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3>{category.score != null && <DesignBadge label={`${category.score} / 100`} color="purple" size="md" />}</div></header>
-          <section className="py-8">
+          <header className="border-b border-foreground/[0.09] pb-8"><p className="font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Selected category</p><div className="mt-3 flex flex-wrap items-end justify-between gap-3"><h3 className="font-serif text-5xl tracking-tight">{categoryLabel(selected)}</h3><GrowthCategoryScoreBadge category={selected} score={category.score} /></div></header>
+          {editors == null && publishedPage != null && (
+            <section className="py-8">
+              <GrowthDocumentActionsProvider actions={publishedPage.actions} demo={props.demo} projectId={props.projectId} onChanged={props.onRefresh ?? (async () => {})}>
+                <GrowthDocumentRenderer document={publishedPage.document} className="max-w-3xl" />
+              </GrowthDocumentActionsProvider>
+            </section>
+          )}
+          {props.categoryPageEditor?.(selected)}
+          {showLanes && <section className="py-8">
             <DesignCategoryTabs
               categories={[
                 { id: "suggestions", label: "Suggestions", count: suggestions.length },
@@ -282,11 +319,14 @@ export function GrowthWorkspaceContent(props: {
               {lane === "suggestions" && (suggestions.length === 0
                 ? <p className="py-8 text-sm text-muted-foreground">No suggestions in this category yet.</p>
                 : suggestions.slice(0, 6).map((item) => <SuggestionRow key={`${item.kind}-${item.value.id}`} item={item} projectId={props.projectId} />))}
-              {lane === "notes" && (notes.length === 0
-                ? <p className="py-8 text-sm text-muted-foreground">No notes in this category yet.</p>
-                : notes.map((note) => <SuggestionRow key={note.id} item={{ kind: "finding", value: note }} projectId={props.projectId} />))}
+              {lane === "notes" && <>
+                <GrowthAddNoteRow category={selected} />
+                {notes.length === 0
+                  ? <p className="py-8 text-sm text-muted-foreground">No notes in this category yet.</p>
+                  : notes.map((note) => <SuggestionRow key={note.id} item={{ kind: "finding", value: note }} projectId={props.projectId} />)}
+              </>}
             </div>
-          </section>
+          </section>}
         </div>
       </section>
     </div>
@@ -324,7 +364,9 @@ export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
       status={props.status}
       projectId={projectId}
       projectName={project.displayName}
+      demo={demo}
       quizBanner={<GrowthQuizBannerSlot demo={demo} />}
+      onRefresh={refresh}
     />
   );
 }

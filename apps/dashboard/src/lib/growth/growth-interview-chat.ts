@@ -78,6 +78,7 @@ export type InterviewChatView = {
    * still unanswered. All earlier cards render read-only with the recorded answer.
    */
   activeQuestion: { entryId: string, card: InterviewQuestionCard, planQuestion: GrowthInterviewQuestion } | null,
+  planQuestionByEntryId: Map<string, GrowthInterviewQuestion>,
   /**
    * True when the interview is open but no unanswered card is on screen — either the customer never
    * started (empty transcript) or a previous turn's answer persisted but its stream dropped before
@@ -228,20 +229,57 @@ export function applyAnswerToQuestions(questions: GrowthInterviewQuestion[], ans
   });
 }
 
+export function resolveTranscriptPlanQuestions(
+  questions: GrowthInterviewQuestion[],
+  entries: InterviewTranscriptEntry[],
+): Map<string, GrowthInterviewQuestion> {
+  const remainingByKey = new Map<string, GrowthInterviewQuestion[]>();
+  for (const question of [...questions].sort((a, b) => a.orderIndex - b.orderIndex)) {
+    const bucket = remainingByKey.get(question.questionKey) ?? [];
+    bucket.push(question);
+    remainingByKey.set(question.questionKey, bucket);
+  }
+  const resolved = new Map<string, GrowthInterviewQuestion>();
+  for (const entry of entries) {
+    if (entry.type !== "question") continue;
+    const planQuestion = remainingByKey.get(entry.card.questionKey)?.shift();
+    if (planQuestion != null) resolved.set(entry.id, planQuestion);
+  }
+  return resolved;
+}
+
+export function planQuestionForEntry(args: {
+  entryId: string,
+  card: InterviewQuestionCard,
+  streaming: boolean,
+  activeQuestion: InterviewChatView["activeQuestion"],
+  planQuestionByEntryId: Map<string, GrowthInterviewQuestion>,
+  questions: GrowthInterviewQuestion[],
+}): GrowthInterviewQuestion | null {
+  if (args.activeQuestion != null && args.activeQuestion.entryId === args.entryId) return args.activeQuestion.planQuestion;
+  if (args.streaming) return args.questions.find((question) => question.questionKey === args.card.questionKey) ?? null;
+  return args.planQuestionByEntryId.get(args.entryId) ?? null;
+}
+
+export function planFallbackEntryId(question: GrowthInterviewQuestion): string {
+  return `plan-fallback:${question.orderIndex}:${question.questionKey}`;
+}
+
 /** Derives the whole chat view (interactive card, continue affordance, completion) from status + plan + transcript. */
 export function deriveInterviewChatView(
   interview: { status: GrowthInterviewStatus, questions: GrowthInterviewQuestion[] },
   entries: InterviewTranscriptEntry[],
 ): InterviewChatView {
   const completed = interview.status === "completed" || interview.status === "skipped" || entries.some((entry) => entry.type === "complete");
+  const planQuestionByEntryId = resolveTranscriptPlanQuestions(interview.questions, entries);
+  let viewEntries = entries;
   let activeQuestion: InterviewChatView["activeQuestion"] = null;
   if (!completed) {
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i];
       if (entry.type !== "question") continue;
-      const planQuestion = interview.questions.find((question) => question.questionKey === entry.card.questionKey);
+      const planQuestion = planQuestionByEntryId.get(entry.id);
       // A card whose key is missing from the plan cannot be answered (the answer endpoint is keyed
-      // by the plan's order_index) — fall through to the continue affordance instead of rendering a
       // dead interactive card. The hook reports this loudly when it happens.
       if (planQuestion != null && planQuestion.answeredAtMillis == null) {
         activeQuestion = { entryId: entry.id, card: entry.card, planQuestion };
@@ -249,15 +287,25 @@ export function deriveInterviewChatView(
       break;
     }
   }
+  if (!completed && activeQuestion == null && entries.some((entry) => entry.type === "question")) {
+    const next = findNextUnansweredQuestion(interview.questions);
+    if (next != null) {
+      const entryId = planFallbackEntryId(next);
+      const card = questionCardFromPlanQuestion(next);
+      viewEntries = [...entries, { type: "question", id: entryId, card }];
+      planQuestionByEntryId.set(entryId, next);
+      activeQuestion = { entryId, card, planQuestion: next };
+    }
+  }
   return {
-    entries,
+    entries: viewEntries,
     activeQuestion,
+    planQuestionByEntryId,
     needsAssistantTurn: !completed && activeQuestion == null,
     completed,
   };
 }
 
-/** Demo cards come from the plan rows, which don't carry allow_free_text — the demo allows it everywhere. */
 export function questionCardFromPlanQuestion(question: GrowthInterviewQuestion): InterviewQuestionCard {
   return {
     questionKey: question.questionKey,
@@ -544,13 +592,14 @@ export function useGrowthInterviewChat(options: { app: object, demo: boolean, de
       ? buildDemoTranscriptEntries(interview)
       : [...base.loadedEntries, ...base.localEntries];
     const derived = deriveInterviewChatView(interview, entries);
-    if (!demo && derived.needsAssistantTurn && entries.some((entry) => entry.type === "question")) {
-      // A presented card that can't be matched to an unanswered plan row usually means the agent
-      // presented a question missing from the plan — recoverable via the continue affordance, but
-      // worth knowing about.
+    if (!demo && !derived.completed) {
       const lastCard = [...entries].reverse().find((entry) => entry.type === "question");
-      if (lastCard != null && !base.questions.some((question) => question.questionKey === lastCard.card.questionKey)) {
-        captureError("growth-interview-unmatched-question", { message: "The transcript's last question card is not in the question plan", questionKey: lastCard.card.questionKey });
+      if (lastCard != null && derived.activeQuestion?.entryId !== lastCard.id) {
+        captureError("growth-interview-unanswerable-question", {
+          message: "The transcript's last question card has no unanswered plan row to answer",
+          questionKey: lastCard.card.questionKey,
+          inPlan: base.questions.some((question) => question.questionKey === lastCard.card.questionKey),
+        });
       }
     }
     return derived;

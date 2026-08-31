@@ -1,26 +1,8 @@
-import type { SendFn } from "eve/channels";
+import type { ChannelFrom } from "eve/channels";
 import { buildGrowthSessionAuth } from "#lib/run-context.ts";
+import { followSessionEvents } from "#lib/session-stream.ts";
 import { PLAIN_LANGUAGE_RULE } from "#lib/writing-style.ts";
 
-/**
- * Writes the question prose for one round of the Growth "How well do you know your users?" game,
- * dispatched synchronously from the `/quiz` channel route.
- *
- * THE HARD RULE: this session is never told what any answer is, and must never write one. The
- * backend computed the true value and all four options from the project's real rolled-up metrics
- * before dispatching (lib/growth/games/quiz-facts.ts) and will keep using its own numbers whatever
- * comes back from here — this turn contributes wording and nothing else. The backend additionally
- * rejects any question containing a number that matches one of its options, and falls back to its
- * own template wording, so a model that decides to be helpful degrades the copy rather than the
- * game.
- *
- * DESIGN — no tools, no token, same as run-blog-draft.ts: everything this session reasons from is
- * passed inline (a metric label, the catalog's description of it, and the question shape). No run
- * token is minted and no agent-write surface is involved; the backend stores the result itself.
- * `agent_token` is deliberately absent from the request shape for the same reason.
- */
-
-/** Inbound body of POST /quiz (backend -> agent). */
 export type QuizAuthoringRequest = {
   readonly project_id: string,
   readonly branch_id: string,
@@ -137,8 +119,8 @@ function toAuthoredQuestions(entries: readonly unknown[]): QuizAuthoringResult["
 }
 
 /** Runs the authoring session and returns the questions it wrote. */
-export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers: { readonly send: SendFn }): Promise<QuizAuthoringResult> {
-  const session = await helpers.send(buildQuizPrompt(input), {
+export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers: { readonly from: ChannelFrom }): Promise<QuizAuthoringResult> {
+  const session = await helpers.from(`quiz:${input.round_id}`).send(buildQuizPrompt(input), {
     auth: buildGrowthSessionAuth({
       project_id: input.project_id,
       branch_id: input.branch_id,
@@ -147,61 +129,35 @@ export async function executeQuizAuthoring(input: QuizAuthoringRequest, helpers:
       finding_source: "report",
     }),
     // One session per round: a repeat request for the same round is a retry of the same work.
-    continuationToken: `quiz:${input.round_id}`,
     mode: "task",
     title: `Growth quiz questions (round ${input.round_id})`,
+    turnPolicy: "queue",
   });
 
   const chunks: string[] = [];
-  const stream = await session.getEventStream({ startIndex: 0 });
-  const reader = stream.getReader();
-  let timeoutTimer: NodeJS.Timeout | undefined;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timeoutTimer = setTimeout(() => resolve("timeout"), MAX_QUIZ_AUTHORING_MS);
-    timeoutTimer.unref();
-  });
-  try {
-    collect: while (true) {
-      const readResult = await Promise.race([reader.read(), timeoutPromise]);
-      if (readResult === "timeout") {
-        await reader.cancel();
-        throw new Error(`Quiz authoring timed out: session=${session.id}`);
+  collect: for await (const event of followSessionEvents({ session, label: "Quiz authoring", maxSessionMs: MAX_QUIZ_AUTHORING_MS })) {
+    switch (event.type) {
+      case "message.completed": {
+        if (event.data.message != null && event.data.message.length > 0 && !chunks.includes(event.data.message)) {
+          chunks.push(event.data.message);
+        }
+        break;
       }
-      const { done, value: event } = readResult;
-      if (done) {
-        throw new Error(`Quiz authoring event stream ended without a terminal event: session=${session.id}`);
+      case "session.completed": {
+        break collect;
       }
-      switch (event.type) {
-        case "message.completed": {
-          // Same per-step duplication `message.completed` has in run-interview.ts and
-          // run-blog-draft.ts: a multi-step session repeats earlier prose, and concatenating blindly
-          // would emit the array twice.
-          if (event.data.message != null && event.data.message.length > 0 && !chunks.includes(event.data.message)) {
-            chunks.push(event.data.message);
-          }
-          break;
-        }
-        case "session.completed": {
-          break collect;
-        }
-        case "session.failed": {
-          throw new Error(`Quiz authoring session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
-        }
-        case "session.waiting": {
-          throw new Error(`Quiz authoring session parked waiting for input in task mode: session=${session.id}`);
-        }
-        default: {
-          break;
-        }
+      case "session.failed": {
+        throw new Error(`Quiz authoring session failed: session=${session.id} code=${event.data.code} message=${event.data.message}`);
+      }
+      case "session.waiting": {
+        throw new Error(`Quiz authoring session parked waiting for input in task mode: session=${session.id}`);
+      }
+      default: {
+        break;
       }
     }
-  } finally {
-    if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
-    reader.releaseLock();
   }
 
-  // The last chunk is the model's final answer; earlier ones are intermediate steps that may not be
-  // the JSON. Searched newest-first so a session that reasoned before answering still resolves.
   for (const chunk of [...chunks].reverse()) {
     const entries = extractJsonArray(chunk);
     if (entries != null) return { questions: toAuthoredQuestions(entries) };

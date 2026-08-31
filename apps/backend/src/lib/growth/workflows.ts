@@ -3,6 +3,7 @@ import { syncWorkflowSource } from "@/lib/workflows/api";
 import { globalPrismaClient } from "@/prisma-client";
 import { WORKFLOW_CUSTOM_EVENT_PREFIX } from "@hexclave/shared/dist/interface/workflows";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import {
   GROWTH_ANALYSIS_RUN_ACTIVATED_EVENT_NAME,
   GROWTH_ANALYSIS_WORKFLOW_ID,
@@ -78,35 +79,42 @@ export function isGrowthWorkflowSourceEdited(workflowId: string, storedSource: s
 /**
  * Creates any missing canonical Growth workflow definitions for this tenancy.
  * Existing definitions — edited or not — are left completely untouched.
- * Concurrent seeding is safe: the loser of the create race sees the
- * already-exists 400 and treats it as success.
  */
 export async function ensureGrowthWorkflows(tenancy: Tenancy): Promise<Map<string, { created: boolean }>> {
   const results = new Map<string, { created: boolean }>();
   for (const [workflowId, spec] of GROWTH_WORKFLOW_DEFINITIONS) {
-    const existing = await globalPrismaClient.workflowDefinition.findUnique({
-      where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
-      select: { workflowId: true },
-    });
-    if (existing != null) {
-      results.set(workflowId, { created: false });
-      continue;
-    }
-    try {
-      await syncWorkflowSource(tenancy, { workflowId, source: spec.source, displayName: spec.displayName, mustBeNew: true });
-      results.set(workflowId, { created: true });
-    } catch (error) {
-      // mustBeNew rejects with a 400 when the definition appeared between our
-      // existence check and the sync — a concurrent seeder won the race, which
-      // is exactly the outcome we wanted.
-      if (StatusError.isStatusError(error) && error.statusCode === 400 && error.message.includes("already exists")) {
-        results.set(workflowId, { created: false });
-        continue;
-      }
-      throw error;
-    }
+    results.set(workflowId, await ensureGrowthWorkflow(tenancy, workflowId, spec));
   }
   return results;
+}
+
+const GROWTH_SEED_ATTEMPTS = 3;
+
+async function ensureGrowthWorkflow(tenancy: Tenancy, workflowId: string, spec: GrowthWorkflowDefinitionSpec): Promise<{ created: boolean }> {
+  for (let attempt = 1; ; attempt++) {
+    if (await growthWorkflowExists(tenancy, workflowId)) return { created: false };
+    try {
+      await syncWorkflowSource(tenancy, { workflowId, source: spec.source, displayName: spec.displayName, mustBeNew: true });
+      return { created: true };
+    } catch (error) {
+      if (!isGrowthSeedRaceError(error) || attempt >= GROWTH_SEED_ATTEMPTS) throw error;
+      await wait(100 * attempt);
+    }
+  }
+}
+
+export function isGrowthSeedRaceError(error: unknown): boolean {
+  if (!StatusError.isStatusError(error)) return false;
+  if (error.statusCode === 409) return true;
+  return error.statusCode === 400 && error.message.includes("already exists");
+}
+
+async function growthWorkflowExists(tenancy: Tenancy, workflowId: string): Promise<boolean> {
+  const definition = await globalPrismaClient.workflowDefinition.findUnique({
+    where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
+    select: { workflowId: true },
+  });
+  return definition != null;
 }
 
 export type GrowthWorkflowState = {

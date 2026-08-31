@@ -1469,12 +1469,14 @@ let stepCounter = 0;
  * One engine step. Returns whether any work was done, so the caller can
  * idle-wait longer between steps when the system is quiet.
  */
-export async function runWorkflowEngineStep(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
+export async function runWorkflowEngineStep(options: { deadlineMs: number, executeRuns?: boolean }): Promise<{ didWork: boolean }> {
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
   didWork = await materializeScheduleOccurrences(tenancyCache, options.deadlineMs) || didWork;
   didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs) || didWork;
-  didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
+  if (options.executeRuns !== false) {
+    didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
+  }
   // Retention pruning is cheap but pointless to run every second.
   if (stepCounter++ % 60 === 0) {
     await pruneWorkflowRetention();

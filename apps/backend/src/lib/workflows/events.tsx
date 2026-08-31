@@ -52,7 +52,7 @@ export type EnqueueWorkflowEventOptions = {
  * because this runs inside entity-mutation transactions that must never fail on
  * account of workflows.
  */
-export async function enqueueWorkflowEvent(client: PrismaClientTransaction, options: EnqueueWorkflowEventOptions): Promise<{ eventId: string } | null> {
+export async function enqueueWorkflowEvent(client: PrismaClientTransaction, options: EnqueueWorkflowEventOptions): Promise<{ eventId: string, created: boolean } | null> {
   const payloadJson = JSON.stringify(options.payload ?? null);
   const payloadBytes = Buffer.byteLength(payloadJson, "utf8");
   if (payloadBytes > WORKFLOW_EVENT_PAYLOAD_MAX_BYTES) {
@@ -65,7 +65,7 @@ export async function enqueueWorkflowEvent(client: PrismaClientTransaction, opti
 
   const eventId = options.eventId ?? generateUuid();
   // createMany + skipDuplicates so deterministic ids make re-inserts no-ops.
-  await client.workflowEvent.createMany({
+  const result = await client.workflowEvent.createMany({
     data: [{
       tenancyId: options.tenancy.id,
       id: eventId,
@@ -75,7 +75,7 @@ export async function enqueueWorkflowEvent(client: PrismaClientTransaction, opti
     }],
     skipDuplicates: true,
   });
-  return { eventId };
+  return { eventId, created: result.count > 0 };
 }
 
 /**

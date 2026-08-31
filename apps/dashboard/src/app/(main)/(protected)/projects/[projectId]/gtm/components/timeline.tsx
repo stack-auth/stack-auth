@@ -68,6 +68,7 @@ export function GrowthTimelineStep(props: {
   summary?: ReactNode,
   /** Rendered next to the title, e.g. a status badge. */
   badge?: ReactNode,
+  trailing?: ReactNode,
   isLast?: boolean,
   children?: ReactNode,
 }) {
@@ -95,6 +96,7 @@ export function GrowthTimelineStep(props: {
           </span>
           {props.badge}
           {props.summary != null && <span className="min-w-0 text-sm text-muted-foreground">{props.summary}</span>}
+          {props.trailing != null && <div className="ml-auto shrink-0">{props.trailing}</div>}
         </div>
         {props.subtitle != null && (
           <p className={cn("mt-0.5 text-sm", state === "upcoming" ? "text-muted-foreground/50" : "text-muted-foreground")}>

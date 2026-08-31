@@ -275,6 +275,40 @@ export type GrowthOverviewFinding = {
   createdAtMillis: number,
 };
 
+export type GrowthPublishedCategoryPage = {
+  category: GrowthCategory,
+  version: number,
+  document: GrowthDocument,
+  publishedAtMillis: number | null,
+  actions: GrowthActionItem[],
+};
+
+export type GrowthCategoryPageStatus = "draft" | "published" | "archived";
+
+export type GrowthCategoryPageVersionSummary = {
+  id: string,
+  version: number,
+  status: GrowthCategoryPageStatus,
+  publishedAtMillis: number | null,
+  updatedAtMillis: number,
+};
+
+export type GrowthCategoryPageVersion = GrowthCategoryPageVersionSummary & {
+  category: GrowthCategory,
+  source: { sourceMdx: string, data: unknown[] } | null,
+  document: GrowthDocument | null,
+  sourceItemIds: { findings: string[], actions: string[] },
+  staleSourceIds: string[],
+  actions: GrowthActionItem[],
+};
+
+export type GrowthAdminCategoryPage = {
+  category: GrowthCategory,
+  draft: GrowthCategoryPageVersion | null,
+  published: GrowthCategoryPageVersion | null,
+  archived: GrowthCategoryPageVersionSummary[],
+};
+
 export type GrowthOverview = {
   latestReport: { id: string, title: string, summary: string, createdAtMillis: number } | null,
   latestBrief: { id: string, date: string, summary: string, contentMd: string, createdAtMillis: number } | null,
@@ -283,6 +317,7 @@ export type GrowthOverview = {
   actions: GrowthActionItem[],
   archive: GrowthActionItem[],
   categories: { category: GrowthCategory, count: number, score: number | null }[],
+  categoryPages: GrowthPublishedCategoryPage[],
   needsCategoryCount: number,
   limit: number,
 };

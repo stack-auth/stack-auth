@@ -10,12 +10,12 @@ describe("getGrowthActionNarrativeSections", () => {
       data: [],
       blocks: [
         { type: "heading", level: 2, children: [{ type: "text", value: "AI-authored heading" }] },
-        { type: "component", name: "Experiment", dataId: null, confidence: null, children: [] },
+        { type: "component", name: "Experiment", dataId: null, confidence: null, actionId: null, children: [] },
         { type: "paragraph", children: [{ type: "text", value: "Free-standing AI prose" }] },
-        { type: "component", name: "Evidence", dataId: null, confidence: null, children: [] },
-        { type: "component", name: "Hypothesis", dataId: null, confidence: "high", children: [] },
-        { type: "component", name: "DataGap", dataId: null, confidence: null, children: [] },
-        { type: "component", name: "Metric", dataId: "activation", confidence: null, children: [] },
+        { type: "component", name: "Evidence", dataId: null, confidence: null, actionId: null, children: [] },
+        { type: "component", name: "Hypothesis", dataId: null, confidence: "high", actionId: null, children: [] },
+        { type: "component", name: "DataGap", dataId: null, confidence: null, actionId: null, children: [] },
+        { type: "component", name: "Metric", dataId: "activation", confidence: null, actionId: null, children: [] },
       ],
     };
 

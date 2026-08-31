@@ -1,12 +1,17 @@
 "use client";
 
 import { DesignAnalyticsCard, DesignAnalyticsCardHeader, DesignBadge } from "@/components/design-components";
+import { Link } from "@/components/link";
 import { cn } from "@/lib/utils";
 import type { GrowthDocument, GrowthDocumentBlock, GrowthDocumentInline, GrowthEvidenceDatum, GrowthEvidencePoint } from "@/lib/growth/growth-document";
 import { formatGrowthAdSpend, formatGrowthMetricValue } from "@/lib/growth/growth-format";
-import { ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { GrowthActionItem } from "@/lib/growth/growth-types";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { ArrowRightIcon, ChartLineUpIcon, DatabaseIcon, FlaskIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { GROWTH_ACTION_TYPE_META, GrowthActionStatusBadge, GrowthWatchedMetricChips, useGrowthHref } from "./action-card";
+import { GrowthActionMutationControls } from "./action-controls";
 
 const SERIES_COLORS = ["hsl(199 68% 47%)", "hsl(258 54% 58%)", "hsl(153 44% 43%)"] as const;
 
@@ -132,8 +137,61 @@ const CALLOUT_META = new Map<"Evidence" | "Hypothesis" | "Experiment" | "DataGap
   ["DataGap", { label: "Data gap", icon: WarningCircleIcon, className: "bg-orange-500/[0.06] ring-orange-500/15" }],
 ]);
 
+const GrowthDocumentActionsContext = createContext<{
+  actions: GrowthActionItem[],
+  onChanged: () => Promise<void>,
+  demo: boolean,
+  projectId: string | null,
+} | null>(null);
+
+export function GrowthDocumentActionsProvider(props: { actions: GrowthActionItem[], onChanged: () => Promise<void>, demo: boolean, projectId: string | null, children: ReactNode }) {
+  return <GrowthDocumentActionsContext.Provider value={{ actions: props.actions, onChanged: props.onChanged, demo: props.demo, projectId: props.projectId }}>{props.children}</GrowthDocumentActionsContext.Provider>;
+}
+
+function ActionButtonBlock(props: { actionId: string }) {
+  const context = useContext(GrowthDocumentActionsContext);
+  const withQuery = useGrowthHref();
+  const action = context?.actions.find((candidate) => candidate.id === props.actionId) ?? null;
+
+  if (context == null || action == null) {
+    return (
+      <div className="my-5 rounded-xl border border-dashed border-foreground/[0.12] bg-foreground/[0.02] px-4 py-3">
+        <p className="text-sm text-muted-foreground">This suggestion is no longer available in your workspace.</p>
+      </div>
+    );
+  }
+
+  const typeMeta = GROWTH_ACTION_TYPE_META.get(action.typeId) ?? { label: action.typeId, icon: LightningIcon };
+  const TypeIcon = typeMeta.icon;
+  return (
+    <div className="my-5 rounded-xl border border-foreground/[0.1] bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-6 tracking-tight text-foreground">{action.title}</p>
+          <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground"><TypeIcon className="size-3.5" />{typeMeta.label}</p>
+        </div>
+        <GrowthActionStatusBadge status={action.status} />
+      </div>
+      <div className="mt-3"><GrowthWatchedMetricChips action={action} /></div>
+      {context.projectId == null
+        ? <p className="mt-4 text-xs text-muted-foreground">The customer sees activate and dismiss controls here.</p>
+        : (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <GrowthActionMutationControls action={action} onChanged={context.onChanged} demo={context.demo} className="flex flex-wrap items-center gap-2" />
+            <Link href={withQuery(urlString`/projects/${context.projectId}/gtm/actions/${action.id}`)} className="inline-flex items-center gap-1.5 rounded-xl text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2">
+              Review action<ArrowRightIcon className="size-3.5" />
+            </Link>
+          </div>
+        )}
+    </div>
+  );
+}
+
 function ComponentBlock(props: { block: Extract<GrowthDocumentBlock, { type: "component" }>, data: Map<string, GrowthEvidenceDatum> }) {
   const datum = props.block.dataId == null ? null : props.data.get(props.block.dataId) ?? null;
+  if (props.block.name === "ActionButton") {
+    return props.block.actionId == null ? null : <ActionButtonBlock actionId={props.block.actionId} />;
+  }
   if (props.block.name === "Metric" && datum?.kind === "metric") return <MetricBlock datum={datum} />;
   if (props.block.name === "TrendChart" && datum?.kind === "time_series") return <TrendChartBlock datum={datum} />;
   if ((props.block.name === "ComparisonChart" && datum?.kind === "comparison") || (props.block.name === "BreakdownChart" && datum?.kind === "breakdown")) return <BarChartBlock datum={datum} />;

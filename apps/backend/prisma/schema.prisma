@@ -60,6 +60,7 @@ model Project {
   growthChatConversations    GrowthChatConversation[]
   growthActionItems          GrowthActionItem[]
   growthCategoryScores       GrowthCategoryScore[]
+  growthCategoryPages        GrowthCategoryPage[]
   growthDailyMetrics         GrowthDailyMetrics[]
   growthBriefs               GrowthBrief[]
   growthMilestones           GrowthMilestone[]
@@ -528,6 +529,39 @@ model GrowthCategoryScore {
 
   @@unique([projectId, branchId, category])
   @@index([projectId, branchId, updatedAt(sort: Desc)])
+}
+
+model GrowthCategoryPage {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+  category  String
+  version   Int
+
+  status String @default("draft")
+
+  sourceJson Json
+  document   Json
+
+  sourceItemIds Json
+
+  authoredByUserId  String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isDraft Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'draft'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+  isPublished Boolean? @default(dbgenerated("\nCASE\n    WHEN (status = 'published'::text) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId, category, version])
+  @@unique([projectId, branchId, category, isDraft], map: "GrowthCategoryPage_draft_slot")
+  @@unique([projectId, branchId, category, isPublished], map: "GrowthCategoryPage_published_slot")
+  @@index([projectId, branchId, category, version(sort: Desc)])
 }
 
 model GrowthMetricSnapshot {

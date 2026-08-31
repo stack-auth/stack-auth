@@ -3,6 +3,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { growthActionItemToWire, loadGrowthActionWorkflowRuntimeInfo } from "./actions";
 import { GROWTH_CATEGORIES, GROWTH_NOTE_KIND, isGrowthCategory, normalizeStoredGrowthCategory, type GrowthCategory } from "./categories";
+import { getGrowthPublishedCategoryPages } from "./category-pages";
 
 const DEFAULT_OVERVIEW_LIMIT = 24;
 const MAX_OVERVIEW_LIMIT = 50;
@@ -53,7 +54,7 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
   const branchId = tenancy.branchId;
   const limit = normalizeGrowthOverviewLimit(requestedLimit);
 
-  const [latestReport, latestBrief, findings, notes, activeActions, archivedActions, storedScores, findingCategoryCounts, actionCategoryCounts, unclassifiedFindings, unclassifiedActions] = await Promise.all([
+  const [latestReport, latestBrief, findings, notes, activeActions, archivedActions, storedScores, findingCategoryCounts, actionCategoryCounts, unclassifiedFindings, unclassifiedActions, categoryPages] = await Promise.all([
     globalPrismaClient.growthReport.findFirst({
       where: { projectId, branchId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -103,10 +104,18 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
     }),
     globalPrismaClient.growthFinding.count({ where: { projectId, branchId, category: null } }),
     globalPrismaClient.growthActionItem.count({ where: { projectId, branchId, category: null } }),
+    getGrowthPublishedCategoryPages(tenancy),
   ]);
 
-  const actions = [...activeActions, ...archivedActions];
+  const loadedActionIds = new Set([...activeActions, ...archivedActions].map((item) => item.id));
+  const missingReferencedIds = [...new Set(categoryPages.flatMap((page) => page.referenced_action_ids))].filter((id) => !loadedActionIds.has(id));
+  const referencedActions = missingReferencedIds.length === 0 ? [] : await globalPrismaClient.growthActionItem.findMany({
+    where: { projectId, branchId, id: { in: missingReferencedIds } },
+  });
+
+  const actions = [...activeActions, ...archivedActions, ...referencedActions];
   const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, actions);
+  const actionById = new Map(actions.map((item) => [item.id, item]));
   const counts = new Map<GrowthCategory, number>(GROWTH_CATEGORIES.map((category) => [category, 0]));
   for (const row of [...findingCategoryCounts, ...actionCategoryCounts]) {
     const category = assertStoredCategory(row.category);
@@ -149,6 +158,16 @@ export async function getGrowthOverviewBody(tenancy: Tenancy, requestedLimit?: n
       category,
       count: counts.get(category) ?? 0,
       score: scoreByCategory.get(category) ?? null,
+    })),
+    category_pages: categoryPages.map((page) => ({
+      category: page.category,
+      version: page.version,
+      document: page.document,
+      published_at_millis: page.published_at_millis,
+      actions: page.referenced_action_ids.flatMap((id) => {
+        const item = actionById.get(id);
+        return item == null ? [] : [growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)];
+      }),
     })),
     needs_category_count: unclassifiedFindings + unclassifiedActions,
     limit,

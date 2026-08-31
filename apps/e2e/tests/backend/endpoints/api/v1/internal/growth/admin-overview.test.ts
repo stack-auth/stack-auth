@@ -1,11 +1,15 @@
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, INTERNAL_PROJECT_OWNER_TEAM_ID, InternalProjectKeys, Team, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 import { GROWTH_AGENT_AUTH, createGrowthProject } from "./growth-helpers";
+import { withInternalDatabase } from "../../external-db-sync-utils";
 
 const ADMIN_BASE = "/api/latest/internal/growth/admin";
 const GROWTH_BASE = "/api/latest/internal/growth";
 const AGENT_BASE = "/api/latest/internal/growth-agent";
+const GROWTH_ANALYSIS_ACTIVATED_EVENT_TYPE = "custom.growth.analysis-run-activated";
 
 // Growth fixtures seed sandbox-backed workflows during onboarding and can land around 60s under
 // full-suite load, so default-timeout tests need 90s of headroom.
@@ -79,6 +83,68 @@ describe("internal Growth admin", { timeout: 90_000 }, () => {
       body: { step: "analysis_tick" },
     });
     expect(response.status).toBe(400);
+  });
+
+  it("deduplicates concurrent repairs for the same growth run", { timeout: 180_000 }, async ({ expect }) => {
+    const keys = await createGrowthProject();
+    if (keys === "no-project") throw new Error("Growth admin test requires a fresh project.");
+    const onboarding = await niceBackendFetch(urlString`/api/latest/internal/growth/onboarding`, {
+      accessType: "admin",
+      method: "POST",
+      body: { website_url: "https://admin-recovery-race.example.com", company_summary: "Growth admin recovery race fixture" },
+    });
+    expect(onboarding.status).toBe(200);
+    await signInAsInternalAdmin();
+
+    const fixture = await withInternalDatabase(async (client) => {
+      const runResult = await client.query<{ tenancyId: string, runId: string }>(`
+        SELECT t."id" AS "tenancyId", r."id" AS "runId"
+        FROM "Tenancy" t
+        JOIN "GrowthAnalysisRun" r ON r."projectId" = t."projectId" AND r."branchId" = t."branchId"
+        WHERE t."projectId" = $1 AND t."branchId" = 'main'
+        ORDER BY r."createdAt" DESC, r."id" DESC
+        LIMIT 1
+      `, [keys.projectId]);
+      const run = runResult.rows.at(0);
+      if (run == null) throw new Error("Growth admin test did not create an analysis run.");
+
+      await client.query(`
+        DELETE FROM "WorkflowEvent"
+        WHERE "tenancyId" = $1 AND "type" = $2 AND "payload"->>'growth_run_id' = $3
+      `, [run.tenancyId, GROWTH_ANALYSIS_ACTIVATED_EVENT_TYPE, run.runId]);
+      await client.query(`
+        DELETE FROM "WorkflowRun"
+        WHERE "tenancyId" = $1 AND "workflowId" = 'growth-analysis' AND "runKey" LIKE $2
+      `, [run.tenancyId, `${run.runId}:%`]);
+      return run;
+    });
+
+    const responses = await Promise.all([
+      niceBackendFetch(urlString`/api/latest/internal/growth/admin/run-now`, {
+        accessType: "client",
+        method: "POST",
+        body: { step: "project_recovery", target_project_id: keys.projectId },
+      }),
+      niceBackendFetch(urlString`/api/latest/internal/growth/admin/run-now`, {
+        accessType: "client",
+        method: "POST",
+        body: { step: "project_recovery", target_project_id: keys.projectId },
+      }),
+    ]);
+    expect(responses).toEqual([
+      expect.objectContaining({ status: 200 }),
+      expect.objectContaining({ status: 200 }),
+    ]);
+
+    const eventCount = await withInternalDatabase(async (client) => {
+      const result = await client.query<{ count: number }>(`
+        SELECT COUNT(*)::int AS count
+        FROM "WorkflowEvent"
+        WHERE "tenancyId" = $1 AND "type" = $2 AND "payload"->>'growth_run_id' = $3
+      `, [fixture.tenancyId, GROWTH_ANALYSIS_ACTIVATED_EVENT_TYPE, fixture.runId]);
+      return result.rows.at(0)?.count ?? throwErr("Growth admin test did not return an event count.");
+    });
+    expect(eventCount).toBe(1);
   });
 
   it("edits customer-visible Growth data without bypassing action lifecycle rules", async ({ expect }) => {

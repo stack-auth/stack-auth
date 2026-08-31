@@ -166,6 +166,20 @@ describe("growth agent simulation", () => {
     // Phase 7 adds the answer surface.
     expect(replacedQuestions).toMatchObject({ status: 200, body: { interview_id: interviewId, question_count: 1 } });
 
+    const duplicateKeyPlan = await niceBackendFetch(`${AGENT_BASE}/interview-questions`, {
+      method: "POST",
+      headers: GROWTH_AGENT_AUTH,
+      body: {
+        ...scope,
+        run_id: runId,
+        questions: [
+          { question_key: "primary-goal", prompt: "Goal?", kind: "single", options: [{ id: "a", label: "A" }] },
+          { question_key: "primary-goal", prompt: "Goal again?", kind: "single", options: [{ id: "b", label: "B" }] },
+        ],
+      },
+    });
+    expect(duplicateKeyPlan.status).toBe(400);
+
     const interviewComplete = await niceBackendFetch(`${AGENT_BASE}/interview/complete`, {
       method: "POST",
       headers: GROWTH_AGENT_AUTH,

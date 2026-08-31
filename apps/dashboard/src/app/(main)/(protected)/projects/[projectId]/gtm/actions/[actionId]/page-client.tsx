@@ -5,21 +5,18 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
-  DesignDialog,
-  DesignDialogClose,
 } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { activateGrowthAction, dismissGrowthAction, generateGrowthActionBlogDraft, listGrowthActions } from "@/lib/growth/growth-api";
+import { generateGrowthActionBlogDraft, listGrowthActions } from "@/lib/growth/growth-api";
 import { getGrowthActionNarrativeSections } from "@/lib/growth/growth-action-document";
 import { type GrowthLoadable, useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_DEMO_NOW_MILLIS, buildGrowthDemoActions, buildGrowthDemoAdsBodyForAction } from "@/lib/growth/growth-demo-data";
 import type { GrowthDocument, GrowthDocumentBlock } from "@/lib/growth/growth-document";
 import type { GrowthActionItem, GrowthActionWorkflow } from "@/lib/growth/growth-types";
-import { humanizeGrowthWorkflowTriggers, splitGrowthWorkflowWarnings } from "@/lib/growth/growth-workflow-format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { ArrowLeftIcon, ArrowSquareOutIcon, ArticleIcon, CheckCircleIcon, LightningIcon, ProhibitIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowSquareOutIcon, ArticleIcon, LightningIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
@@ -27,6 +24,7 @@ import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { WorkflowRunsGrid, WorkflowTriggers } from "../../../workflows/shared";
 import { GROWTH_ACTION_TYPE_META, GrowthActionStatusBadge, useGrowthHref } from "../../components/action-card";
+import { GrowthActionMutationControls } from "../../components/action-controls";
 import { GrowthAppFrame } from "../../components/frame";
 import { GrowthMarkdown } from "../../components/report-sections";
 import { GrowthWorkflowSourceViewer } from "../../components/workflow-source-viewer";
@@ -156,6 +154,7 @@ function ActionDetailBody() {
       {backLink}
       <ActionNarrative
         action={data.value.action}
+        demo={demo}
         onChanged={load}
       />
       <ActionPayloadSection action={data.value.action} demo={demo} onChanged={load} />
@@ -163,80 +162,6 @@ function ActionDetailBody() {
   );
 }
 
-/**
- * Confirm-dialog-gated mutation button. In demo mode the dialog explains that mutations are disabled
- * instead of offering a confirm, so the flow is still explorable end to end.
- */
-function ConfirmActionButton(props: {
-  buttonLabel: string,
-  buttonVariant: "default" | "outline",
-  icon: React.ElementType,
-  title: string,
-  description: string,
-  /** Rich dialog content rendered instead of the plain description paragraph (the description still shows in the header). */
-  body?: React.ReactNode,
-  confirmLabel: string,
-  demo: boolean,
-  onConfirm: () => Promise<void>,
-}) {
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const Icon = props.icon;
-  return (
-    <DesignDialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setError(null);
-      }}
-      trigger={<DesignButton variant={props.buttonVariant} size="sm">{props.buttonLabel}</DesignButton>}
-      icon={Icon}
-      size="md"
-      title={props.title}
-      description={props.demo ? "Demo mode" : props.description}
-      footer={
-        props.demo ? (
-          <DesignDialogClose asChild>
-            <DesignButton variant="secondary" size="sm">Close</DesignButton>
-          </DesignDialogClose>
-        ) : (
-          <>
-            <DesignDialogClose asChild>
-              <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
-            </DesignDialogClose>
-            <DesignButton
-              size="sm"
-              onClick={async () => {
-                setError(null);
-                try {
-                  await props.onConfirm();
-                } catch (confirmError) {
-                  captureError("growth-action-mutation", confirmError);
-                  setError(confirmError instanceof Error ? confirmError.message : String(confirmError));
-                  return;
-                }
-                setOpen(false);
-              }}
-            >
-              {props.confirmLabel}
-            </DesignButton>
-          </>
-        )
-      }
-    >
-      <div className="flex flex-col gap-3">
-        {props.demo ? (
-          <DesignAlert variant="info">
-            You are looking at fixture data — actions cannot be changed in demo mode.
-          </DesignAlert>
-        ) : (
-          props.body ?? <p className="text-sm text-muted-foreground">{props.description}</p>
-        )}
-        {error != null && <DesignAlert variant="error">This didn&apos;t work: {error}</DesignAlert>}
-      </div>
-    </DesignDialog>
-  );
-}
 
 function ActionHeading(props: { action: GrowthActionItem }) {
   const { action } = props;
@@ -260,49 +185,6 @@ function ActionHeading(props: { action: GrowthActionItem }) {
   );
 }
 
-function ActionMutationControls(props: { action: GrowthActionItem, onChanged: () => Promise<void> }) {
-  const { action } = props;
-  const app = useAdminApp();
-  const { demo } = useGrowthStatus();
-  if (action.status !== "proposed" && action.status !== "active") return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-foreground/[0.08] pt-4">
-      {action.status === "proposed" && (
-        <ConfirmActionButton
-          buttonLabel="Activate experiment"
-          buttonVariant="default"
-          icon={CheckCircleIcon}
-          title="Activate this action?"
-          description={action.workflow != null
-            ? "Activating deploys and starts the attached automation, and begins the watched-metric comparison."
-            : "Activating captures the before window and starts watching the same metrics after activation. You can dismiss it later."}
-          body={action.workflow != null ? <ActivateWorkflowDialogBody workflow={action.workflow} /> : undefined}
-          confirmLabel={action.workflow != null ? "Activate & deploy automation" : "Activate experiment"}
-          demo={demo}
-          onConfirm={async () => {
-            await activateGrowthAction(app, action.id);
-            await props.onChanged();
-          }}
-        />
-      )}
-      <ConfirmActionButton
-        buttonLabel="Dismiss"
-        buttonVariant="outline"
-        icon={ProhibitIcon}
-        title="Dismiss this action?"
-        description={action.status === "active" && action.workflow != null && action.workflow.status !== "not_deployed"
-          ? "Dismissing deletes the deployed automation and cancels any of its in-flight runs. The action's history and metrics stay, but the automation will never run again."
-          : "Dismissed actions stop tracking metrics and move out of your list. This does not delete anything."}
-        confirmLabel="Dismiss action"
-        demo={demo}
-        onConfirm={async () => {
-          await dismissGrowthAction(app, action.id);
-          await props.onChanged();
-        }}
-      />
-    </div>
-  );
-}
 
 function ActionNarrativeSection(props: { title: "Hypothesis" | "Evidence" | "Experiment", document: GrowthDocument | null, blocks: GrowthDocumentBlock[], children?: React.ReactNode }) {
   return (
@@ -316,7 +198,7 @@ function ActionNarrativeSection(props: { title: "Hypothesis" | "Evidence" | "Exp
   );
 }
 
-function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Promise<void> }) {
+function ActionNarrative(props: { action: GrowthActionItem, demo: boolean, onChanged: () => Promise<void> }) {
   const { action } = props;
   const document = action.document ?? null;
   const sections = document == null
@@ -331,7 +213,7 @@ function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Pro
           <ActionNarrativeSection title="Evidence" document={document} blocks={sections.evidence} />
           <ActionNarrativeSection title="Experiment" document={document} blocks={sections.experiment}>
             {action.workflow != null && <div className="mt-5"><ActionAutomationPreview action={action} workflow={action.workflow} /></div>}
-            <div className="mt-5"><ActionMutationControls action={action} onChanged={props.onChanged} /></div>
+            <div className="mt-5"><GrowthActionMutationControls action={action} onChanged={props.onChanged} demo={props.demo} /></div>
           </ActionNarrativeSection>
         </div>
       </article>
@@ -339,57 +221,6 @@ function ActionNarrative(props: { action: GrowthActionItem, onChanged: () => Pro
   );
 }
 
-/**
- * Execution-specific activation copy for a workflow-bearing action. This dialog is the customer's
- * one informed-consent moment before code runs on their project, so it states — from the wire, not
- * from generic copy — what the automation does, when it runs, which external domains its source
- * references, and how to undo it.
- */
-function ActivateWorkflowDialogBody(props: { workflow: GrowthActionWorkflow }) {
-  const { workflow } = props;
-  const { externalDomains, otherWarnings } = splitGrowthWorkflowWarnings(workflow.warnings);
-  return (
-    <div className="flex flex-col gap-3 text-sm">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What it does</p>
-        <p className="mt-1 text-muted-foreground">{workflow.explanation}</p>
-      </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">When it runs</p>
-        <p className="mt-1 text-muted-foreground">Runs {humanizeGrowthWorkflowTriggers(workflow.triggers)}.</p>
-      </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">External calls</p>
-        {externalDomains.length === 0 ? (
-          <p className="mt-1 text-muted-foreground">No external domains detected in the source — it only talks to your Hexclave project.</p>
-        ) : (
-          <p className="mt-1 text-muted-foreground">
-            The source references: {externalDomains.map((domain, index) => (
-              <span key={domain}>
-                {index > 0 && ", "}
-                <span className="font-mono text-foreground">{domain}</span>
-              </span>
-            ))}
-          </p>
-        )}
-      </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Undoing it</p>
-        <p className="mt-1 text-muted-foreground">{workflow.rollbackNote}</p>
-      </div>
-      {otherWarnings.length > 0 && (
-        <DesignAlert variant="warning">
-          <ul className="list-disc pl-4">
-            {otherWarnings.map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-        </DesignAlert>
-      )}
-      <p className="text-xs text-muted-foreground">
-        The automation is deployed as an ordinary workflow (id <span className="font-mono">{workflow.workflowId}</span>) that you can inspect, edit, or delete in the Workflows app at any time.
-      </p>
-    </div>
-  );
-}
 
 const WORKFLOW_STATUS_BADGE = new Map<GrowthActionWorkflow["status"], { label: string, color: "cyan" | "green" | "orange" }>([
   ["not_deployed", { label: "Not deployed", color: "cyan" }],

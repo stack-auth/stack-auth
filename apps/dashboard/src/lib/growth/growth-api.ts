@@ -1,5 +1,6 @@
 import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
-import { GrowthApiError, growthRequestHeaders, requestJson, toGrowthApiError } from "./growth-api-client";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { GrowthApiError, growthRequestHeaders, readGrowthErrorMessage, requestJson, toGrowthApiError } from "./growth-api-client";
 import { growthDocumentSchema } from "./growth-document";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { z } from "zod";
@@ -35,9 +36,13 @@ import {
   type GrowthActionItem,
   type GrowthActionMetricSeries,
   type GrowthActionStatus,
+  type GrowthAdminCategoryPage,
   type GrowthAdsBody,
   type GrowthAdsEntity,
   type GrowthBrief,
+  type GrowthCategory,
+  type GrowthCategoryPageVersion,
+  type GrowthCategoryPageVersionSummary,
   type GrowthBriefStatus,
   type GrowthInterview,
   type GrowthInterviewStatus,
@@ -46,6 +51,7 @@ import {
   type GrowthOverview,
   type GrowthMilestone,
   type GrowthPipelineWorkflowId,
+  type GrowthPublishedCategoryPage,
   type GrowthReport,
   type GrowthRun,
   type GrowthStatus,
@@ -151,6 +157,8 @@ const runSchema = z.object({
 
 const runIdResponseSchema = z.object({ run_id: z.string() });
 
+const restartOnboardingResponseSchema = z.object({ cancelled_run_ids: z.array(z.string()) });
+
 // The HTTP layer (GrowthApiError, the 4xx conversion, and the content-type quirk) lives in
 // growth-api-client.ts so the Games section's fetchers can share it. Re-exported here because this
 // module has always been the public entry point for them.
@@ -247,6 +255,11 @@ export async function completeGrowthOnboarding(app: object, input: { websiteUrl:
     body: JSON.stringify({ website_url: input.websiteUrl, company_summary: input.companySummary }),
   }));
   return { runId: response.run_id };
+}
+
+export async function restartGrowthOnboarding(app: object): Promise<{ cancelledRunIds: string[] }> {
+  const response = restartOnboardingResponseSchema.parse(await requestJson(app, "/onboarding/restart", { method: "POST" }));
+  return { cancelledRunIds: response.cancelled_run_ids };
 }
 
 export async function startGrowthRun(app: object): Promise<{ runId: string }> {
@@ -599,6 +612,33 @@ const overviewFindingSchema = z.object({
   created_at_millis: z.number(),
 });
 
+const publishedCategoryPageSchema = z.object({
+  category: z.enum(GROWTH_CATEGORIES),
+  version: z.number(),
+  document: growthDocumentSchema,
+  published_at_millis: z.number().nullable(),
+  actions: z.array(actionItemSchema),
+});
+
+function readPublishedCategoryPages(values: unknown[]): GrowthPublishedCategoryPage[] {
+  const pages: GrowthPublishedCategoryPage[] = [];
+  for (const value of values) {
+    const parsed = publishedCategoryPageSchema.safeParse(value);
+    if (!parsed.success) {
+      captureError("growth-overview-category-page-parse", parsed.error);
+      continue;
+    }
+    pages.push({
+      category: parsed.data.category,
+      version: parsed.data.version,
+      document: parsed.data.document,
+      publishedAtMillis: parsed.data.published_at_millis,
+      actions: parsed.data.actions.map(mapGrowthActionItem),
+    });
+  }
+  return pages;
+}
+
 const overviewSchema = z.object({
   latest_report: z.object({
     id: z.string(),
@@ -618,6 +658,7 @@ const overviewSchema = z.object({
   actions: z.array(actionItemSchema),
   archive: z.array(actionItemSchema),
   categories: z.array(z.object({ category: z.enum(GROWTH_CATEGORIES), count: z.number(), score: z.number().min(0).max(100).nullable() })),
+  category_pages: z.array(z.unknown()),
   needs_category_count: z.number(),
   limit: z.number(),
 });
@@ -658,6 +699,7 @@ export async function getGrowthOverview(app: object): Promise<GrowthOverview> {
     actions: value.actions.map(mapGrowthActionItem),
     archive: value.archive.map(mapGrowthActionItem),
     categories: value.categories,
+    categoryPages: readPublishedCategoryPages(value.category_pages),
     needsCategoryCount: value.needs_category_count,
     limit: value.limit,
   };
@@ -679,14 +721,7 @@ export async function requestGrowthAdminJson(app: object, path: string, init: Re
   }
   const responseText = await response.text();
   if (!response.ok) {
-    let message = `Growth admin request failed with status ${response.status}`;
-    try {
-      const body = z.object({ error: z.string().optional() }).passthrough().parse(JSON.parse(responseText));
-      message = body.error ?? message;
-    } catch {
-      // Non-JSON proxy errors have no safe detail to expose.
-    }
-    throw new GrowthApiError(response.status, message);
+    throw new GrowthApiError(response.status, readGrowthErrorMessage(responseText, `Growth admin request failed with status ${response.status}`));
   }
   return responseText.length === 0 ? {} : JSON.parse(responseText);
 }
@@ -698,14 +733,123 @@ export async function listGrowthAdminProjects(app: object): Promise<GrowthAdminP
   return rows.map((row) => ({ id: row.id, displayName: row.display_name, websiteUrl: row.website_url, completedAtMillis: row.completed_at_millis }));
 }
 
+export async function getGrowthAdminStatus(app: object, projectId: string): Promise<GrowthStatus> {
+  return mapGrowthStatus(statusSchema.parse(await requestGrowthAdminJson(app, urlString`/status?project_id=${projectId}`)));
+}
+
 export async function getGrowthAdminOverview(app: object, projectId: string): Promise<GrowthOverview> {
   const value = overviewSchema.parse(await requestGrowthAdminJson(app, `/overview?project_id=${encodeURIComponent(projectId)}`));
   return {
     latestReport: value.latest_report == null ? null : { id: value.latest_report.id, title: value.latest_report.title, summary: value.latest_report.summary, createdAtMillis: value.latest_report.created_at_millis },
     latestBrief: value.latest_brief == null ? null : { id: value.latest_brief.id, date: value.latest_brief.date, summary: value.latest_brief.summary, contentMd: value.latest_brief.content_md, createdAtMillis: value.latest_brief.created_at_millis },
     findings: value.findings.map(mapOverviewFinding), notes: value.notes.map(mapOverviewFinding), actions: value.actions.map(mapGrowthActionItem), archive: value.archive.map(mapGrowthActionItem),
-    categories: value.categories, needsCategoryCount: value.needs_category_count, limit: value.limit,
+    categories: value.categories, categoryPages: readPublishedCategoryPages(value.category_pages), needsCategoryCount: value.needs_category_count, limit: value.limit,
   };
+}
+
+const categoryPageVersionSummarySchema = z.object({
+  id: z.string(),
+  version: z.number(),
+  status: z.enum(["draft", "published", "archived"]),
+  published_at_millis: z.number().nullable(),
+  updated_at_millis: z.number(),
+});
+
+const categoryPageVersionSchema = categoryPageVersionSummarySchema.extend({
+  category: z.enum(GROWTH_CATEGORIES),
+  source_json: z.unknown().nullable(),
+  document: z.unknown().nullable(),
+  source_item_ids: z.object({ findings: z.array(z.string()), actions: z.array(z.string()) }),
+  stale_source_ids: z.array(z.string()),
+  actions: z.array(actionItemSchema),
+});
+
+const categoryPageSourceSchema = z.object({
+  format: z.literal("growth-mdx-v1"),
+  source_mdx: z.string(),
+  data: z.array(z.unknown()),
+});
+
+function mapCategoryPageVersionSummary(value: z.infer<typeof categoryPageVersionSummarySchema>): GrowthCategoryPageVersionSummary {
+  return {
+    id: value.id,
+    version: value.version,
+    status: value.status,
+    publishedAtMillis: value.published_at_millis,
+    updatedAtMillis: value.updated_at_millis,
+  };
+}
+
+function mapCategoryPageVersion(value: z.infer<typeof categoryPageVersionSchema>): GrowthCategoryPageVersion {
+  const source = categoryPageSourceSchema.safeParse(value.source_json);
+  const document = growthDocumentSchema.safeParse(value.document);
+  return {
+    ...mapCategoryPageVersionSummary(value),
+    category: value.category,
+    source: source.success ? { sourceMdx: source.data.source_mdx, data: source.data.data } : null,
+    document: document.success ? document.data : null,
+    sourceItemIds: value.source_item_ids,
+    staleSourceIds: value.stale_source_ids,
+    actions: value.actions.map(mapGrowthActionItem),
+  };
+}
+
+const adminCategoryPageSchema = z.object({
+  category: z.enum(GROWTH_CATEGORIES),
+  draft: categoryPageVersionSchema.nullable(),
+  published: categoryPageVersionSchema.nullable(),
+  archived: z.array(categoryPageVersionSummarySchema),
+});
+
+const adminCategoryPagesResponseSchema = z.object({
+  pages: z.array(adminCategoryPageSchema),
+});
+
+export function parseGrowthAdminCategoryPagesBody(value: unknown): GrowthAdminCategoryPage[] {
+  return adminCategoryPagesResponseSchema.parse(value).pages.map((row) => ({
+    category: row.category,
+    draft: row.draft == null ? null : mapCategoryPageVersion(row.draft),
+    published: row.published == null ? null : mapCategoryPageVersion(row.published),
+    archived: row.archived.map(mapCategoryPageVersionSummary),
+  }));
+}
+
+export async function listGrowthAdminCategoryPages(app: object, projectId: string): Promise<GrowthAdminCategoryPage[]> {
+  return parseGrowthAdminCategoryPagesBody(await requestGrowthAdminJson(app, `/category-pages?project_id=${encodeURIComponent(projectId)}`));
+}
+
+export async function saveGrowthAdminCategoryPageDraft(app: object, projectId: string, input: {
+  category: GrowthCategory,
+  sourceMdx: string,
+  data: unknown[],
+  sourceFindingIds: string[],
+  sourceActionIds: string[],
+  expectedDraftUpdatedAtMillis: number | null,
+}): Promise<GrowthCategoryPageVersion> {
+  const value = categoryPageVersionSchema.parse(await requestGrowthAdminJson(app, "/category-pages", {
+    method: "PUT",
+    body: JSON.stringify({
+      target_project_id: projectId,
+      category: input.category,
+      document: { format: "growth-mdx-v1", source_mdx: input.sourceMdx, data: input.data },
+      source_finding_ids: input.sourceFindingIds,
+      source_action_ids: input.sourceActionIds,
+      expected_draft_updated_at_millis: input.expectedDraftUpdatedAtMillis,
+    }),
+  }));
+  return mapCategoryPageVersion(value);
+}
+
+export async function discardGrowthAdminCategoryPageDraft(app: object, projectId: string, category: GrowthCategory): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages", { method: "DELETE", body: JSON.stringify({ target_project_id: projectId, category }) });
+}
+
+export async function publishGrowthAdminCategoryPage(app: object, projectId: string, category: GrowthCategory, version: number): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages/publish", { method: "POST", body: JSON.stringify({ target_project_id: projectId, category, version }) });
+}
+
+export async function unpublishGrowthAdminCategoryPage(app: object, projectId: string, category: GrowthCategory): Promise<void> {
+  await requestGrowthAdminJson(app, "/category-pages/publish", { method: "DELETE", body: JSON.stringify({ target_project_id: projectId, category }) });
 }
 
 export async function createGrowthAdminNote(app: object, projectId: string, input: { category: string, tags: string[], title: string, body: string }): Promise<void> {
@@ -720,17 +864,21 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
 }
 
-export type GrowthAdminManualStep = "analysis_tick" | "project_recovery";
+export type GrowthAdminSchedulerResult = {
+  readonly didWork: boolean,
+  readonly legStarted: boolean | null,
+};
 
-export async function runGrowthAdminManualStep(app: object, projectId: string, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+export async function runGrowthAdminSchedulerStep(app: object, projectId: string): Promise<GrowthAdminSchedulerResult> {
   const response = z.object({
-    step: z.enum(["analysis_tick", "project_recovery"]),
+    step: z.string(),
     did_work: z.boolean(),
+    leg_started: z.boolean().nullable(),
   }).parse(await requestGrowthAdminJson(app, "/run-now", {
     method: "POST",
-    body: JSON.stringify({ step, target_project_id: projectId }),
+    body: JSON.stringify({ step: "project_recovery", target_project_id: projectId }),
   }));
-  return { didWork: response.did_work };
+  return { didWork: response.did_work, legStarted: response.leg_started };
 }
 
 export type GrowthAdminFunctionalActionFields = {
@@ -739,18 +887,22 @@ export type GrowthAdminFunctionalActionFields = {
   workflow: null | Pick<NonNullable<GrowthActionItem["workflow"]>, "workflowId" | "source" | "explanation" | "rollbackNote">,
 };
 
+export function growthAdminActionRequestBody(projectId: string, action: GrowthActionItem, functionalFields?: GrowthAdminFunctionalActionFields): Record<string, unknown> {
+  return {
+    target_project_id: projectId, type_id: action.typeId, category: action.category, tags: action.tags, title: action.title, description: action.description,
+    status: action.status,
+    ...functionalFields === undefined ? {} : {
+      ...functionalFields.payload == null ? {} : { payload: functionalFields.payload },
+      watched_metrics: functionalFields.watchedMetrics.map((metric) => ({ metric_id: metric.metricId, window_days: metric.windowDays })),
+      workflow: functionalFields.workflow == null ? null : { workflow_id: functionalFields.workflow.workflowId, source: functionalFields.workflow.source, explanation: functionalFields.workflow.explanation, rollback_note: functionalFields.workflow.rollbackNote },
+    },
+  };
+}
+
 export async function updateGrowthAdminAction(app: object, projectId: string, action: GrowthActionItem, functionalFields?: GrowthAdminFunctionalActionFields): Promise<void> {
   await requestGrowthAdminJson(app, `/actions/${encodeURIComponent(action.id)}`, {
     method: "PATCH",
-    body: JSON.stringify({
-      target_project_id: projectId, type_id: action.typeId, category: action.category, tags: action.tags, title: action.title, description: action.description,
-      status: action.status,
-      ...functionalFields === undefined ? {} : {
-        payload: functionalFields.payload,
-        watched_metrics: functionalFields.watchedMetrics.map((metric) => ({ metric_id: metric.metricId, window_days: metric.windowDays })),
-        workflow: functionalFields.workflow == null ? null : { workflow_id: functionalFields.workflow.workflowId, source: functionalFields.workflow.source, explanation: functionalFields.workflow.explanation, rollback_note: functionalFields.workflow.rollbackNote },
-      },
-    }),
+    body: JSON.stringify(growthAdminActionRequestBody(projectId, action, functionalFields)),
   });
 }
 

@@ -3,10 +3,12 @@ import {
   GROWTH_ANALYSIS_WORKFLOW_SOURCE,
   GROWTH_DAILY_BRIEF_WORKFLOW_SOURCE,
 } from "./workflow-sources";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import {
   GROWTH_EVENT_TYPES,
   GROWTH_WORKFLOW_DEFINITIONS,
   GROWTH_WORKFLOW_IDS,
+  isGrowthSeedRaceError,
   isGrowthWorkflowSourceEdited,
 } from "./workflows";
 
@@ -48,6 +50,19 @@ describe("GROWTH_EVENT_TYPES", () => {
       expect(wireType.startsWith("custom.")).toBe(true);
       expect(source).toContain(`customEvent("${wireType.slice("custom.".length)}")`);
     }
+  });
+});
+
+describe("isGrowthSeedRaceError", () => {
+  test("accepts both shapes a lost seed race can take", () => {
+    expect(isGrowthSeedRaceError(new StatusError(400, 'A workflow with id "growth-daily-brief" already exists'))).toBe(true);
+    expect(isGrowthSeedRaceError(new StatusError(409, "Another save happened concurrently — reload and try again"))).toBe(true);
+  });
+
+  test("rejects unrelated failures", () => {
+    expect(isGrowthSeedRaceError(new StatusError(400, "Workflow source failed to compile"))).toBe(false);
+    expect(isGrowthSeedRaceError(new StatusError(404, "Workflow not found"))).toBe(false);
+    expect(isGrowthSeedRaceError(new Error("boom"))).toBe(false);
   });
 });
 

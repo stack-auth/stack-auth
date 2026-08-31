@@ -2,7 +2,7 @@ import type { AdminWorkflow } from "@hexclave/next";
 import type { GrowthPublishedQuiz, GrowthQuizQuestion, GrowthQuizRound } from "./games/growth-games-types";
 import type { GrowthDocument } from "./growth-document";
 import type { GrowthPhase } from "./growth-status";
-import type { GrowthActionItem, GrowthAdsBody, GrowthAnalysisStep, GrowthBrief, GrowthComputeMetrics, GrowthIntegrations, GrowthInterview, GrowthInterviewQuestion, GrowthMilestone, GrowthOverview, GrowthReport, GrowthStatus } from "./growth-types";
+import type { GrowthActionItem, GrowthAdsBody, GrowthAnalysisStep, GrowthBrief, GrowthComputeMetrics, GrowthIntegrations, GrowthInterview, GrowthInterviewQuestion, GrowthMilestone, GrowthOverview, GrowthPublishedCategoryPage, GrowthReport, GrowthStatus } from "./growth-types";
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -539,10 +539,10 @@ function demoReportDocument(): GrowthDocument {
     sourceMdx: "## The clearest opportunity\n\n<ComparisonChart data=\"workspace-progress\" />\n\n<Hypothesis confidence=\"high\">\n\nAn empty workspace leaves new users without a clear next step.\n\n</Hypothesis>\n\n## What to test\n\n<Experiment>\n\nShow a four-step checklist until a workspace completes its first useful loop.\n\n</Experiment>",
     blocks: [
       { type: "heading", level: 2, children: [{ type: "text", value: "The clearest opportunity" }] },
-      { type: "component", name: "ComparisonChart", dataId: "workspace-progress", confidence: null, children: [] },
-      { type: "component", name: "Hypothesis", dataId: null, confidence: "high", children: [{ type: "paragraph", children: [{ type: "text", value: "An empty workspace leaves new users without a clear next step." }] }] },
+      { type: "component", name: "ComparisonChart", dataId: "workspace-progress", confidence: null, actionId: null, children: [] },
+      { type: "component", name: "Hypothesis", dataId: null, confidence: "high", actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "An empty workspace leaves new users without a clear next step." }] }] },
       { type: "heading", level: 2, children: [{ type: "text", value: "What to test" }] },
-      { type: "component", name: "Experiment", dataId: null, confidence: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Show a four-step checklist until a workspace completes its first useful loop." }] }] },
+      { type: "component", name: "Experiment", dataId: null, confidence: null, actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Show a four-step checklist until a workspace completes its first useful loop." }] }] },
     ],
     data: [{
       id: "workspace-progress",
@@ -564,8 +564,8 @@ function demoActionDocument(): GrowthDocument {
     sourceMdx: "## Why this test\n\n<Evidence data=\"search-intent\">\n\nPeople arriving from high-intent freelancer searches activate more often than the average visitor.\n\n</Evidence>\n\n<Experiment>\n\nRun a two-week, capped search campaign. Review the ads and budget before activation.\n\n</Experiment>\n\n### Success metric\n\n- New signups over 14 days\n- Cost per activated workspace\n- Stop if spend reaches the approved cap",
     blocks: [
       { type: "heading", level: 2, children: [{ type: "text", value: "Why this test" }] },
-      { type: "component", name: "Evidence", dataId: "search-intent", confidence: null, children: [{ type: "paragraph", children: [{ type: "text", value: "People arriving from high-intent freelancer searches activate more often than the average visitor." }] }] },
-      { type: "component", name: "Experiment", dataId: null, confidence: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Run a two-week, capped search campaign. Review the ads and budget before activation." }] }] },
+      { type: "component", name: "Evidence", dataId: "search-intent", confidence: null, actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "People arriving from high-intent freelancer searches activate more often than the average visitor." }] }] },
+      { type: "component", name: "Experiment", dataId: null, confidence: null, actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Run a two-week, capped search campaign. Review the ads and budget before activation." }] }] },
       { type: "heading", level: 3, children: [{ type: "text", value: "Success metric" }] },
       { type: "list", ordered: false, items: [
         [{ type: "paragraph", children: [{ type: "text", value: "New signups over 14 days" }] }],
@@ -595,8 +595,8 @@ function demoTrendDocument(): GrowthDocument {
     sourceMdx: "## Three-week direction\n\n<TrendChart data=\"organic-signups\" />\n\n<DataGap>\n\nCampaign tags are missing on 9% of signups, so channel attribution is directional.\n\n</DataGap>",
     blocks: [
       { type: "heading", level: 2, children: [{ type: "text", value: "Three-week direction" }] },
-      { type: "component", name: "TrendChart", dataId: "organic-signups", confidence: null, children: [] },
-      { type: "component", name: "DataGap", dataId: null, confidence: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Campaign tags are missing on 9% of signups, so channel attribution is directional." }] }] },
+      { type: "component", name: "TrendChart", dataId: "organic-signups", confidence: null, actionId: null, children: [] },
+      { type: "component", name: "DataGap", dataId: null, confidence: null, actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "Campaign tags are missing on 9% of signups, so channel attribution is directional." }] }] },
     ],
     data: [{
       id: "organic-signups",
@@ -609,6 +609,41 @@ function demoTrendDocument(): GrowthDocument {
       currency: null,
       series: [{ label: "Organic", points: [{ label: "Jul 20", value: 82 }, { label: "Jul 27", value: 91 }, { label: "Aug 3", value: 104 }] }],
     }],
+  };
+}
+
+function demoConversionStagePage(actions: GrowthActionItem[]): GrowthPublishedCategoryPage {
+  const actionId = demoId(6, 3);
+  const referenced = actions.find((item) => item.id === actionId);
+  if (referenced == null) throw new Error("The Growth stage page demo references an action that no longer exists in the fixtures.");
+  return {
+    category: "conversion",
+    actions: [referenced],
+    version: 3,
+    publishedAtMillis: GROWTH_DEMO_NOW_MILLIS - 2 * DAY,
+    document: {
+      format: "growth-mdx-v1",
+      sourceMdx: `## Your first session is where growth is decided\n\n<ComparisonChart data="workspace-progress" />\n\nMost workspaces that stall never get past their first project. The drop is not gradual — it happens in the first session, before anyone sees what the product does for them.\n\n<Hypothesis confidence="high">\n\nA workspace that reaches its second project has understood the product. Everything before that is setup.\n\n</Hypothesis>\n\n## What we suggest doing about it\n\n<ActionButton action="${actionId}" />`,
+      blocks: [
+        { type: "heading", level: 2, children: [{ type: "text", value: "Your first session is where growth is decided" }] },
+        { type: "component", name: "ComparisonChart", dataId: "workspace-progress", confidence: null, actionId: null, children: [] },
+        { type: "paragraph", children: [{ type: "text", value: "Most workspaces that stall never get past their first project. The drop is not gradual — it happens in the first session, before anyone sees what the product does for them." }] },
+        { type: "component", name: "Hypothesis", dataId: null, confidence: "high", actionId: null, children: [{ type: "paragraph", children: [{ type: "text", value: "A workspace that reaches its second project has understood the product. Everything before that is setup." }] }] },
+        { type: "heading", level: 2, children: [{ type: "text", value: "What we suggest doing about it" }] },
+        { type: "component", name: "ActionButton", dataId: null, confidence: null, actionId, children: [] },
+      ],
+      data: [{
+        id: "workspace-progress",
+        kind: "comparison",
+        title: "New workspaces reaching each milestone",
+        unit: "percent",
+        source: "Workspace events · first 7 days · Jul 1–31",
+        takeaway: "The largest drop happens before users create a second project.",
+        timezone: "UTC",
+        currency: null,
+        items: [{ label: "Created", value: 100 }, { label: "First project", value: 74 }, { label: "Second project", value: 59 }],
+      }],
+    },
   };
 }
 
@@ -864,6 +899,7 @@ export function buildGrowthDemoOverview(nowMillis: number): GrowthOverview {
       { category: "retention", count: 2, score: 55 },
       { category: "revenue", count: 1, score: 68 },
     ],
+    categoryPages: [demoConversionStagePage(actions)],
     needsCategoryCount: 0,
     limit: 24,
   };

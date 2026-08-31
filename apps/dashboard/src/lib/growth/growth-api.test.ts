@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { growthRequestHeaders, parseGrowthAdsBody } from "./growth-api";
+import { growthAdminActionRequestBody, growthRequestHeaders, parseGrowthAdminCategoryPagesBody, parseGrowthAdsBody } from "./growth-api";
+import { readGrowthErrorMessage } from "./growth-api-client";
+import type { GrowthActionItem } from "./growth-types";
 
 // Regression coverage for a bug that silently broke every bodyless growth mutation — retry, skip,
 // retake, activate, dismiss, mark-brief-read. Declaring `content-type: application/json` with no
@@ -132,5 +134,131 @@ describe("parseGrowthAdsBody", () => {
     expect(parseGrowthAdsBody(adsWire({
       execution: { mode: "sideways", attempt: null, status: null, dispatched_at_millis: null, lease_expires_at_millis: null, agent_reported_ids: {} },
     })).execution.mode).toBeNull();
+  });
+});
+
+describe("growthAdminActionRequestBody", () => {
+  const action: GrowthActionItem = {
+    id: "action-1", typeId: "custom", category: "reach", tags: ["funnel"], title: "Trial-extension offer", description: "Offer stalled signups a longer trial.",
+    status: "proposed", payload: null, watchedMetrics: [{ metricId: "new_signups", windowDays: 14 }], reportId: null, briefId: null, workflow: null,
+    createdAtMillis: 0, activatedAtMillis: null, completedAtMillis: null,
+  };
+
+  test("omits a null payload so the field is left untouched", () => {
+    const body = growthAdminActionRequestBody("project-1", action, { payload: action.payload, watchedMetrics: action.watchedMetrics, workflow: null });
+    expect("payload" in body).toBe(false);
+    expect(body.watched_metrics).toEqual([{ metric_id: "new_signups", window_days: 14 }]);
+  });
+
+  test("sends a payload the admin actually set", () => {
+    const body = growthAdminActionRequestBody("project-1", action, { payload: { qa: 1 }, watchedMetrics: [], workflow: null });
+    expect(body.payload).toEqual({ qa: 1 });
+  });
+
+  test("leaves out every functional field for an action that is no longer a proposal", () => {
+    const body = growthAdminActionRequestBody("project-1", { ...action, status: "active" });
+    expect(Object.keys(body).sort()).toMatchInlineSnapshot(`
+      [
+        "category",
+        "description",
+        "status",
+        "tags",
+        "target_project_id",
+        "title",
+        "type_id",
+      ]
+    `);
+  });
+});
+
+describe("parseGrowthAdminCategoryPagesBody", () => {
+  function versionWire(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "page-1",
+      version: 3,
+      status: "published",
+      published_at_millis: 1_700_000_000_000,
+      updated_at_millis: 1_700_000_000_000,
+      category: "conversion",
+      source_json: { format: "growth-mdx-v1", source_mdx: "## Where signups are lost", data: [] },
+      document: null,
+      source_item_ids: { findings: ["f1"], actions: ["a1"] },
+      stale_source_ids: ["f1"],
+      actions: [],
+      ...overrides,
+    };
+  }
+
+  test("reads the pages out of the response envelope the route sends", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{ category: "conversion", draft: null, published: versionWire(), archived: [] }],
+    });
+    expect(pages.length).toBe(1);
+    expect(pages[0]?.category).toBe("conversion");
+    expect(pages[0]?.published?.source?.sourceMdx).toBe("## Where signups are lost");
+    expect(pages[0]?.published?.staleSourceIds).toEqual(["f1"]);
+  });
+
+  test("carries a version's referenced actions, so previewing a draft resolves its buttons", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{
+        category: "conversion",
+        draft: versionWire({
+          status: "draft",
+          published_at_millis: null,
+          actions: [{
+            id: "a1",
+            type_id: "custom",
+            category: "conversion",
+            tags: [],
+            title: "Fix the checkout drop-off",
+            description: "Shorten the form.",
+            status: "completed",
+            payload: null,
+            watched_metrics: [],
+            report_id: null,
+            brief_id: null,
+            workflow: null,
+            created_at_millis: 1_700_000_000_000,
+            activated_at_millis: null,
+            completed_at_millis: null,
+          }],
+        }),
+        published: null,
+        archived: [],
+      }],
+    });
+    expect(pages[0]?.draft?.actions.map((action) => action.id)).toEqual(["a1"]);
+  });
+
+  test("rejects a bare array, so a future contract change fails loudly instead of rendering an empty composer", () => {
+    expect(() => parseGrowthAdminCategoryPagesBody([{ category: "conversion", draft: null, published: null, archived: [] }])).toThrow();
+  });
+
+  test("keeps a version whose stored source no longer round-trips loadable, with a null source", () => {
+    const pages = parseGrowthAdminCategoryPagesBody({
+      pages: [{ category: "reach", draft: versionWire({ category: "reach", status: "draft", published_at_millis: null, source_json: { format: "some-older-format" } }), published: null, archived: [] }],
+    });
+    expect(pages[0]?.draft?.source).toBe(null);
+    expect(pages[0]?.draft?.status).toBe("draft");
+  });
+});
+
+describe("readGrowthErrorMessage", () => {
+  test("reads a plain-text StatusError body", () => {
+    expect(readGrowthErrorMessage("This page references an action from another stage: abc", "fallback")).toBe("This page references an action from another stage: abc");
+  });
+
+  test("reads the error field of the route handler's JSON body", () => {
+    expect(readGrowthErrorMessage("{\"code\":\"X\",\"error\":\"Something specific\"}", "fallback")).toBe("Something specific");
+  });
+
+  test.each([
+    ["an empty body", ""],
+    ["an HTML error page from a proxy", "<html><body>502 Bad Gateway</body></html>"],
+    ["JSON without an error field", "{\"code\":\"X\"}"],
+    ["a body too long to be a message for a human", "x".repeat(401)],
+  ])("falls back for %s", (_label, body) => {
+    expect(readGrowthErrorMessage(body, "fallback")).toBe("fallback");
   });
 });

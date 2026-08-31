@@ -11,6 +11,7 @@ import {
   INTERVIEW_COMPLETE_TOOL_PART_TYPE,
   INTERVIEW_QUESTION_TOOL_PART_TYPE,
   parseInterviewQuestionToolInput,
+  planQuestionForEntry,
   questionCardFromPlanQuestion,
   uiMessageToTranscriptEntries,
   type InterviewQuestionCard,
@@ -225,8 +226,47 @@ describe("deriveInterviewChatView", () => {
     }
   });
 
-  it("does not activate a card whose key is missing from the plan", () => {
+  it("falls back to the next unanswered plan question when the last card's key is missing from the plan", () => {
     const view = deriveInterviewChatView({ status: "active", questions: [makeQuestion()] }, [questionEntry(makeCard({ questionKey: "unplanned" }))]);
+    expect(view.planQuestionByEntryId.get("e-q")).toBeUndefined();
+    expect(view.entries).toHaveLength(2);
+    expect(view.activeQuestion).toMatchObject({ planQuestion: { questionKey: "primary-goal", orderIndex: 0 } });
+    expect(view.activeQuestion?.entryId).not.toBe("e-q");
+    expect(view.needsAssistantTurn).toBe(false);
+  });
+
+  it("keeps the interview answerable when the agent re-presents an already-answered question", () => {
+    const plan = [
+      makeQuestion({ answerOptionIds: ["signups"], answeredAtMillis: 1 }),
+      makeQuestion({ questionKey: "pricing-model", orderIndex: 1, prompt: "How do you price?" }),
+    ];
+    const entries = [questionEntry(makeCard(), "e-q1"), questionEntry(makeCard(), "e-q1-again")];
+    const view = deriveInterviewChatView({ status: "active", questions: plan }, entries);
+    expect(view.planQuestionByEntryId.get("e-q1")).toMatchObject({ orderIndex: 0 });
+    expect(view.planQuestionByEntryId.get("e-q1-again")).toBeUndefined();
+    expect(view.activeQuestion).toMatchObject({ planQuestion: { questionKey: "pricing-model", orderIndex: 1 } });
+    expect(view.activeQuestion?.card.text).toBe("How do you price?");
+    expect(view.entries).toHaveLength(3);
+    expect(view.needsAssistantTurn).toBe(false);
+  });
+
+  it("pairs cards with plan rows positionally when two rows share a question key", () => {
+    const plan = [
+      makeQuestion({ answerOptionIds: ["signups"], answeredAtMillis: 1 }),
+      makeQuestion({ orderIndex: 1 }),
+    ];
+    const entries = [questionEntry(makeCard(), "e-q1"), questionEntry(makeCard(), "e-q2")];
+    const view = deriveInterviewChatView({ status: "active", questions: plan }, entries);
+    expect(view.planQuestionByEntryId.get("e-q1")).toMatchObject({ orderIndex: 0 });
+    expect(view.planQuestionByEntryId.get("e-q2")).toMatchObject({ orderIndex: 1 });
+    expect(view.entries).toHaveLength(2);
+    expect(view.activeQuestion).toMatchObject({ entryId: "e-q2", planQuestion: { orderIndex: 1 } });
+  });
+
+  it("asks for an assistant turn when a repeated card is the last one and every plan row is answered", () => {
+    const plan = [makeQuestion({ answerOptionIds: ["signups"], answeredAtMillis: 1 })];
+    const entries = [questionEntry(makeCard(), "e-q1"), questionEntry(makeCard(), "e-q1-again")];
+    const view = deriveInterviewChatView({ status: "active", questions: plan }, entries);
     expect(view.activeQuestion).toBeNull();
     expect(view.needsAssistantTurn).toBe(true);
   });
@@ -284,5 +324,68 @@ describe("questionCardFromPlanQuestion", () => {
       allowFreeText: true,
       allowSkip: false,
     });
+  });
+});
+
+describe("planQuestionForEntry", () => {
+  const answered = makeQuestion({ questionKey: "primary-goal", orderIndex: 0, answerOptionIds: ["signups"], answeredAtMillis: 1_000 });
+  const next = makeQuestion({ questionKey: "biggest-blocker", orderIndex: 1, prompt: "What is blocking growth?" });
+  const questions = [answered, next];
+  const duplicateCard = makeCard({ questionKey: "primary-goal" });
+
+  it("leaves a committed card the plan has no row left for unresolved", () => {
+    const entries: InterviewTranscriptEntry[] = [
+      { id: "entry-1", type: "question", card: duplicateCard },
+      { id: "entry-2", type: "question", card: duplicateCard },
+    ];
+    const view = deriveInterviewChatView({ status: "active", questions }, entries);
+
+    expect(view.planQuestionByEntryId.get("entry-2")).toBeUndefined();
+    const resolved = planQuestionForEntry({
+      entryId: "entry-2",
+      card: duplicateCard,
+      streaming: false,
+      activeQuestion: view.activeQuestion,
+      planQuestionByEntryId: view.planQuestionByEntryId,
+      questions,
+    });
+    expect(resolved).toBeNull();
+    expect(planQuestionForEntry({
+      entryId: "entry-1",
+      card: duplicateCard,
+      streaming: false,
+      activeQuestion: view.activeQuestion,
+      planQuestionByEntryId: view.planQuestionByEntryId,
+      questions,
+    })).toEqual(answered);
+  });
+
+  it("resolves a streaming card by key and the active card by the view's decision", () => {
+    const streamingCard = makeCard({ questionKey: next.questionKey, text: next.prompt });
+
+    expect(planQuestionForEntry({
+      entryId: "streaming-1",
+      card: streamingCard,
+      streaming: true,
+      activeQuestion: null,
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toEqual(next);
+    expect(planQuestionForEntry({
+      entryId: "streaming-1",
+      card: streamingCard,
+      streaming: true,
+      activeQuestion: { entryId: "streaming-1", card: streamingCard, planQuestion: next },
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toEqual(next);
+    expect(planQuestionForEntry({
+      entryId: "streaming-2",
+      card: makeCard({ questionKey: "invented-by-the-agent" }),
+      streaming: true,
+      activeQuestion: null,
+      planQuestionByEntryId: new Map(),
+      questions,
+    })).toBeNull();
   });
 });
