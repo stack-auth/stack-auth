@@ -31,13 +31,6 @@ import { JOSEError } from "jose/errors";
 //     the key from the audience, a token minted for one project is not merely
 //     rejected by a check — it is signed with a different key than any other
 //     project's, and than any user access token.
-//     The audience puts the constant FIRST on purpose: `decodeAccessToken`
-//     parses an access-token audience positionally as `aud.split(":")[0]`, so
-//     a `<projectId>:workflow-run` audience would yield a real project id
-//     there and leave `iss` as the only thing separating a project-server
-//     credential from an end-user one. With the constant first, that parse
-//     produces a non-existent project and the replay fails for two
-//     independent reasons instead of one.
 //   * Bound to (project, branch, tenancy, run, workflow, leaseToken). The
 //     lease token is rotated on every claim (`claimDueRuns` is the only writer
 //     of that column), so a sandbox whose run has been re-claimed by another

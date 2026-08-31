@@ -37,6 +37,15 @@
         "default": "./dist/config.js"
       }
     },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": {
+        "default": "./dist/esm/mcp.js"
+      },
+      "require": {
+        "default": "./dist/mcp.js"
+      }
+    },
     "//": "IF_PLATFORM tanstack-start",
     "./tanstack-start-server-context": {
       "types": "./dist/tanstack-start-server-context.combined.d.ts",

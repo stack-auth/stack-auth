@@ -38,6 +38,37 @@ export const config = defineHexclaveConfig({
       },
     },
   },
+  oauthProvider: {
+    resources: {
+      demoMcp: {
+        displayName: "Demo MCP endpoint",
+        uri: `http://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}03/oauth-provider-demo/api/mcp`,
+      },
+    },
+    clients: {
+      demoClient: {
+        displayName: "Demo OAuth client",
+        redirectUris: {
+          callback: { url: `http://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}03/oauth-provider-demo/callback` },
+        },
+        type: "public",
+      },
+      demoTrustedClient: {
+        displayName: "Demo trusted OAuth client",
+        redirectUris: {
+          callback: { url: `http://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}03/oauth-provider-demo/callback` },
+        },
+        type: "public",
+        trusted: true,
+      },
+    },
+    dynamicClientRegistration: {
+      enabled: true,
+    },
+    consent: {
+      required: true,
+    },
+  },
   apps: {
     installed: {
       authentication: {

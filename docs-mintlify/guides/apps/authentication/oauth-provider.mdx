@@ -1,0 +1,179 @@
+---
+title: "OAuth Provider & MCP"
+description: "Let other applications and AI agents sign in with your project, and protect an MCP server with Hexclave"
+sidebarTitle: "OAuth Provider & MCP"
+---
+
+Your Hexclave project can act as its own OAuth 2.1 / OpenID Connect authorization server. Other applications, most commonly AI agents connecting to an [MCP](https://modelcontextprotocol.io) server, redirect their users to your project. Your users sign in and approve the access, and the client receives an access token bound to your resource server.
+
+MCP is not a separate feature here; an MCP server is just an OAuth resource server whose clients happen to be AI agents. Everything on this page applies to any OAuth client.
+
+## When you want this
+
+* **You are building an MCP server.** MCP clients (Claude, Cursor, ChatGPT, custom agents) authenticate with OAuth. Your MCP server needs to accept their tokens and know which of your users is behind each request.
+* **You want a third-party app to "Sign in with &lt;your product&gt;".** The app becomes an OAuth client of your project.
+
+If you only need your *own* app to authenticate its *own* users, you don't need any of this — use the normal [setup](/guides/getting-started/setup) flow.
+
+## How it works
+
+```text
+MCP client / third-party app
+  → your project's authorize endpoint
+  → your users sign in and consent (hosted by Hexclave)
+  → authorization code
+  → token endpoint
+  → access token bound to your resource server
+  → your MCP server verifies it and gets a Hexclave user
+```
+
+Your project is the authorization server. Your MCP server (or API) is the resource server. Hexclave hosts the authorize, token, discovery, JWKS, registration and revocation endpoints, and hosts the sign-in and consent screens your users see.
+
+### Your project's issuer
+
+Every project has an OAuth issuer URL:
+
+```text
+https://api.hexclave.com/api/v1/projects/<project-id>/oidc
+```
+
+Standard discovery works against it, so most OAuth and MCP clients need nothing but this URL:
+
+| Endpoint | URL |
+|---|---|
+| OpenID discovery | `<issuer>/.well-known/openid-configuration` |
+| OAuth 2.0 metadata (RFC 8414) | `<issuer>/.well-known/oauth-authorization-server` |
+| JWKS | `<issuer>/.well-known/jwks.json` |
+| Authorization | `<issuer>/auth` |
+| Token | `<issuer>/token` |
+| Dynamic client registration | `<issuer>/reg` |
+| Revocation | `<issuer>/token/revocation` |
+
+Some clients look for RFC 8414 discovery by inserting the project issuer path after the
+`.well-known` segment. Hexclave supports those equivalent forms too:
+
+```text
+https://api.hexclave.com/.well-known/openid-configuration/api/v1/projects/<project-id>/oidc
+https://api.hexclave.com/.well-known/oauth-authorization-server/api/v1/projects/<project-id>/oidc
+```
+
+<Info>
+PKCE is always required, and only public clients are supported. This is what OAuth 2.1 and the MCP specification mandate, and it means no client secret is ever distributed.
+</Info>
+
+## Configuration
+
+Configure everything on the **OAuth Provider** page in your project's dashboard settings.
+
+### Resource servers
+
+A resource server is the API tokens are minted for, usually your MCP server. Its **resource URI** is the canonical URL of the endpoint, for example `https://mcp.acme.com/mcp`, and it is what clients pass as `resource=` when they start the flow (RFC 8707).
+
+Tokens are bound to that resource: a token minted for one resource server is rejected by another, even within the same project. Resource URIs cannot contain a query or fragment, and must be unique within a project.
+
+Clients request the standard OIDC scopes (`openid`, `profile`, `email`, `offline_access`); there is no custom scope vocabulary. A token's authority is the user's own — the resource server resolves the token to a Hexclave user and authorizes with the APIs you already use.
+
+### Clients
+
+Clients can reach your project three ways; enable whichever your ecosystem needs.
+
+<Tabs>
+  <Tab title="Static clients">
+    Register the client yourself with a display name and its redirect URIs. Use this when you know the client up front (a partner integration, your own desktop app). Native and CLI clients typically need a loopback redirect URI such as `http://127.0.0.1:8976/callback`.
+
+    A static client can be marked **trusted**, which skips the consent prompt. The user still has to be signed in to your project.
+  </Tab>
+  <Tab title="Dynamic registration">
+    RFC 7591 dynamic client registration lets a client register itself at `<issuer>/reg`. Several MCP clients require this, since they cannot ask a user to pre-register anything. Clients that register themselves can never mark themselves trusted.
+  </Tab>
+  <Tab title="Client ID metadata documents">
+    The client's `client_id` is an HTTPS URL that serves its own metadata document, so no write path is needed. Optionally restrict which hosts may serve a document via the allowed-domains list.
+  </Tab>
+</Tabs>
+
+### Consent
+
+By default your users see a consent screen showing the client and the resource it is asking for. You can turn the prompt off entirely.
+
+Users always have to be signed in to your project; consent settings only affect the approval step.
+
+Client ID metadata documents and their optional allowed-hostname list are configured together. The
+allowed-domains list only applies when client ID metadata documents are enabled.
+
+## Protecting an MCP server
+
+Install the MCP framework of your choice — Hexclave does not wrap it. What Hexclave gives you is a *verifier*, which drops into both common extension points unchanged.
+
+<Tabs>
+  <Tab title="mcp-handler">
+    ```typescript title="app/[transport]/route.ts"
+    import { createMcpHandler, withMcpAuth } from "mcp-handler";
+    import { hexclaveServerApp } from "@/stack/server";
+
+    const handler = createMcpHandler((server) => {
+      server.tool("whoami", "Returns the signed-in user", {}, async (_args, extra) => {
+        const user = await hexclaveServerApp.getUser({ from: "mcp", authInfo: extra.authInfo });
+        return { content: [{ type: "text", text: user?.displayName ?? "unknown" }] };
+      });
+    });
+
+    export const { GET, POST } = withMcpAuth(
+      handler,
+      hexclaveServerApp.createMcpTokenVerifier({ resource: "https://mcp.acme.com/mcp" }),
+      { required: true },
+    );
+    ```
+  </Tab>
+  <Tab title="MCP TypeScript SDK">
+    ```typescript title="server.ts"
+    import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+    import { createMcpTokenVerifier } from "@hexclave/js/mcp";  // replace `js` with the correct framework SDK package
+
+    app.use("/mcp", requireBearerAuth({
+      verifier: createMcpTokenVerifier({
+        projectId: process.env.HEXCLAVE_PROJECT_ID!,
+        resource: "https://mcp.acme.com/mcp",
+      }),
+    }));
+    ```
+  </Tab>
+</Tabs>
+
+The verifier needs no secret key. Verification is a local JWT check against your project's public JWKS, cached in memory. An MCP server usually runs as its own service, separate from the app that configured Hexclave. Import `createMcpTokenVerifier` from `@hexclave/js/mcp` there and pass only a project ID.
+
+### Advertising your authorization server
+
+MCP clients discover where to authenticate from RFC 9728 protected-resource metadata:
+
+```typescript title="app/.well-known/oauth-protected-resource/route.ts"
+import { protectedResourceHandler, metadataCorsOptionsRequestHandler } from "mcp-handler";
+import { hexclaveServerApp } from "@/stack/server";
+
+export const GET = protectedResourceHandler({
+  authServerUrls: [hexclaveServerApp.getOAuthIssuerUrl()],
+});
+export const OPTIONS = metadataCorsOptionsRequestHandler();
+```
+
+### Resolving the user
+
+Pass the `AuthInfo` your MCP framework produced to `getUser`:
+
+```typescript
+const user = await hexclaveServerApp.getUser({ from: "mcp", authInfo: extra.authInfo });
+```
+
+The token was already verified by the verifier that produced the `AuthInfo`, so this is a lookup: you get an ordinary `ServerUser` with the same authority as one fetched by ID.
+
+<Warning>
+Tokens minted by your project's OAuth provider are deliberately *not* Hexclave session tokens. They cannot be used against the Hexclave API as an access token, and a session token cannot be used at your MCP server. Each is rejected in the other's place.
+</Warning>
+
+## Revocation
+
+Revocation is always enabled at `<issuer>/token/revocation`. A revoked refresh token cannot be exchanged again, and clients that support the endpoint will use it on sign-out.
+
+## See also
+
+* [MCP SDK reference](/sdk/types/mcp). `createMcpTokenVerifier`, `McpAuthInfo`, `McpTokenVerifier`
+* [JWT tokens](/guides/apps/authentication/jwts). How Hexclave's own session tokens differ

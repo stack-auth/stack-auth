@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import { McpAuthInfo, McpTokenVerifier, createMcpTokenVerifier, getOAuthIssuerUrl } from "../../../../mcp";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
@@ -1202,6 +1203,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return await this.getServerUserById(apiKeyObject.userId);
   }
 
+  protected async _getUserByMcpAuthInfo(authInfo: McpAuthInfo): Promise<ServerUser | null> {
+    const userId = authInfo.extra?.userId;
+    if (typeof userId !== "string") {
+      throw new Error("The AuthInfo passed to getUser({ from: 'mcp' }) has no Hexclave user ID. Use a verifier from createMcpTokenVerifier. AuthInfo from another auth provider cannot be resolved to a Hexclave user.");
+    }
+    return await this.getServerUserById(userId);
+  }
+
   protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
     const identity = await ctx.auth.getUserIdentity();
     if (identity === null) {
@@ -1259,6 +1268,21 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return this._serverUserFromCrud(crud);
   }
 
+  createMcpTokenVerifier(options?: { resource?: string }): McpTokenVerifier {
+    return createMcpTokenVerifier({
+      projectId: this.projectId,
+      baseUrl: this._interface.options.getBaseUrl(),
+      resource: options?.resource,
+    });
+  }
+
+  getOAuthIssuerUrl(): string {
+    return getOAuthIssuerUrl({
+      projectId: this.projectId,
+      baseUrl: this._interface.options.getBaseUrl(),
+    });
+  }
+
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
@@ -1266,13 +1290,25 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
   async getUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { from: "mcp", authInfo: McpAuthInfo, or?: "return-null" }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx } | { from: "mcp", authInfo: McpAuthInfo }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
-    } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
-      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
+    } else if (typeof options === "object" && "from" in options) {
+      switch (options.from) {
+        case "convex": {
+          return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
+        }
+        case "mcp": {
+          return await this._getUserByMcpAuthInfo(options.authInfo);
+        }
+        default: {
+          const _exhaustive: never = options.from;
+          throw new Error(`Unhandled getUser from: ${JSON.stringify(_exhaustive)}`);
+        }
+      }
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
 

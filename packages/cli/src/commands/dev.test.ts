@@ -3,7 +3,18 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { composeDevChildEnv, configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shellChildCommand, shouldRestartDashboard, validateDevCommandSelection } from "./dev.js";
+import { composeDevChildEnv, configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, normalizeApiBaseUrl, processExists, runChildProcess, shellChildCommand, shouldRestartDashboard, validateDevCommandSelection } from "./dev.js";
+
+describe("normalizeApiBaseUrl", () => {
+  it("preserves localhost because the API base URL identifies the OAuth issuer", () => {
+    expect(normalizeApiBaseUrl("http://localhost:8102/")).toBe("http://localhost:8102");
+  });
+
+  it("normalizes trailing slashes without rewriting other origins", () => {
+    expect(normalizeApiBaseUrl("http://127.0.0.1:8102/")).toBe("http://127.0.0.1:8102");
+    expect(normalizeApiBaseUrl("https://api.example.com/")).toBe("https://api.example.com");
+  });
+});
 
 describe("validateDevCommandSelection", () => {
   it("rejects combining --service-id with a positional command", () => {

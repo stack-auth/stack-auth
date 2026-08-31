@@ -13,6 +13,7 @@ const canonicalHandlerPaths = [
   "mfa",
   "error",
   "onboarding",
+  "oauth-provider-interaction",
 ];
 
 export function isCanonicalHandlerPathOrAlias(handlerPath: string) {

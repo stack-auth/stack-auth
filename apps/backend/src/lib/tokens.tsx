@@ -90,10 +90,6 @@ const issuerHostAliases = new Map<string, string>(
     [hexclaveHost, stackAuthHost],
   ]),
 );
-// Validation accepts both the primary issuer (derived from the deployment's
-// `NEXT_PUBLIC_STACK_API_URL` so existing single-host self-hosters keep working)
-// and its alias host, so a token minted under one cloud brand validates against
-// either backend host.
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   const aliasHost = issuerHostAliases.get(new URL(issuer).host);
@@ -102,10 +98,131 @@ const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   aliasedUrl.host = aliasHost;
   return [issuer, aliasedUrl.toString()];
 };
+const ANONYMOUS_AUDIENCE_SUFFIX = 'anon';
+const RESTRICTED_AUDIENCE_SUFFIX = 'restricted';
+const RESOURCE_AUDIENCE_MARKER = 'resource';
+
+const AUDIENCE_SEGMENT_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+export type ParsedAudience =
+  | { type: 'user', projectId: string, userType: UserType }
+  | { type: 'resource', projectId: string, resourceId: string };
+
 const getAudience = (projectId: string, userType: UserType) => {
   // TODO: make the audience a URL, and encode the user type in a better way
-  return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
+  return userType === 'anonymous' ? `${projectId}:${ANONYMOUS_AUDIENCE_SUFFIX}` : userType === 'restricted' ? `${projectId}:${RESTRICTED_AUDIENCE_SUFFIX}` : projectId;
 };
+
+export const getResourceAudience = (projectId: string, resourceId: string) => {
+  if (!AUDIENCE_SEGMENT_PATTERN.test(projectId)) {
+    throw new HexclaveAssertionError("Project ID is not a valid audience segment; it must not contain a colon.", { projectId });
+  }
+  if (!AUDIENCE_SEGMENT_PATTERN.test(resourceId)) {
+    throw new HexclaveAssertionError("Resource ID is not a valid audience segment; it must not contain a colon.", { resourceId });
+  }
+  return `${projectId}:${RESOURCE_AUDIENCE_MARKER}:${resourceId}`;
+};
+
+export function tryParseAudience(aud: string): ParsedAudience | null {
+  const segments = aud.split(":");
+  if (!segments.every(segment => AUDIENCE_SEGMENT_PATTERN.test(segment))) return null;
+
+  switch (segments.length) {
+    case 1: {
+      return { type: 'user', projectId: segments[0], userType: 'normal' };
+    }
+    case 2: {
+      switch (segments[1]) {
+        case ANONYMOUS_AUDIENCE_SUFFIX: {
+          return { type: 'user', projectId: segments[0], userType: 'anonymous' };
+        }
+        case RESTRICTED_AUDIENCE_SUFFIX: {
+          return { type: 'user', projectId: segments[0], userType: 'restricted' };
+        }
+        default: {
+          return null;
+        }
+      }
+    }
+    case 3: {
+      if (segments[1] !== RESOURCE_AUDIENCE_MARKER) return null;
+      return { type: 'resource', projectId: segments[0], resourceId: segments[2] };
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+export function parseAudience(aud: string): ParsedAudience {
+  return tryParseAudience(aud) ?? throwErr("Audience is not in any format Hexclave mints. Either it was not minted by us, or the audience format changed without updating `tryParseAudience`.", { aud });
+}
+
+import.meta.vitest?.describe("audience parsing", (test) => {
+  const projectId = "e0b52f4d-dece-408c-af49-d23061bb0f8d";
+
+  test("round-trips every user audience", ({ expect }) => {
+    for (const userType of ['normal', 'restricted', 'anonymous'] as const) {
+      expect(parseAudience(getAudience(projectId, userType))).toEqual({ type: 'user', projectId, userType });
+    }
+  });
+
+  test("round-trips a resource audience", ({ expect }) => {
+    expect(parseAudience(getResourceAudience(projectId, "my_mcp-server"))).toEqual({
+      type: 'resource',
+      projectId,
+      resourceId: "my_mcp-server",
+    });
+  });
+
+  test("parses the `internal` project", ({ expect }) => {
+    expect(parseAudience("internal")).toEqual({ type: 'user', projectId: "internal", userType: 'normal' });
+  });
+
+  test("user and resource audiences never collide", ({ expect }) => {
+    const userAudiences = (['normal', 'restricted', 'anonymous'] as const).map(t => getAudience(projectId, t));
+    const resourceAudience = getResourceAudience(projectId, "anon");
+    expect(userAudiences).not.toContain(resourceAudience);
+  });
+
+  test("rejects unknown shapes rather than guessing", ({ expect }) => {
+    const rejected = [
+      "",
+      ":",
+      `${projectId}:`,
+      `:${projectId}`,
+      `${projectId}:unknown-suffix`,
+      `${projectId}:resource`,
+      `${projectId}:resource:a:b`,
+      `${projectId}:anon:extra`,
+      `${projectId}:audience:foo`,
+      "a b",
+      "https://example.com",
+    ];
+    for (const aud of rejected) {
+      expect(tryParseAudience(aud), `expected ${JSON.stringify(aud)} to be rejected`).toBeNull();
+      expect(() => parseAudience(aud)).toThrow();
+    }
+  });
+
+  test("refuses to mint a resource audience with a colon in it", ({ expect }) => {
+    expect(() => getResourceAudience(projectId, "a:b")).toThrow();
+    expect(() => getResourceAudience("a:b", "resource")).toThrow();
+  });
+});
+
+import.meta.vitest?.test("decodeAccessToken warning payloads never include the raw bearer token", async ({ expect }) => {
+  const vi = import.meta.vitest?.vi;
+  if (vi === undefined) throw new Error("Vitest is required for this test");
+  const token = "raw-bearer-token-that-must-not-be-logged";
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    await decodeAccessToken(token, { allowAnonymous: false, allowRestricted: false });
+    expect(warn.mock.calls.flat()).not.toContain(token);
+  } finally {
+    warn.mockRestore();
+  }
+});
 
 const getUserType = (isAnonymous: boolean, isRestricted: boolean): UserType => {
   if (isAnonymous) return 'anonymous';
@@ -131,14 +248,25 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
 
     let payload: jose.JWTPayload;
     let decoded: jose.JWTPayload | undefined;
-    let aud;
+    let parsedAud: ParsedAudience;
 
     try {
       decoded = jose.decodeJwt(accessToken);
-      aud = decoded.aud?.toString() ?? "";
+      const aud = decoded.aud?.toString() ?? "";
+
+      const maybeParsedAud = tryParseAudience(aud);
+      if (!maybeParsedAud) {
+        console.warn("Access token has an audience Hexclave never mints. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { aud });
+        return Result.error(new KnownErrors.UnparsableAccessToken());
+      }
+      if (maybeParsedAud.type !== 'user') {
+        console.warn("Resource-scoped access token presented to the main API. These are only valid at the resource server they were minted for.", { aud });
+        return Result.error(new KnownErrors.UnparsableAccessToken());
+      }
+      parsedAud = maybeParsedAud;
 
       // Determine allowed issuers based on what types of tokens we accept
-      const projectId = aud.split(":")[0];
+      const projectId = parsedAud.projectId;
       const allowedIssuers = [
         ...getAllowedIssuers(projectId, 'normal'),
         ...(allowRestricted ? getAllowedIssuers(projectId, 'restricted') : []),
@@ -151,16 +279,17 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
+        const expiredProjectId = tryParseAudience(decoded?.aud?.toString() ?? "")?.projectId;
         const error = new KnownErrors.AccessTokenExpired(
           decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
-          decoded?.aud?.toString().split(":")[0],
+          expiredProjectId,
           decoded?.sub ?? undefined,
           (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
         );
-        console.log(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        console.log(`[Token decode] Access token expired for project ${expiredProjectId}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
         return Result.error(error);
       } else if (error instanceof JOSEError) {
-        console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
+        console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { error });
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
       throw error;
@@ -187,16 +316,12 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
-    // Validate audience matches the user type
-    if (aud.endsWith(":anon") && !isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
-    } else if (!aud.endsWith(":anon") && isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
+    const audUserType = parsedAud.userType;
+    if ((audUserType === 'anonymous') !== isAnonymous) {
+      throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_anonymous claim.", { accessToken, payload, audUserType, isAnonymous });
     }
-    if (aud.endsWith(":restricted") && !isRestricted) {
-      throw new HexclaveAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
-    } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
+    if ((audUserType === 'restricted' || audUserType === 'anonymous') !== isRestricted) {
+      throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_restricted claim.", { accessToken, payload, audUserType, isRestricted });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
@@ -206,7 +331,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
     }
 
     const result = await accessTokenSchema.validate({
-      projectId: aud.split(":")[0],
+      projectId: parsedAud.projectId,
       userId: payload.sub,
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,

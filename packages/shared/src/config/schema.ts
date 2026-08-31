@@ -15,6 +15,7 @@ import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
+import { canonicalizeResourceUri, isValidHostname } from "../utils/urls";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
@@ -78,6 +79,151 @@ const branchRbacSchema = yupObject({
   }),
 });
 // --- END NEW RBAC Schema ---
+
+const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => {
+  if (value === undefined) return true;
+  try {
+    canonicalizeResourceUri(value);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+const branchOAuthProviderSchema = yupObject({
+  /** RFC 8707 resource servers. */
+  resources: yupRecord(
+    userSpecifiedIdSchema("resourceId"),
+    yupObject({
+      displayName: yupString().optional(),
+      uri: resourceUriSchema.optional(),
+    }).optional(),
+  ).test("unique-resource-uris", "Resource URIs must be unique.", (resources: unknown) => {
+    if (typeof resources !== "object" || resources === null) return true;
+    const uris = Object.values(resources)
+      .map(resource => resource.uri)
+      .filter((uri): uri is string => uri !== undefined);
+    return new Set(uris.map(uri => {
+      try {
+        return canonicalizeResourceUri(uri);
+      } catch {
+        return uri;
+      }
+    })).size === uris.length;
+  }),
+
+  clients: yupRecord(
+    userSpecifiedIdSchema("clientId"),
+    yupObject({
+      displayName: yupString().optional(),
+      redirectUris: yupRecord(
+        userSpecifiedIdSchema("redirectUriId"),
+        yupObject({
+          url: schemaFields.urlSchema.optional(),
+        }).optional(),
+      ).optional(),
+      type: yupString().oneOf(['public']).optional(),
+      trusted: yupBoolean().optional(),
+    }).optional(),
+  ),
+
+  /** RFC 7591. */
+  dynamicClientRegistration: yupObject({
+    enabled: yupBoolean(),
+  }),
+
+  clientIdMetadataDocuments: yupObject({
+    enabled: yupBoolean(),
+    allowedDomains: yupRecord(
+      userSpecifiedIdSchema("allowedDomainId"),
+      yupObject({
+        domain: yupString().test("hostname", "Domain must be a valid hostname.", value => value === undefined || isValidHostname(value)).optional(),
+      }).optional(),
+    ).optional(),
+  }),
+
+  consent: yupObject({
+    required: yupBoolean(),
+  }),
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts a minimal MCP-server setup", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "my-mcp-server": { displayName: "My MCP Server", uri: "https://mcp.example.com/mcp" },
+    },
+    dynamicClientRegistration: { enabled: true },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts loopback redirect URIs, which native MCP clients need", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: {
+      "some-client": {
+        type: "public",
+        redirectUris: {
+          "loopback-v4": { url: "http://127.0.0.1:5173/callback" },
+          "loopback-name": { url: "http://localhost:5173/callback" },
+        },
+      },
+    },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects duplicate resource URIs", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "first": { uri: "https://mcp.example.com" },
+      "second": { uri: "https://mcp.example.com" },
+    },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema reports malformed URIs without crashing uniqueness validation", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "first": { uri: "https://mcp.example.com/mcp" },
+      "duplicate": { uri: "https://mcp.example.com/mcp/" },
+      "malformed": { uri: "not a URL" },
+    },
+  }, { abortEarly: false })).rejects.toBeInstanceOf(yup.ValidationError);
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed client metadata domains", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clientIdMetadataDocuments: { allowedDomains: { "domain": { domain: "not a hostname" } } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed redirect URLs", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { redirectUris: { callback: { url: "not a URL" } } } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects resource URIs with query strings or fragments", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: { "mcp": { uri: "https://mcp.example.com/mcp?tenant=a" } },
+  }, { abortEarly: false })).rejects.toThrow();
+  await expect(branchOAuthProviderSchema.validate({
+    resources: { "mcp": { uri: "https://mcp.example.com/mcp#tools" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema keys nothing by a URL", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { redirectUris: { "https://example.com/callback": {} } } },
+  }, { abortEarly: false })).rejects.toThrow();
+  await expect(branchOAuthProviderSchema.validate({
+    clientIdMetadataDocuments: { allowedDomains: { "example.com": {} } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects an unknown client type", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { type: "implicit" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
 
 // --- NEW API Keys Schema ---
 const branchApiKeysSchema = yupObject({
@@ -291,7 +437,7 @@ import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject 
         prices: {},
       },
     },
-  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen, and must not be one of __proto__, constructor, prototype]`);
 });
 
 const branchDomain = yupObject({});
@@ -324,6 +470,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   domains: branchDomain,
 
   auth: branchAuthSchema,
+
+  oauthProvider: branchOAuthProviderSchema,
 
   emails: yupObject({
     selectedThemeId: schemaFields.emailThemeSchema,
@@ -653,6 +801,23 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   return res;
 };
 
+import.meta.vitest?.test("migrateConfigOverride leaves oauthProvider overrides untouched", ({ expect }) => {
+  const oauthProvider = {
+    resources: { "my-mcp-server": { uri: "https://mcp.example.com/mcp" } },
+    clients: { "some-client": { type: "public", trusted: false } },
+    dynamicClientRegistration: { enabled: true },
+    clientIdMetadataDocuments: { enabled: true },
+    consent: { required: true },
+  };
+
+  expect(migrateConfigOverride("branch", { oauthProvider })).toEqual({ oauthProvider });
+  expect(migrateConfigOverride("environment", { oauthProvider })).toEqual({ oauthProvider });
+  expect(migrateConfigOverride("organization", { oauthProvider })).toEqual({ oauthProvider });
+  expect(migrateConfigOverride("branch", {
+    "oauthProvider.consent.required": false,
+  })).toEqual({ "oauthProvider.consent.required": false });
+});
+
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {
     sourceOfTruth: {
@@ -966,6 +1131,33 @@ const organizationConfigDefaults = {
       },
     }),
     signUpRulesDefaultAction: 'allow',
+  },
+
+  oauthProvider: {
+    resources: (key: string) => ({
+      displayName: undefined,
+      uri: undefined,
+    }),
+    clients: (key: string) => ({
+      displayName: undefined,
+      redirectUris: (redirectUriKey: string) => ({
+        url: undefined,
+      }),
+      type: 'public',
+      trusted: false,
+    } as const),
+    dynamicClientRegistration: {
+      enabled: false,
+    },
+    clientIdMetadataDocuments: {
+      enabled: false,
+      allowedDomains: (key: string) => ({
+        domain: undefined,
+      }),
+    },
+    consent: {
+      required: true,
+    },
   },
 
   emails: {

@@ -176,6 +176,40 @@ const branchSchemaFuzzerConfig = [{
       }] as const,
     }],
   }],
+  oauthProvider: [{
+    resources: [{
+      "some-resource-id": [{
+        displayName: ["Some MCP Server", "Some Other MCP Server"],
+        uri: ["https://mcp.example.com/mcp", "not a url"],
+      }],
+    }],
+    clients: [{
+      "some-client-id": [{
+        displayName: ["Some Client", "Some Other Client"],
+        redirectUris: [{
+          "some-redirect-uri-id": [{
+            url: ["https://example.com/callback", "http://127.0.0.1:5173/callback"],
+          }],
+        }],
+        type: ["public"] as const,
+        trusted: [true, false],
+      }],
+    }],
+    dynamicClientRegistration: [{
+      enabled: [true, false],
+    }],
+    clientIdMetadataDocuments: [{
+      enabled: [true, false],
+      allowedDomains: [{
+        "some-allowed-domain-id": [{
+          domain: ["example.com", "mcp.example.com"],
+        }],
+      }],
+    }],
+    consent: [{
+      required: [true, false],
+    }],
+  }],
   domains: [{}],
   apps: [{
     installed: [typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, [{

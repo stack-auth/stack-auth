@@ -1,0 +1,353 @@
+import { PROJECT_OAUTH_PROVIDER_JWKS_PATH, canonicalizeResourceUri, getProjectOAuthProviderIssuerUrl } from "@hexclave/shared/dist/utils/urls";
+import * as jose from "jose";
+
+export type McpAuthInfo = {
+  token: string,
+  clientId: string,
+  scopes: string[],
+  expiresAt?: number,
+  resource?: URL,
+  extra?: Record<string, unknown>,
+};
+
+export type McpTokenVerifierOptions = {
+  /** The Hexclave project the MCP server belongs to. */
+  projectId: string,
+  /**
+   * The Hexclave API base URL. Defaults to the Hexclave cloud; self-hosters pass their own.
+   */
+  baseUrl?: string,
+  /**
+   * This MCP server's resource identifier (RFC 8707), the canonical URL of the MCP endpoint.
+   * Example: `https://mcp.acme.com/mcp`.
+   *
+   * When omitted, the resource is taken from the incoming request URL. Pass it when the server
+   * sits behind a proxy that rewrites the URL.
+   */
+  resource?: string,
+};
+
+/** Callable as mcp-handler's `verifyToken`, and as the MCP SDK's `OAuthTokenVerifier`. */
+export type McpTokenVerifier =
+  ((request: Request, bearerToken?: string) => Promise<McpAuthInfo | undefined>)
+  & { verifyAccessToken: (token: string) => Promise<McpAuthInfo> };
+
+const DEFAULT_BASE_URL = "https://api.hexclave.com";
+
+export class McpTokenVerificationError extends Error {
+  constructor(message: string, public readonly reason: "invalid_token" | "wrong_resource" | "wrong_issuer", cause?: unknown) {
+    super(message, { cause });
+    this.name = "McpTokenVerificationError";
+  }
+}
+
+/**
+ * Verifies project-OAuth access tokens for an MCP server.
+ *
+ * Needs a projectId, not a server app or secret key. Verification is a local JWT check against
+ * the project's published JWKS.
+ *
+ * ```ts
+ * import { createMcpTokenVerifier } from "@hexclave/js/mcp";  // replace `js` with the correct framework SDK package
+ *
+ * const verify = createMcpTokenVerifier({
+ *   projectId: process.env.HEXCLAVE_PROJECT_ID!,
+ *   resource: "https://mcp.acme.com/mcp",
+ * });
+ * ```
+ *
+ * A HexclaveServerApp can fill in projectId and baseUrl via `createMcpTokenVerifier()`.
+ */
+export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTokenVerifier {
+  const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+  const issuer = getOAuthIssuerUrl({ projectId: options.projectId, baseUrl });
+  const configuredResource = options.resource === undefined ? undefined : canonicalizeResourceUri(options.resource);
+
+  let jwkSet: ReturnType<typeof jose.createRemoteJWKSet> | undefined;
+  const getJwkSet = () => {
+    if (!jwkSet) {
+      const jwksUrl = getOAuthJwksUrl(issuer);
+      jwkSet = jose.createRemoteJWKSet(jwksUrl);
+    }
+    return jwkSet;
+  };
+
+  const verifyAccessToken = async (token: string, resource?: string): Promise<McpAuthInfo> => {
+    const expectedResource = configuredResource
+      ?? (resource === undefined ? undefined : canonicalizeResourceUri(resource, { allowQueryAndFragment: true }));
+    if (expectedResource === undefined) {
+      throw new McpTokenVerificationError(
+        "No resource is configured for this verifier. Pass resource to createMcpTokenVerifier when using verifyAccessToken(token).",
+        "wrong_resource",
+      );
+    }
+
+    let payload: jose.JWTPayload;
+    try {
+      const verified = await jose.jwtVerify(token, getJwkSet(), { issuer });
+      payload = verified.payload;
+    } catch (error) {
+      // jose reports issuer failures as JWTClaimValidationFailed with claim === "iss".
+      if (error instanceof jose.errors.JWTClaimValidationFailed && error.claim === "iss") {
+        throw new McpTokenVerificationError(`The access token was not issued by the expected authorization server (${issuer}). Check the projectId and baseUrl configuration.`, "wrong_issuer", error);
+      }
+      throw new McpTokenVerificationError("The access token could not be verified.", "invalid_token", error);
+    }
+
+    const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
+    let matches = false;
+    if (tokenResource !== undefined) {
+      try {
+        matches = canonicalizeResourceUri(tokenResource) === expectedResource;
+      } catch {
+        matches = false;
+      }
+    }
+    if (!matches) {
+      throw new McpTokenVerificationError(
+        "The access token was issued for a different resource.",
+        "wrong_resource",
+      );
+    }
+
+    const scopes = typeof payload.scope === "string"
+      ? payload.scope.split(" ").filter(scope => scope.length > 0)
+      : [];
+    if (typeof payload.client_id !== "string" || payload.client_id.length === 0) {
+      throw new McpTokenVerificationError("The access token is missing a client_id claim.", "invalid_token");
+    }
+
+    return {
+      token,
+      clientId: payload.client_id,
+      scopes,
+      expiresAt: payload.exp,
+      resource: new URL(expectedResource),
+      extra: {
+        userId: payload.sub,
+        projectId: options.projectId,
+      },
+    };
+  };
+
+  const verifyRequest = async (request: Request, bearerToken?: string) => {
+    const token = bearerToken ?? extractBearerToken(request);
+    if (token === undefined) return undefined;
+    return await verifyAccessToken(token, options.resource ?? canonicalizeResourceUri(request.url, { allowQueryAndFragment: true }));
+  };
+
+  return Object.assign(verifyRequest, {
+    verifyAccessToken: (token: string) => verifyAccessToken(token),
+  });
+}
+
+function extractBearerToken(request: Request): string | undefined {
+  const header = request.headers.get("authorization");
+  if (header === null) return undefined;
+  const match = /^Bearer (.+)$/i.exec(header);
+  return match?.[1];
+}
+
+/**
+ * Issuer URL for a Hexclave project acting as an authorization server.
+ *
+ * Pass this to `protectedResourceHandler({ authServerUrls })` and as the RFC 9728
+ * `authorization_servers` entry.
+ *
+ * ```ts
+ * export const GET = protectedResourceHandler({
+ *   authServerUrls: [getOAuthIssuerUrl({ projectId })],
+ * });
+ * export const OPTIONS = metadataCorsOptionsRequestHandler();
+ * ```
+ */
+export function getOAuthIssuerUrl(options: { projectId: string, baseUrl?: string }): string {
+  return getProjectOAuthProviderIssuerUrl(options.projectId, options.baseUrl ?? DEFAULT_BASE_URL);
+}
+
+function getOAuthJwksUrl(issuer: string): URL {
+  return new URL(`${issuer.replace(/\/$/, "")}${PROJECT_OAUTH_PROVIDER_JWKS_PATH}`);
+}
+
+if (import.meta.vitest) {
+  const { test, expect, describe } = import.meta.vitest;
+
+  const projectId = "e0b52f4d-dece-408c-af49-d23061bb0f8d";
+
+  describe("getOAuthIssuerUrl", () => {
+    test("builds the project OIDC issuer", () => {
+      expect(getOAuthIssuerUrl({ projectId, baseUrl: "https://api.example.com" }))
+        .toBe(`https://api.example.com/api/v1/projects/${projectId}/oidc`);
+    });
+
+    test("defaults to the Hexclave cloud", () => {
+      expect(getOAuthIssuerUrl({ projectId })).toBe(`${DEFAULT_BASE_URL}/api/v1/projects/${projectId}/oidc`);
+    });
+  });
+
+  test("derives the JWKS endpoint from the issuer", () => {
+    expect(getOAuthJwksUrl("https://api.example.com/api/v1/projects/project/oidc").toString())
+      .toBe("https://api.example.com/api/v1/projects/project/oidc/.well-known/jwks.json");
+  });
+
+  describe("canonicalizeResourceUri (the shared audience-check canonicalization)", () => {
+    test("ignores query and fragment and normalizes host and trailing slash", () => {
+      expect(canonicalizeResourceUri("HTTPS://MCP.Example.com/mcp/?page=1#tools", { allowQueryAndFragment: true }))
+        .toBe("https://mcp.example.com/mcp");
+    });
+
+    test("does not equate different resource paths", () => {
+      expect(canonicalizeResourceUri("https://mcp.example.com/other"))
+        .not.toBe(canonicalizeResourceUri("https://mcp.example.com/mcp"));
+    });
+  });
+
+  describe("createMcpTokenVerifier", () => {
+    async function signedToken(options: { resource?: string, scope?: string, subject?: string, clientId?: string | null }) {
+      const { publicKey, privateKey } = await jose.generateKeyPair("RS256");
+      const jwk = await jose.exportJWK(publicKey);
+      jwk.kid = "mcp-test";
+      const issuer = getOAuthIssuerUrl({ projectId, baseUrl: "https://api.example.com" });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => new Response(JSON.stringify({ keys: [jwk] }), {
+        headers: { "content-type": "application/json" },
+      });
+      const token = await new jose.SignJWT({
+        ...(options.clientId === null ? {} : { client_id: options.clientId ?? "test-client" }),
+        scope: options.scope ?? "openid profile",
+        ...(options.resource === undefined ? {} : { resource: options.resource }),
+      })
+        .setProtectedHeader({ alg: "RS256", kid: "mcp-test" })
+        .setIssuer(issuer)
+        .setSubject(options.subject ?? "user-1")
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(privateKey);
+      return { token, issuer, originalFetch };
+    }
+
+    test("verifies a signed token and returns its resource, scopes, and user ID", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+          clientId: "test-client",
+          scopes: ["openid", "profile"],
+          resource: new URL(resource),
+          extra: { userId: "user-1" },
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a token for a different resource", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "https://other.example.com/mcp" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("matches a configured resource despite a request query string", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier(new Request(`${resource}?session=1`), token)).resolves.toMatchObject({ extra: { userId: "user-1" } });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("requires a resource for the SDK verifyAccessToken form", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "https://mcp.example.com/mcp" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({
+          reason: "wrong_resource",
+          message: expect.stringContaining("Pass resource"),
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a signed token without a client_id claim", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource, clientId: null });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "invalid_token" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a signed token without a resource claim", async () => {
+      const { token, originalFetch } = await signedToken({});
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a signed token with an unparsable resource claim", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "not a URL" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects an unparsable configured resource during verifier construction", () => {
+      expect(() => createMcpTokenVerifier({ projectId, resource: "not a URL" })).toThrow(TypeError);
+    });
+
+    test("rejects a configured resource with a query or fragment", () => {
+      expect(() => createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp?tenant=a" })).toThrow(TypeError);
+      expect(() => createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp#tools" })).toThrow(TypeError);
+    });
+
+    test("is callable like mcp-handler's verifyToken AND carries the MCP SDK's verifyAccessToken", () => {
+      const verifier = createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp" });
+      expect(typeof verifier).toBe("function");
+      expect(typeof verifier.verifyAccessToken).toBe("function");
+    });
+
+    test("constructs without a secret key or a server app — the remote-MCP-server case", () => {
+      expect(() => createMcpTokenVerifier({ projectId })).not.toThrow();
+    });
+
+    test("returns undefined when there is no bearer token, rather than throwing", () => {
+      // `mcp-handler` distinguishes "no token" (respond 401 with a WWW-Authenticate challenge) from
+      // "bad token" (an error). Returning undefined is what produces the correct challenge.
+      const verifier = createMcpTokenVerifier({ projectId });
+      const request = new Request("https://mcp.example.com/mcp");
+      return expect(verifier(request)).resolves.toBeUndefined();
+    });
+
+    test("ignores a non-Bearer authorization header", async () => {
+      const verifier = createMcpTokenVerifier({ projectId });
+      const request = new Request("https://mcp.example.com/mcp", {
+        headers: { authorization: "Basic dXNlcjpwYXNz" },
+      });
+      await expect(verifier(request)).resolves.toBeUndefined();
+    });
+  });
+
+  describe("McpTokenVerificationError", () => {
+    test("carries a machine-readable reason alongside the message", () => {
+      const error = new McpTokenVerificationError("nope", "wrong_resource");
+      expect(error.reason).toBe("wrong_resource");
+      expect(error).toBeInstanceOf(Error);
+    });
+  });
+}

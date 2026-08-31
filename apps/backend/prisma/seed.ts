@@ -67,6 +67,7 @@ export async function seed() {
   const otpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED", "") === 'true';
   const signUpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED", "") === 'true';
   const allowLocalhost = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST", "") === 'true';
+  const internalMcpServerUrl = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_MCP_SERVER_URL", "");
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
@@ -137,6 +138,24 @@ export async function seed() {
           }
         }
       },
+      ...(internalMcpServerUrl === "" ? {} : {
+        // Register the local MCP endpoints as resource servers. Clients register themselves via DCR.
+        oauthProvider: {
+          resources: {
+            mcp: {
+              displayName: 'Hexclave MCP server',
+              uri: new URL('/mcp', internalMcpServerUrl).toString(),
+            },
+            mcpInternal: {
+              displayName: 'Hexclave MCP server (internal endpoint)',
+              uri: new URL('/api/internal/mcp', internalMcpServerUrl).toString(),
+            },
+          },
+          dynamicClientRegistration: {
+            enabled: true,
+          },
+        },
+      }),
       payments: {
         productLines: {
           plans: {

@@ -23,6 +23,7 @@ import.meta.vitest?.test("createUrlIfValid", ({ expect }) => {
 export function isValidUrl(url: string) {
   return !!createUrlIfValid(url);
 }
+
 import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   // Test with valid URLs
   expect(isValidUrl("https://example.com")).toBe(true);
@@ -33,6 +34,29 @@ import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   expect(isValidUrl("")).toBe(false);
   expect(isValidUrl("not a url")).toBe(false);
   expect(isValidUrl("http://")).toBe(false);
+});
+
+export function canonicalizeResourceUri(uri: string, options: { allowQueryAndFragment?: boolean } = {}): string {
+  const url = new URL(uri);
+  if (!(options.allowQueryAndFragment ?? false) && (url.search !== "" || url.hash !== "")) {
+    throw new TypeError("RFC 8707 resource identifiers cannot contain a query or fragment.");
+  }
+  url.search = "";
+  url.hash = "";
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
+}
+
+import.meta.vitest?.test("canonicalizeResourceUri", ({ expect }) => {
+  expect(canonicalizeResourceUri("HTTPS://EXAMPLE.COM/mcp///")).toBe("https://example.com/mcp");
+  expect(canonicalizeResourceUri("https://example.com/")).toBe("https://example.com/");
+  expect(() => canonicalizeResourceUri("not a url")).toThrow();
+  expect(() => canonicalizeResourceUri("https://example.com/mcp?tenant=a")).toThrow(TypeError);
+  expect(() => canonicalizeResourceUri("https://example.com/mcp#tools")).toThrow(TypeError);
+  expect(canonicalizeResourceUri("HTTPS://MCP.Example.com/mcp/?page=1#tools", { allowQueryAndFragment: true }))
+    .toBe("https://mcp.example.com/mcp");
 });
 
 export function isValidHostname(hostname: string) {
@@ -409,3 +433,16 @@ import.meta.vitest?.test("isSubPath", ({ expect }) => {
   expect(isChildPath("/path/", "/path-abc")).toBe(false);
   expect(isChildPath("/path/", "/path-abc/")).toBe(false);
 });
+
+export function getProjectOAuthProviderIssuerUrl(projectId: string, baseUrl: string): string {
+  return new URL(urlString`/api/v1/projects/${projectId}/oidc`, baseUrl).toString();
+}
+
+import.meta.vitest?.test("getProjectOAuthProviderIssuerUrl", ({ expect }) => {
+  expect(getProjectOAuthProviderIssuerUrl("proj", "https://api.example.com"))
+    .toBe("https://api.example.com/api/v1/projects/proj/oidc");
+  expect(getProjectOAuthProviderIssuerUrl("we?ird/id", "https://api.example.com"))
+    .toBe("https://api.example.com/api/v1/projects/we%3Fird%2Fid/oidc");
+});
+
+export const PROJECT_OAUTH_PROVIDER_JWKS_PATH = "/.well-known/jwks.json";

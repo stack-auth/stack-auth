@@ -1,5 +1,6 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
+import { isProjectOAuthPathInsertion } from "@/lib/project-oauth-route";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
@@ -56,7 +57,8 @@ const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllow
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
 export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
-  return new URL(request.url).pathname.startsWith("/api/") ? {
+  const pathname = new URL(request.url).pathname;
+  return pathname.startsWith("/api/") || isProjectOAuthPathInsertion(pathname) ? {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
@@ -114,9 +116,10 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   ensureForwardedForHeader(mergedHeaders, request);
 
   const isApiRequest = url.pathname.startsWith("/api/");
+  const isCorsEnabledRequest = isApiRequest || isProjectOAuthPathInsertion(url.pathname);
   const corsHeadersInit = getCorsHeadersInit(request);
 
-  if (request.method === "OPTIONS" && isApiRequest) {
+  if (request.method === "OPTIONS" && isCorsEnabledRequest) {
     return {
       corsHeadersInit,
       dispatchPath: url.pathname,

@@ -17,6 +17,7 @@ import {
   HostedOnboarding,
 } from '../../hosted-components/auth';
 import { HostedAuthMessage } from '../../hosted-components/auth/supporting/layout';
+import { HostedOAuthProviderInteraction } from '../../hosted-components/oauth-provider-interaction-page';
 import { requiresAfterAuthReturn } from './after-auth-return-policy';
 import { isCanonicalHandlerPathOrAlias } from './handler-path-policy';
 
@@ -84,6 +85,9 @@ const hostedPages = new Map<string, HostedPage>([
   ["onboarding", {
     pageKey: "onboarding",
     render: () => <HostedOnboarding fullPage />,
+  }],
+  ["oauth-provider-interaction", {
+    render: () => <HostedOAuthProviderInteraction />,
   }],
 ]);
 

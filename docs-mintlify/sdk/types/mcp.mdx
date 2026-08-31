@@ -1,0 +1,165 @@
+---
+title: "MCP"
+description: "Reference for Hexclave's MCP token verification helpers."
+sidebarTitle: "MCP"
+mode: "wide"
+---
+
+Hexclave's MCP helpers verify project OAuth access tokens and resolve the authenticated
+Hexclave user. The verifier is deliberately framework-neutral: it can be passed directly to
+`mcp-handler` or to the MCP TypeScript SDK.
+
+## `createMcpTokenVerifier`
+
+```typescript
+import { createMcpTokenVerifier } from "@hexclave/js/mcp"; // replace `js` with the correct framework SDK package
+
+const verifier = createMcpTokenVerifier({
+  projectId: process.env.HEXCLAVE_PROJECT_ID!,
+  resource: "https://mcp.example.com/mcp",
+});
+```
+
+Creates a public-key verifier for one Hexclave project. It fetches and caches the project's
+public JWKS and does not require a secret key.
+
+### Options
+
+<ParamField body="projectId" type="string" required>
+  The Hexclave project ID that issued the access token.
+</ParamField>
+
+<ParamField body="baseUrl" type="string">
+  The Hexclave API base URL. Defaults to `https://api.hexclave.com`; self-hosted deployments
+  should provide their API origin.
+</ParamField>
+
+<ParamField body="resource" type="string">
+  This MCP server's RFC 8707 resource identifier, such as
+  `https://mcp.example.com/mcp`. When omitted, request verification derives the resource from
+  the incoming request URL. `verifyAccessToken(token)` still requires a configured resource.
+</ParamField>
+
+## `McpTokenVerifier`
+
+`createMcpTokenVerifier` returns a dual-shape verifier:
+
+```typescript
+type McpTokenVerifier =
+  ((request: Request, bearerToken?: string) => Promise<McpAuthInfo | undefined>)
+  & {
+    verifyAccessToken: (token: string) => Promise<McpAuthInfo>;
+  };
+```
+
+The callable form is compatible with `mcp-handler`'s `withMcpAuth`. The
+`.verifyAccessToken` form is compatible with the MCP TypeScript SDK's
+`requireBearerAuth({ verifier })`. A request without a bearer token returns `undefined` from
+the callable form; an invalid token throws `McpTokenVerificationError`.
+
+```typescript
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { createMcpTokenVerifier } from "@hexclave/js/mcp"; // replace `js` with the correct framework SDK package
+
+app.use("/mcp", requireBearerAuth({
+  verifier: createMcpTokenVerifier({
+    projectId: process.env.HEXCLAVE_PROJECT_ID!,
+    resource: "https://mcp.example.com/mcp",
+  }),
+}));
+```
+
+## `McpAuthInfo`
+
+The verified authentication information passed to an MCP framework:
+
+```typescript
+type McpAuthInfo = {
+  token: string;
+  clientId: string;
+  scopes: string[];
+  expiresAt?: number;
+  resource?: URL;
+  extra?: Record<string, unknown>;
+};
+```
+
+`extra.userId` contains the Hexclave user ID from the token, and `extra.projectId` contains
+the project configured for the verifier. Pass the complete value to
+`serverApp.getUser({ from: "mcp", authInfo })` to resolve the user.
+
+## `McpTokenVerificationError`
+
+Invalid or unacceptable tokens throw `McpTokenVerificationError`. Its `reason` identifies
+the class of failure:
+
+| `reason` | Meaning |
+|---|---|
+| `invalid_token` | The token could not be verified or has invalid token data. |
+| `wrong_resource` | The token was issued for a different resource, or no resource is configured for direct token verification. |
+| `wrong_issuer` | The token was not issued by the configured project's OAuth issuer. |
+
+```typescript
+import { McpTokenVerificationError } from "@hexclave/js/mcp"; // replace `js` with the correct framework SDK package
+
+try {
+  await verifier.verifyAccessToken(token);
+} catch (error) {
+  if (error instanceof McpTokenVerificationError) {
+    console.error(error.reason);
+  }
+}
+```
+
+## `getOAuthIssuerUrl`
+
+Builds the OAuth issuer URL for a project:
+
+```typescript
+import { getOAuthIssuerUrl } from "@hexclave/js/mcp"; // replace `js` with the correct framework SDK package
+
+const issuer = getOAuthIssuerUrl({
+  projectId: process.env.HEXCLAVE_PROJECT_ID!,
+});
+```
+
+It accepts the same `projectId` and optional `baseUrl` as the verifier options and returns:
+
+```text
+https://api.hexclave.com/api/v1/projects/<project-id>/oidc
+```
+
+## Server app helpers
+
+Configured server apps fill in the project ID and API base URL automatically:
+
+```typescript
+import { hexclaveServerApp } from "@/stack/server";
+
+const verifier = hexclaveServerApp.createMcpTokenVerifier({
+  resource: "https://mcp.example.com/mcp",
+});
+
+const issuer = hexclaveServerApp.getOAuthIssuerUrl();
+
+const user = await hexclaveServerApp.getUser({
+  from: "mcp",
+  authInfo: extra.authInfo,
+});
+```
+
+### `serverApp.createMcpTokenVerifier`
+
+Returns the same dual-shape `McpTokenVerifier` as the standalone helper. Its only option is
+the optional `resource`; the server app supplies `projectId` and `baseUrl`.
+
+### `serverApp.getOAuthIssuerUrl`
+
+Returns this server app's project OAuth issuer URL. Use it when advertising the authorization
+server in protected-resource metadata.
+
+### `serverApp.getUser({ from: "mcp", authInfo })`
+
+Resolves the `McpAuthInfo` from a verified token to a `ServerUser`. The token was already
+verified by the verifier that produced the `AuthInfo`, so this is a lookup: the result is an
+ordinary `ServerUser` with the same authority as one fetched by ID.

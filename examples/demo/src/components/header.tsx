@@ -29,6 +29,9 @@ export default function Header() {
           <Link href="/payments-demo" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
             Payments Demo
           </Link>
+          <Link href="/oauth-provider-demo" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
+            OAuth Provider
+          </Link>
         </div>
 
         <div className="flex items-center justify-end gap-5">

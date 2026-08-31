@@ -45,3 +45,40 @@ export async function createNodeHttpServerDuplex(options: {
 
   return [incomingMessage, serverResponse];
 }
+
+const REDIRECT_STATUS_CONVENTION_REMAP: Record<number, number> = {
+  301: 308,
+  302: 307,
+};
+
+export async function dispatchToNodeHttpHandler(
+  handler: (req: IncomingMessage, res: ServerResponse) => unknown,
+  options: {
+    method: string,
+    originalUrl?: URL,
+    url: URL,
+    headers: Headers,
+    body: Uint8Array,
+    /** Return false to drop a response header. Called once per header value (multi-value headers like set-cookie are split). */
+    filterResponseHeader?: (name: string, value: string) => boolean,
+  },
+): Promise<Response> {
+  const [incomingMessage, serverResponse] = await createNodeHttpServerDuplex(options);
+
+  await handler(incomingMessage, serverResponse);
+
+  const body = new Uint8Array(serverResponse.bodyChunks.flatMap(chunk => [...chunk]));
+  const headers: [string, string][] = [];
+  for (const [name, value] of Object.entries(serverResponse.getHeaders())) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      const headerValue = `${item}`;
+      if (options.filterResponseHeader && !options.filterResponseHeader(name, headerValue)) continue;
+      headers.push([name, headerValue]);
+    }
+  }
+  return new Response(body, {
+    headers,
+    status: REDIRECT_STATUS_CONVENTION_REMAP[serverResponse.statusCode] ?? serverResponse.statusCode,
+    statusText: serverResponse.statusMessage,
+  });
+}

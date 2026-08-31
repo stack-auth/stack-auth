@@ -1,7 +1,7 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import dns from "node:dns";
 import { describe, expect, it, vi } from "vitest";
-import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./oauth";
+import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./oauth";
 
 async function withProductionOAuthSsrfProtection<T>(callback: () => Promise<T>): Promise<T> {
   vi.stubEnv("NODE_ENV", "production");
@@ -98,5 +98,18 @@ describe("safeOAuthDnsLookup", () => {
 
     expect(result.error).toBeInstanceOf(StatusError);
     expect(result.addresses).toEqual([]);
+  });
+});
+
+describe("fetchOAuthJsonDocument", () => {
+  it("rejects hostnames resolving to private or loopback addresses in production", async () => {
+    await withProductionOAuthSsrfProtection(async () => {
+      await expect(fetchOAuthJsonDocument(new URL("https://localhost/.well-known/openid-configuration"))).rejects.toThrow();
+      await expect(fetchOAuthJsonDocument(new URL("https://127.0.0.1/.well-known/openid-configuration"))).rejects.toThrow();
+    });
+  });
+
+  it("rejects non-HTTPS URLs inside the helper", async () => {
+    await expect(fetchOAuthJsonDocument(new URL("http://accounts.example.com/document"))).rejects.toThrow("must use HTTPS");
   });
 });

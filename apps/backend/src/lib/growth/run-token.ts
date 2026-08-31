@@ -30,12 +30,6 @@ import { GROWTH_ACTIVE_RUN_STATUSES } from "./phases";
 //     merely rejected by a check — it is signed with a DIFFERENT key than any
 //     other project's, and than any user access token. Rewriting `aud` to a
 //     victim project therefore breaks the signature rather than granting access.
-//     The audience puts the constant FIRST on purpose: `decodeAccessToken`
-//     parses an access-token audience positionally as `aud.split(":")[0]`, so a
-//     `<projectId>:growth-agent-run` audience would yield a real project id
-//     there and leave `iss` as the only thing separating this credential from an
-//     end-user one. With the constant first, that parse produces a non-existent
-//     project and a replay fails for two independent reasons instead of one.
 //   * Bound to (project, branch, tenancy, session kind, dispatch anchor), and —
 //     for the kinds that have one — to the anchor's `attempt`. The attempt is a
 //     genuine fencing token: `claimAndDispatchPhase` CASes an increment on every

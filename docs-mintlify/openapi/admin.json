@@ -4173,6 +4173,156 @@
         }
       }
     },
+    "/projects/{project_id}/oauth-provider/interaction/{interaction_uid}": {
+      "get": {
+        "summary": "Read project OAuth interaction",
+        "description": "Read safe presentation data for a project OAuth interaction",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "interaction_uid",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "OAuth"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/projects/{project_id}/oauth-provider/interaction/{interaction_uid}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "client": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "display_name"
+                      ]
+                    },
+                    "resource": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "uri": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "uri",
+                        "display_name"
+                      ]
+                    },
+                    "trusted_client": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "client",
+                    "trusted_client"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Complete project OAuth interaction",
+        "description": "Record an authenticated user's project OAuth decision",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "interaction_uid",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "denied": {
+                    "type": "boolean",
+                    "example": false
+                  }
+                },
+                "required": [
+                  "denied"
+                ],
+                "example": {
+                  "denied": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OAuth"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/projects/{project_id}/oauth-provider/interaction/{interaction_uid}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "done_url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "done_url"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/browser-actions": {
       "post": {
         "summary": "Create a browser action",
