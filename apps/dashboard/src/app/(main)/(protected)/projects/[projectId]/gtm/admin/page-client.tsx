@@ -1,763 +1,189 @@
 "use client";
 
-import { AppEnabledGuard } from "../../app-enabled-guard";
+import { DesignAlert, DesignButton, DesignCard, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
+import { getGrowthAdminOverview, listGrowthAdminProjects, createGrowthAdminNote, setGrowthAdminCategoryScore, updateGrowthAdminAction, updateGrowthAdminFinding, type GrowthAdminProject } from "@/lib/growth/growth-api";
+import { GROWTH_ACTION_STATUSES, GROWTH_ACTION_TYPES, GROWTH_CATEGORIES, type GrowthActionItem, type GrowthActionStatus, type GrowthActionType, type GrowthCategory, type GrowthOverview } from "@/lib/growth/growth-types";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { useStackApp, useUser } from "@hexclave/next";
+import { ListChecksIcon, NotePencilIcon, SlidersHorizontalIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { PageLayout } from "../../page-layout";
 import { useProjectId } from "../../use-admin-app";
-import {
-  DesignAlert,
-  DesignButton,
-  DesignCard,
-  DesignDialog,
-  DesignInput,
-  DesignSelectorDropdown as BaseDesignSelectorDropdown,
-} from "@/components/design-components";
-import { useRouterConfirm } from "@/components/router";
-import { Textarea } from "@/components/ui";
-import {
-  createAction,
-  createInsight,
-  createNote,
-  deleteAction as deleteActionRequest,
-  deleteInsight as deleteInsightRequest,
-  deleteNote as deleteNoteRequest,
-  listGtmOnboardedProjects,
-  updateAction,
-  updateInsight,
-  updateNote,
-  type GtmActionDraft,
-  type GtmInsightDraft,
-  type GtmNoteDraft,
-  type GtmOnboardedProject,
-} from "@/lib/gtm/gtm-api";
-import { GtmDataProvider, useGtmData } from "@/lib/gtm/gtm-data";
-import {
-  GTM_ACTION_STATUSES,
-  GTM_ACTION_TYPES,
-  GTM_DOMAINS,
-  GTM_VERDICTS,
-  type GtmAction,
-  type GtmDomainId,
-  type GtmInsight,
-  type GtmNote,
-} from "@/lib/gtm/gtm-types";
-import { NotePencilIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-import { useStackApp, useUser } from "@hexclave/next";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { notFound } from "next/navigation";
-import { GtmAdminControlsProvider, type GtmAdminControls } from "../components/admin-context";
-import { GTM_DOMAIN_PRESENTATIONS } from "../components/domains";
-import { GtmActionMenu, type GtmActionMenuItem } from "../components/nested-action-menu";
-import { GtmOverview } from "../components/overview";
+import { GrowthWorkspaceContent } from "../components/workspace-overview";
+import { GrowthAdminGamesCard } from "./games-card";
+import { GrowthAdminInterviewCard } from "./interview-card";
+import { GrowthAdminReportsCard } from "./reports-card";
+import { GrowthAdminRunNowCard } from "./run-now-card";
 
-type EditorProps = {
-  app: object,
-  targetProjectId: string,
-  onSaved: () => Promise<void>,
-  onDeleted: () => Promise<void>,
-  onDirtyChange: (dirty: boolean) => void,
-  newDomain: GtmDomainId | null,
-};
+type Loadable = { status: "loading" } | { status: "error", message: string } | { status: "loaded", projects: GrowthAdminProject[], selected: GrowthAdminProject | null, overview: GrowthOverview | null };
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function growthCategory(value: string): GrowthCategory {
+  return GROWTH_CATEGORIES.find((category) => category === value) ?? throwErr(`Unknown Growth category: ${value}`);
 }
 
-function isNonEmpty<T>(items: T[]): items is [T, ...T[]] {
-  return items.length > 0;
+function growthActionType(value: string): GrowthActionType {
+  return GROWTH_ACTION_TYPES.find((type) => type === value) ?? throwErr(`Unknown Growth action type: ${value}`);
 }
 
-function requireNewDomain(domain: GtmDomainId | null, recordType: string): GtmDomainId {
-  if (domain == null) throw new Error(`A new GTM ${recordType} requires a domain.`);
-  return domain;
+function growthActionStatus(value: string): GrowthActionStatus {
+  return GROWTH_ACTION_STATUSES.find((status) => status === value) ?? throwErr(`Unknown Growth action status: ${value}`);
 }
 
-function selectorOptions<const Value extends string>(values: readonly Value[]) {
-  return values.map((value) => ({
-    value,
-    label: value.replaceAll("_", " "),
-  }));
+function validAdminStatuses(currentStatus: GrowthActionStatus): GrowthActionStatus[] {
+  if (currentStatus === "proposed") return ["proposed", "active", "dismissed"];
+  if (currentStatus === "active") return ["active", "dismissed"];
+  return [currentStatus];
 }
 
-function DesignSelectorDropdown<const Value extends string>(props: {
-  value: Value,
-  onValueChange: (value: Value) => void,
-  options: { value: Value, label: string }[],
-}) {
-  return (
-    <BaseDesignSelectorDropdown
-      value={props.value}
-      options={props.options}
-      onValueChange={(value) => {
-        const selected = props.options.find((option) => option.value === value);
-        if (selected == null) throw new Error(`The selector returned an unknown value: ${value}`);
-        props.onValueChange(selected.value);
-      }}
-    />
-  );
+const watchedMetricsSchema = z.array(z.object({ metricId: z.enum(["new_signups", "returning_users", "transactions", "emails_sent", "total_users", "revenue"]), windowDays: z.number().int().min(1).max(90) })).max(10);
+const workflowSchema = z.object({ workflowId: z.string().min(1).max(64), source: z.string().min(1), explanation: z.string().min(1).max(5000), rollbackNote: z.string().min(1).max(5000) }).nullable();
+
+function workflowJson(action: GrowthActionItem | null): string {
+  if (action?.workflow == null) return "null";
+  const { workflowId, source, explanation, rollbackNote } = action.workflow;
+  return JSON.stringify({ workflowId, source, explanation, rollbackNote }, null, 2);
 }
 
-function toDateTimeLocal(millis: number | null): string {
-  if (millis == null) return "";
-  const date = new Date(millis);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function fromDateTimeLocal(value: string): number | null {
-  return value.length === 0 ? null : new Date(value).getTime();
-}
-
-async function deleteInsight(app: object, value: GtmInsight | null, targetProjectId: string): Promise<void> {
-  if (value == null) throw new Error("Cannot delete an insight without a selected record.");
-  await deleteInsightRequest(app, value, targetProjectId);
-}
-
-async function deleteAction(app: object, value: GtmAction | null, targetProjectId: string): Promise<void> {
-  if (value == null) throw new Error("Cannot delete an action without a selected record.");
-  await deleteActionRequest(app, value, targetProjectId);
-}
-
-async function deleteNote(app: object, value: GtmNote | null, targetProjectId: string): Promise<void> {
-  if (value == null) throw new Error("Cannot delete a note without a selected record.");
-  await deleteNoteRequest(app, value, targetProjectId);
-}
-
-function DeleteDialog(props: {
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-  label: string,
-  onDelete: () => Promise<void>,
-}) {
-  return (
-    <DesignDialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      size="sm"
-      title={`Delete ${props.label}?`}
-      description="This removes the record from the internal GTM dashboard. This cannot be undone."
-      footer={(
-        <>
-          <DesignButton variant="outline" onClick={() => props.onOpenChange(false)}>
-            Cancel
-          </DesignButton>
-          <DesignButton variant="destructive" onClick={props.onDelete}>
-            Delete
-          </DesignButton>
-        </>
-      )}
-    >
-      <DesignAlert
-        variant="warning"
-        title="Permanent deletion"
-        description="Other GTM records are not changed."
-      />
-    </DesignDialog>
-  );
-}
-
-function EditorHeader(props: { eyebrow: string, title: string, onDelete?: () => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{props.eyebrow}</p>
-        <h3 className="mt-1 text-lg font-semibold">{props.title}</h3>
-      </div>
-      {props.onDelete != null && (
-        <DesignButton variant="plain" size="icon" aria-label={`Delete ${props.eyebrow.toLowerCase()}`} onClick={props.onDelete}>
-          <TrashIcon className="h-4 w-4" />
-        </DesignButton>
-      )}
-    </div>
-  );
-}
-
-function InsightEditor(props: EditorProps & { value: GtmInsight | null }) {
-  const { onDirtyChange } = props;
-  const [draft, setDraft] = useState<GtmInsightDraft>(() => props.value == null
-    ? {
-      domain: requireNewDomain(props.newDomain, "suggestion"),
-      title: "",
-      body: "",
-      impactScore: 0,
-      timesSeen: 1,
-      timeline: null,
-    }
-    : props.value);
+function AdminEditor(props: { app: object, project: GrowthAdminProject, overview: GrowthOverview, refresh: () => Promise<void> }) {
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [noteCategory, setNoteCategory] = useState<GrowthCategory>("reach");
+  const [noteTags, setNoteTags] = useState("");
+  const [selectedActionId, setSelectedActionId] = useState(props.overview.actions.at(0)?.id ?? props.overview.archive.at(0)?.id ?? "");
+  const selectedAction = [...props.overview.actions, ...props.overview.archive].find((item) => item.id === selectedActionId) ?? null;
+  const [actionDraft, setActionDraft] = useState<GrowthActionItem | null>(selectedAction);
+  const [payloadJson, setPayloadJson] = useState(() => selectedAction?.payload == null ? "null" : JSON.stringify(selectedAction.payload, null, 2));
+  const [watchedJson, setWatchedJson] = useState(() => JSON.stringify(selectedAction?.watchedMetrics ?? [], null, 2));
+  const [workflowDraftJson, setWorkflowDraftJson] = useState(() => workflowJson(selectedAction));
   const [error, setError] = useState<string | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const dirty = props.value == null || JSON.stringify(draft) !== JSON.stringify({
-    domain: props.value.domain,
-    title: props.value.title,
-    body: props.value.body,
-    impactScore: props.value.impactScore,
-    timesSeen: props.value.timesSeen,
-  });
-
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-
-  const save = async () => {
-    setError(null);
-    try {
-      if (props.value == null) {
-        await createInsight(props.app, draft, props.targetProjectId);
-      } else {
-        await updateInsight(props.app, { ...props.value, ...draft }, props.targetProjectId);
-      }
-      props.onDirtyChange(false);
-      await props.onSaved();
-    } catch (saveError) {
-      setError(errorMessage(saveError));
-    }
-  };
-
-  const remove = async () => {
-    try {
-      await deleteInsight(props.app, props.value, props.targetProjectId);
-      props.onDirtyChange(false);
-      await props.onDeleted();
-    } catch (deleteError) {
-      setDeleteOpen(false);
-      setError(errorMessage(deleteError));
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <EditorHeader
-        eyebrow="Suggestion"
-        title={props.value == null ? "New suggestion" : props.value.title}
-        onDelete={props.value == null ? undefined : () => setDeleteOpen(true)}
-      />
-      <DesignInput
-        value={draft.title}
-        maxLength={200}
-        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-        placeholder="Suggestion title"
-      />
-      <Textarea
-        value={draft.body}
-        maxLength={5000}
-        onChange={(event) => setDraft({ ...draft, body: event.target.value })}
-        className="min-h-32"
-        placeholder="What did we learn?"
-      />
-      {error != null && <DesignAlert variant="error" title="Could not save suggestion" description={error} />}
-      <DesignButton onClick={save}>Save suggestion</DesignButton>
-      {props.value != null && (
-        <DeleteDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          label="suggestion"
-          onDelete={remove}
-        />
-      )}
-    </div>
-  );
-}
-
-function ActionEditor(props: EditorProps & { value: GtmAction | null }) {
-  const { onDirtyChange } = props;
-  const [draft, setDraft] = useState<GtmActionDraft>(() => props.value == null
-    ? {
-      domain: requireNewDomain(props.newDomain, "action"),
-      type: "broadcast_email",
-      status: "proposed",
-      title: "",
-      summary: "",
-      verdict: null,
-      retrospective: null,
-      expiresAtMillis: new Date().getTime() + 14 * 24 * 60 * 60 * 1000,
-      executedAtMillis: null,
-      timeline: null,
-    }
-    : props.value);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const dirty = props.value == null || JSON.stringify(draft) !== JSON.stringify({
-    domain: props.value.domain,
-    type: props.value.type,
-    status: props.value.status,
-    title: props.value.title,
-    summary: props.value.summary,
-    verdict: props.value.verdict,
-    retrospective: props.value.retrospective,
-    expiresAtMillis: props.value.expiresAtMillis,
-    executedAtMillis: props.value.executedAtMillis,
-  });
-
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-
-  const save = async () => {
-    setError(null);
-    try {
-      if (props.value == null) {
-        await createAction(props.app, draft, props.targetProjectId);
-      } else {
-        await updateAction(props.app, { ...props.value, ...draft }, props.targetProjectId);
-      }
-      props.onDirtyChange(false);
-      await props.onSaved();
-    } catch (saveError) {
-      setError(errorMessage(saveError));
-    }
-  };
-
-  const remove = async () => {
-    try {
-      await deleteAction(props.app, props.value, props.targetProjectId);
-      props.onDirtyChange(false);
-      await props.onDeleted();
-    } catch (deleteError) {
-      setDeleteOpen(false);
-      setError(errorMessage(deleteError));
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <EditorHeader
-        eyebrow="Action"
-        title={props.value == null ? "New action" : props.value.title}
-        onDelete={props.value == null ? undefined : () => setDeleteOpen(true)}
-      />
-      <DesignAlert
-        variant="info"
-        title="Inert record"
-        description="Saving this action never sends email, changes configuration, or performs an external effect."
-      />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <DesignSelectorDropdown
-          value={draft.domain}
-          onValueChange={(domain) => setDraft({ ...draft, domain })}
-          options={selectorOptions(GTM_DOMAINS)}
-        />
-        <DesignSelectorDropdown
-          value={draft.type}
-          onValueChange={(type) => setDraft({ ...draft, type })}
-          options={selectorOptions(GTM_ACTION_TYPES)}
-        />
-        <DesignSelectorDropdown
-          value={draft.status}
-          onValueChange={(status) => setDraft({ ...draft, status })}
-          options={selectorOptions(GTM_ACTION_STATUSES)}
-        />
-      </div>
-      <DesignInput
-        value={draft.title}
-        maxLength={200}
-        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-        placeholder="Action title"
-      />
-      <Textarea
-        value={draft.summary}
-        maxLength={2000}
-        onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
-        className="min-h-28"
-        placeholder="What is the recorded action?"
-      />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DesignSelectorDropdown
-          value={draft.verdict ?? "none"}
-          onValueChange={(verdict) => setDraft({ ...draft, verdict: verdict === "none" ? null : verdict })}
-          options={[{ value: "none", label: "No verdict" }, ...selectorOptions(GTM_VERDICTS)]}
-        />
-        <DesignInput
-          type="datetime-local"
-          value={toDateTimeLocal(draft.expiresAtMillis)}
-          onChange={(event) => setDraft({
-            ...draft,
-            expiresAtMillis: fromDateTimeLocal(event.target.value) ?? draft.expiresAtMillis,
-          })}
-          aria-label="Expires at"
-        />
-      </div>
-      <Textarea
-        value={draft.retrospective ?? ""}
-        maxLength={5000}
-        onChange={(event) => setDraft({
-          ...draft,
-          retrospective: event.target.value.length === 0 ? null : event.target.value,
-        })}
-        className="min-h-24"
-        placeholder="Optional retrospective"
-      />
-      {error != null && <DesignAlert variant="error" title="Could not save action" description={error} />}
-      <DesignButton onClick={save}>Save action</DesignButton>
-      {props.value != null && (
-        <DeleteDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          label="action"
-          onDelete={remove}
-        />
-      )}
-    </div>
-  );
-}
-
-function NoteEditor(props: EditorProps & { value: GtmNote | null }) {
-  const { onDirtyChange } = props;
-  const [draft, setDraft] = useState<GtmNoteDraft>(() => props.value == null
-    ? {
-      domain: requireNewDomain(props.newDomain, "note"),
-      category: "company",
-      title: "",
-      body: "",
-      source: "user",
-    }
-    : { ...props.value, title: props.value.title ?? "" });
-  const [error, setError] = useState<string | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const dirty = props.value == null || JSON.stringify(draft) !== JSON.stringify({
-    domain: props.value.domain,
-    category: props.value.category,
-    title: props.value.title ?? "",
-    body: props.value.body,
-    source: props.value.source,
-  });
-
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-
-  const save = async () => {
-    setError(null);
-    if (draft.title.trim().length === 0) {
-      setError("Add a title before saving this note.");
-      return;
-    }
-    try {
-      if (props.value == null) {
-        await createNote(props.app, draft, props.targetProjectId);
-      } else {
-        await updateNote(props.app, { ...props.value, ...draft }, props.targetProjectId);
-      }
-      props.onDirtyChange(false);
-      await props.onSaved();
-    } catch (saveError) {
-      setError(errorMessage(saveError));
-    }
-  };
-
-  const remove = async () => {
-    try {
-      await deleteNote(props.app, props.value, props.targetProjectId);
-      props.onDirtyChange(false);
-      await props.onDeleted();
-    } catch (deleteError) {
-      setDeleteOpen(false);
-      setError(errorMessage(deleteError));
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <EditorHeader
-        eyebrow="Note"
-        title={props.value == null ? "New note" : props.value.title ?? "Untitled note"}
-        onDelete={props.value == null ? undefined : () => setDeleteOpen(true)}
-      />
-      <DesignInput
-        value={draft.title}
-        maxLength={120}
-        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-        placeholder="Note title"
-        aria-label="Note title"
-      />
-      <Textarea
-        value={draft.body}
-        maxLength={500}
-        onChange={(event) => setDraft({ ...draft, body: event.target.value })}
-        className="min-h-36"
-        placeholder="Durable context for the GTM workspace"
-      />
-      {error != null && <DesignAlert variant="error" title="Could not save note" description={error} />}
-      <DesignButton onClick={save}>Save note</DesignButton>
-      {props.value != null && (
-        <DeleteDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          label="note"
-          onDelete={remove}
-        />
-      )}
-    </div>
-  );
-}
-
-type EditorTarget =
-  | { type: "insight", value: GtmInsight, domain?: never }
-  | { type: "insight", value: null, domain: GtmDomainId }
-  | { type: "action", value: GtmAction, domain?: never }
-  | { type: "action", value: null, domain: GtmDomainId }
-  | { type: "note", value: GtmNote, domain?: never }
-  | { type: "note", value: null, domain: GtmDomainId };
-
-function editorTitle(target: EditorTarget): string {
-  const label = target.type === "insight" ? "suggestion" : target.type;
-  return `${target.value == null ? "Add" : "Edit"} ${label}`;
-}
-
-function AdminEditorDialog(props: {
-  app: object,
-  targetProjectId: string,
-  target: EditorTarget,
-  onClose: () => void,
-  onSaved: () => Promise<void>,
-  onDeleted: () => Promise<void>,
-  onDirtyChange: (dirty: boolean) => void,
-}) {
-  const editorProps = {
-    app: props.app,
-    targetProjectId: props.targetProjectId,
-    onSaved: props.onSaved,
-    onDeleted: props.onDeleted,
-    onDirtyChange: props.onDirtyChange,
-    newDomain: props.target.value == null ? props.target.domain : null,
-  };
-  return (
-    <DesignDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) props.onClose();
-      }}
-      size="lg"
-      title={editorTitle(props.target)}
-      description="Changes appear immediately in this internal GTM view after saving."
-    >
-      {props.target.type === "insight"
-        ? <InsightEditor {...editorProps} value={props.target.value} />
-        : props.target.type === "action"
-          ? <ActionEditor {...editorProps} value={props.target.value} />
-          : <NoteEditor {...editorProps} value={props.target.value} />}
-    </DesignDialog>
-  );
-}
-
-const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function SubmittedProjectDetails(props: { project: GtmOnboardedProject }) {
-  return (
-    <DesignCard
-      title="Submitted project details"
-      subtitle={`Received ${submittedAtFormatter.format(props.project.completedAtMillis)}`}
-      icon={NotePencilIcon}
-      gradient="default"
-    >
-      <dl className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(16rem,2fr)]">
-        <div className="min-w-0">
-          <dt className="text-xs font-medium text-muted-foreground">Website</dt>
-          <dd className="mt-1 break-words text-sm font-medium">
-            {props.project.details.domain ?? "Not provided"}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs font-medium text-muted-foreground">Phone</dt>
-          <dd className="mt-1 break-words text-sm font-medium">{props.project.details.phone}</dd>
-        </div>
-        <div className="min-w-0 md:col-span-2 lg:col-span-1">
-          <dt className="text-xs font-medium text-muted-foreground">Notes</dt>
-          <dd className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">
-            {props.project.details.notes.length > 0 ? props.project.details.notes : "No notes submitted"}
-          </dd>
-        </div>
-      </dl>
-    </DesignCard>
-  );
-}
-
-function AdminOverview(props: { targetProject: GtmOnboardedProject, onTargetProjectChange: (projectId: string) => void, projects: GtmOnboardedProject[] }) {
-  const app = useStackApp();
-  const { data, refresh } = useGtmData();
-  const { setNeedConfirm } = useRouterConfirm();
-  const [target, setTarget] = useState<EditorTarget | null>(null);
-  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    setNeedConfirm(dirty);
-    return () => setNeedConfirm(false);
-  }, [dirty, setNeedConfirm]);
+    setActionDraft(selectedAction);
+    setPayloadJson(selectedAction?.payload == null ? "null" : JSON.stringify(selectedAction.payload, null, 2));
+    setWatchedJson(JSON.stringify(selectedAction?.watchedMetrics ?? [], null, 2));
+    setWorkflowDraftJson(workflowJson(selectedAction));
+  }, [selectedAction]);
 
-  const openEditor = useCallback((nextTarget: EditorTarget) => {
-    if (dirty && !window.confirm("Discard the unsaved GTM changes?")) return;
-    setDirty(false);
-    setTarget(nextTarget);
-  }, [dirty]);
-  const closeEditor = () => {
-    if (dirty && !window.confirm("Discard the unsaved GTM changes?")) return;
-    setDirty(false);
-    setTarget(null);
+  const allUnclassified = [...props.overview.findings, ...props.overview.notes].filter((item) => item.category == null);
+  const unclassifiedActions = [...props.overview.actions, ...props.overview.archive].filter((item) => item.category == null);
+  const runAdminMutation = (label: string, mutation: () => Promise<void>) => {
+    setError(null);
+    runAsynchronously((async () => {
+      try {
+        await mutation();
+        await props.refresh();
+      } catch (caught) {
+        captureError(label, caught);
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    })());
   };
-  const finishMutation = async () => {
-    setDirty(false);
-    setTarget(null);
-    await refresh();
-  };
-  const controls = useMemo<GtmAdminControls>(() => ({
-    editInsight: (insight) => openEditor({ type: "insight", value: insight }),
-    editAction: (action) => openEditor({ type: "action", value: action }),
-    editNote: (note) => openEditor({ type: "note", value: note }),
-  }), [openEditor]);
-
-  const counts = data.status === "loaded"
-    ? `${data.value.insights.length + data.value.actions.length} suggestions · ${data.value.notes.length} notes`
-    : "Loading records";
-  const addItems = GTM_DOMAIN_PRESENTATIONS.map((domain): GtmActionMenuItem => {
-    const DomainIcon = domain.icon;
-    return {
-      id: domain.id,
-      label: domain.label,
-      icon: <DomainIcon className="h-4 w-4" />,
-      items: [
-        {
-          id: `${domain.id}-suggestion`,
-          label: "Suggestion",
-          onClick: () => openEditor({ type: "insight", value: null, domain: domain.id }),
-        },
-        {
-          id: `${domain.id}-note`,
-          label: "Note",
-          onClick: () => openEditor({ type: "note", value: null, domain: domain.id }),
-        },
-      ],
-    };
-  });
-  const toolbar = (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-3 rounded-xl border border-foreground/[0.1] bg-foreground/[0.025] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold">Editing {props.targetProject.displayName}’s live overview</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{counts}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <DesignSelectorDropdown
-            value={props.targetProject.id}
-            onValueChange={props.onTargetProjectChange}
-            options={props.projects.map((project) => ({ value: project.id, label: project.displayName }))}
-          />
-          <GtmActionMenu
-            trigger="icon"
-            triggerLabel="Add GTM record"
-            triggerIcon={<PlusIcon className="h-4 w-4" />}
-            align="end"
-            label="Choose a domain"
-            withIcons
-            items={addItems}
-          />
-        </div>
-      </div>
-      <SubmittedProjectDetails project={props.targetProject} />
-    </div>
-  );
-
   return (
-    <GtmAdminControlsProvider value={controls}>
-      <GtmOverview
-        toolbar={toolbar}
-        project={{ id: props.targetProject.id, displayName: props.targetProject.displayName }}
-      />
-      {target != null && (
-        <AdminEditorDialog
-          app={app}
-          targetProjectId={props.targetProject.id}
-          target={target}
-          onClose={closeEditor}
-          onSaved={finishMutation}
-          onDeleted={finishMutation}
-          onDirtyChange={setDirty}
-        />
-      )}
-    </GtmAdminControlsProvider>
+    <div className="space-y-4">
+      {error != null && <DesignAlert variant="error">{error}</DesignAlert>}
+      {/* First: a held interview is a customer sitting still — until it is released they cannot
+        * answer, and nothing downstream (report, actions, briefs) can happen. It is the only
+        * remaining human gate in the lifecycle, and therefore the most consequential thing here. */}
+      <GrowthAdminInterviewCard app={props.app} projectId={props.project.id} />
+      <GrowthAdminReportsCard app={props.app} projectId={props.project.id} />
+      <GrowthAdminGamesCard app={props.app} projectId={props.project.id} />
+      <GrowthAdminRunNowCard app={props.app} projectId={props.project.id} projectName={props.project.displayName} onCompleted={props.refresh} />
+
+      <DesignCard title="Stage scores" subtitle="Manual 0–100 values used by the customer growth journey" icon={SlidersHorizontalIcon} gradient="purple">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {props.overview.categories.map((item) => <label key={item.category} className="flex items-center gap-2 rounded-xl border p-3 text-sm"><span className="min-w-24 capitalize">{item.category}</span><DesignInput className="w-20" type="number" min={0} max={100} defaultValue={item.score ?? ""} onBlur={(event) => {
+            const score = event.target.value;
+            if (score === "") return;
+              runAdminMutation("growth-admin-score", () => setGrowthAdminCategoryScore(props.app, props.project.id, item.category, Number(score)));
+          }} /></label>)}
+        </div>
+      </DesignCard>
+
+      {(allUnclassified.length > 0 || unclassifiedActions.length > 0) && <DesignCard title={`Needs category (${allUnclassified.length + unclassifiedActions.length})`} subtitle="Classify legacy Growth records before the final constraint migration" icon={ListChecksIcon} gradient="orange">
+        <div className="space-y-3">
+          {allUnclassified.map((finding) => <div key={finding.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">{finding.title}</p><p className="text-xs text-muted-foreground">Finding · {finding.kind}</p></div><DesignSelectorDropdown value="" placeholder="Choose category" options={GROWTH_CATEGORIES.map((category) => ({ value: category, label: category }))} onValueChange={(category) => runAdminMutation("growth-admin-classify-finding", () => updateGrowthAdminFinding(props.app, props.project.id, finding.id, { kind: finding.kind, category, tags: finding.tags, title: finding.title, body: finding.body }))} /></div>)}
+          {unclassifiedActions.map((action) => <div key={action.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">{action.title}</p><p className="text-xs text-muted-foreground">Action · {action.status}</p></div><DesignSelectorDropdown value="" placeholder="Choose category" options={GROWTH_CATEGORIES.map((category) => ({ value: category, label: category }))} onValueChange={(category) => runAdminMutation("growth-admin-classify-action", () => updateGrowthAdminAction(props.app, props.project.id, { ...action, category: growthCategory(category) }, action.status === "proposed" ? { payload: action.payload, watchedMetrics: action.watchedMetrics, workflow: action.workflow } : undefined))} /></div>)}
+        </div>
+      </DesignCard>}
+
+      <DesignCard title="Add admin note" subtitle="Notes are Growth findings with source admin and kind note" icon={NotePencilIcon} gradient="blue">
+        <div className="grid gap-3 sm:grid-cols-2"><DesignInput placeholder="Note title" value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} /><DesignSelectorDropdown value={noteCategory} onValueChange={(value) => setNoteCategory(growthCategory(value))} options={GROWTH_CATEGORIES.map((category) => ({ value: category, label: category }))} /><DesignInput placeholder="Tags, comma separated" value={noteTags} onChange={(event) => setNoteTags(event.target.value)} /><textarea className="min-h-24 rounded-xl border bg-background p-3 text-sm sm:col-span-2" placeholder="Note" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} /></div>
+        <DesignButton className="mt-3" onClick={async () => {
+          setError(null);
+          try {
+            await createGrowthAdminNote(props.app, props.project.id, {
+              category: noteCategory,
+              tags: noteTags.split(",").map((tag) => tag.trim()).filter((tag) => tag.length > 0),
+              title: noteTitle,
+              body: noteBody,
+            });
+            setNoteTitle("");
+            setNoteBody("");
+            setNoteTags("");
+            await props.refresh();
+          } catch (caught) {
+            captureError("growth-admin-note", caught);
+            setError(caught instanceof Error ? caught.message : String(caught));
+          }
+        }}>Add note</DesignButton>
+      </DesignCard>
+
+      <DesignCard title="Action editor" subtitle="Proposals allow functional edits; active and terminal rows obey lifecycle restrictions" icon={ListChecksIcon} gradient="cyan">
+        {[...props.overview.actions, ...props.overview.archive].length === 0 ? <p className="text-sm text-muted-foreground">No actions yet.</p> : <div className="space-y-3">
+          <DesignSelectorDropdown value={selectedActionId} onValueChange={setSelectedActionId} options={[...props.overview.actions, ...props.overview.archive].map((action) => ({ value: action.id, label: action.title }))} />
+          {actionDraft != null && <>
+            <div className="grid gap-3 sm:grid-cols-2"><DesignInput value={actionDraft.title} onChange={(event) => setActionDraft({ ...actionDraft, title: event.target.value })} /><DesignSelectorDropdown value={actionDraft.typeId} disabled={selectedAction?.status !== "proposed"} onValueChange={(value) => setActionDraft({ ...actionDraft, typeId: growthActionType(value) })} options={GROWTH_ACTION_TYPES.map((type) => ({ value: type, label: type }))} /><DesignSelectorDropdown value={actionDraft.category ?? ""} placeholder="Category" onValueChange={(value) => setActionDraft({ ...actionDraft, category: growthCategory(value) })} options={GROWTH_CATEGORIES.map((category) => ({ value: category, label: category }))} /><DesignSelectorDropdown value={actionDraft.status} onValueChange={(value) => setActionDraft({ ...actionDraft, status: growthActionStatus(value) })} options={validAdminStatuses(selectedAction?.status ?? actionDraft.status).map((status) => ({ value: status, label: status }))} /><DesignInput value={actionDraft.tags.join(", ")} onChange={(event) => setActionDraft({ ...actionDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter((tag) => tag.length > 0) })} /><textarea className="min-h-24 rounded-xl border bg-background p-3 text-sm sm:col-span-2" value={actionDraft.description} onChange={(event) => setActionDraft({ ...actionDraft, description: event.target.value })} /><label className="text-xs font-medium">Payload JSON<textarea disabled={selectedAction?.status !== "proposed"} className="mt-1 min-h-40 w-full rounded-xl border bg-background p-3 font-mono text-xs disabled:opacity-60" value={payloadJson} onChange={(event) => setPayloadJson(event.target.value)} /></label><label className="text-xs font-medium">Watched metrics JSON<textarea disabled={selectedAction?.status !== "proposed"} className="mt-1 min-h-40 w-full rounded-xl border bg-background p-3 font-mono text-xs disabled:opacity-60" value={watchedJson} onChange={(event) => setWatchedJson(event.target.value)} /></label><label className="text-xs font-medium sm:col-span-2">Workflow JSON · null removes a proposed workflow<textarea disabled={selectedAction?.status !== "proposed"} className="mt-1 min-h-52 w-full rounded-xl border bg-background p-3 font-mono text-xs disabled:opacity-60" value={workflowDraftJson} onChange={(event) => setWorkflowDraftJson(event.target.value)} /></label></div>
+            {selectedAction?.status === "proposed" && actionDraft.status === "active" && <DesignAlert>Saving activates this proposal through the Growth lifecycle. A valid ads proposal can create a paused campaign for review.</DesignAlert>}
+            <DesignButton onClick={async () => {
+              setError(null);
+              try {
+                if (actionDraft.category == null) throw new Error("Choose a category before saving.");
+                // Functional fields are immutable after activation (the backend rejects them), so they
+                // are only sent while the item is still proposed.
+                const functionalFields = selectedAction?.status === "proposed" ? {
+                  payload: z.unknown().parse(JSON.parse(payloadJson)),
+                  watchedMetrics: watchedMetricsSchema.parse(JSON.parse(watchedJson)),
+                  workflow: workflowSchema.parse(JSON.parse(workflowDraftJson)),
+                } : undefined;
+                await updateGrowthAdminAction(props.app, props.project.id, actionDraft, functionalFields);
+                await props.refresh();
+              } catch (caught) {
+                captureError("growth-admin-action", caught);
+                setError(caught instanceof Error ? caught.message : String(caught));
+              }
+            }}>Save action</DesignButton>
+          </>}
+        </div>}
+      </DesignCard>
+    </div>
   );
 }
 
 export default function PageClient() {
-  const projectId = useProjectId();
-  if (projectId !== "internal") {
-    notFound();
-  }
-  return <InternalGtmAdminPage />;
-}
-
-function InternalGtmAdminPage() {
   useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const projectId = useProjectId();
+  if (projectId !== "internal") throwErr("Growth Admin must be opened from the internal project.");
   const app = useStackApp();
-  const [projectsState, setProjectsState] = useState<
-    | { status: "loading" }
-    | { status: "error", message: string }
-    | { status: "loaded", projects: GtmOnboardedProject[] }
-  >({ status: "loading" });
-
-  const loadProjects = useCallback(async () => {
-    setProjectsState({ status: "loading" });
+  const [data, setData] = useState<Loadable>({ status: "loading" });
+  const load = useCallback(async (selectedId?: string) => {
     try {
-      setProjectsState({ status: "loaded", projects: await listGtmOnboardedProjects(app) });
+      const projects = await listGrowthAdminProjects(app);
+      const selected = projects.find((project) => project.id === selectedId) ?? projects.at(0) ?? null;
+      const overview = selected == null ? null : await getGrowthAdminOverview(app, selected.id);
+      setData({ status: "loaded", projects, selected, overview });
     } catch (error) {
-      captureError("gtm-onboarded-projects-load", error);
-      setProjectsState({ status: "error", message: errorMessage(error) });
+      captureError("growth-admin-load", error);
+      setData({ status: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, [app]);
-
-  useEffect(() => {
-    runAsynchronously(loadProjects());
-  }, [loadProjects]);
-
-  return (
-    <AppEnabledGuard appId="gtm">
-      {projectsState.status === "loading" ? (
-        <PageLayout>
-          <DesignAlert variant="info" title="Loading GTM projects" description="Finding projects that completed GTM onboarding." />
-        </PageLayout>
-      ) : projectsState.status === "error" ? (
-        <PageLayout>
-          <DesignAlert variant="error" title="Could not load GTM projects" description={projectsState.message} />
-          <DesignButton variant="secondary" onClick={loadProjects}>Try again</DesignButton>
-        </PageLayout>
-      ) : !isNonEmpty(projectsState.projects) ? (
-        <PageLayout>
-          <DesignAlert
-            variant="info"
-            title="No onboarded GTM projects"
-            description="Projects will appear here after their GTM onboarding details are submitted."
-          />
-        </PageLayout>
-      ) : (
-        <LoadedInternalGtmAdminPage projects={projectsState.projects} />
-      )}
-    </AppEnabledGuard>
-  );
-}
-
-function LoadedInternalGtmAdminPage(props: { projects: [GtmOnboardedProject, ...GtmOnboardedProject[]] }) {
-  // Reading another project's records is a platform-admin action, so it goes through the dashboard's own
-  // internal-project session rather than that project's admin app (which this page doesn't hold).
-  const app = useStackApp();
-  const firstProject = props.projects[0];
-  const [targetProjectId, setTargetProjectId] = useState(firstProject.id);
-  const restoredProjectFromUrl = useRef(false);
-  useEffect(() => {
-    if (!restoredProjectFromUrl.current) {
-      restoredProjectFromUrl.current = true;
-      const requestedProjectId = new URLSearchParams(window.location.search).get("project_id");
-      if (requestedProjectId != null && props.projects.some((project) => project.id === requestedProjectId)) {
-        setTargetProjectId(requestedProjectId);
-        return;
-      }
-    }
-    if (props.projects.some((project) => project.id === targetProjectId)) return;
-    setTargetProjectId(firstProject.id);
-  }, [firstProject.id, props.projects, targetProjectId]);
-  const targetProject = props.projects.find((project) => project.id === targetProjectId) ?? firstProject;
-  return (
-    <GtmDataProvider key={targetProject.id} demo={false} app={app} target={{ kind: "managed-project", projectId: targetProject.id }}>
-      <AdminOverview
-        targetProject={targetProject}
-        onTargetProjectChange={setTargetProjectId}
-        projects={[targetProject, ...props.projects.filter((project) => project.id !== targetProject.id)]}
-      />
-    </GtmDataProvider>
-  );
+  useEffect(() => runAsynchronously(load()), [load]);
+  const loadedSelectedId = data.status === "loaded" ? data.selected?.id : undefined;
+  return <PageLayout allowContentOverflow width={1600} title="Growth Admin" description="Edit customer Growth workspaces without bypassing domain lifecycle rules">
+    {data.status === "loading" ? <div className="h-72 animate-pulse rounded-2xl border bg-foreground/[0.03]" /> : data.status === "error" ? <DesignAlert variant="error"><div className="flex justify-between gap-3"><span>{data.message}</span><DesignButton onClick={() => load()}>Retry</DesignButton></div></DesignAlert> : data.selected == null || data.overview == null ? <DesignAlert>No completed Growth onboarding records were found.</DesignAlert> : <div className="space-y-8"><DesignSelectorDropdown value={data.selected.id} onValueChange={(value) => {
+      setData({ status: "loading" });
+      runAsynchronously(load(value));
+    }} options={data.projects.map((project) => ({ value: project.id, label: project.displayName }))} /><AdminEditor app={app} project={data.selected} overview={data.overview} refresh={() => load(loadedSelectedId)} /><GrowthWorkspaceContent overview={data.overview} projectId={data.selected.id} projectName={data.selected.displayName} /></div>}
+  </PageLayout>;
 }

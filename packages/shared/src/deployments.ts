@@ -13,13 +13,16 @@
 import * as yup from "yup";
 import { MAX_PROJECT_SECRET_KEY_LENGTH, PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "./schema-fields";
+import { stringCompare } from "./utils/strings";
 
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // A DEPLOYMENT SOURCE is the unit a deploy ships: one deploy file, one source,
-// one upload, one build. Its id comes from the deploy file's own `id` export,
-// which is what lets one project be deployed from several repositories — each
-// with a deploy file of its own, each deploying on its own schedule.
+// one upload, one build. Its id comes from the deploy file's own
+// `deploymentGroupId` export — the authoring surface calls it a deployment
+// GROUP, the wire format and the database still say source — which is what lets
+// one project be deployed from several repositories, each with a deploy file of
+// its own, each deploying on its own schedule.
 //
 // Service ids stay unique per PROJECT rather than per source, so a reference
 // never has to name a source: two sources declaring the same service id is a
@@ -30,9 +33,152 @@ export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // they appear in no reference, so nothing has to parse them.
 export const DEPLOYMENT_SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/;
 export const MAX_DEPLOYMENT_SOURCE_ID_LENGTH = 63;
-// The source id of deployments declared in hexclave.config.ts, which has no `id`
-// export of its own. Named after the file so the dashboard can show where those
-// services came from without a special case.
+
+// ---------------------------------------------------------------------------
+// Source manifest
+//
+// What a deploy PACKAGED, recorded so a reader can answer "why is my upload
+// this big, and did my .gitignore/.dockerignore do what I meant" without
+// guessing. It is a listing, not the source: paths and sizes only, never
+// contents. The tarball itself is consumed by the build and deleted, on purpose
+// — this is what survives it.
+//
+// One manifest per DEPLOYMENT, not per service: a deploy uploads one tree and
+// every source-built service is built from it. A service's slice is the subtree
+// under its `root_directory`.
+
+/**
+ * How many file entries a manifest may carry.
+ *
+ * High enough that the listing is the WHOLE tree for essentially any real
+ * source: node_modules and build output are excluded before packaging, and what
+ * survives is source, which is thousands of files at the top end rather than
+ * tens of thousands. The dashboard shows every entry, so this is the number that
+ * decides whether it is showing everything.
+ *
+ * The cost is a JSON column: ~90 bytes an entry, so ~180 KB before Postgres
+ * compresses it — and paths in one tree share nearly all their prefixes, which
+ * TOAST squashes hard. Worth it to be able to say "these are the files" rather
+ * than "these are some of them".
+ */
+export const MAX_SOURCE_MANIFEST_ENTRIES = 2000;
+export const MAX_SOURCE_MANIFEST_PATH_LENGTH = 1024;
+
+export type DeploymentSourceManifest = {
+  /** Every file packaged, including the ones `entries` had no room for. */
+  file_count: number,
+  /** Their total size before compression. */
+  total_bytes: number,
+  /** What was actually uploaded, after tar + gzip. */
+  compressed_bytes: number,
+  /**
+   * The largest files, biggest first, capped at MAX_SOURCE_MANIFEST_ENTRIES.
+   *
+   * Largest-first rather than a truncated alphabetical walk, because the cap
+   * then only ever drops files too small to be anyone's problem — the question
+   * this answers is which files are big.
+   */
+  entries: { path: string, bytes: number }[],
+};
+
+/**
+ * The manifest for a packaged tree, capped. `paths` and `sizes` come from the
+ * packager, which already holds every entry it wrote.
+ */
+export function buildSourceManifest(options: {
+  files: { path: string, bytes: number }[],
+  compressedBytes: number,
+}): DeploymentSourceManifest {
+  const files = options.files;
+  const entries = [...files]
+    .sort((a, b) => b.bytes - a.bytes || stringCompare(a.path, b.path))
+    .slice(0, MAX_SOURCE_MANIFEST_ENTRIES)
+    .map((file) => ({ path: file.path.slice(0, MAX_SOURCE_MANIFEST_PATH_LENGTH), bytes: file.bytes }));
+  return {
+    file_count: files.length,
+    total_bytes: files.reduce((total, file) => total + file.bytes, 0),
+    compressed_bytes: options.compressedBytes,
+    entries,
+  };
+}
+
+/**
+ * Parses a stored manifest, or null when there is none / it is not one.
+ *
+ * Tolerant on purpose: this is a debugging aid read out of a JSON column, and a
+ * row written by an older client (or hand-edited) must degrade to "no manifest"
+ * rather than break the deployment it belongs to.
+ */
+export function parseSourceManifest(value: unknown): DeploymentSourceManifest | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  // Counts and sizes, so a negative or fractional one is not a number this
+  // describes anything with — and the UI states all three as facts about the
+  // deploy ("N files", "X on disk").
+  const count = (key: string) => {
+    const candidate = record[key];
+    return typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+  };
+  const fileCount = count("file_count");
+  const totalBytes = count("total_bytes");
+  const compressedBytes = count("compressed_bytes");
+  if (fileCount === null || totalBytes === null || compressedBytes === null) return null;
+  if (!Array.isArray(record.entries)) return null;
+  // Deduplicated by path: nothing upstream guarantees uniqueness (a client may
+  // send duplicates, and buildSourceManifest's own path truncation can make two
+  // long paths collide), and the dashboard keys its rows on the path.
+  const seen = new Set<string>();
+  const entries = record.entries.flatMap((entry): { path: string, bytes: number }[] => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const candidate = entry as Record<string, unknown>;
+    if (typeof candidate.path !== "string" || candidate.path === "") return [];
+    if (typeof candidate.bytes !== "number" || !Number.isInteger(candidate.bytes) || candidate.bytes < 0) return [];
+    // Bounded HERE, not only in buildSourceManifest — this is the function the
+    // server gates writes with, and the client-side cap binds nothing that
+    // reaches the database. Dropped rather than truncated: a truncated path is
+    // a path that names a different file, and it is what makes two rows collide.
+    if (candidate.path.length > MAX_SOURCE_MANIFEST_PATH_LENGTH) return [];
+    if (seen.has(candidate.path)) return [];
+    seen.add(candidate.path);
+    return [{ path: candidate.path, bytes: candidate.bytes }];
+  })
+    // Re-established rather than trusted: the dashboard tells the reader the
+    // listing is largest-first and that anything dropped was smaller than every
+    // row shown. Both are claims about ORDER, and the order arrived from a
+    // client. Sorting here makes them true by construction.
+    .sort((a, b) => b.bytes - a.bytes || stringCompare(a.path, b.path))
+    .slice(0, MAX_SOURCE_MANIFEST_ENTRIES);
+  return { file_count: fileCount, total_bytes: totalBytes, compressed_bytes: compressedBytes, entries };
+}
+
+/**
+ * The manifest entries belonging to one service, and whether the listing is
+ * complete for it.
+ *
+ * `rootDirectory` is the service's own subtree of the shared upload; null or
+ * "." means the whole tree. Paths are posix and relative to the upload root.
+ *
+ * `prefix` is that root as a path prefix ("web/", or "" for the whole tree).
+ * Returned rather than left for the caller to re-derive: entries keep their
+ * full paths, so anything that displays them relative to the service — the
+ * dashboard's folder tree — needs exactly the prefix this filtered on, and a
+ * second copy of this normalisation is a second place for it to drift.
+ */
+export function sourceManifestEntriesForService(
+  manifest: DeploymentSourceManifest,
+  rootDirectory: string | null,
+): { entries: { path: string, bytes: number }[], truncated: boolean, prefix: string } {
+  const normalized = (rootDirectory ?? ".").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  const prefix = normalized === "" || normalized === "." ? "" : `${normalized}/`;
+  const entries = prefix === "" ? manifest.entries : manifest.entries.filter((entry) => entry.path.startsWith(prefix));
+  // Truncated is a property of the whole manifest, not of this slice: once the
+  // cap dropped files, no subtree can claim to be complete.
+  return { entries, truncated: manifest.file_count > manifest.entries.length, prefix };
+}
+
+// The source id of deployments declared in hexclave.config.ts, which has no
+// `deploymentGroupId` export of its own. Named after the file so the dashboard
+// can show where those services came from without a special case.
 export const CONFIG_FILE_DEPLOYMENT_SOURCE_ID = "hexclave.config.ts";
 
 // A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
@@ -200,9 +346,13 @@ export type DeploymentServiceDefinition = {
   // suspend switch: 1 (the default) stays up, 0 suspends when idle.
   min_instances?: number | undefined,
   max_instances?: number | undefined,
-  // Relative to the directory containing hexclave.deploy.ts. Only used
-  // client-side (it decides what `hexclave deploy` packages), but stored so
-  // the dashboard can display it.
+  // Relative to the directory containing hexclave.deploy.ts. Decides what
+  // `hexclave deploy` packages, and — on the generated-Dockerfile path below —
+  // the working directory `build_command` runs in.
+  //
+  // Meaningful alongside `image` only when a `build_command` makes the image a
+  // BASE: a service that merely runs a prebuilt image is not built from the
+  // uploaded source, so it has no directory within it.
   root_directory?: string | undefined,
   // The Dockerfile to build from, as a path within the uploaded tree — i.e.
   // relative to the directory containing hexclave.deploy.ts, like
@@ -210,8 +360,28 @@ export type DeploymentServiceDefinition = {
   // `rootDirectory` and the CLI joins the two before sending it, so that the
   // pre-flight, this schema and the remote builder all resolve it against one
   // base. When absent the service is NOT built from a Dockerfile — the remote
-  // builder auto-detects the build with Railpack (https://railpack.com) instead.
+  // builder auto-detects the build with Railpack (https://railpack.com) instead
+  // — unless a `build_command` is set, which selects the generated-Dockerfile
+  // path below rather than auto-detection.
+  //
+  // Mutually exclusive with `image`.
   dockerfile_path?: string | undefined,
+  // An already-built image: `postgres:16`, `ghcr.io/org/app:1.2.3`, or a digest.
+  //
+  // On its own it is the image to RUN, and the service is not built at all —
+  // nothing is uploaded for it and its deploy takes seconds. With a
+  // `build_command` it is instead the BASE the service is built from, and the
+  // uploaded source is copied in on top of it (see `build_command`).
+  //
+  // Mutually exclusive with `dockerfile_path`: both name a base.
+  //
+  // Stored as the author wrote it (normalized to a canonical, fully-qualified
+  // ref by parseDeploymentImageRef, so `postgres:16` is stored as
+  // `docker.io/library/postgres:16`). Nothing resolves it: the reference goes
+  // into the machine config as written, and the platform resolves a tag when it
+  // pulls. A deployment reports the digest the platform came back with, which
+  // is the only record of which bytes a tag turned out to mean.
+  image?: string | undefined,
   // Persistent disks mounted into the container, keyed by VOLUME ID. Absent or
   // empty = the container filesystem is entirely ephemeral (the default).
   // Only "server" services may declare one.
@@ -223,8 +393,68 @@ export type DeploymentServiceDefinition = {
   // never hold one id at a time. See MAX_PERSISTENT_VOLUMES_PER_SERVICE for the
   // current one-per-service cap.
   persistent_volumes?: Record<string, DeploymentVolumeDefinition> | undefined,
+  // A single command line, run through `/bin/sh -c` while the image is BUILT.
+  //
+  // It selects a GENERATED DOCKERFILE, whose base is `image` if one is named and
+  // the Hexclave base image otherwise. The whole uploaded source is copied into
+  // `/app`, the command runs in `/app/<root_directory>`, and every build-visible
+  // env var is available to it. That is what makes `image` + `build_command`
+  // mean "start from this image, add my code" rather than "run this image".
+  //
+  // The one exception is `dockerfile_path`, which already describes a complete
+  // build: there the command is APPENDED to the author's Dockerfile as a final
+  // `RUN`, and nothing is copied in that the Dockerfile did not copy itself.
+  //
+  // Absent = the base decides the build entirely (Railpack auto-detection, the
+  // author's Dockerfile, or — for a bare `image` — no build at all).
+  build_command?: string | undefined,
+  // A single command line, run through `/bin/sh -c` as the container's process,
+  // INSTEAD of whatever the image would have started.
+  //
+  // Applied at RUN time (the machine's init, which replaces both the image's
+  // entrypoint and its command — verified against real Fly), not baked into the
+  // image. So it costs no build: naming one on a prebuilt `image` service keeps
+  // that service's deploy build-less, and changing only this rolls the machines
+  // without rebuilding anything.
+  //
+  // It never changes HOW the service is built, which is what makes it usable on
+  // every shape: a Railpack-built service keeps its auto-detected build and just
+  // starts differently.
+  //
+  // REQUIRED when the service builds on the Hexclave base image (no `image`, no
+  // `dockerfile_path`, but a command): that base starts nothing on its own, so a
+  // service without one would deploy and then immediately exit.
+  start_command?: string | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
+
+// Whether a definition is BUILT from the deployment's uploaded source.
+//
+// True for everything except a service that merely runs an already-built
+// `image`: naming a `build_command` alongside one turns it into a base, which
+// means an upload, a builder machine and a build log. Shared because the answer
+// decides several unrelated things — whether the CLI packages the source at all,
+// whether the runtime demands an upload, and whether a deploy has logs to show —
+// and those must not be able to disagree.
+export function deploymentServiceIsBuilt(definition: Pick<DeploymentServiceDefinition, "image" | "build_command">): boolean {
+  return definition.image === undefined || definition.build_command !== undefined;
+}
+
+// Whether a definition builds from a GENERATED Dockerfile — the path that copies
+// the uploaded source onto a base image, rather than Railpack auto-detection or
+// the author's own Dockerfile.
+//
+// Only a `build_command` selects it. A `start_command` deliberately does NOT:
+// it is applied by the runtime and works on whatever image the service ends up
+// with, so letting it switch the BUILD would mean that adding "run it this way"
+// to a working Railpack service silently threw away the install and compile
+// steps that made it work — an image that builds fine and then has no
+// node_modules. Overriding a wrongly-detected start command is exactly what a
+// start command is for, and it must stay possible without rebuilding anything.
+export function deploymentServiceUsesGeneratedDockerfile(definition: Pick<DeploymentServiceDefinition, "image" | "dockerfile_path" | "build_command">): boolean {
+  if (definition.build_command === undefined) return false;
+  return definition.dockerfile_path === undefined;
+}
 
 // How one port the container listens on is exposed.
 //
@@ -417,6 +647,198 @@ export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
 export const DEPLOYMENT_VOLUME_ID_REGEX = /^[a-z][a-z0-9_]*$/;
 export const MAX_VOLUME_ID_LENGTH = 26;
 
+// ---------------------------------------------------------------------------
+// Build and start commands.
+//
+// A command is a single command LINE, run through `/bin/sh -c` — the same shape
+// as the deploy file's `devCommand`, and the same shape every other platform's
+// build/start command has. Not a script: a newline in a Dockerfile `RUN` is a
+// new instruction, and a newline in the machine's start command would have to be
+// re-quoted at every hop. `sh -c` means `&&`, pipes and redirections all work,
+// so a command that wants two steps writes them with `&&` (or, past a certain
+// size, moves into a script the command invokes).
+export const MAX_DEPLOYMENT_COMMAND_LENGTH = 2048;
+
+/**
+ * Whether `value` is usable as a build or start command.
+ *
+ * Control characters are refused rather than escaped. A build command becomes a
+ * line of a generated Dockerfile and a start command becomes an argv entry in a
+ * machine config, and in both places a newline or a NUL is a structural
+ * character of the thing being generated rather than data — so the rule is
+ * stated here, once, and the generators may then assume it.
+ */
+export function isValidDeploymentCommand(value: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return value.trim() !== "" && value.length <= MAX_DEPLOYMENT_COMMAND_LENGTH && !/[\x00-\x1f\x7f]/.test(value);
+}
+
+
+// ---------------------------------------------------------------------------
+// Prebuilt images.
+//
+// A service either builds from the uploaded source (`root_directory` /
+// `dockerfile_path`) or names an ALREADY-BUILT image (`image`) — unless it also
+// carries a `build_command`, which turns the image into the BASE of a build
+// rather than the thing to run. `image` and `dockerfile_path` stay mutually
+// exclusive: each of them names a base, and a definition carrying both would
+// leave the deployment with two answers to "what is this built from".
+
+export const MAX_DEPLOYMENT_IMAGE_REF_LENGTH = 512;
+
+// The registry an unqualified name belongs to, following Docker's own rule: the
+// first path component is a REGISTRY only when it looks like a host (it has a
+// dot or a port, or it is exactly "localhost"), and otherwise it is the first
+// half of a repository on the default registry.
+export const DEFAULT_DEPLOYMENT_IMAGE_REGISTRY = "docker.io";
+// Unqualified repositories on Docker Hub are "official images" and live under
+// this namespace: `postgres` is `library/postgres`.
+export const DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE = "library";
+// Other names for Docker Hub. Written references use these interchangeably, and a
+// definition must not depend on which one the author picked.
+const DOCKER_HUB_REGISTRY_ALIASES = new Set(["index.docker.io", "registry-1.docker.io"]);
+
+// One path component of a repository, per the OCI distribution spec.
+const IMAGE_PATH_COMPONENT_REGEX = /^[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*$/;
+// A tag: up to 128 characters of word characters, dots and dashes, not starting
+// with a dot or a dash.
+const IMAGE_TAG_REGEX = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
+// Only sha256 is accepted. The registry API can name others in principle, but
+// nothing in practice produces them, and a narrow rule gives a clearer error
+// than a general one that then fails at the registry.
+const IMAGE_DIGEST_REGEX = /^sha256:[a-f0-9]{64}$/;
+// A registry host with an optional port. Deliberately not a general URL: a
+// scheme, a path or credentials in here would all be silently dropped by the
+// registry client, so they are refused where the author can still see why.
+const IMAGE_REGISTRY_HOST_REGEX = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*(?::[0-9]{1,5})?$/;
+
+/**
+ * An image reference in its parts, always fully qualified: `postgres:16` parses
+ * to the registry `docker.io` and the repository `library/postgres`, because
+ * that is what actually gets pulled and a stored definition should say so.
+ *
+ * Exactly one of `tag` and `digest` is set. A tag is a POINTER the publisher can
+ * move; a digest is the content hash and cannot be moved. Both spellings are
+ * accepted from authors and neither is resolved here — the reference reaches the
+ * runtime as written, and an author who needs fixed bytes writes the digest.
+ */
+export type DeploymentImageRef = {
+  registry: string,
+  repository: string,
+  tag: string | null,
+  digest: string | null,
+  // The reference as it should be stored and displayed, which is the parts
+  // rejoined: one spelling for one image, so two definitions naming the same
+  // image are equal as strings.
+  canonical: string,
+};
+
+/**
+ * Parses and normalizes an image reference.
+ *
+ * Returns the failure MESSAGE rather than just null (unlike
+ * parseConnectionValue) because every caller wants to say the same thing and
+ * the useful part is always *which* rule was broken: the CLI prints it as a
+ * deploy-file diagnostic, the schema as a validation error, and the backend as
+ * a 400. One message, phrased once.
+ */
+export function parseDeploymentImageRef(value: string): { ok: true, ref: DeploymentImageRef } | { ok: false, message: string } {
+  const fail = (message: string) => ({ ok: false as const, message });
+  if (value === "") return fail("image must not be empty");
+  if (value.length > MAX_DEPLOYMENT_IMAGE_REF_LENGTH) return fail(`image must be at most ${MAX_DEPLOYMENT_IMAGE_REF_LENGTH} characters long`);
+  if (/\s/.test(value)) return fail(`image ${JSON.stringify(value)} contains whitespace`);
+  if (value.includes("://")) return fail(`image ${JSON.stringify(value)} must not have a scheme — write the registry host on its own, like "ghcr.io/org/app:1.2.3"`);
+
+  // The digest comes off first: it is the only "@" an image reference may hold,
+  // so splitting here leaves a name that a ":" can be looked for in.
+  const atIndex = value.indexOf("@");
+  const digest = atIndex === -1 ? null : value.slice(atIndex + 1);
+  const beforeDigest = atIndex === -1 ? value : value.slice(0, atIndex);
+  if (digest !== null && !IMAGE_DIGEST_REGEX.test(digest)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid digest — a digest is "sha256:" followed by 64 lowercase hex characters`);
+  }
+
+  // A ":" is a tag separator only AFTER the last "/": before it, it is the port
+  // of a registry host ("localhost:5000/app").
+  const lastSlashIndex = beforeDigest.lastIndexOf("/");
+  const colonIndex = beforeDigest.indexOf(":", lastSlashIndex + 1);
+  const tag = colonIndex === -1 ? null : beforeDigest.slice(colonIndex + 1);
+  const name = colonIndex === -1 ? beforeDigest : beforeDigest.slice(0, colonIndex);
+  if (tag !== null && !IMAGE_TAG_REGEX.test(tag)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid tag — a tag starts with a letter, digit or underscore and may then contain letters, digits, dots, dashes and underscores`);
+  }
+
+  // Naming an image twice over. Accepted by Docker, but it leaves two answers to
+  // "which bytes" in one string, and the deploy has to pick one silently.
+  if (tag !== null && digest !== null) {
+    return fail(`image ${JSON.stringify(value)} names both a tag and a digest — use one or the other, since the digest already says exactly which image to run`);
+  }
+  // An untagged name means ":latest", which is the one reference that is
+  // guaranteed to move. Refused rather than defaulted: the author gets to state
+  // which version they meant, and a service holding a volume must not silently
+  // change major version between deploys.
+  if (tag === null && digest === null) {
+    return fail(`image ${JSON.stringify(value)} has no tag or digest — an image without one means ":latest", which can change between deploys. Write the version you mean, like ${JSON.stringify(`${value}:1.2.3`)}, or pin it by digest`);
+  }
+
+  const components = name.split("/");
+  if (components.some((component) => component === "")) {
+    return fail(`image ${JSON.stringify(value)} has an empty path segment`);
+  }
+  // Docker's own rule for telling a registry host from a repository namespace.
+  //
+  // Lowercased first: DNS is case-insensitive, so `DOCKER.IO` is a legal way to
+  // write the hub — but an uppercase spelling matched neither the alias set nor
+  // the `library/` rule nor the registry-host swap, and ended up asking Docker
+  // Hub's WEB host for a repository that does not exist there.
+  const first = components[0].toLowerCase();
+  const hasRegistry = components.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost");
+  // Docker Hub answers to several names; they are one registry, so they
+  // normalize to one, or the same image would canonicalize two different ways.
+  const registry = hasRegistry
+    ? (DOCKER_HUB_REGISTRY_ALIASES.has(first) ? DEFAULT_DEPLOYMENT_IMAGE_REGISTRY : first)
+    : DEFAULT_DEPLOYMENT_IMAGE_REGISTRY;
+  const repositoryComponents = hasRegistry ? components.slice(1) : components;
+  if (hasRegistry && !IMAGE_REGISTRY_HOST_REGEX.test(registry)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid registry host ${JSON.stringify(registry)}`);
+  }
+  // The port is range-checked here rather than written into the regex: a regex
+  // that spells out 1–65535 is unreadable, and an out-of-range port would
+  // otherwise be accepted at sync and only fail when the runtime tried to build
+  // a URL from it.
+  const registryPort = hasRegistry ? /:(\d+)$/.exec(registry) : null;
+  if (registryPort !== null && (Number(registryPort[1]) < 1 || Number(registryPort[1]) > 65535)) {
+    return fail(`image ${JSON.stringify(value)} has an invalid registry port ${registryPort[1]} (must be between 1 and 65535)`);
+  }
+  if (repositoryComponents.length === 0) return fail(`image ${JSON.stringify(value)} names a registry but no repository`);
+  for (const component of repositoryComponents) {
+    if (!IMAGE_PATH_COMPONENT_REGEX.test(component)) {
+      return fail(`image ${JSON.stringify(value)} has an invalid repository path segment ${JSON.stringify(component)} — repository names are lowercase, and may contain digits, dots, dashes and underscores between them`);
+    }
+  }
+  // `postgres` is `library/postgres`: a single-component name on Docker Hub is an
+  // official image, and storing the short spelling would leave the definition
+  // saying something other than what is pulled.
+  //
+  // Keyed on the RESOLVED registry rather than on whether one was written, because
+  // Docker applies this whenever the registry is Docker Hub however it was
+  // spelled: `docker.io/postgres` is `library/postgres` too, and treating it as
+  // the repository `postgres` asks the registry for something that does not exist.
+  const repository = registry === DEFAULT_DEPLOYMENT_IMAGE_REGISTRY && repositoryComponents.length === 1
+    ? `${DEFAULT_DEPLOYMENT_IMAGE_NAMESPACE}/${repositoryComponents[0]}`
+    : repositoryComponents.join("/");
+
+  return {
+    ok: true,
+    ref: {
+      registry,
+      repository,
+      tag,
+      digest,
+      canonical: `${registry}/${repository}${digest === null ? `:${tag}` : `@${digest}`}`,
+    },
+  };
+}
 export const deploymentEnvVarSchema = yupObject({
   type: yupString().oneOf(["secret", "connection"]).optional(),
   value: yupString().when("type", ([type], schema) => {
@@ -597,6 +1019,70 @@ export const deploymentServiceDefinitionSchema = yupObject({
         && !/[\x00-\x1f]/.test(value)
         && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..")
       )),
+  // An already-built image to run instead of building one. Validated with the
+  // shared parser so the deploy file, this schema and the runtime cannot
+  // disagree about what a reference means, and stored CANONICAL so a definition
+  // says what is actually pulled.
+  image: yupString().optional().max(MAX_DEPLOYMENT_IMAGE_REF_LENGTH)
+    // Normalized on the way IN, so what is stored is what is actually pulled and
+    // every write path agrees. Doing it here rather than in each client is what
+    // keeps `postgres:16` from the CLI and `postgres:16` from a direct API call
+    // from becoming two different stored strings for one image.
+    //
+    // A reference that does not parse is passed through untouched, so the test
+    // below reports which rule it broke instead of a confusing cast failure.
+    // (Only write paths validate: rows stored before this existed keep whatever
+    // spelling they were written with.)
+    .transform((value: unknown) => {
+      if (typeof value !== "string") return value;
+      const parsed = parseDeploymentImageRef(value);
+      return parsed.ok ? parsed.ref.canonical : value;
+    })
+    .test("valid-image-ref", "invalid image reference", function (value) {
+      if (value === undefined) return true;
+      const parsed = parseDeploymentImageRef(value);
+      // The parser's message is the whole point of it — surfaced verbatim rather
+      // than collapsed into "invalid image reference", which would leave the
+      // author to guess which of a dozen rules they broke.
+      return parsed.ok || this.createError({ message: parsed.message });
+    })
+    // `image` and `dockerfile_path` each name a BASE, so a service has at most
+    // one of them. `root_directory` is deliberately not in this rule any more:
+    // with a `build_command` the image is a base, the source is copied onto it,
+    // and the root directory is where that command runs.
+    .test("image-excludes-dockerfile-path", "a service is built from an `image` or from a `dockerfile_path`, not both — each of them says what the build starts from", function (value) {
+      if (value === undefined) return true;
+      return (this.parent as { dockerfile_path?: string }).dockerfile_path === undefined;
+    })
+    .test("image-without-build-excludes-root-directory", "a service that only runs an `image` is not built from your source, so it has no `root_directory` within it — add a `build_command` to build on top of the image, or drop `root_directory`", function (value) {
+      if (value === undefined) return true;
+      const parent = this.parent as { root_directory?: string, build_command?: string };
+      return parent.build_command !== undefined || parent.root_directory === undefined;
+    }),
+  // A single command line run through `/bin/sh -c` while the image is built.
+  // Selects the generated-Dockerfile path unless a `dockerfile_path` is set, in
+  // which case it is appended to the author's Dockerfile as a final `RUN`.
+  //
+  // The rules here must be AT LEAST as strict as Marshal's, which generates a
+  // Dockerfile line from this: a command that the runtime would refuse has to
+  // fail at sync time rather than after an upload has been consumed.
+  build_command: yupString().optional().max(MAX_DEPLOYMENT_COMMAND_LENGTH)
+    .test("valid-command", `build_command must be a single non-empty command line of at most ${MAX_DEPLOYMENT_COMMAND_LENGTH} characters, with no control characters (it becomes one \`RUN\` line of the built image — chain steps with \`&&\`)`, (value) =>
+      value === undefined || isValidDeploymentCommand(value)),
+  // A single command line run through `/bin/sh -c` as the container's process,
+  // instead of whatever the image would have started. Applied at run time, so it
+  // never causes a build.
+  start_command: yupString().optional().max(MAX_DEPLOYMENT_COMMAND_LENGTH)
+    .test("valid-command", `start_command must be a single non-empty command line of at most ${MAX_DEPLOYMENT_COMMAND_LENGTH} characters, with no control characters`, (value) =>
+      value === undefined || isValidDeploymentCommand(value))
+    // The Hexclave base image runs nothing on its own: a service built on it
+    // without a start command would deploy, start, and immediately exit. Caught
+    // here rather than at deploy time, where the upload has already been spent.
+    .test("base-image-build-needs-start-command", "a service with a `build_command` but no `image` or `dockerfile_path` is built on the Hexclave base image, which has no command of its own — add a `startCommand` saying how to run it", function (value) {
+      if (value !== undefined) return true;
+      const parent = this.parent as { image?: string, dockerfile_path?: string, build_command?: string };
+      return parent.build_command === undefined || parent.image !== undefined || parent.dockerfile_path !== undefined;
+    }),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
   // reads it straight out of the local deploy file, and the backend never acts
   // on it, so it is never sent and never stored. Rejected rather than simply
@@ -628,6 +1114,195 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
       API_INTERNAL_URL: { type: "connection", value: "api.url:8080" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef fully qualifies every accepted spelling", ({ expect }) => {
+  const parse = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (!result.ok) throw new Error(`expected ${value} to parse, got: ${result.message}`);
+    return result.ref;
+  };
+  // An unqualified name is an official image on the default registry, and is
+  // stored as such: the definition must say what is actually pulled.
+  expect(parse("postgres:16")).toMatchObject({ registry: "docker.io", repository: "library/postgres", tag: "16", digest: null, canonical: "docker.io/library/postgres:16" });
+  expect(parse("myorg/app:1.2.3")).toMatchObject({ registry: "docker.io", repository: "myorg/app", canonical: "docker.io/myorg/app:1.2.3" });
+  // A first component that looks like a host IS one; one that does not is a
+  // repository namespace. That is the only thing telling the two apart.
+  expect(parse("ghcr.io/org/app:1.2.3")).toMatchObject({ registry: "ghcr.io", repository: "org/app" });
+  expect(parse("registry.example.com:5000/team/app:v1")).toMatchObject({ registry: "registry.example.com:5000", repository: "team/app", tag: "v1" });
+  expect(parse("localhost:5000/app:v1")).toMatchObject({ registry: "localhost:5000", repository: "app" });
+  // A deep repository path keeps every segment.
+  expect(parse("gcr.io/project/team/app:v1")).toMatchObject({ registry: "gcr.io", repository: "project/team/app" });
+  // A digest is a reference in its own right and needs no tag.
+  const digest = `sha256:${"a".repeat(64)}`;
+  expect(parse(`postgres@${digest}`)).toMatchObject({ tag: null, digest, canonical: `docker.io/library/postgres@${digest}` });
+  // The `library/` default follows the REGISTRY, not whether one was written:
+  // Docker applies it to any single-component name on Docker Hub, and the hub
+  // answers to several host names that must all canonicalize to one.
+  for (const written of ["docker.io/postgres:16", "index.docker.io/postgres:16", "registry-1.docker.io/postgres:16"]) {
+    expect(parse(written).canonical).toBe("docker.io/library/postgres:16");
+  }
+  // Already-qualified names, and other registries, are left alone.
+  expect(parse("docker.io/myorg/app:1").canonical).toBe("docker.io/myorg/app:1");
+  expect(parse("ghcr.io/app:1").canonical).toBe("ghcr.io/app:1");
+  // DNS is case-insensitive, so an uppercase host names the same registry.
+  expect(parse("DOCKER.IO/postgres:16").canonical).toBe("docker.io/library/postgres:16");
+  expect(parse("Index.Docker.IO/postgres:16").canonical).toBe("docker.io/library/postgres:16");
+  expect(parse("GHCR.IO/org/app:1").canonical).toBe("ghcr.io/org/app:1");
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef refuses a registry port outside 1-65535", ({ expect }) => {
+  // Refused at authoring rather than at deploy: the runtime can only report
+  // these as an unbuildable URL, long after the definition was synced.
+  const message = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (result.ok) throw new Error(`expected ${value} to be rejected`);
+    return result.message;
+  };
+  expect(message("registry.example.com:99999/team/app:v1")).toMatch(/invalid registry port/);
+  expect(message("registry.example.com:0/team/app:v1")).toMatch(/invalid registry port/);
+  expect(parseDeploymentImageRef("registry.example.com:65535/team/app:v1").ok).toBe(true);
+  expect(parseDeploymentImageRef("localhost:5000/app:v1").ok).toBe(true);
+});
+
+import.meta.vitest?.test("parseDeploymentImageRef refuses references that would not name fixed bytes", ({ expect }) => {
+  const message = (value: string) => {
+    const result = parseDeploymentImageRef(value);
+    if (result.ok) throw new Error(`expected ${value} to be rejected`);
+    return result.message;
+  };
+  // The headline rule: an untagged name means ":latest", which is exactly the
+  // reference a publisher moves. The author says which version they meant.
+  expect(message("postgres")).toMatch(/no tag or digest/);
+  expect(message("ghcr.io/org/app")).toMatch(/no tag or digest/);
+  // An EXPLICIT :latest is allowed — no worse than any other tag, and unlike a
+  // bare name it says the author meant it.
+  expect(parseDeploymentImageRef("postgres:latest").ok).toBe(true);
+  // Two answers to "which bytes" in one string.
+  expect(message(`postgres:16@sha256:${"a".repeat(64)}`)).toMatch(/both a tag and a digest/);
+  expect(message("postgres@sha256:abc")).toMatch(/invalid digest/);
+  expect(message("postgres@md5:abc")).toMatch(/invalid digest/);
+  // Repository names are lowercase; an uppercase one fails at the registry with
+  // a far worse error than this.
+  expect(message("Postgres:16")).toMatch(/invalid repository path segment/);
+  expect(message("ghcr.io/Org/app:1")).toMatch(/invalid repository path segment/);
+  expect(message("https://ghcr.io/org/app:1")).toMatch(/must not have a scheme/);
+  expect(message("ghcr.io//app:1")).toMatch(/empty path segment/);
+  expect(message("postgres:.16")).toMatch(/invalid tag/);
+  expect(message("")).toMatch(/must not be empty/);
+  expect(message("postgres :16")).toMatch(/whitespace/);
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts an image service and refuses one that also builds", async ({ expect }) => {
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "5432": { protocol: "tcp" } }, image: "postgres:16",
+    persistent_volumes: { pgdata: { path: "/data", size_gb: 10 } },
+    env: { POSTGRES_PASSWORD: { type: "secret", key: "POSTGRES_PASSWORD" } },
+    // Normalized by the schema itself, so every write path stores the reference
+    // that is actually pulled rather than whichever spelling the client used.
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "docker.io/library/postgres:16" });
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "ghcr.io/org/app:1.2.3", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "ghcr.io/org/app:1.2.3" });
+  // The parser's own message survives validation rather than being flattened.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/no tag or digest/);
+  // An image with nothing built on top of it is not built from the source, so it
+  // has no directory within it.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres:16", root_directory: "./database", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/has no `root_directory`/);
+  // `image` and `dockerfile_path` each name a base.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: {}, image: "postgres:16", dockerfile_path: "Dockerfile", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/not both/);
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts build and start commands, including on an image base", async ({ expect }) => {
+  // The generated-Dockerfile path: no base named, so the Hexclave base image is
+  // used and a start command is what makes it runnable.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } }, root_directory: "./web",
+    build_command: "pnpm install --frozen-lockfile && pnpm build",
+    start_command: "pnpm start",
+    env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ build_command: "pnpm install --frozen-lockfile && pnpm build", start_command: "pnpm start" });
+  // An image as a BASE: `root_directory` is meaningful again, because the source
+  // is copied onto it and the command runs there.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } },
+    image: "python:3.12-slim", root_directory: "./api", build_command: "pip install -r requirements.txt",
+    start_command: "python -m uvicorn main:app --host 0.0.0.0 --port 3000",
+    env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "docker.io/library/python:3.12-slim", root_directory: "./api" });
+  // A start command alone never causes a build, so it is legal on a bare image.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "6379": { protocol: "tcp" } }, image: "redis:7-alpine",
+    start_command: "redis-server --appendonly yes", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ start_command: "redis-server --appendonly yes" });
+  // A Dockerfile plus a build command appends to the author's build.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } }, dockerfile_path: "Dockerfile",
+    build_command: "npm run postbuild", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ build_command: "npm run postbuild" });
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses commands it could not generate from", async ({ expect }) => {
+  const base = { type: "serverless" as const, ports: { "3000": { protocol: "http" } }, env: {} };
+  // A newline would be a second Dockerfile instruction, and a NUL cannot survive
+  // an argv entry — both are refused rather than escaped.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build\nrm -rf /", start_command: "npm start",
+  }, { abortEarly: false })).rejects.toThrow(/build_command/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    // A TAB is the field separator of the manifest the builder reads, so it
+    // cannot reach the build either.
+    ...base, start_command: "npm\tstart",
+  }, { abortEarly: false })).rejects.toThrow(/start_command/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "   ", start_command: "npm start",
+  }, { abortEarly: false })).rejects.toThrow(/build_command/);
+  // Not `abortEarly: false` here: an over-length command breaks BOTH the max and
+  // the shape rule, and an aggregated ValidationError reports only "2 errors
+  // occurred" rather than either message.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, start_command: "x".repeat(MAX_DEPLOYMENT_COMMAND_LENGTH + 1),
+  })).rejects.toThrow(/start_command/);
+  // The Hexclave base image has no command of its own.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build",
+  }, { abortEarly: false })).rejects.toThrow(/no command of its own/);
+  // ...but a base that DOES (the author's image or Dockerfile) needs none.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build", image: "node:22-bookworm",
+  }, { abortEarly: false })).resolves.toBeDefined();
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build", dockerfile_path: "Dockerfile",
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceIsBuilt and deploymentServiceUsesGeneratedDockerfile agree on what each shape means", ({ expect }) => {
+  const built = (definition: Partial<DeploymentServiceDefinition>) => deploymentServiceIsBuilt(definition);
+  const generated = (definition: Partial<DeploymentServiceDefinition>) => deploymentServiceUsesGeneratedDockerfile(definition);
+  // Railpack auto-detection: built, but not from a generated Dockerfile.
+  expect([built({}), generated({})]).toEqual([true, false]);
+  // The author's Dockerfile owns the build, with or without an appended command.
+  expect([built({ dockerfile_path: "Dockerfile" }), generated({ dockerfile_path: "Dockerfile" })]).toEqual([true, false]);
+  expect(generated({ dockerfile_path: "Dockerfile", build_command: "make" })).toBe(false);
+  // A bare image is the one shape that is not built at all.
+  expect([built({ image: "postgres:16" }), generated({ image: "postgres:16" })]).toEqual([false, false]);
+  // ...and a start command does not change that: it is applied at run time.
+  expect(built({ image: "postgres:16", start_command: "postgres -c fsync=off" })).toBe(false);
+  // A build command turns the image into a base.
+  expect([built({ image: "node:22", build_command: "npm ci" }), generated({ image: "node:22", build_command: "npm ci" })]).toEqual([true, true]);
+  // With no base at all, a BUILD command selects the Hexclave base image...
+  expect(generated({ build_command: "npm ci" })).toBe(true);
+  // ...but a start command alone never changes how a service is built. Adding
+  // "run it this way" to a Railpack service must not silently throw away the
+  // install and compile that Railpack was doing for it.
+  expect(generated({ start_command: "node server.js" })).toBe(false);
+  expect(built({ start_command: "node server.js" })).toBe(true);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema requires explicit port protocols and defaults a service to private", async ({ expect }) => {
@@ -971,3 +1646,137 @@ import.meta.vitest?.test("deploymentSecretDefaultsSchema accepts env-var-keyed d
 // matches under exactOptionalPropertyTypes only if the shapes agree).
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _assertEnvVarSchemaMatchesType: DeploymentEnvVarDefinition = undefined as unknown as yup.InferType<typeof deploymentEnvVarSchema>;
+
+import.meta.vitest?.test("buildSourceManifest keeps the LARGEST files when it has to drop some", ({ expect }) => {
+  // Largest-first is the whole point of the cap: the question a manifest answers
+  // is which files are big, so truncation must only ever drop ones too small to
+  // be anyone's problem.
+  const files = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 50 }, (_, index) => ({ path: `f${index}.bin`, bytes: index }));
+  const manifest = buildSourceManifest({ files, compressedBytes: 1234 });
+  expect(manifest.file_count).toBe(files.length);
+  expect(manifest.entries).toHaveLength(MAX_SOURCE_MANIFEST_ENTRIES);
+  expect(manifest.entries[0]).toEqual({ path: `f${files.length - 1}.bin`, bytes: files.length - 1 });
+  // The totals cover every file, including the ones with no room in `entries`.
+  expect(manifest.total_bytes).toBe(files.reduce((total, file) => total + file.bytes, 0));
+  expect(manifest.compressed_bytes).toBe(1234);
+});
+
+import.meta.vitest?.test("buildSourceManifest is deterministic when sizes tie", ({ expect }) => {
+  // Two deploys of one tree must produce the same listing, or a diff of them is
+  // noise. Ties break on path.
+  const files = [{ path: "b.txt", bytes: 10 }, { path: "a.txt", bytes: 10 }, { path: "c.txt", bytes: 99 }];
+  expect(buildSourceManifest({ files, compressedBytes: 1 }).entries.map((entry) => entry.path))
+    .toEqual(["c.txt", "a.txt", "b.txt"]);
+});
+
+import.meta.vitest?.test("parseSourceManifest refuses anything that is not one", ({ expect }) => {
+  // It is read out of a JSON column, so it degrades to "no manifest" rather than
+  // breaking the deployment it belongs to.
+  expect(parseSourceManifest(null)).toBeNull();
+  expect(parseSourceManifest(undefined)).toBeNull();
+  expect(parseSourceManifest("{}")).toBeNull();
+  expect(parseSourceManifest([])).toBeNull();
+  expect(parseSourceManifest({ file_count: 1, total_bytes: 2 })).toBeNull();
+  expect(parseSourceManifest({ file_count: 1, total_bytes: 2, compressed_bytes: 3 })).toBeNull();
+});
+
+import.meta.vitest?.test("parseSourceManifest drops malformed entries but keeps the manifest", ({ expect }) => {
+  const parsed = parseSourceManifest({
+    file_count: 3,
+    total_bytes: 30,
+    compressed_bytes: 10,
+    entries: [{ path: "a", bytes: 20 }, { path: "b" }, { bytes: 5 }, null, { path: "c", bytes: "big" }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "a", bytes: 20 }]);
+  // The totals are the manifest's own claim and survive a bad entry.
+  expect(parsed?.file_count).toBe(3);
+});
+
+import.meta.vitest?.test("sourceManifestEntriesForService slices the shared upload by root directory", ({ expect }) => {
+  const manifest = buildSourceManifest({
+    files: [
+      { path: "web/app/page.tsx", bytes: 100 },
+      { path: "web/public/hero.png", bytes: 900 },
+      { path: "api/main.go", bytes: 400 },
+      { path: "README.md", bytes: 10 },
+    ],
+    compressedBytes: 500,
+  });
+  expect(sourceManifestEntriesForService(manifest, "web").entries.map((entry) => entry.path))
+    .toEqual(["web/public/hero.png", "web/app/page.tsx"]);
+  // The authored spellings of "the whole tree" all mean the whole tree.
+  for (const root of [null, ".", "./", ""]) {
+    expect(sourceManifestEntriesForService(manifest, root).entries).toHaveLength(4);
+  }
+  // "./web/" is the same subtree as "web".
+  expect(sourceManifestEntriesForService(manifest, "./web/").entries).toHaveLength(2);
+  // A prefix must match a whole path SEGMENT: "web" is not "website".
+  expect(sourceManifestEntriesForService(manifest, "webs").entries).toHaveLength(0);
+  // The prefix it filtered on comes back, so a caller showing paths relative to
+  // the service strips exactly what was matched.
+  expect(sourceManifestEntriesForService(manifest, "./web/").prefix).toBe("web/");
+  for (const root of [null, ".", "./", ""]) {
+    expect(sourceManifestEntriesForService(manifest, root).prefix).toBe("");
+  }
+});
+
+import.meta.vitest?.test("sourceManifestEntriesForService reports truncation as the manifest's, not the slice's", ({ expect }) => {
+  // Once the cap dropped files, no subtree can claim to be a complete listing —
+  // the dropped ones could have been anywhere.
+  const files = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 1 }, (_, index) => ({ path: `web/f${index}.bin`, bytes: index + 1 }));
+  const manifest = buildSourceManifest({ files, compressedBytes: 1 });
+  expect(sourceManifestEntriesForService(manifest, "web").truncated).toBe(true);
+  const small = buildSourceManifest({ files: [{ path: "web/a", bytes: 1 }], compressedBytes: 1 });
+  expect(sourceManifestEntriesForService(small, "web").truncated).toBe(false);
+});
+
+import.meta.vitest?.test("parseSourceManifest bounds path length, which the CLI-side cap does not", ({ expect }) => {
+  // REGRESSION: MAX_SOURCE_MANIFEST_PATH_LENGTH was applied only in
+  // buildSourceManifest — the CLI. This is the function the server gates writes
+  // with, so an API client could store 2000 entries of arbitrarily long paths in
+  // a JSON column that nothing prunes.
+  const long = "a".repeat(MAX_SOURCE_MANIFEST_PATH_LENGTH + 1);
+  const parsed = parseSourceManifest({
+    file_count: 2, total_bytes: 2, compressed_bytes: 1,
+    entries: [{ path: long, bytes: 1 }, { path: "ok.txt", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "ok.txt", bytes: 1 }]);
+});
+
+import.meta.vitest?.test("parseSourceManifest re-establishes largest-first order", ({ expect }) => {
+  // The dashboard states "largest first" and "the rest are smaller than every
+  // file shown" — claims about order, on data that arrived from a client.
+  const parsed = parseSourceManifest({
+    file_count: 3, total_bytes: 60, compressed_bytes: 20,
+    entries: [{ path: "a", bytes: 10 }, { path: "b", bytes: 50 }, { path: "c", bytes: 1 }],
+  });
+  expect(parsed?.entries.map((entry) => entry.bytes)).toEqual([50, 10, 1]);
+});
+
+import.meta.vitest?.test("parseSourceManifest keeps the LARGEST when a client overflows the cap", ({ expect }) => {
+  // Sorting has to happen before the slice, or the cap would keep whichever
+  // entries the client happened to send first.
+  const entries = Array.from({ length: MAX_SOURCE_MANIFEST_ENTRIES + 10 }, (_, index) => ({ path: `f${index}`, bytes: index }));
+  const parsed = parseSourceManifest({ file_count: entries.length, total_bytes: 1, compressed_bytes: 1, entries });
+  expect(parsed?.entries).toHaveLength(MAX_SOURCE_MANIFEST_ENTRIES);
+  expect(parsed?.entries[0]?.bytes).toBe(entries.length - 1);
+});
+
+import.meta.vitest?.test("parseSourceManifest drops duplicate paths, which the dashboard keys on", ({ expect }) => {
+  const parsed = parseSourceManifest({
+    file_count: 2, total_bytes: 3, compressed_bytes: 1,
+    entries: [{ path: "dup", bytes: 2 }, { path: "dup", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "dup", bytes: 2 }]);
+});
+
+import.meta.vitest?.test("parseSourceManifest refuses negative and fractional totals", ({ expect }) => {
+  // They render as facts about the deploy: "-1 B on disk" is not one.
+  expect(parseSourceManifest({ file_count: 1, total_bytes: -1, compressed_bytes: 1, entries: [] })).toBeNull();
+  expect(parseSourceManifest({ file_count: 1.5, total_bytes: 1, compressed_bytes: 1, entries: [] })).toBeNull();
+  const parsed = parseSourceManifest({
+    file_count: 1, total_bytes: 1, compressed_bytes: 1,
+    entries: [{ path: "a", bytes: -5 }, { path: "b", bytes: 1.5 }, { path: "c", bytes: 1 }],
+  });
+  expect(parsed?.entries).toEqual([{ path: "c", bytes: 1 }]);
+});

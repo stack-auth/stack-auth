@@ -4,13 +4,15 @@ import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Typography, cn } from "@/components/ui";
 import type { AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
   BuildLogsContent,
   DomainsContent,
   OverviewContent,
+  RuntimeLogsContent,
   SettingsContent,
+  SourceContent,
   VariablesContent,
 } from "./panel-content";
 import { STATUS_META, getAccentClasses } from "./variants";
@@ -26,7 +28,13 @@ type ServiceDetailPaneProps = {
   // The run THIS deployment gave this service, or null when it never started one (and for the
   // managed hexclave node, which is not deployed at all). Owns the Build logs tab.
   deploymentId: string | null,
+  // Whether that deploy produced a build log at all. An all-prebuilt deploy
+  // starts no builder, so there is nothing to fetch.
+  hasBuildLogs: boolean,
   outcome: AdminDeploymentServiceOutcomeJson | null,
+  // The panel a `hexclave deploy` link named, when this is the service it named.
+  // Null for every other case, which is Overview.
+  initialTab: string | null,
   onClose: () => void,
   refresh: () => Promise<void>,
 };
@@ -34,19 +42,42 @@ type ServiceDetailPaneProps = {
 // No "Deployments" tab listing every past run of this service: the page is already scoped to
 // ONE deployment, so the only run that belongs here is that deploy's. It gets a Build logs tab
 // instead — the thing you actually open a failed service to read.
-type PanelTabId = "overview" | "build-logs" | "variables" | "domains" | "settings";
+type PanelTabId = "overview" | "source" | "build-logs" | "runtime-logs" | "variables" | "domains" | "settings";
 
+// Source sits before Build logs because that is the order the deploy happened
+// in: what was packaged, then what the builder made of it — and Runtime logs
+// follows both, being what happened after the deploy rather than during it.
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "source", label: "Source" },
   { id: "build-logs", label: "Build logs" },
+  { id: "runtime-logs", label: "Runtime logs" },
   { id: "variables", label: "Variables" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
 ];
 
+const PANEL_TAB_IDS = new Set<string>(TABS.map((tab) => tab.id));
+
+/**
+ * Whether a string names one of the tabs above.
+ *
+ * A predicate rather than a `Set.has` plus a cast: `Set<string>.has` does not
+ * narrow, so the cast was doing the work and would have kept compiling if the
+ * union and the set ever disagreed.
+ */
+function isPanelTabId(value: string): value is PanelTabId {
+  return PANEL_TAB_IDS.has(value);
+}
+
+/** The tab a `hexclave deploy` link asked for, or Overview. */
+export function linkedTab(panel: string | null | undefined): PanelTabId {
+  return panel != null && isPanelTabId(panel) ? panel : "overview";
+}
+
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const { service, services, project, refresh } = props;
-  const [tab, setTab] = useState<PanelTabId>("overview");
+  const [tab, setTab] = useState<PanelTabId>(() => linkedTab(props.initialTab));
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -54,8 +85,14 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
 
-  // When a different service is selected, jump back to Overview.
+  // When a different service is selected, jump back to Overview. Guarded on the
+  // PREVIOUS id rather than firing on mount too: this pane is what a deep link
+  // opens on Build logs, and an unguarded effect would reset that before the
+  // user ever saw it.
+  const previousServiceId = useRef(service.id);
   useEffect(() => {
+    if (previousServiceId.current === service.id) return;
+    previousServiceId.current = service.id;
     setTab("overview");
   }, [service.id]);
 
@@ -66,7 +103,12 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const content = (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      case "source": { return <SourceContent deploymentId={props.deploymentId} project={project} service={service} isHexclave={isHexclave} />; }
+      case "build-logs": { return <BuildLogsContent deploymentId={props.deploymentId} hasBuildLogs={props.hasBuildLogs} outcome={props.outcome} project={project} isHexclave={isHexclave} />; }
+      // Deliberately NOT scoped to props.deploymentId: this is what the service
+      // is printing NOW, which is the same output whichever past deployment the
+      // board was opened from.
+      case "runtime-logs": { return <RuntimeLogsContent service={service} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }

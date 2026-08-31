@@ -50,6 +50,7 @@ import {
   DeploymentPorts,
   DeploymentServiceDefinition,
   DeploymentServiceType,
+  DeploymentSourceManifest,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
   SERVICE_OUTPUT_KEYS,
@@ -57,6 +58,7 @@ import {
   deploymentPortEntry,
   formatConnectionValue,
   parseConnectionValue,
+  parseSourceManifest,
   soleHttpDeploymentPort,
   standardPortsHolderPort,
 } from "@hexclave/shared/dist/deployments";
@@ -188,6 +190,9 @@ export function definitionFromServiceRow(row: {
   maxInstances: number | null,
   rootDirectory: string | null,
   dockerfilePath: string | null,
+  image: string | null,
+  buildCommand: string | null,
+  startCommand: string | null,
   env: Prisma.JsonValue,
 }, volume: { volumeId: string, path: string | null, sizeGb: number } | null = null): DeploymentServiceDefinition {
   if (row.type !== "server" && row.type !== "serverless") {
@@ -205,6 +210,9 @@ export function definitionFromServiceRow(row: {
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
+    image: row.image ?? undefined,
+    build_command: row.buildCommand ?? undefined,
+    start_command: row.startCommand ?? undefined,
     // A volume row with no mount path is unattached — it belongs to the source
     // rather than to this service, so it is not part of the definition.
     persistent_volumes: volume !== null && volume.path !== null
@@ -515,6 +523,13 @@ export async function syncSourceServices(
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
+      // With no buildCommand this is the image to run and the service is not
+      // built at all; with one it is the base it is built on. The schema has
+      // already refused a definition that also names a dockerfilePath.
+      image: definition.image ?? null,
+      // Null = the base decides the build / the image decides what starts.
+      buildCommand: definition.build_command ?? null,
+      startCommand: definition.start_command ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
@@ -1131,6 +1146,10 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       ...(definition.persistent_volumes !== undefined && Object.keys(definition.persistent_volumes).length > 0
         ? { persistent_volumes: definition.persistent_volumes }
         : {}),
+      // Part of the CONTAINER rather than of the build: the runtime starts the
+      // machine with it instead of the image's own entrypoint and command, so
+      // changing only this rolls the machines without rebuilding anything.
+      ...(definition.start_command !== undefined ? { start_command: definition.start_command } : {}),
     },
     env: resolvedEnv,
   };
@@ -1147,6 +1166,10 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
   sourceRowId: string,
   triggeredBy: string,
   plannedServiceIds: string[],
+  // What the client packaged, or null when it packaged nothing (an all-prebuilt
+  // deploy). Stored as given: it is a listing the client already computed while
+  // building the tarball, and re-deriving it would mean inflating the archive.
+  sourceManifest?: DeploymentSourceManifest | null,
 }): Promise<{ id: string, number: number }> {
   const latest = await prisma.deployment.findFirst({
     where: { tenancyId: tenancy.id },
@@ -1160,6 +1183,9 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
       number: (latest?.number ?? 0) + 1,
       triggeredBy: options.triggeredBy,
       plannedServiceIds: options.plannedServiceIds,
+      // Undefined rather than null when absent, so Prisma leaves the column
+      // NULL — "not recorded", which is what it means.
+      ...(options.sourceManifest == null ? {} : { sourceManifest: options.sourceManifest }),
       services: Object.fromEntries(options.plannedServiceIds.map((serviceId) => [serviceId, { status: "pending" }])),
     },
     select: { id: true, number: true },
@@ -1171,6 +1197,12 @@ export type DeploymentServiceOutcome = {
   status: "pending" | "building" | "deploying" | "deployed" | "failed" | "skipped",
   url?: string | null,
   revision?: string | null,
+  // The digest-pinned image this deploy actually ran for the service — what its
+  // build pushed, or what its `image` reference resolved to. Null until the
+  // apply has happened. Recorded per DEPLOYMENT rather than on the service,
+  // because it is the answer to "what did this deploy ship", which a later
+  // deploy must not overwrite.
+  image?: string | null,
   error?: string | null,
 };
 
@@ -1191,6 +1223,9 @@ function parseStoredOutcomes(services: Prisma.JsonValue): Map<string, Deployment
       status: status === "building" || status === "deploying" || status === "deployed" || status === "failed" || status === "skipped" ? status : "pending",
       url: typeof outcome.url === "string" ? outcome.url : null,
       revision: typeof outcome.revision === "string" ? outcome.revision : null,
+      // Absent on rows written before deploys recorded it, which reads the same
+      // as an apply that has not happened yet.
+      image: typeof outcome.image === "string" ? outcome.image : null,
       error: typeof outcome.error === "string" ? outcome.error : null,
     });
   }
@@ -1218,7 +1253,9 @@ export async function startDeployment(options: {
   levels: string[][],
   definitionsByServiceId: Map<string, DeploymentServiceDefinition>,
   resolvedEnvByServiceId: Map<string, Record<string, MarshalEnvValue>>,
-  marshalUploadId: string,
+  // Absent when every target names an already-built image: nothing is built, so
+  // there is no source archive for the runtime to consume.
+  marshalUploadId: string | undefined,
 }): Promise<void> {
   const { tenancy, prisma, deploymentId, source, levels, definitionsByServiceId, resolvedEnvByServiceId, marshalUploadId } = options;
   const client = getMarshalClientOrThrow();
@@ -1231,6 +1268,13 @@ export async function startDeployment(options: {
       service_key: serviceId,
       ...(definition.root_directory !== undefined ? { root_directory: definition.root_directory } : {}),
       ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}),
+      // An image with no build command is not built: the runtime resolves the
+      // reference to a digest and applies it, and never looks at the upload for
+      // it. With one, the same field names the BASE of a build instead — which
+      // is why the runtime derives "is this built" from the pair rather than
+      // from `image` alone.
+      ...(definition.image !== undefined ? { image: definition.image } : {}),
+      ...(definition.build_command !== undefined ? { build_command: definition.build_command } : {}),
       spec: marshalSpecForDefinition(definition, resolvedEnv),
     };
   });
@@ -1238,7 +1282,7 @@ export async function startDeployment(options: {
   let result: MarshalDeployment;
   try {
     result = await client.startSourceDeployment(ns, source.sourceId, {
-      upload_id: marshalUploadId,
+      ...(marshalUploadId === undefined ? {} : { upload_id: marshalUploadId }),
       targets,
       order: levels,
     });
@@ -1250,6 +1294,10 @@ export async function startDeployment(options: {
     where: { tenancyId_id: { tenancyId: tenancy.id, id: deploymentId } },
     data: {
       marshalBuildId: result.id,
+      // Taken from the runtime rather than inferred here: it is the runtime that
+      // decides whether a builder machine ran, and it says so on the deployment
+      // it just accepted.
+      hasBuildLogs: result.has_logs,
       status: marshalDeploymentStatus(result),
       services: outcomesFromMarshal(result, levels.flat()),
     },
@@ -1296,7 +1344,12 @@ function marshalDeploymentStatus(deployment: MarshalDeployment): DeploymentStatu
 
 function outcomesFromMarshal(deployment: MarshalDeployment, plannedServiceIds: string[]): Record<string, DeploymentServiceOutcome> {
   const byKey = new Map(deployment.services.map((service) => [service.service_key, service]));
-  const outcomes: Record<string, DeploymentServiceOutcome> = {};
+  // Prototype-less: a service id is author-chosen and `__proto__` passes the id
+  // rules, but `{}["__proto__"] = outcome` invokes the prototype setter instead
+  // of creating an own property. parseStoredOutcomes reads with Object.entries,
+  // so the outcome vanished between the two and the service showed as forever
+  // "pending" no matter what the runtime reported.
+  const outcomes: Record<string, DeploymentServiceOutcome> = Object.create(null);
   for (const serviceId of plannedServiceIds) {
     const reported = byKey.get(serviceId);
     if (reported === undefined) {
@@ -1310,6 +1363,7 @@ function outcomesFromMarshal(deployment: MarshalDeployment, plannedServiceIds: s
       status: reported.status,
       url: reported.url,
       revision: reported.revision,
+      image: reported.image,
       error: reported.error,
     };
   }
@@ -1463,11 +1517,17 @@ export type DeploymentApiShape = {
   finished_at_millis: number | null,
   error: string | null,
   has_build_logs: boolean,
+  // What this deploy packaged, or null when it packaged nothing (every service
+  // ran an already-built image) and on rows written before it was recorded.
+  source_manifest: DeploymentSourceManifest | null,
   services: {
     service_id: string,
     status: DeploymentServiceOutcome["status"],
     url: string | null,
     revision: string | null,
+    // The digest-pinned image this deploy ran for the service. Null until its
+    // apply has happened (and on deployments from before this was recorded).
+    image: string | null,
     error: string | null,
   }[],
 };
@@ -1487,6 +1547,16 @@ export type DeploymentServiceApiShape = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // The image this service runs — or, with a build_command, the base it is built
+  // on — as the deploy file named it (canonical and fully qualified, e.g.
+  // "docker.io/library/postgres:16"). Null = no image was named, in which case
+  // the two fields above say what the build starts from.
+  image: string | null,
+  // A single command line run while the image is built (null = none), and one
+  // run as the container's process instead of the image's own (null = the image
+  // decides). The start command is applied at run time, so it never builds.
+  build_command: string | null,
+  start_command: string | null,
   // Null = no persistent disk (an ephemeral container filesystem). Otherwise a
   // single-entry record keyed by volume id.
   persistent_volumes: Record<string, { path: string, size_gb: number }> | null,
@@ -1512,6 +1582,17 @@ const DEPLOYMENT_STATUS_TO_API = {
   CANCELED: "canceled",
 } satisfies Record<DeploymentStatus, DeploymentApiShape["status"]>;
 
+/**
+ * `full` includes the source manifest; `summary` omits it.
+ *
+ * The manifest is per-deployment and can hold MAX_SOURCE_MANIFEST_ENTRIES files,
+ * and the dashboard polls the LIST endpoint every few seconds while a deploy is
+ * in flight. Shipping every manifest in every page of that poll costs orders of
+ * magnitude more than the listing itself, to populate a tab the reader may never
+ * open — so only the single-deployment read carries it.
+ */
+export type DeploymentApiDetail = "full" | "summary";
+
 export function deploymentToApiShape(deployment: {
   id: string,
   number: number,
@@ -1521,10 +1602,12 @@ export function deploymentToApiShape(deployment: {
   finishedAt: Date | null,
   error: string | null,
   marshalBuildId: string | null,
+  hasBuildLogs: boolean,
   plannedServiceIds: Prisma.JsonValue,
   services: Prisma.JsonValue,
+  sourceManifest: Prisma.JsonValue | null,
   source: { sourceId: string },
-}): DeploymentApiShape {
+}, detail: DeploymentApiDetail = "full"): DeploymentApiShape {
   const outcomes = parseStoredOutcomes(deployment.services);
   const plannedServiceIds = parsePlannedServiceIds(deployment.plannedServiceIds);
   // Union, planned order first: an outcome whose service is missing from the
@@ -1541,7 +1624,13 @@ export function deploymentToApiShape(deployment: {
     error: deployment.error,
     // The build is what produces a log, so a deployment the runtime never
     // accepted has none to offer.
-    has_build_logs: deployment.marshalBuildId !== null,
+    // Both halves matter: a deployment the runtime never accepted has no log to
+    // fetch, and one that built nothing produced no log to fetch.
+    has_build_logs: deployment.marshalBuildId !== null && deployment.hasBuildLogs,
+    // Parsed rather than passed through: it comes out of a JSON column, so a row
+    // written by an older client must degrade to "no manifest" instead of
+    // reaching the dashboard as some other shape.
+    source_manifest: detail === "full" ? parseSourceManifest(deployment.sourceManifest) : null,
     services: serviceIds.map((serviceId) => {
       const outcome = outcomes.get(serviceId) ?? { status: "pending" as const };
       return {
@@ -1549,6 +1638,7 @@ export function deploymentToApiShape(deployment: {
         status: outcome.status,
         url: outcome.url ?? null,
         revision: outcome.revision ?? null,
+        image: outcome.image ?? null,
         error: outcome.error ?? null,
       };
     }),
@@ -1662,6 +1752,9 @@ export async function serviceToApiShape(options: {
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
+    image: row.image,
+    build_command: row.buildCommand,
+    start_command: row.startCommand,
     persistent_volumes: definition.persistent_volumes ?? null,
     provisioned: row.provisionedAt != null,
     status,

@@ -17,6 +17,9 @@ FROM node:22-slim
 # - The logs API mimics Fly's auth quirk: it REJECTS "Bearer <token>" and only
 #   accepts the raw token as the authorization header (Marshal's client depends
 #   on this difference staying visible in dev).
+# - A machine's `image_ref` reports the image its config named, resolved to a
+#   deterministic digest (sha256 of the reference). Marshal reads this to record
+#   which bytes a deploy ran, since it does not resolve images itself.
 # - GET /__mock/apps and /__mock/apps/:name expose full app state (machines
 #   with env/metadata, certs, IPs) for test assertions. The whole /__mock
 #   namespace requires the mock token: machine env holds RESOLVED deployment
@@ -26,6 +29,7 @@ WORKDIR /app
 
 RUN cat <<'EOF' > server.mjs
 import http from "node:http";
+import { createHash } from "node:crypto";
 
 const EXPECTED_TOKEN = "mock_hexclave_fly_key";
 
@@ -119,6 +123,31 @@ function appendLog(app, message, { instance = null, provider = "runner", level =
   });
 }
 
+// Real Fly RESOLVES a machine's image and reports what it resolved to. Marshal
+// does not resolve images itself, so this is the only place a digest comes from
+// for a service that named a tag — mocked deterministically (a hash of the
+// reference) so a tag maps to one stable digest across a test run, and so two
+// different tags never collide.
+function imageRefJson(image) {
+  if (typeof image !== "string" || image === "") return undefined;
+  const atIndex = image.indexOf("@");
+  const beforeDigest = atIndex === -1 ? image : image.slice(0, atIndex);
+  const lastSlashIndex = beforeDigest.lastIndexOf("/");
+  const colonIndex = beforeDigest.indexOf(":", lastSlashIndex + 1);
+  const name = colonIndex === -1 ? beforeDigest : beforeDigest.slice(0, colonIndex);
+  const tag = colonIndex === -1 ? undefined : beforeDigest.slice(colonIndex + 1);
+  const firstSlash = name.indexOf("/");
+  const hasRegistry = firstSlash !== -1 && /[.:]/.test(name.slice(0, firstSlash));
+  return {
+    registry: hasRegistry ? name.slice(0, firstSlash) : "registry-1.docker.io",
+    repository: hasRegistry ? name.slice(firstSlash + 1) : name,
+    tag,
+    // A reference that already names a digest resolves to itself; anything else
+    // gets the deterministic stand-in.
+    digest: atIndex === -1 ? `sha256:${createHash("sha256").update(image).digest("hex")}` : image.slice(atIndex + 1),
+  };
+}
+
 function machineJson(machine) {
   return {
     id: machine.id,
@@ -126,6 +155,7 @@ function machineJson(machine) {
     state: machine.state,
     region: machine.region,
     instance_id: machine.instanceId,
+    image_ref: imageRefJson(machine.config?.image),
     config: machine.config,
   };
 }
@@ -279,6 +309,12 @@ async function handleRequest(req, res) {
           metadata: machine.config.metadata ?? {},
           env: machine.config.env ?? {},
           mounts: machine.config.mounts ?? [],
+          // What the machine is started with, when it overrides the image's own
+          // entrypoint/command. Exposed alongside env and mounts because it is
+          // the same kind of fact — part of what Marshal asked the machine to be
+          // — and a test that asserts a service's start command has no other way
+          // to see it.
+          init: machine.config.init ?? null,
         })),
         volumes: [...app.volumesById.values()],
         certificates: [...app.certsByHostname.values()].map(certJson),

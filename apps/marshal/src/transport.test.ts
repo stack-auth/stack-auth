@@ -251,3 +251,35 @@ describe("service ports", () => {
       .toBe(revisionOf({ ports: { "5432": { protocol: "http" }, "9090": { protocol: "http" } } }));
   });
 });
+
+describe("start command", () => {
+  const key = Buffer.alloc(32, 7);
+
+  it("replaces the image's entrypoint AND command, not just its command", () => {
+    // VERIFIED against real Fly: with `init.exec` set, an nginx image's
+    // /docker-entrypoint.sh never runs. `init.cmd` alone is passed TO that
+    // entrypoint as arguments instead, which would silently mean something else
+    // for every image that has one.
+    expect(machineFor({ start_command: "node server.js" }).init).toEqual({ exec: ["/bin/sh", "-c", "node server.js"] });
+    // Absent when there is none, so a spec without one is byte-identical to what
+    // it was before this field existed and no machine rolls for it.
+    expect(machineFor({}).init).toBeUndefined();
+  });
+
+  it("rolls the revision, or the change would be silently dropped", () => {
+    // The start command produces no new image, so if it hashed identically
+    // applyServiceSpec would take the unchanged path and keep the previous spec
+    // — the same trap persistent volumes have.
+    const revisionOf = (config: Record<string, unknown>) => computeRevision(validateServiceSpec(spec(config)), key);
+    const base = revisionOf({});
+    expect(revisionOf({ start_command: "node server.js" })).not.toBe(base);
+    expect(revisionOf({ start_command: "node other.js" })).not.toBe(revisionOf({ start_command: "node server.js" }));
+    expect(revisionOf({ start_command: "node server.js" })).toBe(revisionOf({ start_command: "node server.js" }));
+  });
+
+  it("refuses a command that could not survive an argv entry", () => {
+    for (const invalid of ["a\nb", "", "  ", "x".repeat(2049), 42]) {
+      expect(() => validateServiceSpec(spec({ start_command: invalid })), String(invalid)).toThrow(/start_command/);
+    }
+  });
+});
