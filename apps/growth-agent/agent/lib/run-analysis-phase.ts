@@ -1,32 +1,14 @@
 import type { SendFn } from "eve/channels";
 import { runAgentSession, SafeRunError, safeMessageFromError } from "#lib/agent-session.ts";
-import { startPhaseHeartbeat } from "#lib/heartbeat.ts";
-import { getProjectContext, phaseComplete, phaseFail, phaseStart } from "#lib/hexclave-client.ts";
+import { getProjectContext, phaseFail, phaseStart } from "#lib/hexclave-client.ts";
+import { buildPhaseContinuationToken } from "#lib/phase-continuation.ts";
+import { buildGrowthSessionAuth } from "#lib/run-context.ts";
 import { GROWTH_ANALYSIS_TOPICS } from "#lib/analysis-topics.ts";
 import type { AnalysisPhaseRunRequest, DailyBriefRunRequest } from "#lib/types.ts";
 import { WRITING_STYLE_RULES } from "#lib/writing-style.ts";
 import { FOUNDER_INTERVIEW_PROMPT_GUIDANCE, FOUNDER_INTERVIEW_PROMPT_MAX_LENGTH } from "#lib/interview-question.ts";
 
-/**
- * Real execution of the run kinds the backend dispatches to this agent.
- * Each entry point receives the parsed dispatch body plus the channel's
- * `send` (the only programmatic way eve@0.27.0 exposes to start an agent
- * session — there is no session API importable from lib code, which is why
- * the channel threads `send` through instead of these functions being
- * self-contained).
- *
- * All model work happens in an eve session started with `mode: "task"`; the
- * run context (project/branch/run ids) rides on the session auth attributes
- * (see lib/run-context.ts) so the LLM never supplies ids to root tools.
- * Results are persisted by the model through the root tools; these functions
- * only own dispatch, lifecycle (start/heartbeat/complete/fail), and failure
- * reporting.
- */
 
-/**
- * Upper bound on one analysis/brief session (see `runAgentSession`'s `maxSessionMs`). 45 minutes is
- * far above any legitimate phase duration.
- */
 const MAX_AGENT_SESSION_MS = 45 * 60 * 1000;
 
 const ANALYSIS_TIMEOUT_MESSAGE = "The analysis agent did not finish within the allowed time.";
@@ -39,13 +21,7 @@ function formatContextForPrompt(context: unknown): string {
   return JSON.stringify(context, null, 2);
 }
 
-/**
- * Exported for `run-analysis-phase.test.ts`, which asserts the paid-acquisition clause still forbids
- * claiming an ad ran. That clause is prompt-side safety work, not documentation: the agent can write
- * anything into a report, and a brief that says an ad "was launched" is a lie the customer has no way
- * to check. When the ad platform integration lands it gains a twin on the tool side (a connection
- * `approval` deny), and the clause keeps the model from planning around a stop it cannot see coming.
- */
+
 export const SHARED_PROMPT_RULES = [
   "Rules:",
   "- Never fabricate data. Every number or claim must come from a tool result in this session.",
@@ -154,50 +130,31 @@ function buildPhasePrompt(input: AnalysisPhaseRunRequest, projectContextJson: st
   }
 }
 
+
 export async function executeAnalysisPhase(input: AnalysisPhaseRunRequest, helpers: { readonly send: SendFn }): Promise<void> {
-  // Echoing the dispatched attempt fences out stale executions: if a newer
-  // attempt already started, this call throws and we never run the model.
   await phaseStart(input);
-  const stopHeartbeat = startPhaseHeartbeat(input);
   try {
     const projectContext = await getProjectContext({ project_id: input.project_id, branch_id: input.branch_id });
-    await runAgentSession({
-      send: helpers.send,
-      maxSessionMs: MAX_AGENT_SESSION_MS,
-      timeoutMessage: ANALYSIS_TIMEOUT_MESSAGE,
-      message: buildPhasePrompt(input, formatContextForPrompt(projectContext)),
-      context: {
+    await helpers.send(buildPhasePrompt(input, formatContextForPrompt(projectContext)), {
+      auth: buildGrowthSessionAuth({
         project_id: input.project_id,
         branch_id: input.branch_id,
         run_id: input.run_id,
         phase_key: input.phase_key,
         finding_source: input.phase_key,
         agent_token: input.agent_token,
-      },
-      continuationToken: `run:${input.run_id}:${input.phase_key}:${input.attempt}`,
+      }),
+      continuationToken: buildPhaseContinuationToken(input),
+      mode: "task",
       title: `Growth analysis: ${input.phase_key} (run ${input.run_id})`,
     });
   } catch (error) {
-    // Failure-reporting boundary: this is where a phase error is translated
-    // into a phase-fail call with a customer-safe message. The raw error is
-    // logged here; if even phaseFail throws, the channel's runDetached logs
-    // that as the last escalation path.
-    console.error(`[growth-agent] analysis phase failed: run=${input.run_id} phase=${input.phase_key} attempt=${input.attempt}`, error);
+    console.error(`[growth-agent] analysis phase failed to start: run=${input.run_id} phase=${input.phase_key} attempt=${input.attempt}`, error);
     await phaseFail({ ...input, error_message: safeMessageFromError(error, genericPhaseFailureMessage(input.phase_key)) });
-    return;
-  } finally {
-    stopHeartbeat();
   }
-  await phaseComplete(input);
 }
 
-/**
- * Daily briefs have no phase lifecycle and no failure endpoint: the backend
- * pre-created the brief row (status "generating" doubles as the day lock) and
- * the session's `save-brief` tool call flips it to ready. A thrown error here
- * escapes to the channel's runDetached, which logs it; the row is then
- * visible as stuck-generating on the backend side.
- */
+
 export async function executeDailyBrief(input: DailyBriefRunRequest, helpers: { readonly send: SendFn }): Promise<void> {
   const message = [
     `Write today's growth brief (date ${input.date}, UTC) for project ${input.project_id} (branch ${input.branch_id}).`,

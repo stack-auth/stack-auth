@@ -6,44 +6,17 @@ import { executeBlogDraft } from "#lib/run-blog-draft.ts";
 import { executeChatTurn } from "#lib/run-chat.ts";
 import { executeInterviewTurn } from "#lib/run-interview.ts";
 import { executeQuizAuthoring } from "#lib/run-quiz.ts";
+import { settleGrowthPhaseFromTerminalEvent } from "#lib/phase-settlement.ts";
 
-/**
- * Service-to-service channel the Hexclave backend dispatches growth runs to.
- * Every route is authenticated with the shared bearer secret. Run routes ack
- * immediately with `{ accepted: true }` and execute in the background via
- * `waitUntil`, since a full run takes far longer than the backend's dispatch
- * timeout; run progress flows back through the phase lifecycle endpoints on
- * the backend instead of through this HTTP response.
- *
- * The channel's `send` helper is threaded into each execute function because
- * it is the only programmatic entry point eve exposes for starting agent
- * sessions — lib code cannot import a session API on its own.
- *
- * Note on URLs: eve mounts custom channel routes at the authored path
- * verbatim (the channel file stem only namespaces continuation tokens), so
- * these routes live at e.g. `POST /runs/analysis-phase` on the agent server —
- * NOT under `/eve/v1/growth/...`.
- */
 
 const projectRefSchema = z.object({
   project_id: z.string().min(1),
   branch_id: z.string().min(1),
-  /**
-   * The run-scoped `grt_` token the backend minted for this dispatch (see GrowthAgentTokenRef in
-   * lib/types.ts). OPTIONAL on every route, deliberately: the backend chunk that starts sending it
-   * may deploy after this agent, and a dispatch that arrives without it must still run. Making this
-   * required would turn a deploy-ordering detail into a wave of 400s.
-   *
-   * It is only ever forwarded into the session's auth attributes; nothing in this file reads it,
-   * and no lifecycle body carries it (callPhaseLifecycle picks its fields explicitly).
-   */
+
   agent_token: z.string().min(1).optional(),
 });
 
-// These schemas mirror the exact bodies the backend's postToEve sends
-// (apps/backend/src/lib/growth/eve-dispatch.ts). Only analysis phases carry the
-// run/phase/attempt lifecycle; briefs are identified by their own row id and
-// have no failure endpoint.
+
 const analysisPhaseRunRequestSchema = projectRefSchema.extend({
   run_id: z.string().min(1),
   phase_key: z.string().min(1),
@@ -144,7 +117,18 @@ function createRunRoute<TInput>(path: string, label: (input: TInput) => string, 
   });
 }
 
+const SESSION_FAILED_PHASE_MESSAGE = "The analysis step failed unexpectedly. It will be retried automatically if attempts remain.";
+
 export default defineChannel({
+  events: {
+    "session.completed": async (_data, channel) => {
+      await settleGrowthPhaseFromTerminalEvent(channel, null);
+    },
+    "session.failed": async (data, channel) => {
+      console.error(`[growth-agent] session failed: code=${data.code} message=${data.message}`);
+      await settleGrowthPhaseFromTerminalEvent(channel, SESSION_FAILED_PHASE_MESSAGE);
+    },
+  },
   routes: [
     createRunRoute("/runs/analysis-phase", (input) => `run=${input.run_id} phase=${input.phase_key}`, analysisPhaseRunRequestSchema, executeAnalysisPhase),
     createRunRoute("/runs/daily-brief", (input) => `brief=${input.brief_id} date=${input.date}`, dailyBriefRunRequestSchema, executeDailyBrief),

@@ -2,6 +2,7 @@ import { GrowthRunStatus, WorkflowRunState } from "@/generated/prisma/enums";
 import type { Tenancy } from "@/lib/tenancies";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { globalPrismaClient } from "@/prisma-client";
+import { runWorkflowEngineStep } from "@/lib/workflows/engine";
 import { getGrowthAnalysisSnapshot, tickGrowthAnalysisRun } from "./orchestration";
 import { GROWTH_ANALYSIS_WORKFLOW_ID } from "./workflow-sources";
 import { ensureGrowthWorkflows, getGrowthAnalysisLegRunKeys, GROWTH_EVENT_TYPES } from "./workflows";
@@ -50,13 +51,43 @@ export async function runGrowthProjectAnalysisStep(tenancy: Tenancy): Promise<{ 
   return { didWork: before?.fingerprint !== after?.fingerprint };
 }
 
-export async function repairGrowthProject(tenancy: Tenancy): Promise<{ didWork: boolean }> {
+const REPAIR_ENGINE_BUDGET_MS = 60_000;
+
+async function findActiveGrowthLeg(tenancy: Tenancy, growthRunId: string) {
+  return await globalPrismaClient.workflowRun.findFirst({
+    where: {
+      tenancyId: tenancy.id,
+      workflowId: GROWTH_ANALYSIS_WORKFLOW_ID,
+      runKey: { in: getGrowthAnalysisLegRunKeys(growthRunId) },
+      state: { in: [WorkflowRunState.QUEUED, WorkflowRunState.RUNNING, WorkflowRunState.SLEEPING] },
+    },
+    select: { id: true },
+  });
+}
+
+async function driveGrowthLegUntilActive(tenancy: Tenancy, growthRunId: string): Promise<boolean> {
+  const startedAt = performance.now();
+  const engineDeadlineMs = Date.now() + REPAIR_ENGINE_BUDGET_MS;
+  while (true) {
+    const step = await runWorkflowEngineStep({ deadlineMs: engineDeadlineMs });
+    if (await findActiveGrowthLeg(tenancy, growthRunId) != null) return true;
+    if (performance.now() - startedAt >= REPAIR_ENGINE_BUDGET_MS) return false;
+    if (!step.didWork) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
+export type GrowthRepairResult = {
+  readonly didWork: boolean,
+  readonly legStarted: boolean | null,
+};
+
+export async function repairGrowthProject(tenancy: Tenancy): Promise<GrowthRepairResult> {
   let didWork = false;
   const workflowResults = await ensureGrowthWorkflows(tenancy);
   didWork = [...workflowResults.values()].some((result) => result.created) || didWork;
 
   const run = await findActiveGrowthRun(tenancy);
-  if (run == null) return { didWork };
+  if (run == null) return { didWork, legStarted: null };
 
   const leg = run.status === GrowthRunStatus.PENDING || run.status === GrowthRunStatus.RUNNING
     ? "activation"
@@ -67,37 +98,24 @@ export async function repairGrowthProject(tenancy: Tenancy): Promise<{ didWork: 
         : null;
   if (leg == null) {
     const tick = await runGrowthProjectAnalysisStep(tenancy);
-    return { didWork: tick.didWork || didWork };
+    return { didWork: tick.didWork || didWork, legStarted: null };
   }
 
-  const activeLeg = await globalPrismaClient.workflowRun.findFirst({
-    where: {
-      tenancyId: tenancy.id,
-      workflowId: GROWTH_ANALYSIS_WORKFLOW_ID,
-      runKey: { in: getGrowthAnalysisLegRunKeys(run.id) },
-      state: { in: [WorkflowRunState.QUEUED, WorkflowRunState.RUNNING, WorkflowRunState.SLEEPING] },
-    },
-    select: { id: true },
-  });
-  if (activeLeg != null) {
+  if (await findActiveGrowthLeg(tenancy, run.id) != null) {
     const tick = await runGrowthProjectAnalysisStep(tenancy);
-    return { didWork: tick.didWork || didWork };
+    return { didWork: tick.didWork || didWork, legStarted: true };
   }
 
   const eventType = leg === "activation" ? GROWTH_EVENT_TYPES.analysisRunActivated : GROWTH_EVENT_TYPES.interviewFinished;
-  // A boundary event is durable before its WorkflowRun is materialized. Treat that pending event
-  // as an active leg: enqueueing a second event here can leave it behind the original until after
-  // the first leg completes, at which point runKey's active-only conflict check no longer dedupes it.
-  if (await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType })) {
-    const tick = await runGrowthProjectAnalysisStep(tenancy);
-    return { didWork: tick.didWork || didWork };
+  if (!await hasPendingGrowthBoundaryEvent({ tenancyId: tenancy.id, growthRunId: run.id, type: eventType })) {
+    await enqueueWorkflowEvent(globalPrismaClient, {
+      tenancy,
+      type: eventType,
+      payload: leg === "activation" ? { growth_run_id: run.id, trigger: run.trigger } : { growth_run_id: run.id },
+    });
   }
 
-  const enqueued = await enqueueWorkflowEvent(globalPrismaClient, {
-    tenancy,
-    type: eventType,
-    payload: leg === "activation" ? { growth_run_id: run.id, trigger: run.trigger } : { growth_run_id: run.id },
-  });
+  const legStarted = await driveGrowthLegUntilActive(tenancy, run.id);
   const tick = await runGrowthProjectAnalysisStep(tenancy);
-  return { didWork: tick.didWork || enqueued != null || didWork };
+  return { didWork: legStarted || tick.didWork || didWork, legStarted };
 }

@@ -151,6 +151,8 @@ const runSchema = z.object({
 
 const runIdResponseSchema = z.object({ run_id: z.string() });
 
+const restartOnboardingResponseSchema = z.object({ cancelled_run_ids: z.array(z.string()) });
+
 // The HTTP layer (GrowthApiError, the 4xx conversion, and the content-type quirk) lives in
 // growth-api-client.ts so the Games section's fetchers can share it. Re-exported here because this
 // module has always been the public entry point for them.
@@ -247,6 +249,11 @@ export async function completeGrowthOnboarding(app: object, input: { websiteUrl:
     body: JSON.stringify({ website_url: input.websiteUrl, company_summary: input.companySummary }),
   }));
   return { runId: response.run_id };
+}
+
+export async function restartGrowthOnboarding(app: object): Promise<{ cancelledRunIds: string[] }> {
+  const response = restartOnboardingResponseSchema.parse(await requestJson(app, "/onboarding/restart", { method: "POST" }));
+  return { cancelledRunIds: response.cancelled_run_ids };
 }
 
 export async function startGrowthRun(app: object): Promise<{ runId: string }> {
@@ -720,17 +727,21 @@ export async function setGrowthAdminCategoryScore(app: object, projectId: string
   await requestGrowthAdminJson(app, "/category-scores", { method: "PUT", body: JSON.stringify({ target_project_id: projectId, category, score }) });
 }
 
-export type GrowthAdminManualStep = "analysis_tick" | "project_recovery";
+export type GrowthAdminSchedulerResult = {
+  readonly didWork: boolean,
+  readonly legStarted: boolean | null,
+};
 
-export async function runGrowthAdminManualStep(app: object, projectId: string, step: GrowthAdminManualStep): Promise<{ didWork: boolean }> {
+export async function runGrowthAdminSchedulerStep(app: object, projectId: string): Promise<GrowthAdminSchedulerResult> {
   const response = z.object({
-    step: z.enum(["analysis_tick", "project_recovery"]),
+    step: z.string(),
     did_work: z.boolean(),
+    leg_started: z.boolean().nullable(),
   }).parse(await requestGrowthAdminJson(app, "/run-now", {
     method: "POST",
-    body: JSON.stringify({ step, target_project_id: projectId }),
+    body: JSON.stringify({ step: "project_recovery", target_project_id: projectId }),
   }));
-  return { didWork: response.did_work };
+  return { didWork: response.did_work, legStarted: response.leg_started };
 }
 
 export type GrowthAdminFunctionalActionFields = {
