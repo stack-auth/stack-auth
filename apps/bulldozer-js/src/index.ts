@@ -486,8 +486,8 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
   try {
-    // Replicated, so that a caller reading right after this write doesn't see the pre-write snapshot root.
-    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
+    // Consistent, so subsequent readers see the write and it survives a coordinated failure.
+    await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
       newRowData: options.rowData,
@@ -543,7 +543,7 @@ function readBatchRows(body: unknown): unknown[] {
 async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown, rowIdField?: string }) {
   const rows = readStoredRowsFromBodies(options);
   try {
-    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+    await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
   } catch (error) {
     // A batch is one cascade, so a cascade-phase failure can't be pinned to a single row.
     // Attach the table + the batch's row identifiers (no rowData here, to keep batch events small).
@@ -1308,7 +1308,7 @@ runAsynchronously(async () => {
       const tickStartedAt = performance.now();
       try {
         lastTickMillis = Math.max(Date.now(), lastTickMillis);
-        await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
+        await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
       } catch (error) {
         logBulldozerService("tick-loop-error", {
           elapsedMs: performance.now() - tickStartedAt,

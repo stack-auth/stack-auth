@@ -2549,16 +2549,37 @@ model DeploymentService {
   // The Dockerfile to build from, relative to the root of the uploaded source.
   // Null = no Dockerfile: the remote builder auto-detects the build with Railpack.
   dockerfilePath String?
-  // An already-built image to run instead of building one from the upload, as a
-  // canonical fully-qualified reference with an explicit tag or digest
-  // ("docker.io/library/postgres:16"). Mutually exclusive with rootDirectory and
-  // dockerfilePath — those say where the code is, this says what to run —
-  // enforced in code alongside the rest of the definition validation rather than
-  // by a CHECK, for the same reason as isPublic above.
+  // An image, as a canonical fully-qualified reference with an explicit tag or
+  // digest ("docker.io/library/postgres:16"). With no buildCommand it is the
+  // image to RUN and the service is not built at all; with one it is the BASE
+  // the service is built on, and rootDirectory says where in the upload the
+  // build command runs. Mutually exclusive with dockerfilePath — each of them
+  // says what the build starts from — enforced in code alongside the rest of the
+  // definition validation rather than by a CHECK, for the same reason as
+  // isPublic above.
   //
   // A TAG here is deliberately not resolved: this is what the author asked for,
   // and the digest it resolved to belongs to the deployment that pinned it.
   image String?
+  // A single command line, run through `sh -c` while the image is BUILT. Null =
+  // the base decides the build entirely. Its base is `image`, or
+  // `dockerfilePath`'s Dockerfile (where it becomes a final appended RUN), or —
+  // with neither — the Hexclave base image, which replaces Railpack
+  // auto-detection.
+  //
+  // (The Vercel-era DeploymentService had a buildCommand column too, dropped
+  // when deployments moved to containers. This one is not it: that one was a
+  // framework build setting handed to Vercel, this one is a line of a Dockerfile
+  // Marshal generates.)
+  buildCommand String?
+  // A single command line, run through `sh -c` as the container's process
+  // instead of whatever the image would have started. Null = the image decides.
+  //
+  // Applied at RUN time (the machine's init replaces the image's entrypoint and
+  // command both), never baked into an image — so it causes no build, and a
+  // service that only runs an `image` keeps its build-less deploy while still
+  // being able to say how to start.
+  startCommand String?
   // Note there is deliberately no dev command here: `devCommand` in the deploy
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only

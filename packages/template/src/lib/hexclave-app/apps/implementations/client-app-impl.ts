@@ -19,6 +19,7 @@ import { TeamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@hexclave/shared/dist/utils/compile-time";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
@@ -36,7 +37,6 @@ import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
-import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { uuidToW3cSpanId, uuidToW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
@@ -57,13 +57,11 @@ import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-acco
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
+import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
-import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, saveRedirectBackStateFromUrl } from "./redirect-back-state";
-import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
-import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import type { CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScopeData, ErrorScope } from "../interfaces/error-capture";
@@ -79,6 +77,8 @@ import { generateOtelSpanId, traceFlagsForSampleRate } from "./otel-context";
 import { normalizeNetworkCaptureOptions, type NetworkCaptureConfig } from "./network-capture";
 import { createInertSpanHandle } from "./span-handle";
 import { buildPropagationHeaderValues, trustedDomainsToPropagationOrigins, type SpanPropagationContext } from "./span-propagation";
+import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -185,6 +185,26 @@ function createUntrustedUrlError(options: {
       url: options.url,
       projectId: options.projectId,
       ...options.cause === undefined ? {} : { cause: options.cause },
+    },
+  });
+}
+
+function createServerCrossOriginRedirectError(options: {
+  handlerName: keyof HandlerUrls,
+  url: string,
+  projectId: string,
+}): HexclaveSetupError {
+  return new HexclaveSetupError({
+    title: "Cross-origin authentication redirects must start in the browser",
+    message: `Cannot redirect to the cross-origin ${options.handlerName} page from a server-rendered context.`,
+    howToFix: [
+      "Use useUser({ or: \"redirect\" }) in a Client Component so Hexclave can read the current URL and set the PKCE verifier cookie before redirecting.",
+      "For server-side authorization, call getUser() and handle a null result, or use getUser({ or: \"throw\" }).",
+    ],
+    extraData: {
+      handlerName: options.handlerName,
+      url: options.url,
+      projectId: options.projectId,
     },
   });
 }
@@ -370,6 +390,18 @@ async function getServerRequestHost(): Promise<string | null> {
   // ELSE_PLATFORM
   return null;
   // END_PLATFORM
+}
+
+async function isServerRedirectTargetCrossOrigin(url: string): Promise<boolean> {
+  if (isRelative(url)) {
+    return false;
+  }
+  const host = await getServerRequestHost();
+  if (host == null) {
+    return true;
+  }
+  const protocol = await isSecureCookieContext() ? "https:" : "http:";
+  return new URL(url).origin !== new URL(`${protocol}//${host}`).origin;
 }
 
 type HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
@@ -3589,6 +3621,19 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
+    if (
+      currentUrl == null
+      && (
+        isHostedHandlerUrlForProject({ url: rawHandlerUrl, projectId: this.projectId })
+        || await isServerRedirectTargetCrossOrigin(rawHandlerUrl)
+      )
+    ) {
+      throwSetupError(createServerCrossOriginRedirectError({
+        handlerName,
+        url: rawHandlerUrl,
+        projectId: this.projectId,
+      }));
+    }
     const shouldRestorePersistedRedirectBackState = (
       (options?.noRedirectBack !== true && (handlerName === "afterSignIn" || handlerName === "afterSignUp"))
       || handlerName === "forgotPassword"
@@ -3608,10 +3653,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       rawHandlerUrl,
       noRedirectBack: options?.noRedirectBack === true,
       currentUrl,
-      // Hosted callback URLs use the browser's current location. Keep this lazy because Server
-      // Components intentionally plan redirects without a current URL and never need a callback.
       getLocalOAuthCallbackUrl: () => this._getLocalOAuthCallbackHandlerUrl(),
-      rawHomeUrl: rawUrls.home,
+      rawAfterSignInUrl: rawUrls.afterSignIn,
       getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
     });
 
@@ -3645,13 +3688,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return redirectUrl;
   }
 
+  protected _isHandlerRedirectBrowserOnly(handlerName: keyof HandlerUrls): boolean {
+    const rawHandlerUrl = getUrls(this._urlOptions, { projectId: this.projectId })[handlerName];
+    return isHostedHandlerUrlForProject({ url: rawHandlerUrl, projectId: this.projectId })
+      || !isRelative(rawHandlerUrl);
+  }
+
   protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
     // IF_PLATFORM tanstack-start
     if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
-      const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
-      const rawHandlerUrl = rawUrls[handlerName];
-      if (!rawHandlerUrl) {
-        throw new Error(`No URL for handler name ${handlerName}`);
+      const rawHandlerUrl = getUrls(this._urlOptions, { projectId: this.projectId })[handlerName];
+      if (this._isHandlerRedirectBrowserOnly(handlerName)) {
+        throwSetupError(createServerCrossOriginRedirectError({
+          handlerName,
+          url: rawHandlerUrl,
+          projectId: this.projectId,
+        }));
       }
       throw TanStackRouter.redirect({ href: rawHandlerUrl, replace: options?.replace });
     }
@@ -3831,14 +3883,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
         case 'redirect': {
-          if (!crud?.is_anonymous && crud?.is_restricted) {
-            if (!this._redirectToHandlerDuringRender("onboarding", { replace: true })) {
-              runAsynchronously(this.redirectToOnboarding({ replace: true }));
-            }
-          } else {
-            if (!this._redirectToHandlerDuringRender("signIn", { replace: true })) {
-              runAsynchronously(this.redirectToSignIn({ replace: true }));
-            }
+          const handlerName = !crud?.is_anonymous && crud?.is_restricted ? "onboarding" : "signIn";
+          // Cross-origin auth needs window.location and browser cookie storage for redirect-back
+          // state and PKCE. During SSR, bail this subtree out to its Suspense fallback so hydration
+          // retries it and initiates the exact same redirect in the browser.
+          if (!isBrowserLike() && this._isHandlerRedirectBrowserOnly(handlerName)) {
+            suspendIfSsr("useUser({ or: \"redirect\" })");
+          }
+          if (!this._redirectToHandlerDuringRender(handlerName, { replace: true })) {
+            runAsynchronously(this._redirectToHandler(handlerName, { replace: true }));
           }
           suspend();
           throw new HexclaveAssertionError("suspend should never return");

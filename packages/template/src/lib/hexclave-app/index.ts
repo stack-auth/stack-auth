@@ -160,6 +160,7 @@ export type {
   AdminDeploymentDomainJson,
   AdminDeploymentEnvVarJson,
   AdminDeploymentJson,
+  AdminDeploymentServiceLogLineJson,
   AdminDeploymentServiceOutcomeJson,
   AdminProjectSecretJson,
   AdminDeploymentServiceJson,

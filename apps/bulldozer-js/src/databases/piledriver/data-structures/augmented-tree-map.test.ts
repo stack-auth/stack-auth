@@ -147,6 +147,9 @@ function withHeapCounters(tree: AugmentedTreeMap<number, number, number>, arity 
         const node: any = await ref.get();
         return isNode(node) ? { ...node, children: node.children.map(wrapChild) } : node;
       },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
+      },
       [isPiledriverHeapObjectSymbol]: true as const,
     } as PiledriverHeapObject;
     seen.set(ref, wrapped);
@@ -174,6 +177,9 @@ function withMultiMapHeapCounters(tree: AugmentedTreeMultiMap<number, number, nu
         gets++;
         const node: any = await ref.get();
         return isNode(node) ? { ...node, children: node.children.map(wrapChild) } : node;
+      },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
       },
       [isPiledriverHeapObjectSymbol]: true as const,
     } as PiledriverHeapObject;
@@ -298,6 +304,9 @@ describe("AugmentedTreeMap", () => {
         if (!isNode(node)) return node;
         const { version: _version, entryAugmentations: _entryAugmentations, ...legacy } = node as any;
         return { ...legacy, children: node.children.map((child: any) => child ? { ...child, ref: legacyRef(child.ref) } : child) };
+      },
+      getValueIfLocallyCreated() {
+        return { status: "database-reference" };
       },
       [isPiledriverHeapObjectSymbol]: true as const,
     } as PiledriverHeapObject);

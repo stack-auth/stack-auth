@@ -85,6 +85,18 @@ export type ContainerConfig = {
   // disk, so the same id under a different service moves the mount there. At most one
   // entry — a Fly machine mounts at most one volume.
   persistent_volumes?: Record<string, VolumeConfig>,
+  // A single command line to start the container with, INSTEAD of whatever the
+  // image would have started. Absent = the image decides.
+  //
+  // It becomes the machine's `init.exec`, which replaces the image's entrypoint
+  // AND its command (verified against real Fly: with `exec` set, an nginx image's
+  // /docker-entrypoint.sh never runs; `init.cmd` alone would instead be passed
+  // to that entrypoint as arguments, which is a different and much more
+  // surprising thing). So it is container config, not image content: it takes
+  // effect on a machine roll and never causes a build.
+  //
+  // Run through `/bin/sh -c`, so an image without a shell cannot use one.
+  start_command?: string,
 };
 
 export type ServiceSpec = {
@@ -110,19 +122,60 @@ export type DeploymentTarget = {
   // Relative to the ROOT of the upload; absent = the builder auto-detects the
   // build with Railpack (https://railpack.com).
   dockerfile_path?: string,
-  // An ALREADY-BUILT image to run instead of building one. Mutually exclusive
-  // with the two fields above: a target either takes part in the deployment's
-  // build or it does not.
+  // An image. Mutually exclusive with `dockerfile_path`: each of them says what
+  // the build starts from.
   //
-  // Stored as the author wrote it, normalized but NOT resolved: a tag reaches
-  // the machine config as a tag and Fly resolves it when it pulls. A target with
-  // an image starts "pending" rather than "building": there is nothing to wait
-  // for.
+  // ALONE, it is the image to run: the target takes no part in the deployment's
+  // build, and starts "pending" rather than "building" because there is nothing
+  // to wait for. Stored as the author wrote it, normalized but NOT resolved — a
+  // tag reaches the machine config as a tag and Fly resolves it when it pulls.
+  //
+  // With a `build_command` it is instead the BASE of a generated Dockerfile, and
+  // the target is built like any other. `targetIsBuilt` is the one place that
+  // decides which of the two a target is.
   image?: string,
+  // A single command line run while this target's image is built.
+  //
+  // With a `dockerfile_path` it is APPENDED to the author's Dockerfile as a
+  // final RUN. Otherwise it selects a GENERATED Dockerfile, whose base is
+  // `image` if one is named and BASE_IMAGE otherwise, into which the whole
+  // upload is copied.
+  build_command?: string,
   // The spec to apply once the image exists; its `source` is filled in with what
   // the build produced.
   spec: Omit<ServiceSpec, "source">,
 };
+
+/**
+ * Whether a target takes part in the deployment's BUILD.
+ *
+ * The one place that decides it. Everything downstream is keyed off this answer
+ * — whether the deployment needs an upload at all, whether it starts a builder
+ * machine (and so whether it has a build log), and whether the target's initial
+ * status is "building" or "pending" — and those must not be able to disagree.
+ *
+ * An `image` alone is the only shape that is not built: adding a `build_command`
+ * turns that image into a base.
+ */
+export function targetIsBuilt(target: Pick<DeploymentTarget, "image" | "build_command">): boolean {
+  return target.image === undefined || target.build_command !== undefined;
+}
+
+/**
+ * Whether a built target's Dockerfile is GENERATED (a base image with the upload
+ * copied onto it) rather than the author's own or Railpack's auto-detected plan.
+ *
+ * Only a `build_command` selects it, and a `start_command` deliberately does
+ * not: the start command is machine configuration that works on whatever image
+ * the target ends up with, so letting it decide the BUILD would mean that saying
+ * "run it this way" silently discarded the install and compile steps Railpack
+ * was doing. KEPT IN SYNC WITH deploymentServiceUsesGeneratedDockerfile in
+ * @hexclave/shared.
+ */
+export function targetUsesGeneratedDockerfile(target: Pick<DeploymentTarget, "image" | "dockerfile_path" | "build_command">): boolean {
+  if (target.build_command === undefined) return false;
+  return target.dockerfile_path === undefined;
+}
 
 export type DeploymentStatus = "queued" | "building" | "deploying" | "succeeded" | "failed" | "canceled";
 
