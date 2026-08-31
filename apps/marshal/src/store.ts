@@ -2,17 +2,19 @@ import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMult
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, MULTIPART_UPLOAD_THRESHOLD_BYTES, UPLOAD_EXPIRY_SECONDS, UPLOAD_PART_SIZE_BYTES } from "./config.js";
 import { decryptString, encryptString } from "./spec-crypto.js";
-import type { DomainClaim, EnvValue, ReconciliationLease, ServiceSpec, StoredDeployment, StoredSpec } from "./types.js";
+import type { DomainClaim, EnvValue, PoolProjectEntry, ReconciliationLease, ServiceSpec, StoredDeployment, StoredSpec, TenantProjectAssignment } from "./types.js";
 
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision; env is AES-GCM encrypted
-//   reconciliation-leases/<ns>/<key>.json — renewable per-service Fly mutation lease
+//   reconciliation-leases/<ns>/<key>.json — renewable per-service provider mutation lease
 //   uploads/<ns>/<id>.tar.gz              — source tarballs (presigned PUT slots; lifecycle-expired)
 //   uploads/.validated/<ns>/<build>.tar.gz — immutable validated copies consumed by builders
 //   builds/<ns>/<key>/rec/<ulid>.json     — build records (ULID ids → lexicographic ≈ chronological)
 //   builds/<ns>/<key>/log/<ulid>.jsonl    — durable build logs (LogLine per line), written at terminal state
 //   domains/<hostname>.json               — GLOBAL hostname-uniqueness registry (conditional-PUT claims)
 //   domain-index/<ns>/<key>/<hostname>    — per-service index of claims, so deletes can release hostnames
+//   tenants/<ns>.json                     — namespace → tenant GCP project assignment (conditional-PUT, once)
+//   gcp-project-pool/<projectId>.json     — pre-provisioned tenant projects awaiting assignment
 
 let cachedClient: S3Client | null = null;
 
@@ -559,4 +561,92 @@ export async function releaseDomainClaim(claim: Versioned<DomainClaim>): Promise
 export async function listDomainClaimsForService(ns: string, key: string): Promise<string[]> {
   const prefix = `domain-index/${ns}/${key}/`;
   return (await listKeys(prefix)).map((objectKey) => objectKey.slice(prefix.length));
+}
+
+// ---------------------------------------------------------------------------
+// Tenant project assignment and pre-provisioned project pool
+//
+// The pool exists because Google's multi-tenant guidance recommends assigning
+// pre-created projects to tenants on demand: creating a project, attaching
+// billing (a brand-new project is briefly unknown to Cloud Billing, which the
+// provisioner retries for up to ten minutes), and batch-enabling its APIs can
+// take fifteen minutes — far past every request budget in the deploy path.
+
+const TENANT_PROJECT_ASSIGNMENT_PREFIX = "tenants/";
+
+function tenantProjectAssignmentKey(ns: string): string {
+  return `${TENANT_PROJECT_ASSIGNMENT_PREFIX}${ns}.json`;
+}
+
+export async function readTenantProjectAssignment(ns: string): Promise<string | null> {
+  const stored = await getJson<TenantProjectAssignment>(tenantProjectAssignmentKey(ns));
+  if (stored === null) return null;
+  if (typeof stored.project_id !== "string") throw new Error(`stored tenant project assignment for ${JSON.stringify(ns)} is malformed`);
+  return stored.project_id;
+}
+
+// Returns the authoritative assignment no matter who won the race: the caller's
+// projectId when the create succeeded, or the pre-existing winner's otherwise. The
+// retry loop covers the create losing while a concurrent delete removed the winner —
+// only possible around namespace teardown, which does not exist yet.
+export async function assignTenantProject(ns: string, projectId: string): Promise<string> {
+  for (;;) {
+    const created = await putJsonConditionally(tenantProjectAssignmentKey(ns), { project_id: projectId } satisfies TenantProjectAssignment, { ifNoneMatch: true });
+    if (created !== null) return projectId;
+    const existing = await getJson<TenantProjectAssignment>(tenantProjectAssignmentKey(ns));
+    if (existing !== null) {
+      if (typeof existing.project_id !== "string") throw new Error(`stored tenant project assignment for ${JSON.stringify(ns)} is malformed`);
+      return existing.project_id;
+    }
+  }
+}
+
+function poolProjectKey(projectId: string): string {
+  return `gcp-project-pool/${projectId}.json`;
+}
+
+export async function listPoolProjects(): Promise<{ projectId: string, entry: PoolProjectEntry }[]> {
+  const prefix = "gcp-project-pool/";
+  const projects: { projectId: string, entry: PoolProjectEntry }[] = [];
+  for (const objectKey of await listKeys(prefix)) {
+    if (!objectKey.endsWith(".json")) continue;
+    const projectId = objectKey.slice(prefix.length, -".json".length);
+    // Read as unknown and validated here, not cast: a malformed pool entry would otherwise
+    // flow into the claim logic with a trusted-looking shape.
+    const stored: unknown = await getJson<unknown>(objectKey);
+    if (stored === null) continue;
+    if (!isRecord(stored)) throw new Error(`stored project pool entry ${JSON.stringify(projectId)} is malformed`);
+    const entry: PoolProjectEntry | null = stored.state === "ready"
+      ? { state: "ready" }
+      : stored.state === "claimed" && typeof stored.ns === "string"
+        ? { state: "claimed", ns: stored.ns }
+        : null;
+    if (entry === null) throw new Error(`stored project pool entry ${JSON.stringify(projectId)} is malformed`);
+    projects.push({ projectId, entry });
+  }
+  return projects;
+}
+
+// Registers a fully provisioned project as available. Fails (false) only when the id
+// already exists — then the caller must tear the newly provisioned project back down,
+// or it would sit in the account unbilled-to-anyone and unknown to the pool.
+export async function registerPoolProject(projectId: string): Promise<boolean> {
+  return await putJsonConditionally(poolProjectKey(projectId), { state: "ready" } satisfies PoolProjectEntry, { ifNoneMatch: true }) !== null;
+}
+
+// The ETag fence is the distributed arbiter: exactly one caller can flip a ready entry
+// to claimed, so two Marshal replicas (or two concurrent deploys) cannot be handed the
+// same tenant project.
+export async function claimPoolProject(projectId: string, ns: string): Promise<boolean> {
+  const entry = await getJsonVersioned<PoolProjectEntry>(poolProjectKey(projectId));
+  if (entry === null || entry.value.state !== "ready") return false;
+  return await putJsonConditionally(poolProjectKey(projectId), { state: "claimed", ns } satisfies PoolProjectEntry, { ifMatch: entry.etag }) !== null;
+}
+
+// Puts a claimed entry back. Only succeeds while `ns` still owns the claim, so a
+// caller that lost its assignment race cannot release someone else's claim.
+export async function unclaimPoolProject(projectId: string, ns: string): Promise<boolean> {
+  const entry = await getJsonVersioned<PoolProjectEntry>(poolProjectKey(projectId));
+  if (entry === null || entry.value.state !== "claimed" || entry.value.ns !== ns) return false;
+  return await putJsonConditionally(poolProjectKey(projectId), { state: "ready" } satisfies PoolProjectEntry, { ifMatch: entry.etag }) !== null;
 }

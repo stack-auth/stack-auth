@@ -5,6 +5,7 @@ import type { PortsConfig } from "./types.js";
 // deployment being applied, so the store is mocked to stand in for "what was
 // deployed last time" — which is exactly what must NOT win for an in-flight target.
 const readSpec = vi.hoisted(() => vi.fn());
+const runtimeAddress = vi.hoisted(() => vi.fn());
 
 vi.mock("./config.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./config.js")>(),
@@ -16,19 +17,21 @@ vi.mock("./store.js", async (importOriginal) => ({
   readSpec,
 }));
 
+vi.mock("./gcp/runtime.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./gcp/runtime.js")>(),
+  runtimeAddress,
+}));
+
 import { resolveEnv } from "./services.js";
-import { hostnameForService } from "./naming.js";
+import { privateHostnameForService } from "./naming.js";
 
 // Built from the real helper rather than spelled out: app names carry a hash, so
 // a literal here would pin this test to the naming scheme instead of the rule.
-const dbHost = hostnameForService("test", "ns", "db");
+const dbHost = privateHostnameForService("test", "ns", "db");
 
 const ports = (config: PortsConfig): PortsConfig => config;
-// Only the PRIVATE path is exercised, which never calls the Fly client.
-const fly = {} as never;
-
-const storedSpec = (isPublic: boolean) => ({
-  spec: { config: { type: "serverless", public: isPublic, min_instances: 0, max_instances: 1, ports: ports({ "8080": { protocol: "http" } }) }, source: { image: "img" }, env: {} },
+const storedSpec = (isPublic: boolean, type: "server" | "serverless" = "server") => ({
+  spec: { config: { type, public: isPublic, min_instances: 0, max_instances: 1, ports: ports({ "8080": { protocol: "http" } }) }, source: { image: "img" }, env: {} },
   revision: "stored",
 });
 
@@ -41,10 +44,9 @@ describe("url() resolution against a target being changed in the same deploy", (
     // to take away — silently, with no blocked ref and no error.
     readSpec.mockResolvedValue(storedSpec(true));
     const resolved = await resolveEnv(
-      fly,
       "ns",
       { DB: { ref: "db.url:8080" } },
-      new Map([["db", { ports: ports({ "8080": { protocol: "http" } }), public: false }]]),
+      new Map([["db", { type: "server", ports: ports({ "8080": { protocol: "http" } }), public: false }]]),
     );
     expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbHost}:8080` } });
     // The stored spec must not have been consulted at all for an in-flight target.
@@ -55,20 +57,30 @@ describe("url() resolution against a target being changed in the same deploy", (
     // A service of another deployment source is not in `knownTargets`, so its
     // stored spec is the only thing that can answer.
     readSpec.mockResolvedValue(storedSpec(false));
-    const resolved = await resolveEnv(fly, "ns", { DB: { ref: "db.url:8080" } }, new Map());
+    const resolved = await resolveEnv("ns", { DB: { ref: "db.url:8080" } }, new Map());
     expect(resolved).toEqual({ ok: true, env: { DB: `http://${dbHost}:8080` } });
     expect(readSpec).toHaveBeenCalled();
   });
 
   it("blocks rather than guessing when nothing knows the target", async () => {
     readSpec.mockResolvedValue(null);
-    const resolved = await resolveEnv(fly, "ns", { DB: { ref: "db.url:8080" } }, new Map());
+    const resolved = await resolveEnv("ns", { DB: { ref: "db.url:8080" } }, new Map());
     expect(resolved).toEqual({ ok: false, blockedRefs: ["db.url:8080"] });
   });
 
-  it("resolves hostname without needing the target at all", async () => {
-    readSpec.mockResolvedValue(null);
-    const resolved = await resolveEnv(fly, "ns", { HOST: { ref: "db.hostname" } }, new Map());
+  it("resolves a persistent server hostname from its deterministic private identity", async () => {
+    readSpec.mockResolvedValue(storedSpec(false));
+    const resolved = await resolveEnv("ns", { HOST: { ref: "db.hostname" } }, new Map());
     expect(resolved).toEqual({ ok: true, env: { HOST: dbHost } });
+  });
+
+  it("uses the deployed Cloud Run URI for private serverless references", async () => {
+    readSpec.mockResolvedValue(storedSpec(false, "serverless"));
+    runtimeAddress.mockResolvedValue({ hostname: "web-abc.a.run.app", platformUrl: null, internalUrl: "https://web-abc.a.run.app" });
+    const resolved = await resolveEnv("ns", {
+      HOST: { ref: "db.hostname" },
+      URL: { ref: "db.url:8080" },
+    }, new Map());
+    expect(resolved).toEqual({ ok: true, env: { HOST: "web-abc.a.run.app", URL: "https://web-abc.a.run.app" } });
   });
 });

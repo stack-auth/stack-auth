@@ -59,7 +59,7 @@ function readOctal(block: Uint8Array, offset: number, length: number): number {
 
 function validateEntryPath(path: string): void {
   // Only accept the normalized relative paths emitted by the Hexclave CLI. Rejecting every
-  // extension/link type makes extraction safe even though the Fly builder runs as root.
+  // extension/link type makes extraction safe even though the builder container runs as root.
   // eslint-disable-next-line no-control-regex
   if (path === "" || path.startsWith("/") || path.includes("\\") || /[\x00-\x1f]/.test(path)
     || path.split("/").some(segment => segment === "" || segment === "." || segment === "..")) {

@@ -1,6 +1,6 @@
 # Marshal
 
-The Fly.io-backed container runtime behind the Deployments app. Stateless: no database, its
+The Google Cloud-backed container runtime behind the Deployments app. Stateless: no database, its
 only state is the S3-compatible bucket. All configuration is environment variables — see
 [`.env`](./.env), which documents every one of them.
 
@@ -26,14 +26,64 @@ Project settings:
   `maxDuration` is declared in `src/index.ts`, where Vercel's builder statically reads it.
 - **Deployment Protection must be off** (or carry a bypass) for the production domain. Two
   callers that hold no Vercel credential must reach it: the Hexclave backend on `/v1/*`, and
-  the Fly builder machine on `/internal/builds/:id/complete`.
-- Attach a **stable custom domain** and set `MARSHAL_PUBLIC_URL` to it. Builder machines call
+  the GCP builder VM on `/internal/deployments/:id/complete`.
+- Attach a **stable custom domain** and set `MARSHAL_PUBLIC_URL` to it. Builder VMs call
   back on that URL minutes after the request that started them, so a per-deployment URL would
   break every build the moment a newer deployment replaced it.
 
 Environment: set everything in `.env` that is marked required, plus `MARSHAL_PUBLIC_URL`.
 `MARSHAL_PORT` is ignored — the platform owns the listener. Never set `MARSHAL_ALLOW_MOCKS`
-in production; without it the mock Fly token and the mock builder both fail closed at startup.
+in production; without it the mock builder and existing-project test override both fail closed.
 
 Source uploads never pass through the function: `POST /v1/namespaces/:ns/uploads` returns a
 presigned bucket URL that the CLI uploads the tarball to directly.
+
+## GCP tenancy and lifecycle
+
+Marshal follows Google's [Cloud Run multi-tenant guidance](https://docs.cloud.google.com/run/docs/securing/multi-tenant): every namespace receives a dedicated GCP project. The project is the tenant security, quota, billing-attribution, monitoring, and deletion boundary. Put these projects in a folder reserved for untrusted tenant workloads; do not place first-party control-plane services in that folder.
+
+Per that guidance, Marshal keeps a pool of pre-provisioned projects (`HEXCLAVE_MARSHAL_GCP_PROJECT_POOL_SIZE`, default 0) so the first deploy into a namespace is a bucket claim instead of a fifteen-minute project provisioning. Pool state lives in the bucket: `tenants/<ns>.json` is the namespace → project assignment (the idempotency anchor), and `gcp-project-pool/<projectId>.json` marks a ready or claimed pool project. Replenishment runs in the background at startup and after each claim; when the pool is empty, provisioning falls back to a deterministic per-namespace project created synchronously on first use. A provisioned-but-unregistered pool project (a crash between provisioning and registration) is a cost-only orphan: it has no services and no assignment, and project lifecycle cleanup remains the final backstop.
+
+Service mapping:
+
+- `serverless` → Cloud Run with the requested minimum/maximum instances and Direct VPC egress. Cloud Run has one ingress port, so a serverless spec must declare exactly one HTTP port. Marshal uses Cloud Run's recommended disabled Invoker IAM check instead of an `allUsers` binding, so public and load-balanced services work under domain-restricted-sharing organization policies; private services remain protected by their ingress setting.
+- `server` → one `e2-micro` Compute Engine VM. Its persistent disk is grow-only and survives service deletion for later adoption. A public server receives a scale-to-zero Cloud Run nginx gateway; direct Internet ingress to the VM is not permitted by its firewall.
+- source build → a short-lived Container-Optimized OS VM running the existing BuildKit harness. It obtains a short-lived Artifact Registry token from the metadata server; Marshal deletes the VM after recording the completion webhook.
+- custom domain → a per-domain serverless NEG and `EXTERNAL_MANAGED` backend service in the tenant project, routed through one environment-scoped global external Application Load Balancer in `HEXCLAVE_MARSHAL_GCP_PLATFORM_PROJECT_ID`. Certificate Manager certificates/map entries, the global IP, URL map, target HTTPS proxy, forwarding rule, and empty fallback backend remain in that platform project. This keeps Cloud Run and its backend security boundary tenant-local while avoiding one fixed-cost frontend per tenant or domain. Marshal serializes URL-map reconciliation with a distributed lease so concurrent tenant updates cannot discard routes.
+
+The platform project and tenant projects must belong to the same organization. Global cross-project backend references do not require Shared VPC, but they do require the controller to have `compute.backendServices.use` on tenant backends. At larger fleet sizes, monitor the URL map's 1 MiB configuration limit and Certificate Manager map-entry quotas and shard tenants across additional environment-scoped frontends before reaching either limit. The shared frontend reduces fixed cost but creates a control-plane blast radius: isolate its project, restrict its administrators, and use the `compute.restrictCrossProjectServices` organization policy to allow only approved platform projects to reference tenant services.
+
+Cloud Run has no equivalent of Fly's request-triggered VM suspend/resume for a persistent server. A `server` with `min_instances: 0` therefore remains eligible to run as its single GCE instance; it preserves availability and disk semantics but does not guarantee scale-to-zero billing.
+
+## Local GCP simulator
+
+Development and provider-dependent backend E2E tests use `docker/dependencies/gcp-mock`. It implements only the Google REST resources Marshal owns; tests that do not cross the provider boundary continue to use focused `GcpClient` fakes. Set `HEXCLAVE_MARSHAL_GCP_MOCK_URL=local` to derive the simulator address from `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, or provide an explicit URL. Both forms require `MARSHAL_ALLOW_MOCKS=1`, and the introspection API also requires `HEXCLAVE_MARSHAL_GCP_MOCK_TOKEN` because it exposes resolved container environment values.
+
+The simulator deliberately reproduces provider details Marshal depends on: permission-hidden unknown projects, long-running operations, newly-enabled API propagation errors, Cloud Run create/update body differences and stale reads, revision image digests, Compute Engine operation/resource shapes, grow-only persistent disks, Certificate Manager resources/states, URL-map fingerprint updates, same-organization cross-project backend validation, and Cloud Logging resource labels. The `src/gcp/mock-contract.test.ts` lifecycle is kept parallel to `src/gcp/live.test.ts`; changes to a provider adapter should update both. Deterministic `.verified.test` certificate activation and synthetic container readiness/log output are test controls, not claims that the simulator executes containers or provisions a real network.
+
+## Required IAM
+
+Use Application Default Credentials. Prefer an attached workload identity in production; use `GOOGLE_APPLICATION_CREDENTIALS` only for local administration and never copy a key into this repository or a tenant project.
+
+The Marshal controller needs:
+
+- `roles/resourcemanager.projectCreator` and `roles/resourcemanager.projectDeleter` on the configured tenant-project parent.
+- `roles/billing.user` on `HEXCLAVE_MARSHAL_GCP_BILLING_ACCOUNT`.
+- inherited access on the tenant-project folder equivalent to `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/compute.admin`, `roles/run.admin`, `roles/artifactregistry.admin`, `roles/iam.serviceAccountUser`, and `roles/logging.viewer`.
+- `roles/compute.loadBalancerServiceUser` (or another role containing `compute.backendServices.use`) on tenant projects whose backends the platform URL map references.
+- `roles/compute.loadBalancerAdmin` and `roles/certificatemanager.owner` on the platform project. Certificate Manager's predefined editor role omits resource deletion, so it cannot clean up certificates, map entries, or maps. Enable `compute.googleapis.com` and `certificatemanager.googleapis.com` there before starting Marshal.
+
+The organization or folder Logging defaults must retain Cloud Run and Compute Engine entries in the project's `_Default` log bucket. Disabling that sink makes Marshal's logs API return no entries even when the controller has `roles/logging.viewer`.
+
+Marshal enables Compute Engine, Cloud Run, Artifact Registry, IAM, and Cloud Logging in each tenant project. It grants only these runtime bindings inside the project:
+
+- the default Compute service account: `roles/artifactregistry.writer` and `roles/logging.logWriter`;
+- the Cloud Run service agent: `roles/compute.networkUser` for Direct VPC egress.
+
+For a disposable project created out-of-band, `HEXCLAVE_MARSHAL_GCP_EXISTING_PROJECT_ID_FOR_TESTS` bypasses project creation. It is guarded by `MARSHAL_ALLOW_MOCKS=1` and must never point at a production project.
+
+## Disposable live verification
+
+`src/gcp/live.test.ts` is opt-in because it creates billable resources. Set Application Default Credentials plus `HEXCLAVE_MARSHAL_GCP_LIVE_TEST=1`, `HEXCLAVE_MARSHAL_GCP_LIVE_BILLING_ACCOUNT`, and `HEXCLAVE_MARSHAL_GCP_LIVE_PLATFORM_PROJECT_ID`; optionally set `HEXCLAVE_MARSHAL_GCP_LIVE_PROJECT_PARENT=folders/<id>`. The existing platform project must have Compute Engine and Certificate Manager enabled and the controller roles documented above. Then run `pnpm -C apps/marshal test -- src/gcp/live.test.ts`.
+
+The test creates one `hxctest-` tenant project and uses the configured existing platform project for an environment-scoped frontend. Its `try/finally` boundary removes the domain, every shared frontend/certificate resource created for the unique live-test environment, and the tenant project. It covers project/API/IAM provisioning, Artifact Registry, VPC creation, Cloud Run deployment and update, HTTP status and Cloud Logging, a persistent Compute Engine server and disk adoption across update, cross-project custom-domain load-balancer creation/status/removal, individual runtime deletion, and final cleanup. The custom hostname intentionally remains unconfigured, so the test verifies the returned DNS record and pending certificate state without changing public DNS.

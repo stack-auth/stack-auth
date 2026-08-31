@@ -1,0 +1,392 @@
+import { setTimeout as delay } from "node:timers/promises";
+import { GcpApiError, GcpClient } from "./client.js";
+
+export type ComputeConfig = {
+  projectId: string,
+  region: string,
+  zone: string,
+  network: string,
+  subnetwork: string,
+};
+
+export type ComputeDisk = {
+  name: string,
+  sizeGb: number,
+  status: string,
+};
+
+export type ComputeInstance = {
+  id: string,
+  name: string,
+  status: string,
+  revision: string | null,
+  internalIp: string | null,
+  imageRef: string | null,
+};
+
+export type ComputeInstanceSpec = {
+  name: string,
+  image: string,
+  env: Record<string, string>,
+  ports: number[],
+  revision: string,
+  startCommand: string | null,
+  volume: { diskName: string, path: string } | null,
+  serviceKeyHash: string,
+};
+
+export type BuilderVmSpec = {
+  name: string,
+  image: string,
+  machineType: string,
+  diskSizeGb: number,
+  files: { path: string, contentsBase64: string }[],
+  env: Record<string, string>,
+};
+
+type ComputeOperation = {
+  selfLink: string,
+  status: string,
+  errorMessage: string | null,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseOperation(value: unknown): ComputeOperation {
+  if (!isRecord(value) || typeof value.selfLink !== "string" || typeof value.status !== "string") {
+    throw new Error("Compute Engine returned an invalid operation");
+  }
+  let errorMessage: string | null = null;
+  if (isRecord(value.error) && Array.isArray(value.error.errors)) {
+    const messages = value.error.errors.flatMap((entry) => isRecord(entry) && typeof entry.message === "string" ? [entry.message] : []);
+    if (messages.length > 0) errorMessage = messages.join("; ");
+  }
+  return { selfLink: value.selfLink, status: value.status, errorMessage };
+}
+
+function metadataValue(instance: Record<string, unknown>, key: string): string | null {
+  if (!isRecord(instance.metadata) || !Array.isArray(instance.metadata.items)) return null;
+  for (const item of instance.metadata.items) {
+    if (isRecord(item) && item.key === key && typeof item.value === "string") return item.value;
+  }
+  return null;
+}
+
+function parseInstance(value: unknown): ComputeInstance {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string" || typeof value.status !== "string") {
+    throw new Error("Compute Engine returned an invalid instance");
+  }
+  let internalIp: string | null = null;
+  if (Array.isArray(value.networkInterfaces)) {
+    const first = value.networkInterfaces[0];
+    if (isRecord(first) && typeof first.networkIP === "string") internalIp = first.networkIP;
+  }
+  return { id: value.id, name: value.name, status: value.status, revision: metadataValue(value, "hexclave-revision"), internalIp, imageRef: null };
+}
+
+function imageRefFromSerialOutput(output: string): string | null {
+  const matches = [...output.matchAll(/^MARSHAL_IMAGE_REF (\S+)$/gm)];
+  return matches.at(-1)?.[1] ?? null;
+}
+
+function parseDisk(value: unknown): ComputeDisk {
+  if (!isRecord(value) || typeof value.name !== "string" || typeof value.status !== "string") throw new Error("Compute Engine returned an invalid disk");
+  const rawSize = value.sizeGb;
+  const sizeGb = typeof rawSize === "string" ? Number(rawSize) : rawSize;
+  if (typeof sizeGb !== "number" || !Number.isInteger(sizeGb)) throw new Error(`Compute Engine returned an invalid size for disk ${value.name}`);
+  return { name: value.name, sizeGb, status: value.status };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+export function serviceStartupScript(spec: ComputeInstanceSpec): string {
+  const registryHost = spec.image.split("/")[0];
+  const registryCredentialSetup = registryHost.endsWith(".pkg.dev") || registryHost.endsWith(".gcr.io") || registryHost === "gcr.io"
+    ? `docker-credential-gcr configure-docker --registries=${shellQuote(registryHost)} >/dev/null`
+    : "";
+  const dockerArgs = [
+    "run", "--detach", "--restart=always", "--name", "marshal-service",
+    "--log-driver=gcplogs", "--log-opt", "gcp-log-cmd=true", "--log-opt", "labels=hexclave-service",
+    ...Object.entries(spec.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
+    ...spec.ports.flatMap((port) => ["--publish", `${port}:${port}`]),
+    ...(spec.volume === null ? [] : ["--mount", `type=bind,src=/mnt/hexclave-data,dst=${spec.volume.path}`]),
+    ...(spec.startCommand === null ? [] : ["--entrypoint", "/bin/sh"]),
+    spec.image,
+    ...(spec.startCommand === null ? [] : ["-c", spec.startCommand]),
+  ];
+  return `#!/bin/bash
+set -euo pipefail
+readonly REVISION=${shellQuote(spec.revision)}
+readonly IMAGE=${shellQuote(spec.image)}
+${spec.volume === null ? "" : `readonly DATA_DEVICE=/dev/disk/by-id/google-${spec.volume.diskName}
+until [[ -e "$DATA_DEVICE" ]]; do sleep 1; done
+if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then mkfs.ext4 -F "$DATA_DEVICE"; fi
+mkdir -p /mnt/hexclave-data
+mountpoint -q /mnt/hexclave-data || mount "$DATA_DEVICE" /mnt/hexclave-data
+resize2fs "$DATA_DEVICE"
+`}
+${registryCredentialSetup}
+docker pull "$IMAGE"
+docker rm --force marshal-service >/dev/null 2>&1 || true
+docker ${dockerArgs.map(shellQuote).join(" ")}
+readonly RESOLVED_IMAGE="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+if [[ -z "$RESOLVED_IMAGE" ]]; then echo 'MARSHAL_SERVICE_IMAGE_UNRESOLVED'; exit 1; fi
+echo "MARSHAL_IMAGE_REF $RESOLVED_IMAGE"
+echo "MARSHAL_SERVICE_READY $REVISION"
+`;
+}
+
+export function builderStartupScript(spec: BuilderVmSpec): string {
+  const fileCommands = spec.files.map((file) => {
+    const directory = file.path.split("/").slice(0, -1).join("/") || "/";
+    return `mkdir -p ${shellQuote(`/var/lib/marshal-files${directory}`)}\nprintf '%s' ${shellQuote(file.contentsBase64)} | base64 -d > ${shellQuote(`/var/lib/marshal-files${file.path}`)}`;
+  }).join("\n");
+  const mounts = [
+    "/marshal-build.sh",
+    "/marshal-targets.tsv",
+    "/marshal-build-env",
+    "/marshal-dockerfiles",
+  ].map((path) => ["--volume", `/var/lib/marshal-files${path}:${path}`]).flat();
+  const envArgs = Object.entries(spec.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
+  return `#!/bin/bash
+set -euo pipefail
+${fileCommands}
+mkdir -p /var/lib/marshal-buildkit
+readonly ACCESS_TOKEN="$(curl -fsS -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
+if [[ -z "$ACCESS_TOKEN" ]]; then echo 'MARSHAL_BUILD_FAILED: could not obtain Artifact Registry access token'; exit 1; fi
+readonly REGISTRY_AUTH_B64="$(printf 'oauth2accesstoken:%s' "$ACCESS_TOKEN" | base64 | tr -d '\n')"
+docker pull ${shellQuote(spec.image)}
+BUILD_EXIT=0
+docker run --rm --privileged --network host --name marshal-builder \
+  --volume /var/lib/marshal-buildkit:/.marshal-buildkit-disk \
+  ${[...mounts, ...envArgs].map(shellQuote).join(" ")} \
+  --env "REGISTRY_AUTH_B64=$REGISTRY_AUTH_B64" \
+  --entrypoint /bin/sh ${shellQuote(spec.image)} /marshal-build.sh || BUILD_EXIT=$?
+shutdown -h now || true
+exit "$BUILD_EXIT"
+`;
+}
+
+export class ComputeClient {
+  constructor(
+    private readonly client: GcpClient,
+    private readonly config: ComputeConfig,
+  ) {}
+
+  private projectUrl(path: string): string {
+    return `https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(this.config.projectId)}${path}`;
+  }
+
+  private async waitForOperation(value: unknown, timeoutMillis = 10 * 60 * 1000): Promise<void> {
+    let operation = parseOperation(value);
+    const startedAt = performance.now();
+    while (operation.status !== "DONE") {
+      if (performance.now() - startedAt >= timeoutMillis) throw new GcpApiError(408, operation.selfLink, "timed out waiting for Compute Engine operation");
+      await delay(1000);
+      operation = parseOperation(await this.client.request(operation.selfLink));
+    }
+    if (operation.errorMessage !== null) throw new GcpApiError(502, operation.selfLink, operation.errorMessage);
+  }
+
+  async ensureNetwork(): Promise<void> {
+    const networkUrl = this.projectUrl(`/global/networks/${encodeURIComponent(this.config.network)}`);
+    if (await this.client.request(networkUrl, { allow404: true }) === null) {
+      await this.waitForOperation(await this.client.request(this.projectUrl("/global/networks"), {
+        method: "POST",
+        body: { name: this.config.network, autoCreateSubnetworks: false, routingConfig: { routingMode: "REGIONAL" } },
+      }));
+    }
+    const subnetUrl = this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks/${encodeURIComponent(this.config.subnetwork)}`);
+    if (await this.client.request(subnetUrl, { allow404: true }) === null) {
+      await this.waitForOperation(await this.client.request(this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks`), {
+        method: "POST",
+        body: {
+          name: this.config.subnetwork,
+          network: networkUrl,
+          ipCidrRange: "10.128.0.0/20",
+          privateIpGoogleAccess: true,
+          stackType: "IPV4_ONLY",
+        },
+      }));
+    }
+    const firewallName = `${this.config.network}-internal`;
+    const firewallUrl = this.projectUrl(`/global/firewalls/${encodeURIComponent(firewallName)}`);
+    if (await this.client.request(firewallUrl, { allow404: true }) === null) {
+      await this.waitForOperation(await this.client.request(this.projectUrl("/global/firewalls"), {
+        method: "POST",
+        body: {
+          name: firewallName,
+          network: networkUrl,
+          direction: "INGRESS",
+          sourceRanges: ["10.128.0.0/20"],
+          targetTags: ["hexclave-service"],
+          allowed: [
+            { IPProtocol: "tcp", ports: ["1-65535"] },
+            { IPProtocol: "udp", ports: ["1-65535"] },
+            { IPProtocol: "icmp" },
+          ],
+        },
+      }));
+    }
+  }
+
+  async getDisk(name: string): Promise<ComputeDisk | null> {
+    const result = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/disks/${encodeURIComponent(name)}`), { allow404: true });
+    return result === null ? null : parseDisk(result);
+  }
+
+  async ensureDisk(name: string, sizeGb: number): Promise<ComputeDisk> {
+    const existing = await this.getDisk(name);
+    if (existing === null) {
+      await this.waitForOperation(await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/disks`), {
+        method: "POST",
+        body: { name, sizeGb: String(sizeGb), type: this.projectUrl(`/zones/${this.config.zone}/diskTypes/pd-standard`) },
+      }));
+    } else if (sizeGb > existing.sizeGb) {
+      await this.waitForOperation(await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/disks/${encodeURIComponent(name)}/resize`), {
+        method: "POST",
+        body: { sizeGb: String(sizeGb) },
+      }));
+    } else if (sizeGb < existing.sizeGb) {
+      throw new Error(`persistent disk ${name} is already ${existing.sizeGb}GB and cannot be shrunk to ${sizeGb}GB`);
+    }
+    return await this.getDisk(name) ?? throwError(`Compute Engine disk ${name} disappeared after reconciliation`);
+  }
+
+  async getInstance(name: string): Promise<ComputeInstance | null> {
+    const result = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}`), { allow404: true });
+    return result === null ? null : parseInstance(result);
+  }
+
+  async applyInstance(spec: ComputeInstanceSpec): Promise<ComputeInstance> {
+    const existing = await this.getInstance(spec.name);
+    if (existing !== null && existing.revision === spec.revision && (existing.status === "RUNNING" || existing.status === "STAGING")) {
+      const output = await this.getSerialOutput(spec.name);
+      return { ...existing, imageRef: imageRefFromSerialOutput(output) };
+    }
+    if (existing !== null) await this.deleteInstance(spec.name);
+    const networkUrl = this.projectUrl(`/global/networks/${encodeURIComponent(this.config.network)}`);
+    const subnetUrl = this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks/${encodeURIComponent(this.config.subnetwork)}`);
+    await this.waitForOperation(await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances`), {
+      method: "POST",
+      body: {
+        name: spec.name,
+        machineType: this.projectUrl(`/zones/${this.config.zone}/machineTypes/e2-micro`),
+        tags: { items: ["hexclave-service"] },
+        labels: { "hexclave-managed": "true", "hexclave-revision": spec.revision, "hexclave-service-key": spec.serviceKeyHash },
+        disks: [
+          {
+            boot: true,
+            autoDelete: true,
+            type: "PERSISTENT",
+            initializeParams: {
+              sourceImage: "projects/cos-cloud/global/images/family/cos-stable",
+              diskSizeGb: "10",
+              diskType: this.projectUrl(`/zones/${this.config.zone}/diskTypes/pd-standard`),
+            },
+          },
+          ...(spec.volume === null ? [] : [{
+            boot: false,
+            autoDelete: false,
+            type: "PERSISTENT",
+            deviceName: spec.volume.diskName,
+            source: this.projectUrl(`/zones/${this.config.zone}/disks/${spec.volume.diskName}`),
+          }]),
+        ],
+        networkInterfaces: [{
+          network: networkUrl,
+          subnetwork: subnetUrl,
+          // Ephemeral egress address only. No ingress firewall permits Internet traffic to
+          // the VM; public HTTP reaches it through the managed Cloud Run gateway.
+          accessConfigs: [{ name: "External NAT", type: "ONE_TO_ONE_NAT", networkTier: "PREMIUM" }],
+        }],
+        metadata: { items: [
+          { key: "startup-script", value: serviceStartupScript(spec) },
+          { key: "hexclave-revision", value: spec.revision },
+          { key: "serial-port-logging-enable", value: "TRUE" },
+        ] },
+        serviceAccounts: [{ email: "default", scopes: ["https://www.googleapis.com/auth/cloud-platform"] }],
+        scheduling: { automaticRestart: true, onHostMaintenance: "MIGRATE", provisioningModel: "STANDARD" },
+        shieldedInstanceConfig: { enableSecureBoot: true, enableVtpm: true, enableIntegrityMonitoring: true },
+        deletionProtection: false,
+      },
+    }), 5 * 60 * 1000);
+    if (await this.getInstance(spec.name) === null) throwError(`Compute Engine instance ${spec.name} disappeared after creation`);
+    const imageRef = await this.waitForServiceReady(spec.name, spec.revision);
+    const ready = await this.getInstance(spec.name) ?? throwError(`Compute Engine instance ${spec.name} disappeared after becoming ready`);
+    return { ...ready, imageRef };
+  }
+
+  async waitForServiceReady(name: string, revision: string): Promise<string> {
+    const startedAt = performance.now();
+    for (;;) {
+      const output = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}/serialPort?port=1`));
+      if (!isRecord(output) || typeof output.contents !== "string") throw new Error(`Compute Engine returned invalid serial output for ${name}`);
+      if (output.contents.includes(`MARSHAL_SERVICE_READY ${revision}`)) {
+        return imageRefFromSerialOutput(output.contents) ?? throwError(`Compute Engine instance ${name} became ready without reporting its resolved image`);
+      }
+      if (performance.now() - startedAt > 5 * 60 * 1000) throw new GcpApiError(408, `instances/${name}/serialPort`, "timed out waiting for the service container to become ready");
+      await delay(2000);
+    }
+  }
+
+  async getSerialOutput(name: string): Promise<string> {
+    const output = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}/serialPort?port=1`), { allow404: true });
+    if (output === null) return "";
+    if (!isRecord(output) || typeof output.contents !== "string") throw new Error(`Compute Engine returned invalid serial output for ${name}`);
+    return output.contents;
+  }
+
+  async deleteInstance(name: string): Promise<void> {
+    const result = await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances/${encodeURIComponent(name)}`), { method: "DELETE", allow404: true });
+    if (result !== null) await this.waitForOperation(result, 5 * 60 * 1000);
+  }
+
+  async createBuilder(spec: BuilderVmSpec): Promise<ComputeInstance> {
+    const existing = await this.getInstance(spec.name);
+    if (existing !== null) return existing;
+    const networkUrl = this.projectUrl(`/global/networks/${encodeURIComponent(this.config.network)}`);
+    const subnetUrl = this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks/${encodeURIComponent(this.config.subnetwork)}`);
+    await this.waitForOperation(await this.client.request(this.projectUrl(`/zones/${encodeURIComponent(this.config.zone)}/instances`), {
+      method: "POST",
+      body: {
+        name: spec.name,
+        machineType: this.projectUrl(`/zones/${this.config.zone}/machineTypes/${spec.machineType}`),
+        tags: { items: ["hexclave-builder"] },
+        labels: { "hexclave-managed": "true", "hexclave-builder": "true" },
+        disks: [{
+          boot: true,
+          autoDelete: true,
+          type: "PERSISTENT",
+          initializeParams: {
+            sourceImage: "projects/cos-cloud/global/images/family/cos-stable",
+            diskSizeGb: String(spec.diskSizeGb),
+            diskType: this.projectUrl(`/zones/${this.config.zone}/diskTypes/pd-standard`),
+          },
+        }],
+        networkInterfaces: [{
+          network: networkUrl,
+          subnetwork: subnetUrl,
+          accessConfigs: [{ name: "External NAT", type: "ONE_TO_ONE_NAT", networkTier: "PREMIUM" }],
+        }],
+        metadata: { items: [
+          { key: "startup-script", value: builderStartupScript(spec) },
+          { key: "hexclave-builder", value: "true" },
+          { key: "serial-port-logging-enable", value: "TRUE" },
+        ] },
+        serviceAccounts: [{ email: "default", scopes: ["https://www.googleapis.com/auth/cloud-platform"] }],
+        scheduling: { automaticRestart: false, onHostMaintenance: "TERMINATE", provisioningModel: "STANDARD" },
+        shieldedInstanceConfig: { enableSecureBoot: true, enableVtpm: true, enableIntegrityMonitoring: true },
+      },
+    }), 5 * 60 * 1000);
+    return await this.getInstance(spec.name) ?? throwError(`Compute Engine builder ${spec.name} disappeared after creation`);
+  }
+}
+
+function throwError(message: string): never {
+  throw new Error(message);
+}

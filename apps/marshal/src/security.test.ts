@@ -1,7 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { assertMocksExplicitlyAllowed } from "./config.js";
-import { builderAppName, builderNetworkName, appNameForService } from "./naming.js";
+import { assertMocksExplicitlyAllowed, resolveGcpMockUrl } from "./config.js";
+import { builderInstanceName, serviceName } from "./naming.js";
 import { validateServiceSpec } from "./services.js";
 import { validateSourceArchive } from "./source-archive.js";
 
@@ -65,24 +65,29 @@ describe("source archive validation", () => {
 });
 describe("runtime identity", () => {
   it("does not collide for inputs that shared the former 24-bit suffix", () => {
-    const first = appNameForService("production", "12345678-tenant", "abcdefgh-2792");
-    const second = appNameForService("production", "12345678-tenant", "abcdefgh-4185");
+    const first = serviceName("production", "12345678-tenant", "abcdefgh-2792");
+    const second = serviceName("production", "12345678-tenant", "abcdefgh-4185");
     expect(first).not.toBe(second);
     expect(first.length).toBeLessThanOrEqual(30);
     expect(second.length).toBeLessThanOrEqual(30);
   });
 
-  it("hashes the full environment into builder identities", () => {
-    expect(builderAppName("abcdefgh-one")).not.toBe(builderAppName("abcdefgh-two"));
-    expect(builderNetworkName("abcdefgh-one")).not.toBe(builderNetworkName("abcdefgh-two"));
+  it("includes the full deployment identity in builder instance names", () => {
+    expect(builderInstanceName("abcdefgh-one", "deployment-1")).not.toBe(builderInstanceName("abcdefgh-one", "deployment-2"));
   });
 });
 
 describe("mock safety", () => {
   it("fails closed unless mocks are explicitly enabled", () => {
-    expect(() => assertMocksExplicitlyAllowed("mock Fly", {})).toThrow("requires MARSHAL_ALLOW_MOCKS=1");
-    expect(() => assertMocksExplicitlyAllowed("mock Fly", { NODE_ENV: "development" })).toThrow("requires MARSHAL_ALLOW_MOCKS=1");
-    expect(() => assertMocksExplicitlyAllowed("mock Fly", { MARSHAL_ALLOW_MOCKS: "1" })).not.toThrow();
+    expect(() => assertMocksExplicitlyAllowed("mock runtime", {})).toThrow("requires MARSHAL_ALLOW_MOCKS=1");
+    expect(() => assertMocksExplicitlyAllowed("mock runtime", { NODE_ENV: "development" })).toThrow("requires MARSHAL_ALLOW_MOCKS=1");
+    expect(() => assertMocksExplicitlyAllowed("mock runtime", { MARSHAL_ALLOW_MOCKS: "1" })).not.toThrow();
+  });
+
+  it("derives the local GCP mock port from the development port prefix", () => {
+    expect(resolveGcpMockUrl("local", "93")).toBe("http://localhost:9348");
+    expect(resolveGcpMockUrl("http://gcp-mock:8080/", "93")).toBe("http://gcp-mock:8080");
+    expect(resolveGcpMockUrl(undefined, "93")).toBeNull();
   });
 });
 

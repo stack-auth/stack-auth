@@ -8,7 +8,11 @@
 // read at import time (createMarshalApp calls getConfig), so a missing or unsafe variable
 // fails the function's cold start with marshal's own message instead of failing per request.
 import { createMarshalApp } from "./marshal-app.js";
+import { schedulePoolReplenishment } from "./project-pool.js";
 
 const { app } = createMarshalApp();
+// Fire-and-forget pool top-up on cold start (no-op when the pool is disabled). It must not
+// delay or fail the invocation, which is what schedulePoolReplenishment guarantees.
+schedulePoolReplenishment();
 
 export default app;
