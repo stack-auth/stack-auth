@@ -189,6 +189,7 @@ export function declareBufferedPiledriverDatabase(wrapped: PiledriverDatabase): 
     waitUntilAvailable: async () => {},
     waitUntilDurable: async seq => await waitUntil(seq, underlyingSeq => wrapped.waitUntilDurable(underlyingSeq)),
     waitUntilReplicated: async seq => await waitUntil(seq, underlyingSeq => wrapped.waitUntilReplicated(underlyingSeq)),
+    waitUntilConsistent: async seq => await waitUntil(seq, underlyingSeq => wrapped.waitUntilConsistent(underlyingSeq)),
     async close() {
       if (closePromise === null) {
         isClosing = true;

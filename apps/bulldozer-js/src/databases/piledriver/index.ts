@@ -3,13 +3,21 @@ import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 import type { PiledriverGarbageCollectionResult } from "./gc.js";
 
 export const isPiledriverHeapObjectSymbol = Symbol.for("hexclave-piledriver-heap-object-symbol");
+export type PiledriverHeapObjectLocalValue =
+  | { status: "locally-created", value: PiledriverObject }
+  | { status: "database-reference" };
 export type PiledriverHeapObject = {
   get(): Promise<PiledriverObject>,
+  getValueIfLocallyCreated(): PiledriverHeapObjectLocalValue,
   [isPiledriverHeapObjectSymbol]: true,
 };
 
 const heapObjectsMapNullSentinel = { __heapObjectsMapNullSentinel: true };
 export const heapObjectsByObject = new WeakMap<PiledriverObject & object, PiledriverHeapObject>();
+
+// TODO: Make heap-object creation database-scoped and brand both locally created and loaded
+// references with their owning Piledriver database. Passing a heap object between databases should
+// fail at the API boundary instead of implicitly loading and copying a foreign database reference.
 /**
  * Creates a new heap object, which will be stored as a reference by Piledriver.
  *
@@ -23,9 +31,13 @@ export function asHeapObject(obj: PiledriverObject): PiledriverHeapObject {
   const existing = heapObjectsByObject.get(obj ?? heapObjectsMapNullSentinel);
   if (existing) return existing;
 
+  const localValue: PiledriverHeapObjectLocalValue = { status: "locally-created", value: obj };
   const res: PiledriverHeapObject = {
     async get() {
       return obj;
+    },
+    getValueIfLocallyCreated() {
+      return localValue;
     },
     [isPiledriverHeapObjectSymbol]: true,
   };
