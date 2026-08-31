@@ -1493,9 +1493,17 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
       await withPlatformDomainLease(async (platformLease) => {
         await lease.assertOwned();
         await platformLease.assertOwned();
+        const current = await readDomainClaimVersioned(hostname);
+        if (current === null
+          || current.etag !== claim.etag
+          || current.value.ns !== ns
+          || current.value.service_key !== key) return;
+        // Transfer store ownership before deleting the shared provider route. A newly verified
+        // claimant can win the store race, but its provider ensure remains behind this platform
+        // lease and therefore runs only after this stale route has been removed.
+        if (!await releaseDomainClaim(current)) return;
         await domainContext.domains.delete(hostname);
       });
-      await releaseDomainClaim(claim);
     }
   }
   for (const hostname of await listPendingDomainClaimsForService(ns, key)) {

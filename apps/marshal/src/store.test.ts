@@ -1,6 +1,6 @@
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DomainClaim, StoredDeployment, StoredSpec } from "./types.js";
+import type { DomainClaim, PoolProjectEntry, StoredDeployment, StoredSpec } from "./types.js";
 
 const send = vi.hoisted(() => vi.fn());
 
@@ -30,7 +30,7 @@ vi.mock("./config.js", () => ({
   UPLOAD_EXPIRY_SECONDS: 1,
 }));
 
-import { createDeployment, readDeployment, readSpec, readUpload, releaseDomainClaim, writeSpec } from "./store.js";
+import { assignTenantProject, claimDomain, createDeployment, createPoolProject, readDeployment, readDomainClaimVersioned, readPoolProject, readSpec, readTenantProjectAssignment, readUpload, releaseDomainClaim, writeSpec } from "./store.js";
 
 describe("domain claim release", () => {
   const claim = {
@@ -74,6 +74,72 @@ describe("domain claim release", () => {
 
     expect(send).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith(expect.any(DeleteObjectCommand));
+  });
+});
+
+describe("authoritative state authentication", () => {
+  afterEach(() => {
+    send.mockReset();
+  });
+
+  it("authenticates domain claims and rejects bucket tampering", async () => {
+    const claim = {
+      hostname: "app.example.com",
+      ns: "tenant-a",
+      service_key: "web",
+      claimed_at_millis: 1,
+    } satisfies DomainClaim;
+    send.mockResolvedValueOnce({}).mockResolvedValueOnce({ ETag: "claim-etag" });
+    await expect(claimDomain(claim)).resolves.toBe(true);
+
+    const body = send.mock.calls[1][0].input.Body;
+    expect(typeof body).toBe("string");
+    const persisted: unknown = JSON.parse(body);
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => body }, ETag: "claim-etag" });
+    await expect(readDomainClaimVersioned(claim.hostname)).resolves.toEqual({ value: claim, etag: "claim-etag" });
+
+    if (typeof persisted !== "object" || persisted === null || !("value" in persisted) || typeof persisted.value !== "object" || persisted.value === null) {
+      throw new Error("test expected an authenticated domain-claim envelope");
+    }
+    const tampered = { ...persisted, value: { ...persisted.value, ns: "tenant-b" } };
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify(tampered) }, ETag: "forged-etag" });
+    await expect(readDomainClaimVersioned(claim.hostname)).rejects.toThrow("failed authentication");
+  });
+
+  it("authenticates tenant project assignments and rejects unsigned legacy objects", async () => {
+    send.mockResolvedValueOnce({ ETag: "assignment-etag" });
+    await expect(assignTenantProject("tenant-a", "hxc-tenant-a")).resolves.toBe("hxc-tenant-a");
+    const body = send.mock.calls[0][0].input.Body;
+    expect(typeof body).toBe("string");
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => body } });
+    await expect(readTenantProjectAssignment("tenant-a")).resolves.toBe("hxc-tenant-a");
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ project_id: "hxc-tenant-b" }) } });
+    await expect(readTenantProjectAssignment("tenant-a")).rejects.toThrow("is unsigned");
+  });
+
+  it("does not let an unsigned ready-pool record become a signed tenant assignment", async () => {
+    const entry = {
+      state: "ready",
+      created_at_millis: 1,
+      state_since_millis: 2,
+      attempts: 0,
+      last_error: null,
+      operation_name: null,
+      project_number: "123456789",
+      ns: null,
+    } satisfies PoolProjectEntry;
+    send.mockResolvedValueOnce({ ETag: "pool-etag" });
+    await expect(createPoolProject("hxc-pool-project", entry)).resolves.toBe(true);
+    const body = send.mock.calls[0][0].input.Body;
+    expect(typeof body).toBe("string");
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => body }, ETag: "pool-etag" });
+    await expect(readPoolProject("hxc-pool-project")).resolves.toEqual({ value: entry, etag: "pool-etag" });
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify(entry) }, ETag: "forged-etag" });
+    await expect(readPoolProject("hxc-pool-project")).rejects.toThrow("is unsigned");
   });
 });
 

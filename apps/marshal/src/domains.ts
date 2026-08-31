@@ -79,6 +79,10 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     } else if (existingClaim.value.ns !== ns) {
       throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
     } else if (existingClaim.value.service_key !== serviceKey) {
+      // TODO(security): require renewed DNS proof for repoints, and design a proof-based
+      // takeover flow for domains whose DNS ownership changed while an old A record and claim
+      // remained. The initial tenant-bound proof prevents first-claim theft, but it is not yet
+      // re-evaluated over the lifetime of an existing claim.
       const rewritten = await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
       if (!rewritten) throw conflict(`hostname ${JSON.stringify(hostname)} changed owners concurrently; retry the attach`);
       await lease.assertOwned();
@@ -124,6 +128,10 @@ export async function detachDomain(ns: string, hostname: string, expectedService
     if (pending === null || (expectedServiceKey !== undefined && pending.value.service_key !== expectedServiceKey)) {
       throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
     }
+    // TODO(security): serialize pending deletion with the pending service's reconciliation
+    // lease and make attachDomain revalidate the pending ETag immediately before claiming.
+    // Without that, DELETE can report success while an already-in-flight verified PUT still
+    // publishes the hostname. This is a revocation race, not an initial ownership bypass.
     await deletePendingDomainClaim(pending);
     return;
   }
@@ -132,12 +140,21 @@ export async function detachDomain(ns: string, hostname: string, expectedService
     throw notFound(`hostname ${JSON.stringify(hostname)} is not attached to service ${JSON.stringify(expectedServiceKey)} in namespace ${JSON.stringify(ns)}`);
   }
   await withReconciliationLease(ns, claim.value.service_key, async (lease) => {
-    await withPlatformDomainLease(async (platformLease) => {
+    const detached = await withPlatformDomainLease(async (platformLease) => {
       await lease.assertOwned();
       await platformLease.assertOwned();
+      const current = await readDomainClaimVersioned(hostname);
+      if (current === null
+        || current.etag !== claim.etag
+        || current.value.ns !== ns
+        || current.value.service_key !== claim.value.service_key) return false;
+      // Release while holding the platform lease, before touching provider state. A new owner
+      // may claim concurrently, but its provider reconciliation cannot pass this lease until
+      // the old route is gone; releasing after deletion would reopen a stale-delete race.
+      if (!await releaseDomainClaim(current)) return false;
       await (await tenantContext(ns)).domains.delete(hostname);
+      return true;
     });
-    await lease.assertOwned();
-    await releaseDomainClaim(claim);
+    if (!detached) throw notFound(`hostname ${JSON.stringify(hostname)} changed owners while it was being detached`);
   });
 }

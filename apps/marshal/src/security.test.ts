@@ -81,6 +81,45 @@ describe("source archive validation", () => {
     firstLoadGate.release();
     await expect(Promise.all(accepted)).resolves.toHaveLength(27);
   });
+
+  it("hands a released inflation permit directly to the oldest waiter", async () => {
+    const gates = Array.from({ length: 4 }, () => {
+      const gate: { release: () => void, promise: Promise<void> } = {
+        release: () => { throw new Error("gate was not initialized"); },
+        promise: Promise.resolve(),
+      };
+      gate.promise = new Promise<void>((resolve) => {
+        gate.release = resolve;
+      });
+      return gate;
+    });
+    let activeLoads = 0;
+    let maximumActiveLoads = 0;
+    const load = async (index: number): Promise<Uint8Array> => {
+      activeLoads++;
+      maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+      await gates[index].promise;
+      activeLoads--;
+      return sourceArchive(`src/${index}.ts`);
+    };
+
+    const first = loadAndValidateSourceArchive(async () => await load(0));
+    const second = loadAndValidateSourceArchive(async () => await load(1));
+    await Promise.resolve();
+    const third = loadAndValidateSourceArchive(async () => await load(2));
+    gates[0].release();
+    const fourth = new Promise<Uint8Array | null>((resolve, reject) => {
+      queueMicrotask(() => {
+        loadAndValidateSourceArchive(async () => await load(3)).then(resolve, reject);
+      });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    for (const gate of gates) gate.release();
+
+    await expect(Promise.all([first, second, third, fourth])).resolves.toHaveLength(4);
+    expect(maximumActiveLoads).toBe(2);
+  });
 });
 describe("runtime identity", () => {
   it("does not collide for inputs that shared the former 24-bit suffix", () => {

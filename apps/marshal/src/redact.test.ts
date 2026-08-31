@@ -32,6 +32,18 @@ describe("redactSecrets", () => {
     expect(redactSecrets("token=abcdef", ["abcdef", "abc"])).toBe("token=<redacted>");
     expect(redactSecrets("a=abc b=abcdef", ["abc", "abcdef"])).toBe("a=<redacted> b=<redacted>");
   });
+
+  it("does not rescan replacement text or amplify hostile short secrets without bound", () => {
+    const text = "x".repeat(1024 * 1024);
+    const redacted = redactSecrets(text, ["x", "<", "r", "e", "d", "a", "c", "t", ">"]);
+
+    expect(redacted.length).toBeLessThanOrEqual(text.length);
+    expect(redacted).toBe("<redacted>");
+  });
+
+  it("merges overlapping matches without exposing either secret", () => {
+    expect(redactSecrets("zabcabcz", ["abc", "bcab"])).toBe("z<redacted>z");
+  });
 });
 
 describe("redactBuildLogText", () => {

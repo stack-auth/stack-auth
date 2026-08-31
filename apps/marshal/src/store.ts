@@ -1,7 +1,7 @@
 import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, UploadPartCommand, type ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, MULTIPART_UPLOAD_THRESHOLD_BYTES, UPLOAD_EXPIRY_SECONDS, UPLOAD_PART_SIZE_BYTES } from "./config.js";
-import { decryptString, encryptString } from "./spec-crypto.js";
+import { authenticateControlPlaneState, decryptString, encryptString, verifyControlPlaneStateAuthentication } from "./spec-crypto.js";
 import { POOL_PROJECT_STATES, type DomainClaim, type EnvValue, type PendingDomainClaim, type PoolProjectEntry, type PoolProjectState, type ReconciliationLease, type ServiceSpec, type StoredDeployment, type StoredSpec, type TenantProjectAssignment } from "./types.js";
 
 // The bucket is Marshal's only state. Layout:
@@ -123,6 +123,37 @@ async function putJsonConditionally(key: string, value: unknown, condition: Writ
     if (isPreconditionFailed(error)) return null;
     throw error;
   }
+}
+
+type AuthenticatedControlPlaneState = {
+  authentication_version: 1,
+  value: unknown,
+  mac_base64: string,
+};
+
+function authenticatedControlPlaneState(key: string, value: unknown): AuthenticatedControlPlaneState {
+  const serialized = JSON.stringify(value);
+  return {
+    authentication_version: 1,
+    value,
+    mac_base64: authenticateControlPlaneState(serialized, key, getConfig().dataEncryptionRootKey),
+  };
+}
+
+function readAuthenticatedControlPlaneState(key: string, stored: unknown): unknown {
+  if (!isRecord(stored)
+    || stored.authentication_version !== 1
+    || !("value" in stored)
+    || typeof stored.mac_base64 !== "string") {
+    // Deliberately no legacy fallback: accepting an unsigned object once and signing it would
+    // authenticate an attacker's forged claim or project assignment after a bucket compromise.
+    throw new Error(`authoritative state ${JSON.stringify(key)} is unsigned; migrate it before starting this Marshal version`);
+  }
+  const serialized = JSON.stringify(stored.value);
+  if (!verifyControlPlaneStateAuthentication(serialized, key, stored.mac_base64, getConfig().dataEncryptionRootKey)) {
+    throw new Error(`authoritative state ${JSON.stringify(key)} failed authentication`);
+  }
+  return stored.value;
 }
 
 async function deleteObject(key: string): Promise<void> {
@@ -315,6 +346,10 @@ export async function releaseReconciliationLease(ns: string, key: string, etag: 
 // Uploads
 
 export async function createUploadSlot(ns: string, id: string): Promise<{ uploadUrl: string, expiresAtMillis: number }> {
+  // TODO(security): bind a signed Content-Length to direct and multipart uploads, or replace
+  // presigned writes with a streaming size-enforcing endpoint. The consume-time gate prevents
+  // oversized builds, but an authenticated tenant can still create temporary storage and
+  // ingress cost before bucket lifecycle cleanup removes an oversized object.
   const uploadUrl = await getSignedUrl(s3(), new PutObjectCommand({
     Bucket: bucket(),
     Key: uploadObjectKey(ns, id),
@@ -654,7 +689,28 @@ export async function readDomainClaim(hostname: string): Promise<DomainClaim | n
 }
 
 export async function readDomainClaimVersioned(hostname: string): Promise<Versioned<DomainClaim> | null> {
-  return await getJsonVersioned<DomainClaim>(domainClaimKey(hostname));
+  const key = domainClaimKey(hostname);
+  const stored = await getJsonVersioned<unknown>(key);
+  if (stored === null) return null;
+  const value = readAuthenticatedControlPlaneState(key, stored.value);
+  if (!isRecord(value)
+    || value.hostname !== hostname
+    || typeof value.ns !== "string"
+    || typeof value.service_key !== "string"
+    || typeof value.claimed_at_millis !== "number"
+    || !Number.isSafeInteger(value.claimed_at_millis)
+    || value.claimed_at_millis < 0) {
+    throw new Error(`authenticated domain claim for ${JSON.stringify(hostname)} is malformed`);
+  }
+  return {
+    etag: stored.etag,
+    value: {
+      hostname,
+      ns: value.ns,
+      service_key: value.service_key,
+      claimed_at_millis: value.claimed_at_millis,
+    },
+  };
 }
 
 // Atomic claim via conditional write (If-None-Match: "*" → 412 when the hostname is already
@@ -666,14 +722,16 @@ export async function claimDomain(claim: DomainClaim): Promise<boolean> {
   // leave a claim that deleteService (which enumerates via the index) can never release,
   // pinning the hostname globally forever.
   await putJson(domainIndexKey(claim.ns, claim.service_key, claim.hostname), {});
-  return await putJsonConditionally(domainClaimKey(claim.hostname), claim, { ifNoneMatch: true }) !== null;
+  const key = domainClaimKey(claim.hostname);
+  return await putJsonConditionally(key, authenticatedControlPlaneState(key, claim), { ifNoneMatch: true }) !== null;
 }
 
 // Overwrite is only valid for repoints within the same namespace. The ETag fence prevents a
 // stale repoint from overwriting a newer owner that landed after the caller's read.
 export async function rewriteDomainClaim(previous: Versioned<DomainClaim>, next: DomainClaim): Promise<boolean> {
   await putJson(domainIndexKey(next.ns, next.service_key, next.hostname), {});
-  const rewritten = await putJsonConditionally(domainClaimKey(next.hostname), next, { ifMatch: previous.etag });
+  const key = domainClaimKey(next.hostname);
+  const rewritten = await putJsonConditionally(key, authenticatedControlPlaneState(key, next), { ifMatch: previous.etag });
   if (rewritten === null) return false;
   await deleteObject(domainIndexKey(previous.value.ns, previous.value.service_key, previous.value.hostname));
   return true;
@@ -710,10 +768,12 @@ function tenantProjectAssignmentKey(ns: string): string {
 }
 
 export async function readTenantProjectAssignment(ns: string): Promise<string | null> {
-  const stored = await getJson<TenantProjectAssignment>(tenantProjectAssignmentKey(ns));
+  const key = tenantProjectAssignmentKey(ns);
+  const stored = await getJson<unknown>(key);
   if (stored === null) return null;
-  if (typeof stored.project_id !== "string") throw new Error(`stored tenant project assignment for ${JSON.stringify(ns)} is malformed`);
-  return stored.project_id;
+  const value = readAuthenticatedControlPlaneState(key, stored);
+  if (!isRecord(value) || typeof value.project_id !== "string") throw new Error(`authenticated tenant project assignment for ${JSON.stringify(ns)} is malformed`);
+  return value.project_id;
 }
 
 // Returns the authoritative assignment no matter who won the race: the caller's
@@ -722,13 +782,12 @@ export async function readTenantProjectAssignment(ns: string): Promise<string | 
 // only possible around namespace teardown, which does not exist yet.
 export async function assignTenantProject(ns: string, projectId: string): Promise<string> {
   for (;;) {
-    const created = await putJsonConditionally(tenantProjectAssignmentKey(ns), { project_id: projectId } satisfies TenantProjectAssignment, { ifNoneMatch: true });
+    const key = tenantProjectAssignmentKey(ns);
+    const assignment = { project_id: projectId } satisfies TenantProjectAssignment;
+    const created = await putJsonConditionally(key, authenticatedControlPlaneState(key, assignment), { ifNoneMatch: true });
     if (created !== null) return projectId;
-    const existing = await getJson<TenantProjectAssignment>(tenantProjectAssignmentKey(ns));
-    if (existing !== null) {
-      if (typeof existing.project_id !== "string") throw new Error(`stored tenant project assignment for ${JSON.stringify(ns)} is malformed`);
-      return existing.project_id;
-    }
+    const existing = await readTenantProjectAssignment(ns);
+    if (existing !== null) return existing;
   }
 }
 
@@ -772,14 +831,15 @@ export async function listPoolProjects(): Promise<{ projectId: string, entry: Po
     const projectId = objectKey.slice(prefix.length, -".json".length);
     const stored: unknown = await getJson<unknown>(objectKey);
     if (stored === null) continue;
-    projects.push({ projectId, entry: parsePoolProjectEntry(projectId, stored) });
+    projects.push({ projectId, entry: parsePoolProjectEntry(projectId, readAuthenticatedControlPlaneState(objectKey, stored)) });
   }
   return projects;
 }
 
 export async function readPoolProject(projectId: string): Promise<Versioned<PoolProjectEntry> | null> {
-  const stored = await getJsonVersioned<unknown>(poolProjectKey(projectId));
-  return stored === null ? null : { etag: stored.etag, value: parsePoolProjectEntry(projectId, stored.value) };
+  const key = poolProjectKey(projectId);
+  const stored = await getJsonVersioned<unknown>(key);
+  return stored === null ? null : { etag: stored.etag, value: parsePoolProjectEntry(projectId, readAuthenticatedControlPlaneState(key, stored.value)) };
 }
 
 // Writes the `creating` record. This must happen BEFORE the Resource Manager create call —
@@ -787,13 +847,15 @@ export async function readPoolProject(projectId: string): Promise<Versioned<Pool
 // before the record would leak a billed project nothing can ever find. Fails (false) only
 // when the id already exists, which for a random pooled id means another replica got there.
 export async function createPoolProject(projectId: string, entry: PoolProjectEntry): Promise<boolean> {
-  return await putJsonConditionally(poolProjectKey(projectId), entry, { ifNoneMatch: true }) !== null;
+  const key = poolProjectKey(projectId);
+  return await putJsonConditionally(key, authenticatedControlPlaneState(key, entry), { ifNoneMatch: true }) !== null;
 }
 
 // The ETag fence is the distributed arbiter for every state transition: two overlapping
 // advancer ticks cannot both move the same project forward, and the loser simply stops.
 export async function updatePoolProject(projectId: string, entry: PoolProjectEntry, previousEtag: string): Promise<boolean> {
-  return await putJsonConditionally(poolProjectKey(projectId), entry, { ifMatch: previousEtag }) !== null;
+  const key = poolProjectKey(projectId);
+  return await putJsonConditionally(key, authenticatedControlPlaneState(key, entry), { ifMatch: previousEtag }) !== null;
 }
 
 export async function deletePoolProject(projectId: string, previousEtag: string): Promise<boolean> {

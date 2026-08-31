@@ -41,13 +41,18 @@ async function acquireInflationSlot(): Promise<void> {
     throw new MarshalError(503, "source_validation_saturated", "source archive validation is saturated; retry the deployment shortly");
   }
   await new Promise<void>((resolve) => waitingInflations.push(resolve));
-  activeInflations++;
+  // releaseInflationSlot transfers an existing permit directly to this waiter. Incrementing
+  // here would briefly advertise a free slot before this continuation ran, letting a new
+  // caller take it and then pushing active work above MAX_CONCURRENT_INFLATIONS.
 }
 
 function releaseInflationSlot(): void {
-  activeInflations--;
   const next = waitingInflations.shift();
-  if (next !== undefined) next();
+  if (next !== undefined) {
+    next();
+    return;
+  }
+  activeInflations--;
 }
 
 function readString(block: Uint8Array, offset: number, length: number): string {

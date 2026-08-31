@@ -34,6 +34,27 @@ describe("Google Cloud API transport", () => {
     })).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
   });
 
+  it("never sends Google credentials to a non-Google origin", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new GcpClient().request("https://attacker.example/capture")).rejects.toThrow("untrusted API origin");
+    await expect(new GcpClient().request("http://compute.googleapis.com/capture")).rejects.toThrow("untrusted API origin");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects absolute or traversing persisted operation names before polling", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new GcpClient();
+    await expect(client.pollOperation("https://attacker.example/capture", { apiBaseUrl: "https://serviceusage.googleapis.com/v1/" }))
+      .rejects.toThrow("invalid operation name");
+    await expect(client.pollOperation("../capture", { apiBaseUrl: "https://serviceusage.googleapis.com/v1/" }))
+      .rejects.toThrow("invalid operation name");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("preserves provider detail for server logs while normalizing the endpoint", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       error: { message: "permission denied for an internal tenant resource" },

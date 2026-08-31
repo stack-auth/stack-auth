@@ -5,8 +5,11 @@ let pending: { value: PendingDomainClaim, etag: string } | null = null;
 let claimed: { value: DomainClaim, etag: string } | null = null;
 const hasDomainVerificationRecord = vi.hoisted(() => vi.fn());
 const claimDomain = vi.hoisted(() => vi.fn());
+const readDomainClaimVersioned = vi.hoisted(() => vi.fn());
+const releaseDomainClaim = vi.hoisted(() => vi.fn());
 const ensureDomainGateway = vi.hoisted(() => vi.fn());
 const ensureDomain = vi.hoisted(() => vi.fn());
+const deleteDomain = vi.hoisted(() => vi.fn());
 
 vi.mock("./domain-verification.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./domain-verification.js")>(),
@@ -29,13 +32,14 @@ vi.mock("./gcp/context.js", () => ({
     domains: {
       ensureFrontendDnsRecords: async (hostname: string) => [{ type: "A", name: hostname, value: "203.0.113.10" }],
       ensure: ensureDomain,
+      delete: deleteDomain,
     },
   }),
 }));
 vi.mock("./store.js", () => ({
   readSpec: async () => ({ spec: { config: { ports: { "3000": { protocol: "http" } }, public: true }, env: {} } }),
   readDomainClaim: async () => claimed?.value ?? null,
-  readDomainClaimVersioned: async () => claimed,
+  readDomainClaimVersioned,
   readPendingDomainClaimVersioned: async () => pending,
   createPendingDomainClaim: async (value: PendingDomainClaim) => {
     pending = { value, etag: "pending-etag" };
@@ -47,10 +51,10 @@ vi.mock("./store.js", () => ({
   },
   claimDomain,
   rewriteDomainClaim: vi.fn(),
-  releaseDomainClaim: vi.fn(),
+  releaseDomainClaim,
 }));
 
-import { attachDomain } from "./domains.js";
+import { attachDomain, detachDomain } from "./domains.js";
 
 describe("custom-domain ownership", () => {
   beforeEach(() => {
@@ -58,8 +62,12 @@ describe("custom-domain ownership", () => {
     claimed = null;
     hasDomainVerificationRecord.mockReset();
     claimDomain.mockReset();
+    readDomainClaimVersioned.mockReset();
+    releaseDomainClaim.mockReset();
     ensureDomainGateway.mockReset();
     ensureDomain.mockReset();
+    deleteDomain.mockReset();
+    readDomainClaimVersioned.mockImplementation(async () => claimed);
     ensureDomainGateway.mockResolvedValue("cloud-run-service");
     ensureDomain.mockResolvedValue({
       hostname: "app.example.com",
@@ -68,6 +76,10 @@ describe("custom-domain ownership", () => {
     });
     claimDomain.mockImplementation(async (value: DomainClaim) => {
       claimed = { value, etag: "claim-etag" };
+      return true;
+    });
+    releaseDomainClaim.mockImplementation(async () => {
+      claimed = null;
       return true;
     });
   });
@@ -92,5 +104,31 @@ describe("custom-domain ownership", () => {
     await expect(attachDomain("tenant-a", "app.example.com", "web")).resolves.toMatchObject({ verified: true });
     expect(claimDomain).toHaveBeenCalledOnce();
     expect(ensureDomain).toHaveBeenCalledOnce();
+  });
+
+  it("does not delete provider state when a queued detach observes a newer owner", async () => {
+    const oldClaim = { value: { hostname: "app.example.com", ns: "tenant-a", service_key: "web", claimed_at_millis: 1 }, etag: "old-etag" };
+    const newClaim = { value: { hostname: "app.example.com", ns: "tenant-b", service_key: "web", claimed_at_millis: 2 }, etag: "new-etag" };
+    readDomainClaimVersioned.mockResolvedValueOnce(oldClaim).mockResolvedValueOnce(newClaim);
+
+    await expect(detachDomain("tenant-a", "app.example.com", "web")).rejects.toThrow("changed owners");
+    expect(releaseDomainClaim).not.toHaveBeenCalled();
+    expect(deleteDomain).not.toHaveBeenCalled();
+  });
+
+  it("releases the current claim before deleting its provider route", async () => {
+    const order: string[] = [];
+    claimed = { value: { hostname: "app.example.com", ns: "tenant-a", service_key: "web", claimed_at_millis: 1 }, etag: "claim-etag" };
+    releaseDomainClaim.mockImplementationOnce(async () => {
+      order.push("release");
+      claimed = null;
+      return true;
+    });
+    deleteDomain.mockImplementationOnce(async () => {
+      order.push("provider-delete");
+    });
+
+    await expect(detachDomain("tenant-a", "app.example.com", "web")).resolves.toBeUndefined();
+    expect(order).toEqual(["release", "provider-delete"]);
   });
 });

@@ -19,6 +19,35 @@ function isApiActivationPropagationError(status: number, message: string): boole
     && message.includes("If you enabled this API recently, wait a few minutes");
 }
 
+function trustedGoogleApiUrl(rawUrl: string): URL {
+  const url = new URL(rawUrl);
+  if (url.protocol !== "https:"
+    || url.username !== ""
+    || url.password !== ""
+    || url.port !== ""
+    || !(url.hostname === "googleapis.com" || url.hostname.endsWith(".googleapis.com"))) {
+    throw new Error(`refusing to send Google credentials to untrusted API origin ${JSON.stringify(url.origin)}`);
+  }
+  return url;
+}
+
+function operationUrl(operationName: string, apiBaseUrl: string): string {
+  // Operation names can be persisted in the state bucket. Treat them as resource names only:
+  // accepting an absolute URL would turn a bucket write into an OAuth-token exfiltration path.
+  const normalized = operationName.replace(/^\/+/, "");
+  if (normalized === ""
+    || operationName.includes("://")
+    || operationName.includes("?")
+    || operationName.includes("#")
+    || normalized.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+    || !/^[A-Za-z0-9._~/-]+$/.test(normalized)) {
+    throw new Error(`Google Cloud returned an invalid operation name ${JSON.stringify(operationName)}`);
+  }
+  const base = trustedGoogleApiUrl(apiBaseUrl);
+  const baseWithSlash = base.pathname.endsWith("/") ? base : new URL(`${base.pathname}/`, base.origin);
+  return new URL(normalized, baseWithSlash).toString();
+}
+
 export class GcpApiError extends Error {
   constructor(
     public readonly status: number,
@@ -63,8 +92,8 @@ export class GcpClient {
   constructor(private readonly mock?: { url: string, token: string }) {}
 
   private requestUrl(url: string): string {
-    if (this.mock === undefined) return url;
-    const upstream = new URL(url);
+    const upstream = trustedGoogleApiUrl(url);
+    if (this.mock === undefined) return upstream.toString();
     return `${this.mock.url}/googleapis/${upstream.host}${upstream.pathname}${upstream.search}`;
   }
 
@@ -119,10 +148,8 @@ export class GcpClient {
   // it stores the operation name and re-polls it on a later tick instead of waiting here.
   // Throws when the operation itself failed, exactly as waitForOperation does.
   async pollOperation(operationName: string, options?: { apiBaseUrl?: string }): Promise<GcpOperation> {
-    const operationUrl = operationName.startsWith("http://") || operationName.startsWith("https://")
-      ? operationName
-      : `${options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/"}${operationName.replace(/^\//, "")}`;
-    const current = parseOperation(await this.request(operationUrl) ?? throwError(`Google Cloud operation ${operationName} disappeared`));
+    const url = operationUrl(operationName, options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/");
+    const current = parseOperation(await this.request(url) ?? throwError(`Google Cloud operation ${operationName} disappeared`));
     if (current.error !== undefined) {
       throw new GcpApiError(current.error.code ?? 500, current.name, current.error.message ?? "operation failed");
     }
@@ -138,10 +165,8 @@ export class GcpClient {
         throw new GcpApiError(408, current.name, "timed out waiting for operation");
       }
       await delay(1000);
-      const operationUrl = current.name.startsWith("http://") || current.name.startsWith("https://")
-        ? current.name
-        : `${options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/"}${current.name.replace(/^\//, "")}`;
-      current = parseOperation(await this.request(operationUrl) ?? throwError(`Google Cloud operation ${current.name} disappeared`));
+      const url = operationUrl(current.name, options?.apiBaseUrl ?? "https://cloudresourcemanager.googleapis.com/v3/");
+      current = parseOperation(await this.request(url) ?? throwError(`Google Cloud operation ${current.name} disappeared`));
     }
     if (current.error !== undefined) {
       throw new GcpApiError(current.error.code ?? 500, current.name, current.error.message ?? "operation failed");
