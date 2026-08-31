@@ -649,6 +649,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-08-31: the Growth app was removed.
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "gtm");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -759,6 +765,34 @@ import.meta.vitest?.test("migrateConfigOverride renames deployments-alpha app in
     "apps.installed.deploy.enabled": false,
   })).toEqual({
     "apps.installed.deploy.enabled": false,
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride removes Growth app installations", ({ expect }) => {
+  expect(migrateConfigOverride("branch", {
+    apps: {
+      installed: {
+        gtm: { enabled: true },
+        analytics: { enabled: true },
+      },
+    },
+  })).toEqual({
+    apps: {
+      installed: {
+        analytics: { enabled: true },
+      },
+    },
+  });
+  expect(migrateConfigOverride("branch", {
+    "apps.installed.gtm.enabled": true,
+    "apps.installed.analytics.enabled": true,
+  })).toEqual({
+    "apps.installed.analytics.enabled": true,
+  });
+  expect(migrateConfigOverride("project", {
+    "apps.installed.gtm.enabled": true,
+  })).toEqual({
+    "apps.installed.gtm.enabled": true,
   });
 });
 

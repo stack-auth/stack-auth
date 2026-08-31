@@ -7,7 +7,6 @@ const endpoints: { path: string, intervalMs: number }[] = [
   { path: "/api/latest/internal/external-db-sync/sequencer", intervalMs: 1000 },
   { path: "/api/latest/internal/external-db-sync/poller", intervalMs: 1000 },
   { path: "/api/latest/internal/workflow-engine-step", intervalMs: 1000 },
-  { path: "/api/latest/internal/growth-watchdog-step", intervalMs: 5 * 60_000 },
 ];
 
 async function main() {
