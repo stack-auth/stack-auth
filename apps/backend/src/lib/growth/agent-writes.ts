@@ -599,12 +599,9 @@ export async function upsertGrowthReport(options: {
         contentMd: options.contentMd,
         sections: options.sections === undefined ? undefined : toJsonInput(options.sections),
         document: compiledDocument === undefined ? undefined : toJsonInput(compiledDocument),
-        // A report is the customer's the moment it is written. There is no staff review of reports:
-        // the human step happens earlier, on the interview questions (lib/growth/interview-release.ts),
-        // because that is the last point at which a person can still change what the report is built
-        // from. Deliberately NOT mirrored in `update` below — re-composing a run whose report staff
-        // had explicitly unpublished (their error-recovery escape hatch) must not silently re-publish it.
-        publishedAt: new Date(),
+        // Reports are internal analysis artifacts. Customers only receive a report after staff
+        // author and publish a GrowthReportPresentation, so writing or recomposing this row never
+        // opens the customer-facing release gate.
       },
       update: {
         title: options.title,
@@ -620,10 +617,16 @@ export async function upsertGrowthReport(options: {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, status: true },
     });
+    const existingPresentation = await tx.growthReportPresentation.findFirst({
+      where: { reportId: report.id },
+      select: { id: true },
+    });
     // Re-composing a report may replace its recommendations, but only while they are all still
     // untouched proposals — once the user activated/dismissed anything, their decisions win and a
     // re-POST only refreshes the report prose.
-    if (existingItems.some((item) => item.status !== "proposed")) {
+    // A presentation pins the action rows even when they are still proposals: replacing them would
+    // leave the saved curated ids stale and silently blank the customer's action list.
+    if (existingItems.some((item) => item.status !== "proposed") || existingPresentation != null) {
       return { reportId: report.id, actionItemIds: existingItems.map((item) => item.id) };
     }
     await tx.growthActionItem.deleteMany({ where: { reportId: report.id } });

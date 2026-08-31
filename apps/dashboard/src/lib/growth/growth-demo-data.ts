@@ -2,7 +2,7 @@ import type { AdminWorkflow } from "@hexclave/next";
 import type { GrowthPublishedQuiz, GrowthQuizQuestion, GrowthQuizRound } from "./games/growth-games-types";
 import type { GrowthDocument } from "./growth-document";
 import type { GrowthPhase } from "./growth-status";
-import type { GrowthActionItem, GrowthAdsBody, GrowthAnalysisStep, GrowthBrief, GrowthComputeMetrics, GrowthIntegrations, GrowthInterview, GrowthInterviewQuestion, GrowthMilestone, GrowthOverview, GrowthReport, GrowthStatus } from "./growth-types";
+import type { GrowthActionItem, GrowthAdsBody, GrowthAnalysisStep, GrowthBrief, GrowthComputeMetrics, GrowthIntegrations, GrowthInterview, GrowthInterviewQuestion, GrowthLegacyReport, GrowthMilestone, GrowthOverview, GrowthStatus } from "./growth-types";
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -807,20 +807,23 @@ function demoActionItems(nowMillis: number): GrowthActionItem[] {
  * run_ads proposal, three more run_ads items covering the post-activation lifecycle states, and a
  * publish_blog item with a markdown draft payload.
  */
-export function buildGrowthDemoReport(nowMillis: number): GrowthReport {
+export function buildGrowthDemoReport(nowMillis: number): GrowthLegacyReport {
   const reportCreatedAt = nowMillis - 6 * DAY + 4 * HOUR;
   return {
     id: DEMO_REPORT_ID,
     runId: DEMO_RUN_ID,
     title: "Plannery growth analysis",
     summary: "Plannery's word-of-mouth engine works, but onboarding drop-off and an untouched comparison keyword are leaving easy growth on the table. Fix the empty-state experience first, then invest in the TaskHive comparison content.",
-    contentMd: "# Plannery growth analysis\n\nPlannery is a project-management tool for freelancers and small teams with strong organic acquisition and a leaky onboarding funnel.\n\n## What is working\n\nWord of mouth and organic search drive most signups at effectively zero cost.\n\n## What is not\n\n41% of new workspaces never create a second project — churned users consistently cite \"hard to get started\".\n\n## Recommended focus\n\n1. Fix the empty-workspace experience.\n2. Own the \"Plannery vs TaskHive\" comparison keyword.\n3. Test a small paid-search budget on high-intent keywords.\n",
-    document: demoReportDocument(),
-    sections: [
-      { id: "what-is-working", kind: "insight", title: "What is working", bodyMd: "Word of mouth and organic search drive most signups at effectively zero cost. Your activation-to-signup ratio is above the benchmark for freemium PM tools." },
-      { id: "what-is-not", kind: "insight", title: "What is not", bodyMd: "41% of new workspaces never create a second project. Churned users consistently cite \"hard to get started\", which matches the drop-off we see in the event data." },
-      { id: "recommended-focus", kind: "recommendation", title: "Recommended focus", bodyMd: "Fix the empty-workspace experience first, then own the TaskHive comparison keyword, then test a small paid-search budget." },
-    ],
+    content: {
+      type: "legacy",
+      contentMd: "# Plannery growth analysis\n\nPlannery is a project-management tool for freelancers and small teams with strong organic acquisition and a leaky onboarding funnel.\n\n## What is working\n\nWord of mouth and organic search drive most signups at effectively zero cost.\n\n## What is not\n\n41% of new workspaces never create a second project — churned users consistently cite \"hard to get started\".\n\n## Recommended focus\n\n1. Fix the empty-workspace experience.\n2. Own the \"Plannery vs TaskHive\" comparison keyword.\n3. Test a small paid-search budget on high-intent keywords.\n",
+      document: demoReportDocument(),
+      sections: [
+        { id: "what-is-working", kind: "insight", title: "What is working", bodyMd: "Word of mouth and organic search drive most signups at effectively zero cost. Your activation-to-signup ratio is above the benchmark for freemium PM tools." },
+        { id: "what-is-not", kind: "insight", title: "What is not", bodyMd: "41% of new workspaces never create a second project. Churned users consistently cite \"hard to get started\", which matches the drop-off we see in the event data." },
+        { id: "recommended-focus", kind: "recommendation", title: "Recommended focus", bodyMd: "Fix the empty-workspace experience first, then own the TaskHive comparison keyword, then test a small paid-search budget." },
+      ],
+    },
     createdAtMillis: reportCreatedAt,
     actionItems: demoActionItems(nowMillis),
   };

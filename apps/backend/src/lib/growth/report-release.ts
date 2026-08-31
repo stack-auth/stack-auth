@@ -1,8 +1,9 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
-import { getGrowthReportBody } from "./actions";
+import { getGrowthAdminReportBody } from "./actions";
+import { lockGrowthReport, presentationToWire } from "./report-presentation";
 import { assertTriggerIsValid } from "./phases";
 
 export const PUBLISHED_GROWTH_REPORT_FILTER = { publishedAt: { not: null } };
@@ -47,7 +48,7 @@ async function requireReportInTenancy(tenancy: Tenancy, reportId: string) {
   if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
   const report = await globalPrismaClient.growthReport.findFirst({
     where: { id: reportId, projectId: tenancy.project.id, branchId: tenancy.branchId },
-    select: { id: true, publishedAt: true },
+    select: { id: true, publishedAt: true, publishedByUserId: true },
   });
   if (report == null) throw new StatusError(404, "Report not found.");
   return report;
@@ -95,22 +96,50 @@ export async function listGrowthAdminReports(tenancy: Tenancy) {
 }
 
 /**
- * One report in full, exactly as the customer would receive it — same function, same wire shape,
- * only with the published-only filter lifted. A reviewer has to be looking at the real artefact; a
- * staff-only rendering of it would be a different thing than the one being approved.
+ * One report in full for staff review, with the customer-facing report fields plus every authored
+ * presentation version. Staff need the internal analysis artifact and source to choose what gets
+ * published; this is intentionally no longer the customer wire shape.
  */
 export async function getGrowthAdminReport(tenancy: Tenancy, reportId: string) {
   const report = await requireReportInTenancy(tenancy, reportId);
-  const body = await getGrowthReportBody(tenancy, report.id, { publishedOnly: false });
-  return { ...body, published_at_millis: report.publishedAt == null ? null : report.publishedAt.getTime() };
+  const body = await getGrowthAdminReportBody(tenancy, report.id);
+  const presentations = await globalPrismaClient.growthReportPresentation.findMany({
+    where: { reportId: report.id, projectId: tenancy.project.id, branchId: tenancy.branchId },
+    orderBy: [{ version: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      reportId: true,
+      format: true,
+      tsxSource: true,
+      actionItemIds: true,
+      version: true,
+      createdAt: true,
+      createdByUserId: true,
+      publishedAt: true,
+      publishedByUserId: true,
+    },
+  });
+  return {
+    ...body,
+    published_at_millis: report.publishedAt == null ? null : report.publishedAt.getTime(),
+    published_by_user_id: report.publishedByUserId,
+    presentations: presentations.map(presentationToWire),
+  };
 }
 
 export async function unpublishGrowthReport(tenancy: Tenancy, reportId: string) {
   const report = await requireReportInTenancy(tenancy, reportId);
   if (report.publishedAt == null) throw new StatusError(409, "This report is not published.");
-  await globalPrismaClient.growthReport.update({
-    where: { id: report.id },
-    data: { publishedAt: null, publishedByUserId: null },
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    await lockGrowthReport(tx, report.id);
+    await tx.growthReportPresentation.updateMany({
+      where: { reportId: report.id, publishedAt: { not: null } },
+      data: { publishedAt: null, publishedByUserId: null },
+    });
+    await tx.growthReport.update({
+      where: { id: report.id },
+      data: { publishedAt: null, publishedByUserId: null },
+    });
   });
   return await listGrowthAdminReports(tenancy);
 }

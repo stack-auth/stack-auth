@@ -1,4 +1,5 @@
 import { dismissGrowthActionItem } from "@/lib/growth/actions";
+import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -22,6 +23,7 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, params }) => {
+    requireGrowthInternalResourceAccess(auth.tenancy);
     requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const result = await dismissGrowthActionItem(auth.tenancy, params.action_id);

@@ -24,7 +24,7 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, params }) => {
     requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
-    const result = await activateGrowthActionItem(auth.tenancy, params.action_id);
+    const result = await activateGrowthActionItem(auth.tenancy, params.action_id, { enforceCustomerCuration: true });
     return { statusCode: 200, bodyType: "json", body: { status: result.status, workflow_id: result.workflowId } };
   },
 });

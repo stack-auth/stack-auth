@@ -45,8 +45,8 @@ export async function asGrowthStaff<T>(call: () => Promise<T>): Promise<T> {
  *
  * The plan is written held — see lib/growth/interview-release.ts — so a suite that drives a run to
  * the interview and then answers it as the customer has to release it in between, exactly as
- * production does. This is the ONLY human gate left in the growth lifecycle; reports publish on
- * write, so there is no report-side counterpart to this helper.
+ * production does. Presentation publication is a separate staff gate after the internal report
+ * artifact is written.
  */
 export async function releaseGrowthInterviewAsStaff(projectId: string): Promise<void> {
   await asGrowthStaff(async () => {
@@ -69,8 +69,8 @@ export async function releaseGrowthInterviewAsStaff(projectId: string): Promise<
  * before they can read anything. Nothing about the report matters here except that it exists, so it
  * is deliberately the smallest one the agent API accepts.
  *
- * No publish step: a report is live the moment the agent writes it. The name keeps "AsStaff" because
- * writing one still needs the machine secret, which is not something a customer has.
+ * The report is an internal artifact until staff publish a presentation. The name keeps "AsStaff"
+ * because both the machine write and presentation publish are non-customer operations.
  */
 export async function unlockGrowthWorkspaceAsStaff(scope: { project_id: string, branch_id: string }): Promise<string> {
   const runId = await requireGrowthRunIdForScope();
@@ -89,7 +89,37 @@ export async function unlockGrowthWorkspaceAsStaff(scope: { project_id: string, 
   if (report.status !== 200) {
     throw new Error(`Seeding the unlock report failed with status ${report.status}: ${JSON.stringify(report.body)}`);
   }
-  return (report.body as { report_id: string }).report_id;
+  const reportId = (report.body as { report_id: string }).report_id;
+  await publishGrowthPresentationAsStaff(scope.project_id, reportId, (report.body as { action_item_ids: string[] }).action_item_ids);
+  return reportId;
+}
+
+export async function publishGrowthPresentationAsStaff(projectId: string, reportId: string, actionItemIds: string[]): Promise<string> {
+  return await asGrowthStaff(async () => {
+    const created = await niceBackendFetch(`/api/latest/internal/growth/admin/reports/${reportId}/presentations`, {
+      accessType: "client",
+      method: "POST",
+      body: {
+        target_project_id: projectId,
+        format: "sandboxed-tsx-v1",
+        tsx_source: "const Dashboard = () => null;",
+        action_item_ids: actionItemIds,
+      },
+    });
+    if (created.status !== 201) {
+      throw new Error(`Creating the growth presentation failed with status ${created.status}: ${JSON.stringify(created.body)}`);
+    }
+    const presentationId = (created.body as { id: string }).id;
+    const published = await niceBackendFetch(`/api/latest/internal/growth/admin/reports/${reportId}/presentations/${presentationId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: { target_project_id: projectId, action: "publish" },
+    });
+    if (published.status !== 200) {
+      throw new Error(`Publishing the growth presentation failed with status ${published.status}: ${JSON.stringify(published.body)}`);
+    }
+    return presentationId;
+  });
 }
 
 /**

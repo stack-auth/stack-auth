@@ -10,7 +10,8 @@ const AGENT_BASE = "/api/latest/internal/growth-agent";
 /**
  * The release gate: an interview's question plan is written by the analysis but withheld from the
  * customer until a Hexclave staff member has read it. This is the ONLY human gate left in the growth
- * lifecycle — reports publish on write (report-release.test.ts).
+ * lifecycle — reports remain internal until staff publish a presentation
+ * (report-release.test.ts).
  *
  * Seeding "plays the agent" with the shared machine secret: question plans have no customer-facing
  * write API, so that is the only way one comes into existence. The run is deliberately left RUNNING

@@ -262,6 +262,18 @@ export type GrowthActionItem = {
   completedAtMillis: number | null,
 };
 
+export type GrowthCustomerActionItem = {
+  id: string,
+  typeId: GrowthActionType,
+  title: string,
+  description: string,
+  status: GrowthActionStatus,
+  hasWorkflow: boolean,
+  createdAtMillis: number,
+  activatedAtMillis: number | null,
+  completedAtMillis: number | null,
+};
+
 export type GrowthOverviewFinding = {
   id: string,
   source: string,
@@ -294,16 +306,70 @@ export type GrowthReportSection = {
   bodyMd: string,
 };
 
-export type GrowthReport = {
+export type GrowthReportPresentation = {
+  id: string,
+  reportId: string,
+  format: string,
+  tsxSource: string,
+  actionItemIds: string[],
+  version: number,
+  createdAtMillis: number,
+  createdByUserId: string | null,
+  publishedAtMillis: number | null,
+  publishedByUserId: string | null,
+};
+
+export const GROWTH_REPORT_PRESENTATION_FORMAT = "sandboxed-tsx-v1";
+
+export type GrowthReportContent =
+  | {
+    type: "presentation",
+    format: string,
+    version: number,
+    tsxSource: string,
+  }
+  | {
+    type: "legacy",
+    contentMd: string,
+    document: GrowthDocument | null,
+    sections: GrowthReportSection[] | null,
+  };
+
+type GrowthReportBase = {
+  id: string,
+  runId: string,
+  createdAtMillis: number,
+};
+
+export type GrowthPresentationReport = GrowthReportBase & {
+  content: Extract<GrowthReportContent, { type: "presentation" }>,
+  actionItems: GrowthCustomerActionItem[],
+};
+
+export type GrowthLegacyReport = GrowthReportBase & {
+  title: string,
+  summary: string,
+  content: Extract<GrowthReportContent, { type: "legacy" }>,
+  actionItems: GrowthActionItem[],
+};
+
+export type GrowthReport = GrowthPresentationReport | GrowthLegacyReport;
+
+export type GrowthAdminReport = {
   id: string,
   runId: string,
   title: string,
   summary: string,
-  contentMd: string,
-  document?: GrowthDocument | null,
-  sections: GrowthReportSection[] | null,
+  content: {
+    contentMd: string,
+    document: GrowthDocument | null,
+    sections: GrowthReportSection[] | null,
+  },
   createdAtMillis: number,
   actionItems: GrowthActionItem[],
+  publishedAtMillis: number | null,
+  publishedByUserId: string | null,
+  presentations: GrowthReportPresentation[],
 };
 
 /** One point of a daily metric series; `date` is an ISO date (YYYY-MM-DD, UTC). */

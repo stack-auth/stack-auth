@@ -1,4 +1,5 @@
 import { generateGrowthBlogDraft } from "@/lib/growth/blog-drafts";
+import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -40,6 +41,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
+    requireGrowthInternalResourceAccess(auth.tenancy);
     requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     const { draftMarkdown, generated } = await generateGrowthBlogDraft(auth.tenancy, params.action_id);

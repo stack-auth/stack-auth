@@ -1,13 +1,10 @@
 "use client";
 
 import { DesignCard } from "@/components/design-components";
-import { Link } from "@/components/link";
 import type { GrowthChatToolCard, GrowthChatTranscriptEntry } from "@/lib/growth/growth-chat";
-import { ArrowRightIcon, ChatCircleDotsIcon, ClockCountdownIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ChatCircleDotsIcon, ClockCountdownIcon, LightbulbIcon, LightningIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import type { ElementType } from "react";
 import { useEffect, useRef } from "react";
-import { useProjectId } from "../../../use-admin-app";
-import { useGrowthHref } from "../action-card";
 import { GrowthMarkdown } from "../report-sections";
 
 // The three example prompts on the empty state; clicking one fills the composer (it does not send,
@@ -27,14 +24,11 @@ const TOOL_CARD_META = new Map<GrowthChatToolCard["kind"], { label: string, icon
 ]);
 
 /**
- * Compact "the assistant created X" card for an artifact-creating tool call. Links into the
- * artifact's home page (specific action detail when the output carried an id) via useGrowthHref so
- * demo-mode query params survive the navigation.
+ * Compact "the assistant created X" card for an artifact-creating tool call. Internal artifact
+ * detail pages are staff-only, so the customer transcript keeps this card informational.
  */
 function ToolCardView(props: { card: GrowthChatToolCard }) {
   const { card } = props;
-  const projectId = useProjectId();
-  const withQuery = useGrowthHref();
   const baseMeta = TOOL_CARD_META.get(card.kind)
     // The fold only emits cards for the three known kinds, but keep rendering total if that set grows.
     ?? { label: "Used a tool", icon: LightningIcon };
@@ -45,15 +39,6 @@ function ToolCardView(props: { card: GrowthChatToolCard }) {
     ? { label: "Proposed automation — review & activate", icon: baseMeta.icon }
     : baseMeta;
   const Icon = meta.icon;
-  const link = card.errored ? null
-    : card.kind === "create-action-item" ? {
-      label: card.hasWorkflow ? "Review & activate" : "View action",
-      href: withQuery(card.createdActionItemId == null
-        ? `/projects/${projectId}/gtm`
-        : `/projects/${projectId}/gtm/actions/${card.createdActionItemId}`),
-    }
-      : card.kind === "create-scheduled-task" ? { label: "View workflow", href: `/projects/${projectId}/workflows` }
-        : null;
   return (
     <div className="flex max-w-xl flex-wrap items-center gap-2.5 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5">
       {card.errored
@@ -63,12 +48,6 @@ function ToolCardView(props: { card: GrowthChatToolCard }) {
         {card.errored ? `${meta.label.replace("Created", "Could not create").replace("Saved", "Could not save").replace("Used", "Could not use")}` : meta.label}
         {card.label != null && <span className="text-muted-foreground">: {card.label}</span>}
       </span>
-      {link != null && (
-        <Link href={link.href} className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-foreground underline-offset-4 hover:underline">
-          {link.label}
-          <ArrowRightIcon className="size-3" />
-        </Link>
-      )}
     </div>
   );
 }

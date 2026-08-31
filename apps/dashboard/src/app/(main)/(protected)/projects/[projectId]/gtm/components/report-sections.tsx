@@ -2,7 +2,7 @@
 
 import { DesignCard } from "@/components/design-components";
 import { cn } from "@/lib/utils";
-import type { GrowthReport } from "@/lib/growth/growth-types";
+import type { GrowthReportSection } from "@/lib/growth/growth-types";
 import {
   ChartLineUpIcon,
   FileTextIcon,
@@ -95,18 +95,17 @@ export function getGrowthReportSectionMeta(kind: string): SectionMeta {
  * Renders a report's structured sections as cards; when the composer produced no structured sections
  * (older reports, or a composer fallback), the raw `contentMd` is rendered as a single card instead.
  */
-export function GrowthReportSections(props: { report: GrowthReport }) {
-  const { report } = props;
-  if (report.sections == null) {
+export function GrowthReportSections(props: { contentMd: string, sections: GrowthReportSection[] | null }) {
+  if (props.sections == null) {
     return (
       <DesignCard title="Report" icon={FileTextIcon} gradient="default">
-        <GrowthMarkdown content={report.contentMd} />
+        <GrowthMarkdown content={props.contentMd} />
       </DesignCard>
     );
   }
   return (
     <div className="flex flex-col gap-4">
-      {report.sections.map((section, index) => {
+      {props.sections.map((section, index) => {
         const meta = getGrowthReportSectionMeta(section.kind);
         return (
           // Section ids are nullable on the wire; the index fallback is safe because sections are

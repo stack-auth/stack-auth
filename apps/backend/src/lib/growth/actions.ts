@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { Tenancy } from "@/lib/tenancies";
 import { deleteWorkflow, syncWorkflowSource } from "@/lib/workflows/api";
 import { deterministicWorkflowUuid, enqueueWorkflowEvent } from "@/lib/workflows/events";
-import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import type { WorkflowTriggerJson } from "@hexclave/shared/dist/interface/workflows";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -16,6 +16,7 @@ import {
 import { GrowthMetricId, GrowthWatchedMetric } from "./action-item-types";
 import { normalizeStoredGrowthCategory } from "./categories";
 import { computeGrowthMetrics } from "./metrics";
+import { lockGrowthReport } from "./report-presentation";
 import { scanWorkflowSourceWarnings } from "./workflow-authoring";
 
 // Re-exported for existing consumers (dashboard read routes, actions.test.ts) that import these wire
@@ -174,6 +175,20 @@ export function growthActionItemToWire(item: GrowthActionItemRow, workflowRuntim
   };
 }
 
+export function growthActionItemToCustomerWire(item: GrowthActionItemRow) {
+  return {
+    id: item.id,
+    type_id: item.typeId,
+    title: item.title,
+    description: item.description,
+    status: assertActionStatus(item.status),
+    has_workflow: item.workflowId != null,
+    created_at_millis: item.createdAt.getTime(),
+    activated_at_millis: item.activatedAt == null ? null : item.activatedAt.getTime(),
+    completed_at_millis: item.completedAt == null ? null : item.completedAt.getTime(),
+  };
+}
+
 function growthDocumentFromRow(row: { id: string, document?: unknown }): unknown | null {
   return row.document ?? null;
 }
@@ -207,10 +222,91 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
       ...options.publishedOnly ? { publishedAt: { not: null } } : {},
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: {
+      presentations: {
+        where: { publishedAt: { not: null } },
+        orderBy: [{ publishedAt: "desc" }, { version: "desc" }],
+        take: 1,
+      },
+    },
   });
   if (report == null) {
     throw new StatusError(404, "Report not found.");
   }
+  const publishedPresentation = options.publishedOnly && report.presentations.length > 0
+    ? report.presentations[0]
+    : null;
+  const actionItems = await globalPrismaClient.growthActionItem.findMany({
+    where: { reportId: report.id },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  let visibleActionItems = actionItems;
+  if (publishedPresentation != null) {
+    const actionItemsById = new Map(actionItems.map((item) => [item.id, item]));
+    const missingActionItemIds: string[] = [];
+    visibleActionItems = publishedPresentation.actionItemIds.flatMap((id) => {
+      const item = actionItemsById.get(id);
+      if (item == null) {
+        missingActionItemIds.push(id);
+        return [];
+      }
+      return [item];
+    });
+    if (missingActionItemIds.length > 0) {
+      captureError("growth-report-presentation-action-item-drift", new HexclaveAssertionError(
+        `Published GrowthReportPresentation ${publishedPresentation.id} references action items that no longer exist.`,
+        { reportId: report.id, presentationId: publishedPresentation.id, missingActionItemIds },
+      ));
+    }
+  }
+  // Fields both branches share. The action items deliberately are NOT part of this: the presentation
+  // branch maps them through the customer allowlist and the legacy branch through the internal wire,
+  // and building the internal shape here first would make a leak one spread-order slip away.
+  const base = {
+    id: report.id,
+    run_id: report.runId,
+    created_at_millis: report.createdAt.getTime(),
+  };
+  if (publishedPresentation != null) {
+    return {
+      ...base,
+      action_items: visibleActionItems.map(growthActionItemToCustomerWire),
+      presentation: {
+        format: publishedPresentation.format,
+        version: publishedPresentation.version,
+        tsx_source: publishedPresentation.tsxSource,
+      },
+    };
+  }
+  // Reports auto-published before GrowthReportPresentation existed have no presentation. Keep the
+  // legacy body for those grandfathered rows so their customers do not go dark; new publication
+  // always requires a presentation and therefore takes the explicit allowlist path above.
+  const workflowRuntimeByItemId = await loadGrowthActionWorkflowRuntimeInfo(tenancy, visibleActionItems);
+  return {
+    ...base,
+    title: report.title,
+    summary: report.summary,
+    action_items: visibleActionItems.map((item) => growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)),
+    content_md: report.contentMd,
+    document: growthDocumentFromRow(report),
+    // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
+    // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
+    sections: report.sections ?? null,
+  };
+}
+
+/**
+ * Staff review keeps the complete analysis artifact and action internals available regardless of
+ * publication state. This intentionally has a separate body builder from getGrowthReportBody:
+ * customer presentation reports use an explicit allowlist and must never be widened by an admin
+ * response refactor.
+ */
+export async function getGrowthAdminReportBody(tenancy: Tenancy, reportId: string) {
+  if (!isUuid(reportId)) throw new StatusError(404, "Report not found.");
+  const report = await globalPrismaClient.growthReport.findFirst({
+    where: { id: reportId, projectId: tenancy.project.id, branchId: tenancy.branchId },
+  });
+  if (report == null) throw new StatusError(404, "Report not found.");
   const actionItems = await globalPrismaClient.growthActionItem.findMany({
     where: { reportId: report.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -221,13 +317,11 @@ export async function getGrowthReportBody(tenancy: Tenancy, reportId: string | "
     run_id: report.runId,
     title: report.title,
     summary: report.summary,
-    content_md: report.contentMd,
-    document: growthDocumentFromRow(report),
-    // Stored Json passes through unchanged: the column shape ([{ id?, kind, title, body_markdown }])
-    // is exactly the wire shape, by design (see the comment on the dashboard's reportSchema).
-    sections: report.sections ?? null,
     created_at_millis: report.createdAt.getTime(),
     action_items: actionItems.map((item) => growthActionItemToWire(item, workflowRuntimeByItemId.get(item.id) ?? null)),
+    content_md: report.contentMd,
+    document: growthDocumentFromRow(report),
+    sections: report.sections ?? null,
   };
 }
 
@@ -392,6 +486,51 @@ export async function deployGrowthActionWorkflow(tenancy: Tenancy, item: { id: s
   return { createdNew };
 }
 
+async function isCustomerActionCurationAllowed(client: PrismaClientTransaction, reportId: string, actionItemId: string): Promise<boolean> {
+  const report = await client.growthReport.findUnique({
+    where: { id: reportId },
+    select: { publishedAt: true },
+  });
+  if (report?.publishedAt == null) return false;
+
+  const publishedPresentation = await client.growthReportPresentation.findFirst({
+    where: { reportId, publishedAt: { not: null } },
+    select: { actionItemIds: true },
+  });
+  if (publishedPresentation != null) return publishedPresentation.actionItemIds.includes(actionItemId);
+
+  const anyPresentation = await client.growthReportPresentation.findFirst({
+    where: { reportId },
+    select: { id: true },
+  });
+  return anyPresentation == null;
+}
+
+async function cleanupCreatedWorkflowAfterActivationFailure(
+  tenancy: Tenancy,
+  actionItemId: string,
+  workflowId: string | null,
+  createdWorkflowInThisCall: boolean,
+): Promise<GrowthActionStatus> {
+  const current = assertActionStatus((await requireActionItemInTenancy(tenancy, actionItemId)).status);
+  if (createdWorkflowInThisCall && workflowId != null && current !== "active") {
+    try {
+      await deleteWorkflow(tenancy, workflowId);
+    } catch (error) {
+      if (error instanceof StatusError && error.statusCode === 404) {
+        // Already gone (e.g. the winning dismiss's own cleanup beat us) — fine.
+      } else {
+        // Best-effort only: the orphaned workflow is visible (and deletable) in the customer's
+        // workflows list, so log loudly but do not fail the request over cleanup.
+        captureError("growth-action-activation-cleanup", new HexclaveAssertionError(`Failed to clean up workflow "${workflowId}" after losing the activation CAS for action item ${actionItemId}`, { cause: error, itemId: actionItemId, workflowId }));
+      }
+    }
+  }
+  return current;
+}
+
+type GrowthActionActivationTransactionOutcome = true | false | "curation-denied";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -399,8 +538,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export async function activateGrowthActionItem(
   tenancy: Tenancy,
   actionItemId: string,
+  options: { enforceCustomerCuration: boolean },
 ): Promise<{ status: GrowthActionStatus, workflowId: string | null }> {
   const item = await requireActionItemInTenancy(tenancy, actionItemId);
+  if (options.enforceCustomerCuration) {
+    if (item.reportId == null) {
+      throw new StatusError(403, "This action is not available.");
+    }
+    if (!await isCustomerActionCurationAllowed(globalPrismaClient, item.reportId, item.id)) {
+      throw new StatusError(403, "This action is not available.");
+    }
+  }
   const status = assertActionStatus(item.status);
 
   if (status === "active") {
@@ -435,7 +583,19 @@ export async function activateGrowthActionItem(
     createdWorkflowInThisCall = deployed.createdNew;
   }
 
-  const won = await retryTransaction(globalPrismaClient, async (tx) => {
+  const transactionOutcome = await retryTransaction<GrowthActionActivationTransactionOutcome>(globalPrismaClient, async (tx) => {
+    if (options.enforceCustomerCuration && item.reportId != null) {
+      // Unpublish locks this report row before clearing its presentation, so taking the same lock
+      // here makes the authorization decision and activation commit one serialized decision.
+      let customerCurationAllowed = false;
+      try {
+        await lockGrowthReport(tx, item.reportId);
+        customerCurationAllowed = await isCustomerActionCurationAllowed(tx, item.reportId, item.id);
+      } catch (error) {
+        if (!(error instanceof StatusError) || error.statusCode !== 404) throw error;
+      }
+      if (!customerCurationAllowed) return "curation-denied";
+    }
     // CAS on status: exactly one activation flips proposed -> active, so exactly one "before"
     // snapshot exists per item (mirroring how the engine's daily rollup owns the "after" rows).
     const claimed = await tx.growthActionItem.updateMany({
@@ -465,25 +625,16 @@ export async function activateGrowthActionItem(
     }
     return true;
   });
-  if (!won) {
+  if (transactionOutcome === "curation-denied") {
+    await cleanupCreatedWorkflowAfterActivationFailure(tenancy, actionItemId, item.workflowId, createdWorkflowInThisCall);
+    throw new StatusError(403, "This action is not available.");
+  }
+  if (!transactionOutcome) {
     // Lost a race with a concurrent activate/dismiss; report whatever the item became. Cleanup of
     // the workflow we just deployed depends on WHO won: a concurrent ACTIVATION wants the workflow
     // deployed (it either created it in a racing sync or healed onto ours), so deleting it would
     // sabotage the winner — only a winning DISMISS leaves our deployment orphaned.
-    const current = assertActionStatus((await requireActionItemInTenancy(tenancy, actionItemId)).status);
-    if (createdWorkflowInThisCall && item.workflowId != null && current !== "active") {
-      try {
-        await deleteWorkflow(tenancy, item.workflowId);
-      } catch (error) {
-        if (error instanceof StatusError && error.statusCode === 404) {
-          // Already gone (e.g. the winning dismiss's own cleanup beat us) — fine.
-        } else {
-          // Best-effort only: the orphaned workflow is visible (and deletable) in the customer's
-          // workflows list, so log loudly but do not fail the request over cleanup.
-          captureError("growth-action-activation-cleanup", new HexclaveAssertionError(`Failed to clean up workflow "${item.workflowId}" after losing the activation CAS for action item ${item.id}`, { cause: error, itemId: item.id, workflowId: item.workflowId }));
-        }
-      }
-    }
+    const current = await cleanupCreatedWorkflowAfterActivationFailure(tenancy, actionItemId, item.workflowId, createdWorkflowInThisCall);
     if (current === "active") {
       return { status: "active", workflowId: item.workflowId };
     }

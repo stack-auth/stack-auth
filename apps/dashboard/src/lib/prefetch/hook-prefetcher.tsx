@@ -12,6 +12,30 @@ let hasSetupHookPrefetcher = false;
 
 export type HookPrefetcherCallback = () => HookPrefetcherCallback[] | void;
 
+/**
+ * Thrown by a prefetcher hook that cannot prefetch the resource it was pointed at — for example a
+ * <Link> to a project the current dashboard user doesn't own (the Growth admin page links into the
+ * customer projects it manages). Prefetching is best-effort, so this unwinds only the isolated
+ * prefetch subtree below; the alternative, letting the hook call `notFound()`, escapes this
+ * component's ErrorBoundary (Next resolves not-found digests at the route level) and would replace
+ * the whole page the link merely sits on with a 404.
+ */
+export class PrefetchUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PrefetchUnavailableError";
+  }
+}
+
+/**
+ * Whether the calling hook is running inside a prefetch render rather than a render whose output the
+ * user actually sees. Hooks that would otherwise navigate or hard-fail on missing data use this to
+ * degrade into a PrefetchUnavailableError instead.
+ */
+export function isPrefetching(): boolean {
+  return isPrefetchingCounter > 0;
+}
+
 // PrefetchMany is now defined outside of HookPrefetcher to maintain a stable component reference
 const PrefetchMany = memo(function PrefetchMany(props: { callbacks: HookPrefetcherCallback[] }): React.ReactNode {
   return <>
@@ -78,6 +102,8 @@ export function HookPrefetcher(props: {
 
 function HookPrefetcherErrorComponent(props: { error: unknown }) {
   useEffect(() => {
+    // An unprefetchable resource is an expected outcome, not a defect — don't report it.
+    if (props.error instanceof PrefetchUnavailableError) return;
     captureError("hook-prefetcher", props.error);
   }, [props.error]);
   return null;

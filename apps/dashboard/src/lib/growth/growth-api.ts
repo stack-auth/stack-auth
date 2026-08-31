@@ -33,6 +33,7 @@ import {
   GROWTH_RELEASE_STATES,
   GROWTH_RUN_TRIGGERS,
   type GrowthActionItem,
+  type GrowthCustomerActionItem,
   type GrowthActionMetricSeries,
   type GrowthActionStatus,
   type GrowthAdsBody,
@@ -334,7 +335,7 @@ const actionWorkflowSchema = z.object({
   warnings: z.array(z.string()),
 });
 
-const actionItemSchema = z.object({
+export const actionItemSchema = z.object({
   id: z.string(),
   type_id: z.enum(GROWTH_ACTION_TYPES),
   // Nullable/optional during the staged rollout: old rows and an older development backend remain
@@ -355,28 +356,61 @@ const actionItemSchema = z.object({
   completed_at_millis: z.number().nullable(),
 });
 
-/**
- * Exported so the admin Reports card can parse a staff read of the same endpoint shape — staff
- * review the report exactly as the customer receives it, so there is one schema, not two.
- */
-export const reportSchema = z.object({
+const customerActionItemSchema = z.object({
+  id: z.string(),
+  type_id: z.enum(GROWTH_ACTION_TYPES),
+  title: z.string(),
+  description: z.string(),
+  status: z.enum(GROWTH_ACTION_STATUSES),
+  has_workflow: z.boolean(),
+  created_at_millis: z.number(),
+  activated_at_millis: z.number().nullable(),
+  completed_at_millis: z.number().nullable(),
+});
+
+const reportBaseSchema = z.object({
   id: z.string(),
   run_id: z.string(),
+  created_at_millis: z.number(),
+});
+
+const legacyReportBaseSchema = reportBaseSchema.extend({
   title: z.string(),
   summary: z.string(),
+});
+
+const legacyReportContentSchema = z.object({
   content_md: z.string(),
   document: growthDocumentSchema.nullable().optional(),
-  // Field name follows the stored Json shape documented on GrowthReport.sections in the Prisma schema
-  // ("body_markdown", not "body_md") so the backend can pass the column through without remapping.
   sections: z.array(z.object({
     id: z.string().nullish(),
     kind: z.string(),
     title: z.string(),
     body_markdown: z.string(),
   })).nullable(),
-  created_at_millis: z.number(),
-  action_items: z.array(actionItemSchema),
 });
+
+const presentationReportContentSchema = z.object({
+  presentation: z.object({
+    format: z.string(),
+    version: z.number(),
+    tsx_source: z.string(),
+  }),
+});
+
+/**
+ * Customer reports have one of two deliberate content shapes. The legacy branch is only for
+ * reports auto-published before presentations existed; newly published reports use the sandbox
+ * presentation branch and do not expose the internal analysis document.
+ */
+export const reportSchema = z.union([
+  reportBaseSchema.extend({
+    action_items: z.array(customerActionItemSchema),
+  }).merge(presentationReportContentSchema),
+  legacyReportBaseSchema.extend({
+    action_items: z.array(actionItemSchema),
+  }).merge(legacyReportContentSchema),
+]);
 
 const metricPointSchema = z.object({
   date: z.string(),
@@ -448,7 +482,7 @@ function mapGrowthInterview(value: z.infer<typeof interviewSchema>): GrowthInter
   };
 }
 
-function mapGrowthActionItem(value: z.infer<typeof actionItemSchema>): GrowthActionItem {
+export function mapGrowthActionItem(value: z.infer<typeof actionItemSchema>): GrowthActionItem {
   return {
     id: value.id,
     typeId: value.type_id,
@@ -480,20 +514,51 @@ function mapGrowthActionItem(value: z.infer<typeof actionItemSchema>): GrowthAct
   };
 }
 
+function mapGrowthCustomerActionItem(value: z.infer<typeof customerActionItemSchema>): GrowthCustomerActionItem {
+  return {
+    id: value.id,
+    typeId: value.type_id,
+    title: value.title,
+    description: value.description,
+    status: value.status,
+    hasWorkflow: value.has_workflow,
+    createdAtMillis: value.created_at_millis,
+    activatedAtMillis: value.activated_at_millis,
+    completedAtMillis: value.completed_at_millis,
+  };
+}
+
 export function mapGrowthReport(value: z.infer<typeof reportSchema>): GrowthReport {
+  if ("presentation" in value) {
+    return {
+      id: value.id,
+      runId: value.run_id,
+      content: {
+        type: "presentation",
+        format: value.presentation.format,
+        version: value.presentation.version,
+        tsxSource: value.presentation.tsx_source,
+      },
+      createdAtMillis: value.created_at_millis,
+      actionItems: value.action_items.map(mapGrowthCustomerActionItem),
+    };
+  }
   return {
     id: value.id,
     runId: value.run_id,
     title: value.title,
     summary: value.summary,
-    contentMd: value.content_md,
-    document: value.document ?? null,
-    sections: value.sections == null ? null : value.sections.map((section) => ({
-      id: section.id ?? null,
-      kind: section.kind,
-      title: section.title,
-      bodyMd: section.body_markdown,
-    })),
+    content: {
+      type: "legacy",
+      contentMd: value.content_md,
+      document: value.document ?? null,
+      sections: value.sections == null ? null : value.sections.map((section) => ({
+        id: section.id ?? null,
+        kind: section.kind,
+        title: section.title,
+        bodyMd: section.body_markdown,
+      })),
+    },
     createdAtMillis: value.created_at_millis,
     actionItems: value.action_items.map(mapGrowthActionItem),
   };
@@ -634,32 +699,6 @@ function mapOverviewFinding(value: z.infer<typeof overviewFindingSchema>) {
     data: value.data ?? null,
     document: value.document ?? null,
     createdAtMillis: value.created_at_millis,
-  };
-}
-
-export async function getGrowthOverview(app: object): Promise<GrowthOverview> {
-  const value = overviewSchema.parse(await requestJson(app, "/overview"));
-  return {
-    latestReport: value.latest_report == null ? null : {
-      id: value.latest_report.id,
-      title: value.latest_report.title,
-      summary: value.latest_report.summary,
-      createdAtMillis: value.latest_report.created_at_millis,
-    },
-    latestBrief: value.latest_brief == null ? null : {
-      id: value.latest_brief.id,
-      date: value.latest_brief.date,
-      summary: value.latest_brief.summary,
-      contentMd: value.latest_brief.content_md,
-      createdAtMillis: value.latest_brief.created_at_millis,
-    },
-    findings: value.findings.map(mapOverviewFinding),
-    notes: value.notes.map(mapOverviewFinding),
-    actions: value.actions.map(mapGrowthActionItem),
-    archive: value.archive.map(mapGrowthActionItem),
-    categories: value.categories,
-    needsCategoryCount: value.needs_category_count,
-    limit: value.limit,
   };
 }
 

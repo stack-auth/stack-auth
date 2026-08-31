@@ -3,20 +3,11 @@
 import { DesignAlert, DesignBadge, DesignButton, DesignCategoryTabs } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { cn } from "@/components/ui";
-import { getGrowthOverview } from "@/lib/growth/growth-api";
-import { getGrowthPublishedQuiz } from "@/lib/growth/games/growth-games-api";
-import type { GrowthPublishedQuiz } from "@/lib/growth/games/growth-games-types";
-import { buildGrowthDemoOverview, buildGrowthDemoPublishedQuiz, GROWTH_DEMO_NOW_MILLIS } from "@/lib/growth/growth-demo-data";
-import { useGrowthStatus } from "@/lib/growth/growth-data";
 import { GROWTH_CATEGORIES, type GrowthActionItem, type GrowthCategory, type GrowthOverview, type GrowthOverviewFinding, type GrowthStatus } from "@/lib/growth/growth-types";
-import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { ArrowRightIcon, /* CaretDownIcon, */ CoinsIcon, CubeIcon, CursorClickIcon, FileTextIcon, FlagBannerIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { useGrowthHref } from "./action-card";
-import { QuizBanner } from "./games/quiz-banner";
-import { QuizDialog } from "./games/quiz-dialog";
 
 const CATEGORY_PRESENTATION = new Map<GrowthCategory, { label: string, icon: typeof UsersThreeIcon }>([
   ["product", { label: "Product", icon: CubeIcon }],
@@ -25,12 +16,6 @@ const CATEGORY_PRESENTATION = new Map<GrowthCategory, { label: string, icon: typ
   ["retention", { label: "Retention", icon: FlagBannerIcon }],
   ["revenue", { label: "Revenue", icon: CoinsIcon }],
 ]);
-
-type Loadable = { status: "loading" } | { status: "error", message: string } | { status: "loaded", value: GrowthOverview };
-
-export function getGrowthOverviewRefreshVersion(status: GrowthStatus): string {
-  return `${status.latestReport?.id ?? "no-report"}:${status.analysis.completedAtMillis ?? "not-complete"}`;
-}
 
 function formatDate(millis: number): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" }).format(millis).toUpperCase();
@@ -290,90 +275,5 @@ export function GrowthWorkspaceContent(props: {
         </div>
       </section>
     </div>
-  );
-}
-
-export function GrowthWorkspaceOverview(props: { status: GrowthStatus }) {
-  const app = useAdminApp();
-  const project = app.useProject();
-  const projectId = useProjectId();
-  const { demo } = useGrowthStatus();
-  const [data, setData] = useState<Loadable>(() => demo ? { status: "loaded", value: buildGrowthDemoOverview(GROWTH_DEMO_NOW_MILLIS) } : { status: "loading" });
-  const overviewRefreshVersion = getGrowthOverviewRefreshVersion(props.status);
-  const refresh = useCallback(async () => {
-    if (demo) {
-      setData({ status: "loaded", value: buildGrowthDemoOverview(GROWTH_DEMO_NOW_MILLIS) });
-      return;
-    }
-    try {
-      setData({ status: "loaded", value: await getGrowthOverview(app) });
-    } catch (error) {
-      captureError("growth-overview-load", error);
-      setData({ status: "error", message: error instanceof Error ? error.message : String(error) });
-    }
-  }, [app, demo]);
-  useEffect(() => {
-    if (!demo) setData({ status: "loading" });
-    runAsynchronously(refresh());
-  }, [demo, refresh, overviewRefreshVersion]);
-  if (data.status === "loading") return <div className="space-y-8" aria-busy="true"><div className="h-72 animate-pulse rounded-2xl border bg-foreground/[0.03]" /><div className="h-[42rem] animate-pulse rounded-2xl border bg-foreground/[0.03]" /></div>;
-  if (data.status === "error") return <DesignAlert variant="error"><div className="flex flex-wrap items-center justify-between gap-3"><span>Could not load the Growth overview: {data.message}</span><DesignButton size="sm" variant="outline" onClick={refresh}>Retry</DesignButton></div></DesignAlert>;
-  return (
-    <GrowthWorkspaceContent
-      overview={data.value}
-      status={props.status}
-      projectId={projectId}
-      projectName={project.displayName}
-      quizBanner={<GrowthQuizBannerSlot demo={demo} />}
-    />
-  );
-}
-
-/**
- * The published-quiz banner and the dialog it opens.
- *
- * Its own component with its own fetch so a quiz outage can never take the workspace down with it:
- * on any failure it renders nothing, which is the same thing it renders when no quiz is published —
- * and that is the honest outcome, because a broken banner offers the customer nothing to act on.
- * The real error is still reported through captureError.
- */
-function GrowthQuizBannerSlot(props: { demo: boolean }) {
-  const app = useAdminApp();
-  const [published, setPublished] = useState<GrowthPublishedQuiz | null>(null);
-  const [open, setOpen] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (props.demo) {
-      setPublished(buildGrowthDemoPublishedQuiz());
-      return;
-    }
-    try {
-      setPublished(await getGrowthPublishedQuiz(app));
-    } catch (error) {
-      captureError("growth-quiz-banner-load", error);
-      setPublished(null);
-    }
-  }, [app, props.demo]);
-
-  useEffect(() => {
-    runAsynchronously(refresh());
-  }, [refresh]);
-
-  if (published?.game == null) return null;
-
-  return (
-    <>
-      <QuizBanner published={published} onPlay={() => setOpen(true)} />
-      <QuizDialog
-        open={open}
-        demo={props.demo}
-        onOpenChange={(next) => {
-          setOpen(next);
-          // Re-read on close so the banner reflects progress made inside the dialog.
-          if (!next) runAsynchronously(refresh());
-        }}
-        onRoundChanged={() => runAsynchronously(refresh())}
-      />
-    </>
   );
 }

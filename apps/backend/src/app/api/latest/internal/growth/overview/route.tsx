@@ -1,6 +1,7 @@
 import { requireGrowthAppEnabled } from "@/lib/growth/dashboard";
 import { requireGrowthWorkspaceReleased } from "@/lib/growth/report-release";
 import { getGrowthOverviewBody } from "@/lib/growth/overview";
+import { requireGrowthInternalResourceAccess } from "@/lib/growth/customer-access";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -25,6 +26,7 @@ export const GET = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async ({ auth, query }) => {
+    requireGrowthInternalResourceAccess(auth.tenancy);
     requireGrowthAppEnabled(auth.tenancy);
     await requireGrowthWorkspaceReleased(auth.tenancy);
     return { statusCode: 200, bodyType: "json", body: await getGrowthOverviewBody(auth.tenancy, parseLimit(query.limit)) };
