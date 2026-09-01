@@ -69,9 +69,9 @@ describe("internal sign-up risk inspector", () => {
     expect(response.status).toBe(200);
     expect(response.body.results).toHaveLength(2);
     expect(response.body.results[1].email).toBe("clean.user+tag@gmail.com");
-    expect(response.body.results[1].heuristic_facts.email_normalized).toBe("cleanuser@gmail.com");
 
     if (hasPrivateRiskEngine) {
+      expect(response.body.results[1].heuristic_facts.email_normalized).toBe("cleanuser@gmail.com");
       expect(response.body.results[0].scores.bot).toBe(75);
       expect(response.body.results[0].breakdown).toHaveLength(9);
       expect(response.body.results[0].breakdown.find((entry: { signal: string }) => entry.signal === "blacklist")).toMatchObject({
@@ -79,6 +79,7 @@ describe("internal sign-up risk inspector", () => {
         details: { matchedRules: expect.arrayContaining(["knownDisposableDomain"]) },
       });
     } else {
+      expect(response.body.results[1].heuristic_facts.email_normalized).toBeNull();
       expect(response.body.results[0].scores).toEqual({ bot: 0, free_trial_abuse: 0 });
       expect(response.body.results[0].breakdown).toEqual([]);
     }
