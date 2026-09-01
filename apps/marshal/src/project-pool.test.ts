@@ -546,6 +546,30 @@ describe("the reaper", () => {
     expect(poolEntries()).toEqual([]);
   });
 
+  it("keeps reaping after one entry's deletion fails", async () => {
+    const longAgo = Date.now() - 46 * 60 * 1000;
+    seed({
+      pool: [
+        ["hxc-tena-undeletable", entry("condemned", { created_at_millis: longAgo, state_since_millis: longAgo })],
+        ["hxc-tena-deletable", entry("condemned", { created_at_millis: longAgo, state_since_millis: longAgo })],
+        ["hxc-tena-stranded", entry("claimed", { ns: "ns-1", state_since_millis: longAgo })],
+      ],
+    });
+    vi.mocked(activeManager.deleteDisposableProject).mockImplementation(async (projectId: string) => {
+      if (projectId === "hxc-tena-undeletable") throw new Error("project is in a state that rejects deletion");
+      gcp.deleted.push(projectId);
+    });
+
+    const result = await reapProjectPool();
+
+    // Without per-entry isolation a single wedged project aborts the loop on every hourly
+    // tick, so the entries behind it keep billing and stranded claims are never restored.
+    expect(result).toMatchObject({ deleted: 1, restored: 1 });
+    expect(gcp.deleted).toEqual(["hxc-tena-deletable"]);
+    expect(poolEntry("hxc-tena-undeletable")?.state).toBe("condemned");
+    expect(poolEntry("hxc-tena-stranded")).toMatchObject({ state: "ready", ns: null });
+  });
+
   it("condemns a project whose step keeps failing instead of retrying it forever", async () => {
     seed({ size: 1 });
     vi.mocked(activeManager.attachBillingOnce).mockRejectedValue(new Error("billing account not found"));

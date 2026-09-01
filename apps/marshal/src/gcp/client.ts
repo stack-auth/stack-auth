@@ -129,6 +129,12 @@ export class GcpClient {
     let retryDelayMillis = 1000;
     for (;;) {
       let response: Response;
+      // The body read belongs inside the deadline and the mutation fence, not after them: a
+      // response that stalls once its headers have arrived would otherwise never time out and
+      // would hold a reconciliation lease indefinitely, and a body read that fails after a
+      // mutation was already dispatched would surface as a definite failure when the provider
+      // may well have applied it.
+      let text: string;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(new Error(`Google Cloud ${method} request timed out`)), method === "GET" ? PROVIDER_READ_TIMEOUT_MS : PROVIDER_MUTATION_TIMEOUT_MS);
       try {
@@ -142,14 +148,14 @@ export class GcpClient {
           },
           ...(options?.body === undefined ? {} : { body: JSON.stringify(options.body) }),
         });
+        if (options?.allow404 === true && response.status === 404) return null;
+        text = await response.text();
       } catch (error) {
         if (method === "GET") throw error;
-        throw new MutationOutcomeUnknownError(`Google Cloud mutation ${method} ${new URL(url).pathname} ended without a response`, { cause: error });
+        throw new MutationOutcomeUnknownError(`Google Cloud mutation ${method} ${new URL(url).pathname} ended without a complete response`, { cause: error });
       } finally {
         clearTimeout(timeout);
       }
-      if (options?.allow404 === true && response.status === 404) return null;
-      const text = await response.text();
       let body: unknown = null;
       if (text !== "") {
         try {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MutationOutcomeUnknownError } from "../mutation-safety.js";
+import { MutationOutcomeUnknownError, PROVIDER_MUTATION_TIMEOUT_MS } from "../mutation-safety.js";
 
 vi.mock("./auth.js", () => ({ googleAccessToken: async () => "test-access-token" }));
 
@@ -47,6 +47,46 @@ describe("Google Cloud API transport", () => {
     const rejection = expect(request).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
     await vi.advanceTimersByTimeAsync(30_000);
     await rejection;
+  });
+
+  it("bounds a mutation whose body never arrives after its headers", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => new Response(
+      // Headers land immediately; the body never does. Before the read was moved inside the
+      // deadline this hung forever, holding the caller's reconciliation lease with it.
+      new ReadableStream({
+        start(controller) {
+          init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason));
+        },
+      }),
+      { status: 200 },
+    )));
+
+    const request = new GcpClient().request("https://run.googleapis.com/v2/projects/tenant/services/web", {
+      method: "PATCH",
+      body: { name: "web" },
+    });
+    const rejection = expect(request).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
+    await vi.advanceTimersByTimeAsync(PROVIDER_MUTATION_TIMEOUT_MS);
+    await rejection;
+  });
+
+  it("fences a mutation whose body read fails after it was dispatched", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error("connection reset while reading the body"));
+        },
+      }),
+      { status: 200 },
+    )));
+
+    // The provider may well have applied this; recording it as a definite failure is the one
+    // outcome the mutation fence exists to prevent.
+    await expect(new GcpClient().request("https://run.googleapis.com/v2/projects/tenant/services/web", {
+      method: "PATCH",
+      body: { name: "web" },
+    })).rejects.toBeInstanceOf(MutationOutcomeUnknownError);
   });
 
   it("does not discard an immediately failed long-running operation", async () => {

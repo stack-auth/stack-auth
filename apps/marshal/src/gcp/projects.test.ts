@@ -97,6 +97,42 @@ describe("tenant project lifecycle", () => {
     `);
   });
 
+  it("treats ALREADY_EXISTS on the create as the project it was asked to reach", async () => {
+    const client = new GcpClient();
+    // projects:search is eventually consistent, so it can answer "no such project" for one
+    // that exists — including one an earlier attempt of this very provision created.
+    const request = vi.spyOn(client, "request")
+      .mockResolvedValueOnce({ projects: [] })
+      .mockRejectedValueOnce(new GcpApiError(409, "/v3/projects", "Requested entity already exists."))
+      .mockResolvedValueOnce({ name: "projects/123456789", projectId: "hxc-test-project", state: "ACTIVE" });
+    const manager = new TenantProjectManager(client, {
+      envId: "test",
+      billingAccount: "000000-111111-222222",
+      parent: null,
+      projectPrefix: "hxc-test",
+    });
+
+    await expect(manager.ensureProjectActive("hxc-test-project", "Hexclave tenant tenant")).resolves.toBe("123456789");
+    // No operation to wait on: the create never produced one, so the only thing left is to
+    // confirm the project is ACTIVE.
+    expect(request.mock.calls.every(([url]) => !url.includes("/operations/"))).toBe(true);
+  });
+
+  it("still fails a create that was rejected for any other reason", async () => {
+    const client = new GcpClient();
+    vi.spyOn(client, "request")
+      .mockResolvedValueOnce({ projects: [] })
+      .mockRejectedValueOnce(new GcpApiError(403, "/v3/projects", "Permission denied on parent folder."));
+    const manager = new TenantProjectManager(client, {
+      envId: "test",
+      billingAccount: "000000-111111-222222",
+      parent: "folders/123",
+      projectPrefix: "hxc-test",
+    });
+
+    await expect(manager.ensureProjectActive("hxc-test-project", "Hexclave tenant tenant")).rejects.toThrow("Permission denied on parent folder.");
+  });
+
   it("refuses to delete a project outside the configured disposable prefix", async () => {
     const client = new GcpClient();
     const request = vi.spyOn(client, "request");

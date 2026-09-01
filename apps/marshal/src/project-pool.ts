@@ -366,41 +366,52 @@ export async function reapProjectPool(): Promise<PoolReapResult> {
 
     for (const { projectId } of await listPoolProjects()) {
       await lease.assertOwned();
-      // Re-read under the lease so a decision is never made on a stale entry, and so the CAS
-      // below fences a claim that landed since the listing.
-      const current = await readPoolProject(projectId);
-      if (current === null) continue;
-      const { value: entry, etag } = current;
+      // One entry must not abandon the rest, the way stepProjectPool already guards each
+      // project it advances. A project stuck in a state that rejects deletion, or one missing
+      // permission, would otherwise abort the loop on EVERY hourly tick — leaving condemned
+      // projects billing and stranded claims unrestored for as long as that one entry lasts,
+      // which is exactly the leak this reaper exists to close.
+      try {
+        // Re-read under the lease so a decision is never made on a stale entry, and so the CAS
+        // below fences a claim that landed since the listing.
+        const current = await readPoolProject(projectId);
+        if (current === null) continue;
+        const { value: entry, etag } = current;
 
-      const stalled = isInFlight(entry.state) && now - entry.created_at_millis > STALL_MILLIS;
-      if (stalled) {
-        await lease.assertOwned();
-        if (!await updatePoolProject(projectId, { ...entry, state: "condemned", state_since_millis: now }, etag)) continue;
-        condemned += 1;
-      }
-      if (stalled || entry.state === "condemned") {
-        // GCP first, THEN the record: dropping the record first and freezing would leave the
-        // billed project with nothing left that knows to delete it.
-        await lease.assertOwned();
-        await manager.deleteDisposableProject(projectId);
-        await lease.assertOwned();
-        const latest = await readPoolProject(projectId);
-        if (latest !== null && await deletePoolProject(projectId, latest.etag)) deleted += 1;
-        continue;
-      }
+        const stalled = isInFlight(entry.state) && now - entry.created_at_millis > STALL_MILLIS;
+        if (stalled) {
+          await lease.assertOwned();
+          if (!await updatePoolProject(projectId, { ...entry, state: "condemned", state_since_millis: now }, etag)) continue;
+          condemned += 1;
+        }
+        if (stalled || entry.state === "condemned") {
+          // GCP first, THEN the record: dropping the record first and freezing would leave the
+          // billed project with nothing left that knows to delete it.
+          await lease.assertOwned();
+          await manager.deleteDisposableProject(projectId);
+          await lease.assertOwned();
+          const latest = await readPoolProject(projectId);
+          if (latest !== null && await deletePoolProject(projectId, latest.etag)) deleted += 1;
+          continue;
+        }
 
-      if (entry.state !== "claimed" || entry.ns === null) continue;
-      const assigned = await readTenantProjectAssignment(entry.ns);
-      if (assigned === projectId) {
+        if (entry.state !== "claimed" || entry.ns === null) continue;
+        const assigned = await readTenantProjectAssignment(entry.ns);
+        if (assigned === projectId) {
+          await lease.assertOwned();
+          if (await deletePoolProject(projectId, etag)) forgotten += 1;
+          continue;
+        }
+        // The grace is what makes this safe: a live claim is a claim write followed by an
+        // assignment write, and in between it looks exactly like a stranded one.
+        if (now - entry.state_since_millis <= CLAIM_GRACE_MILLIS) continue;
         await lease.assertOwned();
-        if (await deletePoolProject(projectId, etag)) forgotten += 1;
-        continue;
+        if (await updatePoolProject(projectId, { ...entry, state: "ready", state_since_millis: now, ns: null }, etag)) restored += 1;
+      } catch (error) {
+        // Lease loss is not this entry's problem: nothing after it is ours to reap.
+        if (error instanceof ReconciliationLeaseLostError) throw error;
+        console.error(`reaping pooled project ${JSON.stringify(projectId)} failed`, error);
       }
-      // The grace is what makes this safe: a live claim is a claim write followed by an
-      // assignment write, and in between it looks exactly like a stranded one.
-      if (now - entry.state_since_millis <= CLAIM_GRACE_MILLIS) continue;
-      await lease.assertOwned();
-      if (await updatePoolProject(projectId, { ...entry, state: "ready", state_since_millis: now, ns: null }, etag)) restored += 1;
     }
 
     return { skipped: false, condemned, deleted, restored, forgotten };

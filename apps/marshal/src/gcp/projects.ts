@@ -142,8 +142,17 @@ export class TenantProjectManager {
         },
         ...(this.config.parent === null ? {} : { parent: this.config.parent }),
       };
-      const created = await this.client.request("https://cloudresourcemanager.googleapis.com/v3/projects", { method: "POST", body });
-      await this.client.waitForOperation(parseGcpOperation(created));
+      let created: unknown = null;
+      try {
+        created = await this.client.request("https://cloudresourcemanager.googleapis.com/v3/projects", { method: "POST", body });
+      } catch (error) {
+        // findProject reads projects:search, which is eventually consistent and can still be
+        // omitting a project that exists — including one an earlier attempt of this very
+        // provision created. Resource Manager answers that create with ALREADY_EXISTS, so the
+        // project is there and waiting for it is the whole remaining job.
+        if (!(error instanceof GcpApiError && error.status === 409)) throw error;
+      }
+      if (created !== null) await this.client.waitForOperation(parseGcpOperation(created));
       project = await this.waitForActiveProject(projectId);
     } else if (project.state !== "ACTIVE") {
       project = await this.waitForActiveProject(projectId);
