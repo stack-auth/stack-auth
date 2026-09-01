@@ -34,8 +34,11 @@ BEGIN
 
   IF FOUND AND (
     existing.table_name IS DISTINCT FROM 'TvEventOccurrence'
-    OR existing.indisvalid IS DISTINCT FROM FALSE
-    OR existing.indisready IS DISTINCT FROM FALSE
+    -- An interrupted concurrent build can leave indisvalid=false with indisready=true, so a remnant only has to fail one of the two flags to be recognisable as ours; requiring both would make an interrupted migration unrecoverable.
+    OR (
+      existing.indisvalid IS DISTINCT FROM FALSE
+      AND existing.indisready IS DISTINCT FROM FALSE
+    )
     OR existing.indisunique IS DISTINCT FROM FALSE
     OR existing.has_no_predicate IS DISTINCT FROM TRUE
     OR existing.has_no_expressions IS DISTINCT FROM TRUE

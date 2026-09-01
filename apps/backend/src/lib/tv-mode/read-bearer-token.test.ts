@@ -10,5 +10,7 @@ describe("readTvDisplayBearerToken", () => {
     expect(() => readTvDisplayBearerToken(undefined)).toThrow("tv_display_access_required");
     expect(() => readTvDisplayBearerToken("Basic token")).toThrow("tv_display_access_required");
     expect(() => readTvDisplayBearerToken("Bearer\ttoken")).toThrow("tv_display_access_required");
+    expect(() => readTvDisplayBearerToken("Bearer ")).toThrow("tv_display_access_required");
+    expect(() => readTvDisplayBearerToken("Bearer  token")).toThrow("tv_display_access_required");
   });
 });

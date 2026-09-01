@@ -47,6 +47,40 @@ export const postMigration = async (sql: Sql) => {
       JOIN pg_namespace n ON n.oid = idx.relnamespace
       WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx' AND i.indisvalid AND i.indisready
     `).toHaveLength(1);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "TvEventOccurrence_occurred_lookup_idx" ON "TvEventOccurrence"("tenancyId", "occurredAt" DESC, "id")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx')`);
+    await executeMigration();
+    expect(await sql`
+      SELECT 1 FROM pg_class idx
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx_invalid'
+    `).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "TvEventOccurrence_occurred_lookup_idx_invalid" ON "TvEventOccurrence"("tenancyId", "occurredAt" DESC, "id")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx_invalid')`);
+    await executeMigration();
+    expect(await sql`
+      SELECT 1 FROM pg_class idx
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx_invalid'
+    `).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_occurred_lookup_idx' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
   } finally {
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx_invalid"');
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_occurred_lookup_idx"');
