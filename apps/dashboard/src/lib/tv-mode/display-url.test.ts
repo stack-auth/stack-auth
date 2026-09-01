@@ -31,6 +31,7 @@ describe("TV display URL", () => {
   it("identifies loopback and local development hosts", () => {
     expect(isLocalTvDisplayUrl("http://localhost:8101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("http://127.0.0.1:8101/tv")).toBe(true);
+    expect(isLocalTvDisplayUrl("http://127.1.2.3:8101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("http://a.localhost:9101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("https://app.example.com/tv")).toBe(false);
   });

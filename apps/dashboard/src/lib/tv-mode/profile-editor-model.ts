@@ -13,7 +13,11 @@ export function createTvProfileCopyDisplayName(displayName: string): string {
   const baseCharacters: string[] = [];
   for (const character of Array.from(displayName.trim())) {
     const candidate = `${baseCharacters.join("")}${character}${TV_PROFILE_COPY_SUFFIX}`;
-    if (Array.from(normalizeTvProfileDisplayName(candidate)).length > TV_PROFILE_DISPLAY_NAME_MAX_LENGTH) break;
+    const normalizedCandidate = normalizeTvProfileDisplayName(candidate);
+    if (
+      Array.from(normalizedCandidate).length > TV_PROFILE_DISPLAY_NAME_MAX_LENGTH
+      || candidate.length > TV_PROFILE_DISPLAY_NAME_MAX_LENGTH
+    ) break;
     baseCharacters.push(character);
   }
   return `${baseCharacters.join("").trimEnd()}${TV_PROFILE_COPY_SUFFIX}`;

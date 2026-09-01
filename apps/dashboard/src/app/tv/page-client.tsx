@@ -189,14 +189,20 @@ export default function IndependentTvPageClient() {
           setChallenge(null);
         } else if (result.status !== "waiting") {
           setChallenge(null);
-          await createChallenge();
+          try {
+            await createChallenge();
+          } catch (cause) {
+            setPairingError(true);
+            setPairingRetryAttempt((attempt) => attempt + 1);
+            throw cause;
+          }
         }
       } catch {
         if (active) setPairingError(true);
       } finally {
         window.clearTimeout(timeout);
         if (activePollController === controller) activePollController = null;
-        pairingPollInFlight.current = false;
+        if (active) pairingPollInFlight.current = false;
       }
     };
     const interval = window.setInterval(() => runAsynchronously(poll()), challenge.pollingIntervalSeconds * 1000);

@@ -616,8 +616,9 @@ export async function listTvDisplays(tenancy: Tenancy, now = new Date()) {
 
 export async function getTvDisplayResource(tenancy: Tenancy, display: DisplayRow, now = new Date()): Promise<TvDisplayResource> {
   const profile = await resolveTvProfile(tenancy, display.profileId);
-  const acknowledgementIsCurrent = display.financialVisibilityAcknowledgedAt != null
-    && (profile?.updatedAt == null || display.financialVisibilityAcknowledgedAt >= new Date(profile.updatedAt));
+  const acknowledgementIsCurrent = profile?.configuration.financialVisibility !== "exact"
+    || (display.financialVisibilityAcknowledgedAt != null
+      && (profile.updatedAt == null || display.financialVisibilityAcknowledgedAt >= new Date(profile.updatedAt)));
   return {
     id: display.id,
     displayName: display.displayName,

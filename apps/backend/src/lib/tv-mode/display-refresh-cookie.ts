@@ -1,5 +1,5 @@
 import type { ResponseCookieOptions } from "@/lib/runtime/request-context";
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 const TV_DISPLAY_REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const TV_DISPLAY_REFRESH_COOKIE_PATHS = [
@@ -13,10 +13,28 @@ type TvDisplayRefreshCookieStore = {
 };
 
 function baseTvDisplayRefreshCookieOptions(path: string): ResponseCookieOptions {
+  const secure = getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test";
+  const configuredDisplayOrigin = getEnvVariable("HEXCLAVE_TV_DISPLAY_ORIGIN", "").trim();
+  let crossSiteDisplay = false;
+  if (configuredDisplayOrigin !== "") {
+    const backendOrigin = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "").trim();
+    const displayUrl = URL.parse(configuredDisplayOrigin);
+    const backendUrl = URL.parse(backendOrigin);
+    if (
+      displayUrl != null
+      && backendUrl != null
+      && (displayUrl.protocol === "http:" || displayUrl.protocol === "https:")
+      && displayUrl.origin !== backendUrl.origin
+    ) {
+      crossSiteDisplay = true;
+    }
+  }
   return {
     httpOnly: true,
-    secure: getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test",
-    sameSite: "strict",
+    secure,
+    // Relax only for an exact-origin credentialed CORS allowlist; this remains
+    // HttpOnly, path-scoped, and a rotating 30-day credential.
+    sameSite: secure && crossSiteDisplay ? "none" : "strict",
     path,
   };
 }

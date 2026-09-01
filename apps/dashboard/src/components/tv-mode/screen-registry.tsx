@@ -114,7 +114,6 @@ export function formatTvExactUsd(cents: number): string {
 }
 
 /** Percentage of the plot area a full-scale bar occupies; the grid lines must use the same factor to stay aligned. */
-const TV_CHART_PLOT_HEIGHT_PERCENT = 88;
 
 export function formatTvSignedPercent(percent: number): string {
   if (percent === 0) return "0%";
@@ -264,22 +263,28 @@ function TvStackedBars({ points, colors, labels }: {
       <div className="relative flex min-h-0 flex-1 items-end justify-around gap-[clamp(0.5rem,1.5vw,2rem)] border-b border-white/[0.08]">
         {/* The tick label rides on its own grid line instead of being spread evenly down the side, so that the
             label, the line and the bar tops all read off the same plot-height factor. */}
-        {yAxisValues.map((value) => <div key={value} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.06]" style={{ bottom: `${(value / chartMaximum) * TV_CHART_PLOT_HEIGHT_PERCENT}%` }}>
+        {yAxisValues.map((value) => <div key={value} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.06]" style={{ bottom: `${(value / chartMaximum) * 100}%` }}>
           <span className="absolute right-full top-0 -translate-y-1/2 pr-[clamp(0.5rem,0.6vw,1.5rem)] text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/[0.38]">{formatCompact(Math.round(value))}</span>
         </div>)}
         {points.map((point) => {
           const pointTotal = point.primary + point.secondary + point.tertiary;
           return (
-            <div key={point.label} className="relative z-10 flex h-full flex-1 flex-col items-center justify-end">
-              <div className="flex w-[clamp(1.2rem,2.2vw,6rem)] flex-col-reverse overflow-hidden rounded-t-lg shadow-[0_0_30px_rgba(139,92,246,0.08)]" style={{ height: `${(pointTotal / chartMaximum) * TV_CHART_PLOT_HEIGHT_PERCENT}%` }}>
+            <div key={point.label} className="relative z-10 flex h-full flex-1 items-end justify-center">
+              <div className="flex w-[clamp(1.2rem,2.2vw,6rem)] flex-col-reverse overflow-hidden rounded-t-lg shadow-[0_0_30px_rgba(139,92,246,0.08)]" style={{ height: `${(pointTotal / chartMaximum) * 100}%` }}>
                 {[point.primary, point.secondary, point.tertiary].map((value, index) => (
                   <span key={colors[index]} style={{ height: `${pointTotal === 0 ? 0 : (value / pointTotal) * 100}%`, backgroundColor: colors[index] }} />
                 ))}
               </div>
-              <span className="mt-2 text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/[0.48]">{point.label}</span>
             </div>
           );
         })}
+      </div>
+      <div className="flex justify-around gap-[clamp(0.5rem,1.5vw,2rem)]">
+        {points.map((point) => (
+          <div key={point.label} className="flex flex-1 justify-center">
+            <span className="mt-2 text-[clamp(0.68rem,0.76vw,1.85rem)] font-medium text-white/[0.48]">{point.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

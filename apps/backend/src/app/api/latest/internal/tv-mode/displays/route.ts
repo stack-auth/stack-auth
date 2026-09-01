@@ -131,7 +131,12 @@ export const POST = createSmartRouteHandler({
       };
     } catch (error) {
       if (error instanceof TvDisplayOperationError) {
-        await refundApprovalRateLimits(adminUserId, ip, rateLimitNow);
+        if (
+          error.code === "tv_display_profile_not_found"
+          || error.code === "tv_display_exact_financials_acknowledgement_required"
+        ) {
+          await refundApprovalRateLimits(adminUserId, ip, rateLimitNow);
+        }
         const status = error.code === "tv_display_profile_not_found"
           ? 404
           : error.code === "tv_display_exact_financials_acknowledgement_required"

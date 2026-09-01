@@ -71,13 +71,13 @@ describe.sequential("independent TV display persistence", () => {
     return challenge;
   }
 
-  async function pairDisplay(options: { tenancy?: Tenancy, now?: Date } = {}) {
+  async function pairDisplay(options: { tenancy?: Tenancy, now?: Date, profileId?: string } = {}) {
     const targetTenancy = options.tenancy ?? tenancy;
     const challenge = await createChallenge(options.now);
     await approveTvDisplayPairing({
       tenancy: targetTenancy,
       pairingCode: challenge.pairingCode,
-      profileId: "company-pulse",
+      profileId: options.profileId ?? "company-pulse",
       displayName: "Lobby Display",
       adminUserId: randomUUID(),
       acknowledgeExactFinancials: false,
@@ -694,6 +694,22 @@ describe.sequential("independent TV display persistence", () => {
     await expect(getTvDisplayResource(tenancy, paired.display, new Date(acknowledgedAt.getTime() + 3_000))).resolves.toMatchObject({
       profileFinancialVisibility: "exact",
       exactFinancialsAcknowledged: false,
+    });
+  });
+
+  it("reports redacted profiles as already acknowledged", async () => {
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse profile is missing.");
+    const profile = await createTvProfile(tenancy, {
+      ...template.configuration,
+      displayName: "Redacted Financial Display Profile",
+      financialVisibility: "redacted",
+    });
+    if (profile == null) throw new Error("TV profile persistence is unavailable.");
+    const paired = await pairDisplay({ profileId: profile.id });
+    await expect(getTvDisplayResource(tenancy, paired.display)).resolves.toMatchObject({
+      profileFinancialVisibility: "redacted",
+      exactFinancialsAcknowledged: true,
     });
   });
 });

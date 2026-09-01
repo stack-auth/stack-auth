@@ -1,4 +1,5 @@
 import { getAuthorizedTvDisplay } from "@/lib/tv-mode/displays";
+import { readTvDisplayBearerToken } from "@/lib/tv-mode/read-bearer-token";
 import { resolveTvProfile } from "@/lib/tv-mode/profiles";
 import { buildLiveTvSnapshot } from "@/lib/tv-mode/snapshot";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -17,9 +18,7 @@ export const GET = createSmartRouteHandler({
     body: TvSnapshotSchema,
   }),
   handler: async ({ headers }) => {
-    const authorization = headers.authorization?.[0];
-    if (authorization == null || !authorization.startsWith("Bearer ")) throw new StatusError(401, "tv_display_access_required");
-    const accessToken = authorization.slice("Bearer ".length);
+    const accessToken = readTvDisplayBearerToken(headers.authorization?.[0]);
     const authorized = await getAuthorizedTvDisplay(accessToken);
     if (authorized == null) throw new StatusError(401, "tv_display_access_invalid");
     const profile = await resolveTvProfile(authorized.tenancy, authorized.display.profileId);

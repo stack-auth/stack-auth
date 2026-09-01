@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import {
+  normalizeTvProfileDisplayName,
   TV_PROFILE_DISPLAY_NAME_MAX_LENGTH,
   type TvProfileResource,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
@@ -325,6 +326,11 @@ export default function PageClient() {
   }, [adminApp, createFromTemplate, profileId, requestKey]);
 
   const hasChanges = draft != null && saved != null && JSON.stringify(draft) !== JSON.stringify(saved);
+  const profileNameError = draft == null || draft.displayName.trim().length === 0
+    ? "TV profile names are required."
+    : Array.from(normalizeTvProfileDisplayName(draft.displayName)).length > TV_PROFILE_DISPLAY_NAME_MAX_LENGTH
+      ? `TV profile names must remain within ${TV_PROFILE_DISPLAY_NAME_MAX_LENGTH} characters after normalization.`
+      : null;
   const previewSnapshot = useMemo(
     () => draft == null ? null : createTvFixtureSnapshot(projectId, draft),
     [draft, projectId],
@@ -446,6 +452,9 @@ export default function PageClient() {
                       setSavedNoticeVisible(false);
                     }}
                   />
+                  {profileNameError != null
+                    ? <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{profileNameError}</p>
+                    : null}
                 </div>
                 <div>
                   <label htmlFor="tv-profile-mode" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mode</label>
@@ -509,7 +518,7 @@ export default function PageClient() {
                       <div className="flex gap-1">
                         <button
                           type="button"
-                          disabled={index === 0}
+                          disabled={!entry.enabled || index === 0}
                           onClick={() => setDraft(movePlaylistEntry(draft, index, -1))}
                           className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-30"
                           aria-label={`Move ${definition.displayName} earlier`}
@@ -518,7 +527,7 @@ export default function PageClient() {
                         </button>
                         <button
                           type="button"
-                          disabled={index === draft.playlist.length - 1}
+                          disabled={!entry.enabled || index === draft.playlist.length - 1}
                           onClick={() => setDraft(movePlaylistEntry(draft, index, 1))}
                           className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-30"
                           aria-label={`Move ${definition.displayName} later`}
@@ -844,9 +853,13 @@ export default function PageClient() {
                 Delete Profile
               </DesignButton>
             ) : null}
-            <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
+            <DesignButton size="sm" disabled={!hasChanges || profileNameError != null} onClick={async () => {
               setSaveError(null);
               const submittedDraft = draft;
+              if (profileNameError != null) {
+                setSaveError(profileNameError);
+                return;
+              }
               const creatingProfile = resource.origin !== "saved" || createFromTemplate;
               // A newly created profile must navigate to its authoritative ID. Freeze
               // the create form while that request is pending so edits cannot land in

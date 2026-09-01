@@ -147,4 +147,25 @@ describe("TV profile editor layout", () => {
     expect(await screen.findByText("Event Previews")).toBeDefined();
     expect(screen.getByText("State Previews")).toBeDefined();
   });
+
+  it("shows a field-level error and blocks saving an overlong normalized name", async () => {
+    render(<PageClient />);
+
+    const nameInput = await screen.findByLabelText("TV Name");
+    fireEvent.change(nameInput, { target: { value: `${"😀".repeat(200)} Profile` } });
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "TV profile names must remain within 80 characters after normalization.",
+    );
+    expect(screen.getByRole("button", { name: "Save as New Profile" })).toHaveProperty("disabled", true);
+  });
+
+  it("disables playlist movement at the boundaries", async () => {
+    render(<PageClient />);
+
+    const firstEarlierButton = await screen.findByRole("button", { name: "Move live-pulse earlier" });
+    const firstLaterButton = screen.getByRole("button", { name: "Move live-pulse later" });
+    expect(firstEarlierButton).toHaveProperty("disabled", true);
+    expect(firstLaterButton).toHaveProperty("disabled", false);
+  });
 });

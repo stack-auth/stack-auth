@@ -1,4 +1,4 @@
-import { CustomerType } from "@/generated/prisma/client";
+import { CustomerType, Prisma } from "@/generated/prisma/client";
 import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { getProductVersion } from "@/lib/product-versions";
@@ -518,35 +518,23 @@ export async function applyStripeInvoiceOutcome(
   // Stripe does not guarantee webhook ordering. The watermark records only the
   // newest exact outcome event applied; inferred fields must remain repairable
   // by an exact event even when that exact event was created earlier.
-  await prisma.$executeRaw`
-    WITH stored AS (
-      SELECT
-        "paymentOutcomeEventAt" AS stored_payment_outcome_event_at,
-        ${paymentOutcomeEventAt}::TIMESTAMP AS incoming_payment_outcome_event_at
-      FROM "SubscriptionInvoice"
-      WHERE "tenancyId" = ${options.tenancyId}::UUID
-        AND "id" = ${options.invoiceId}::UUID
-    ),
-    decision AS (
-      SELECT
-        *,
-        incoming_payment_outcome_event_at IS NOT NULL
-          AND (
-            stored_payment_outcome_event_at IS NULL
-            OR incoming_payment_outcome_event_at >= stored_payment_outcome_event_at
-          ) AS should_apply_outcome
-      FROM stored
+  const shouldApply = Prisma.sql`
+    ${paymentOutcomeEventAt}::TIMESTAMP IS NOT NULL
+    AND (
+      "paymentOutcomeEventAt" IS NULL
+      OR ${paymentOutcomeEventAt}::TIMESTAMP >= "paymentOutcomeEventAt"
     )
+  `;
+  await prisma.$executeRaw`
     UPDATE "SubscriptionInvoice"
     SET
       "paymentOutcomeEventAt" = CASE
-        WHEN decision.should_apply_outcome
-          THEN decision.incoming_payment_outcome_event_at
-        ELSE decision.stored_payment_outcome_event_at
+        WHEN ${shouldApply} THEN ${paymentOutcomeEventAt}::TIMESTAMP
+        ELSE "paymentOutcomeEventAt"
       END,
       "paidAt" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NULL THEN "paidAt"
-        WHEN ${paidAtIsExact} AND (decision.should_apply_outcome OR "paidAt" IS NULL)
+        WHEN ${paidAtIsExact} AND (${shouldApply} OR "paidAt" IS NULL)
           THEN ${paidAt}::TIMESTAMP
         WHEN NOT ${paidAtIsExact} THEN COALESCE("paidAt", ${paidAt}::TIMESTAMP)
         ELSE "paidAt"
@@ -554,7 +542,7 @@ export async function applyStripeInvoiceOutcome(
       "markedUncollectibleAt" = CASE
         WHEN ${markedUncollectibleAt}::TIMESTAMP IS NULL THEN "markedUncollectibleAt"
         WHEN ${markedUncollectibleAtIsExact}
-          AND (decision.should_apply_outcome OR "markedUncollectibleAt" IS NULL)
+          AND (${shouldApply} OR "markedUncollectibleAt" IS NULL)
           THEN ${markedUncollectibleAt}::TIMESTAMP
         WHEN NOT ${markedUncollectibleAtIsExact}
           THEN COALESCE("markedUncollectibleAt", ${markedUncollectibleAt}::TIMESTAMP)
@@ -563,27 +551,25 @@ export async function applyStripeInvoiceOutcome(
       "voidedAt" = CASE
         WHEN ${voidedAt}::TIMESTAMP IS NULL THEN "voidedAt"
         WHEN ${voidedAtIsExact}
-          AND (decision.should_apply_outcome OR "voidedAt" IS NULL)
+          AND (${shouldApply} OR "voidedAt" IS NULL)
           THEN ${voidedAt}::TIMESTAMP
         WHEN NOT ${voidedAtIsExact} THEN COALESCE("voidedAt", ${voidedAt}::TIMESTAMP)
         ELSE "voidedAt"
       END,
       "currency" = CASE
-        WHEN decision.should_apply_outcome
-          OR decision.stored_payment_outcome_event_at IS NULL
+        WHEN ${shouldApply} OR "paymentOutcomeEventAt" IS NULL
           THEN COALESCE(UPPER(${options.currency}), "currency")
         ELSE "currency"
       END,
       "amountPaid" = CASE
         WHEN ${paidAt}::TIMESTAMP IS NOT NULL
           AND (
-            (${paidAtIsExact} AND (decision.should_apply_outcome OR "paidAt" IS NULL))
+            (${paidAtIsExact} AND (${shouldApply} OR "paidAt" IS NULL))
             OR (NOT ${paidAtIsExact} AND "paidAt" IS NULL)
           )
           THEN ${options.amountPaid}
         ELSE "amountPaid"
       END
-    FROM decision
     WHERE "tenancyId" = ${options.tenancyId}::UUID
       AND "id" = ${options.invoiceId}::UUID
   `;

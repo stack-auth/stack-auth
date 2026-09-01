@@ -52,7 +52,7 @@ export default function PageClient() {
   const screenParam = useSearchParams().get("screen");
   const fixtureVariant = resolveTvFixtureVariant(fixtureParam, devFeaturesEnabledForProject(projectId));
   const adminApp = useAdminApp();
-  const fixtureLoadKey = fixtureVariant == null ? null : `${profileId}\u0000${fixtureVariant}`;
+  const fixtureLoadKey = fixtureVariant == null ? null : `${projectId}\u0000${profileId}\u0000${fixtureVariant}`;
   const [fixtureLoad, setFixtureLoad] = useState<{
     key: string,
     profile: TvProfileResource | null,
@@ -74,7 +74,7 @@ export default function PageClient() {
     return () => {
       active = false;
     };
-  }, [adminApp, fixtureLoadKey, profileId]);
+  }, [adminApp, fixtureLoadKey, profileId, projectId]);
   const liveSnapshot = useTvLiveSnapshot({
     adminApp,
     projectId,

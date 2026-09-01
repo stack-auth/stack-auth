@@ -492,9 +492,7 @@ export function evaluateTvEmailDelivery(
         state: {
           ...stateWithBaseline,
           activeClass: "incident",
-          candidate: breach == null && previous.candidate?.presentationClass === "critical-incident" && borderlineEvaluations <= 2
-            ? { ...previous.candidate, borderlineEvaluations }
-            : null,
+          candidate: null,
           recovery: breach == null ? previous.recovery : null,
           lastFreshEvaluatedAt: nextFreshAt,
         },

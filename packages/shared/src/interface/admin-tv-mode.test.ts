@@ -192,7 +192,10 @@ describe("TvSnapshotSchema", () => {
       ...snapshot,
       profile: {
         ...snapshot.profile,
-        screenDurations: [{ screenId: "live-pulse", durationSeconds: 20 }],
+        screenDurations: [...snapshot.profile.playlist].reverse().map((screenId) => ({
+          screenId,
+          durationSeconds: 20,
+        })),
       },
     }, { strict: true })).rejects.toThrow("unique, known screen IDs");
   });

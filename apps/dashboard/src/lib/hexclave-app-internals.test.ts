@@ -21,19 +21,27 @@ describe("TV display admin API", () => {
       [hexclaveAppInternalsSymbol]: {
         sendRequest: async (path: string, options: RequestInit, type?: string) => {
           requests.push({ path, options, type });
-          return new Response(JSON.stringify({
-            displays: [{
-              id: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
-              displayName: "Lobby",
-              profileId: "company-pulse",
-              profileDisplayName: "Company Pulse",
-              profileFinancialVisibility: "redacted",
-              state: "online",
-              pairedAt: "2026-08-14T12:00:00.000Z",
-              lastSeenAt: "2026-08-14T12:01:00.000Z",
-              exactFinancialsAcknowledged: false,
-            }],
-          }), { status: 200, headers: { "content-type": "application/json" } });
+          const body = options.method === "POST"
+            ? {
+              success: true,
+              approvedAt: "2026-08-14T12:00:00.000Z",
+              expiresAt: "2026-08-14T12:10:00.000Z",
+            }
+            : {
+              displays: [{
+                id: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+                displayName: "Lobby",
+                profileId: "company-pulse",
+                profileDisplayName: "Company Pulse",
+                profileFinancialVisibility: "redacted",
+                state: "online",
+                pairedAt: "2026-08-14T12:00:00.000Z",
+                lastSeenAt: "2026-08-14T12:01:00.000Z",
+                revokedAt: null,
+                exactFinancialsAcknowledged: false,
+              }],
+            };
+          return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
         },
       },
     };

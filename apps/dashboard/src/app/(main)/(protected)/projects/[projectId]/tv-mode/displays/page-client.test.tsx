@@ -67,7 +67,7 @@ describe("TV displays page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy TV display link" }));
     await waitFor(() => expect(testState.writeText).toHaveBeenCalledWith("http://localhost:8101/tv"));
-    expect(screen.getByText("TV Link Copied")).toBeTruthy();
+    expect(await screen.findByText("TV Link Copied")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy TV display link" })).toBeTruthy();
   });
 

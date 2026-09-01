@@ -410,7 +410,7 @@ async function loadActivityScreens(
     todayStartsAt.setUTCHours(0, 0, 0, 0);
     const monthlyStartsAt = new Date(now.getTime() - 30 * DAY_MS);
     const clickhouse = getClickhouseAdminClientForMetrics();
-    const [liveResult, hourlyResult, usersResult, lifecycleResult, mauResult] = await Promise.all([
+    const liveActivityQuery = Promise.all([
       clickhouse.query({
         query: `
           SELECT uniqExact(assumeNotNull(user_id)) AS live_users
@@ -454,6 +454,8 @@ async function loadActivityScreens(
         },
         format: "JSONEachRow",
       }),
+    ]);
+    const audienceActivityQuery = Promise.all([
       clickhouse.query({
         query: `
           SELECT
@@ -532,50 +534,79 @@ async function loadActivityScreens(
         format: "JSONEachRow",
       }),
     ]);
-    const [
-      liveRows,
-      hourlyRows,
-      usersRows,
-      lifecycleRows,
-      mauRows,
-    ] = await Promise.all([
-      liveResult.json<{ live_users: number | string }>(),
-      hourlyResult.json<{ hour: string, active_users: number | string }>(),
-      usersResult.json<{
-        total_users: number | string,
-        current_new_users: number | string,
-        deleted_existing_users: number | string,
-        verified_users: number | string,
-      }>(),
-      lifecycleResult.json<{
-        day: string,
-        total_count: number | string,
-        new_count: number | string,
-        retained_count: number | string,
-        reactivated_count: number | string,
-      }>(),
-      mauResult.json<{ mau: number | string }>(),
+    const [liveActivity, audienceActivity] = await Promise.allSettled([
+      liveActivityQuery,
+      audienceActivityQuery,
     ]);
-    const liveRow = liveRows.at(0);
-    const mauRow = mauRows.at(0);
-    if (liveRow == null || mauRow == null) {
-      throw new TvSnapshotInvariantError("TV activity aggregate returned no summary row.");
+    const liveActivityError = liveActivity.status === "rejected" ? liveActivity.reason : null;
+    const audienceActivityError = audienceActivity.status === "rejected" ? audienceActivity.reason : null;
+    if (liveActivityError != null && audienceActivityError != null) {
+      return {
+        livePulse: errorScreen(emptyLive, "users-activity", liveActivityError, tenancy),
+        audience: errorScreen(emptyAudience, "users-activity", audienceActivityError, tenancy),
+      };
     }
-    const liveUsers = Number(liveRow.live_users);
-    const todayKey = now.toISOString().slice(0, 10);
+    const liveRowsQuery = liveActivity.status === "fulfilled"
+      ? Promise.all([
+        liveActivity.value[0].json<{ live_users: number | string }>(),
+        liveActivity.value[1].json<{ hour: string, active_users: number | string }>(),
+      ])
+      : Promise.reject(new TvSnapshotInvariantError("TV live activity query group did not return all responses."));
+    const audienceRowsQuery = audienceActivity.status === "fulfilled"
+      ? Promise.all([
+        audienceActivity.value[0].json<{
+          total_users: number | string,
+          current_new_users: number | string,
+          deleted_existing_users: number | string,
+          verified_users: number | string,
+        }>(),
+        audienceActivity.value[1].json<{
+          day: string,
+          total_count: number | string,
+          new_count: number | string,
+          retained_count: number | string,
+          reactivated_count: number | string,
+        }>(),
+        audienceActivity.value[2].json<{ mau: number | string }>(),
+      ])
+      : Promise.reject(new TvSnapshotInvariantError("TV audience query group did not return all responses."));
+    const [liveRowsResult, audienceRowsResult] = await Promise.allSettled([
+      liveRowsQuery,
+      audienceRowsQuery,
+    ]);
+    const liveRowsError = liveRowsResult.status === "rejected" ? liveRowsResult.reason : null;
+    const audienceRowsError = audienceRowsResult.status === "rejected" ? audienceRowsResult.reason : null;
+    const liveRows = liveRowsResult.status === "fulfilled" ? liveRowsResult.value[0] : [];
+    const hourlyRows = liveRowsResult.status === "fulfilled" ? liveRowsResult.value[1] : [];
+    const usersRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[0] : [];
+    const lifecycleRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[1] : [];
+    const mauRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[2] : [];
+    const liveRow = liveRows.at(0);
+    const livePulse = liveActivityError != null || liveRowsError != null || liveRow == null
+      ? errorScreen(emptyLive, "users-activity", liveActivityError ?? liveRowsError ?? new TvSnapshotInvariantError("TV live activity aggregate returned no summary row."), tenancy)
+      : (() => {
+        const liveUsers = Number(liveRow.live_users);
+        const todayHourly = hourlyRows.map((point) => ({
+          // ClickHouse's default DateTime text has no zone marker. The source is
+          // queried in UTC, so make that explicit before JavaScript parses it.
+          label: new Date(`${point.hour.replace(" ", "T")}Z`).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
+          value: Number(point.active_users),
+        }));
+        return {
+          status: "success" as const,
+          screen: createReadyTvLivePulseScreen({
+            now,
+            liveUsers,
+            todayActiveUsers: 0,
+            hourlyActivity: todayHourly,
+          }),
+        };
+      })();
     const lifecycleByDate = new Map(lifecycleRows.map((row) => [row.day.slice(0, 10), {
-      total: Number(row.total_count),
       primary: Number(row.new_count),
       secondary: Number(row.retained_count),
       tertiary: Number(row.reactivated_count),
     }]));
-    const todayActivity = lifecycleByDate.get(todayKey)?.total ?? 0;
-    const todayHourly = hourlyRows.map((point) => ({
-      // ClickHouse's default DateTime text has no zone marker. The source is
-      // queried in UTC, so make that explicit before JavaScript parses it.
-      label: new Date(`${point.hour.replace(" ", "T")}Z`).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
-      value: Number(point.active_users),
-    }));
 
     const lifecycle = dateKeys(sevenDayBounds, 7).map((date): TvStackedTrendPoint => ({
       label: dayLabel(date),
@@ -584,61 +615,56 @@ async function loadActivityScreens(
       tertiary: lifecycleByDate.get(date)?.tertiary ?? 0,
     }));
     const users = usersRows.at(0);
-    if (users == null) throw new TvSnapshotInvariantError("TV users aggregate returned no summary row.");
-    const totalUsers = Number(users.total_users);
-    const currentNewUsers = Number(users.current_new_users);
-    const previousTotalUsers = totalUsers - currentNewUsers + Number(users.deleted_existing_users);
-    const currentReturning = lifecycle.reduce((sum, point) => sum + point.secondary + point.tertiary, 0);
-    const currentNewActivity = lifecycle.reduce((sum, point) => sum + point.primary, 0);
-    const returningLeadMarginPercent = currentNewActivity > 0
-      ? roundPercent(((currentReturning - currentNewActivity) / currentNewActivity) * 100)
-      : 0;
-    const verificationRatePercent = totalUsers > 0
-      ? roundPercent((Number(users.verified_users) / totalUsers) * 100)
-      : 0;
-
-    // A successful zero is an observed operational value, not an empty source.
-    // Live Pulse has no minimum sample, so its content remains useful even when
-    // no signed-in users refreshed during either activity window.
-    const livePulse = createReadyTvLivePulseScreen({
-      now,
-      liveUsers,
-      todayActiveUsers: todayActivity,
-      hourlyActivity: todayHourly,
-    });
-    const hasAudience = totalUsers > 0;
-    const audience: TvAudienceMomentumScreen = {
-      ...emptyAudience,
-      sourceStatus: hasAudience ? "ready" : "empty",
-      diagnosticCode: null,
-      data: hasAudience ? {
-        totalUsers,
-        userGrowthPercent: percentChange(totalUsers, Math.max(0, previousTotalUsers)),
-        newUsers: currentNewUsers,
-        monthlyActiveUsers: Number(mauRow.mau),
-        verificationRatePercent,
-        lifecycle,
-        analytics: {
-          sourceStatus: "error",
-          observedAt,
-          diagnosticCode: "analytics-not-loaded",
-          data: null,
-        },
-      } : null,
-      insight: hasAudience && isTvReturningInsightEligible(currentNewActivity, currentReturning) ? {
-        kind: "returning-users-leading",
-        message: "Audience momentum is being driven primarily by returning users.",
-        evidence: {
-          newActivity: currentNewActivity,
-          retainedActivity: lifecycle.reduce((sum, point) => sum + point.secondary, 0),
-          reactivatedActivity: lifecycle.reduce((sum, point) => sum + point.tertiary, 0),
-          leadMarginPercent: returningLeadMarginPercent,
-        },
-      } : null,
-    };
+    const mauRow = mauRows.at(0);
+    const audience = audienceActivityError != null || audienceRowsError != null || users == null || mauRow == null
+      ? errorScreen(emptyAudience, "users-activity", audienceActivityError ?? audienceRowsError ?? new TvSnapshotInvariantError("TV audience aggregate returned no summary row."), tenancy)
+      : (() => {
+        const totalUsers = Number(users.total_users);
+        const currentNewUsers = Number(users.current_new_users);
+        const previousTotalUsers = totalUsers - currentNewUsers + Number(users.deleted_existing_users);
+        const currentReturning = lifecycle.reduce((sum, point) => sum + point.secondary + point.tertiary, 0);
+        const currentNewActivity = lifecycle.reduce((sum, point) => sum + point.primary, 0);
+        const returningLeadMarginPercent = currentNewActivity > 0
+          ? roundPercent(((currentReturning - currentNewActivity) / currentNewActivity) * 100)
+          : 0;
+        const verificationRatePercent = totalUsers > 0
+          ? roundPercent((Number(users.verified_users) / totalUsers) * 100)
+          : 0;
+        const hasAudience = totalUsers > 0;
+        const screen: TvAudienceMomentumScreen = {
+          ...emptyAudience,
+          sourceStatus: hasAudience ? "ready" : "empty",
+          diagnosticCode: null,
+          data: hasAudience ? {
+            totalUsers,
+            userGrowthPercent: percentChange(totalUsers, Math.max(0, previousTotalUsers)),
+            newUsers: currentNewUsers,
+            monthlyActiveUsers: Number(mauRow.mau),
+            verificationRatePercent,
+            lifecycle,
+            analytics: {
+              sourceStatus: "error",
+              observedAt,
+              diagnosticCode: "analytics-not-loaded",
+              data: null,
+            },
+          } : null,
+          insight: hasAudience && isTvReturningInsightEligible(currentNewActivity, currentReturning) ? {
+            kind: "returning-users-leading",
+            message: "Audience momentum is being driven primarily by returning users.",
+            evidence: {
+              newActivity: currentNewActivity,
+              retainedActivity: lifecycle.reduce((sum, point) => sum + point.secondary, 0),
+              reactivatedActivity: lifecycle.reduce((sum, point) => sum + point.tertiary, 0),
+              leadMarginPercent: returningLeadMarginPercent,
+            },
+          } : null,
+        };
+        return { status: "success" as const, screen };
+      })();
     return {
-      livePulse: { status: "success", screen: livePulse },
-      audience: { status: "success", screen: audience },
+      livePulse,
+      audience,
     };
   } catch (cause) {
     if (cause instanceof TvSnapshotInvariantError) throw cause;
@@ -767,11 +793,15 @@ async function loadRevenueScreen(
             AND "paidAt" < ${bounds.currentEndsAt}
             AND "amountPaid" IS NOT NULL
             AND "currency" = 'USD'
+            AND ("markedUncollectibleAt" IS NULL OR "markedUncollectibleAt" <= "paidAt")
+            AND ("voidedAt" IS NULL OR "voidedAt" <= "paidAt")
         ), legacy_subscription_revenue AS (
           SELECT "createdAt" AS occurred_at, COALESCE("amountTotal", 0)::BIGINT AS amount
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "paidAt" IS NULL
+            AND "markedUncollectibleAt" IS NULL
+            AND "voidedAt" IS NULL
             AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}

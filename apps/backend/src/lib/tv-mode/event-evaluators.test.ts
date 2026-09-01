@@ -231,7 +231,7 @@ describe("email delivery TV event evaluator V2", () => {
     expect(frozen.action).toEqual({ type: "none" });
   });
 
-  it("applies borderline hysteresis to Incident-to-Critical escalation", () => {
+  it("does not retain a critical candidate across a non-critical breach", () => {
     const incident: TvEmailEvaluatorState = { ...createTvEmailEvaluatorState(), activeClass: "incident" };
     const critical = windowAt({ assessable: 50, failures: 11 });
     const candidate = evaluateTvEmailDelivery(incident, sampleAt(0, { current: critical })).state;
@@ -240,13 +240,14 @@ describe("email delivery TV event evaluator V2", () => {
       current: borderline,
       lowVolume: borderline,
     }));
-    expect(frozen.state.candidate).toMatchObject({
+    expect(frozen.state.candidate).toBeNull();
+    const escalated = evaluateTvEmailDelivery(frozen.state, sampleAt(2, { current: critical }));
+    expect(escalated.action).toEqual({ type: "none" });
+    expect(escalated.state.candidate).toMatchObject({
       presentationClass: "critical-incident",
       accumulatedMs: 0,
-      borderlineEvaluations: 1,
+      borderlineEvaluations: 0,
     });
-    const escalated = evaluateTvEmailDelivery(frozen.state, sampleAt(2, { current: critical }));
-    expect(escalated.action).toEqual({ type: "escalate", presentationClass: "critical-incident" });
   });
 
   it("uses a robust median daily baseline", () => {
