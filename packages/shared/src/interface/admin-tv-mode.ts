@@ -537,10 +537,9 @@ export const TvDisplayResourceSchema = yupObject({
   profileId: yupString().defined(),
   profileDisplayName: yupString().defined(),
   profileFinancialVisibility: yupString().oneOf(["redacted", "exact"]).defined(),
-  state: yupString().oneOf(["online", "offline", "never-connected", "revoked"]).defined(),
+  state: yupString().oneOf(["online", "offline", "never-connected"]).defined(),
   pairedAt: yupString().defined(),
   lastSeenAt: yupString().nullable().defined(),
-  revokedAt: yupString().nullable().defined(),
   exactFinancialsAcknowledged: yupBoolean().defined(),
 }).noUnknown().defined();
 

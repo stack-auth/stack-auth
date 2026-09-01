@@ -19,7 +19,9 @@ const TV_DISPLAY_AUDIENCE = "hexclave-tv-display";
 const TV_DISPLAY_ISSUER = "hexclave-tv-display";
 const CHALLENGE_LIFETIME_MS = 10 * 60 * 1000;
 const PAIRING_CODE_INSERT_ATTEMPTS = 5;
-const REFRESH_IDLE_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
+const REFRESH_IDLE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const USED_CREDENTIAL_REPLAY_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const USED_CREDENTIAL_CLEANUP_LIMIT = 100;
 const LAST_SEEN_WRITE_INTERVAL_MS = 60 * 1000;
 
 type DisplayRow = {
@@ -29,7 +31,6 @@ type DisplayRow = {
   displayName: string,
   pairedAt: Date,
   lastSeenAt: Date | null,
-  revokedAt: Date | null,
   credentialVersion: number,
   financialVisibilityAcknowledgedAt: Date | null,
 };
@@ -57,9 +58,7 @@ type CredentialRow = {
   revokedAt: Date | null,
 };
 
-type CredentialWithDisplayRow = CredentialRow & Omit<DisplayRow, "id" | "revokedAt"> & {
-  displayRevokedAt: Date | null,
-};
+type CredentialWithDisplayRow = CredentialRow & Omit<DisplayRow, "id">;
 
 type PairingPollResult =
   | { status: "waiting", retryAfterSeconds: number }
@@ -67,6 +66,7 @@ type PairingPollResult =
   | { status: "paired", accessToken: string, refreshToken: string, display: DisplayRow };
 
 type RefreshRotationResult =
+  | { status: "unavailable" }
   | { status: "reused" }
   | { status: "rotated", id: string, rawToken: string };
 
@@ -383,7 +383,7 @@ export async function pollTvDisplayPairing(options: {
         ${approvedByAdminUserId}::UUID, ${now}, ${challenge.financialVisibilityAcknowledgedAt},
         ${challenge.financialVisibilityAcknowledgedAt == null ? null : approvedByAdminUserId}::UUID, ${now}
       )
-      RETURNING "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt", "revokedAt",
+      RETURNING "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt",
         "credentialVersion", "financialVisibilityAcknowledgedAt"
     `);
     const display = displays.at(0) ?? throwErr("TV display insert returned no display.");
@@ -425,16 +425,15 @@ export async function getAuthorizedTvDisplay(accessToken: string, now = new Date
 } | null> {
   const token = await decodeDisplayAccessToken(accessToken);
   if (token == null) return null;
-  // This is intentionally a primary, data-modifying CTE: revocation and
+  // This is intentionally a primary, data-modifying CTE: display deletion and
   // credential-version checks must be immediate, while last-seen writes remain
   // throttled to once per minute per display.
   const rows = await globalPrismaClient.$queryRaw<DisplayRow[]>(Prisma.sql`
     WITH authorized AS (
-      SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt", "revokedAt",
+      SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt",
         "credentialVersion", "financialVisibilityAcknowledgedAt"
       FROM "TvDisplay"
       WHERE "id" = ${token.displayId}::UUID
-        AND "revokedAt" IS NULL
         AND "credentialVersion" = ${token.credentialVersion}
       LIMIT 1
     ), touched AS (
@@ -447,7 +446,7 @@ export async function getAuthorizedTvDisplay(accessToken: string, now = new Date
     )
     SELECT authorized."id", authorized."tenancyId", authorized."profileId", authorized."displayName",
       authorized."pairedAt", COALESCE(touched."lastSeenAt", authorized."lastSeenAt") AS "lastSeenAt",
-      authorized."revokedAt", authorized."credentialVersion", authorized."financialVisibilityAcknowledgedAt"
+      authorized."credentialVersion", authorized."financialVisibilityAcknowledgedAt"
     FROM authorized
     LEFT JOIN touched ON touched."id" = authorized."id"
   `);
@@ -463,7 +462,7 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
 } | null> {
   const rows = await globalPrismaClient.$queryRaw<CredentialWithDisplayRow[]>(Prisma.sql`
     SELECT c."id", c."displayId", c."familyId", c."expiresAt", c."usedAt", c."revokedAt",
-      d."tenancyId", d."profileId", d."displayName", d."pairedAt", d."lastSeenAt", d."revokedAt" AS "displayRevokedAt",
+      d."tenancyId", d."profileId", d."displayName", d."pairedAt", d."lastSeenAt",
       d."credentialVersion", d."financialVisibilityAcknowledgedAt"
     FROM "TvDisplayCredential" c
     JOIN "TvDisplay" d ON d."id" = c."displayId"
@@ -471,21 +470,24 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
     LIMIT 1
   `);
   const credential = rows.at(0);
-  if (credential == null || credential.revokedAt != null || credential.displayRevokedAt != null || credential.expiresAt <= now) return null;
-  // Rotation retains used credentials until their own expiry so reuse can revoke
-  // the family. Once expired, they cannot authenticate or contribute to replay
-  // detection, so bounded cleanup prevents unattended displays growing this table.
-  await globalPrismaClient.$executeRaw`
-    DELETE FROM "TvDisplayCredential"
-    WHERE "id" IN (
-      SELECT "id" FROM "TvDisplayCredential"
-      WHERE "expiresAt" < ${now}
-      ORDER BY "expiresAt"
-      LIMIT 100
-    )
-  `;
+  if (credential == null || credential.revokedAt != null) return null;
+  const replayHistoryCutoff = new Date(now.getTime() - USED_CREDENTIAL_REPLAY_LIFETIME_MS);
+  // Expired replay-history rows may remain while a display is offline because
+  // cleanup is deliberately rotation-scoped. They are still unauthorized and
+  // must not revoke a legitimate descendant credential after the 24-hour window.
+  if (credential.usedAt != null && credential.usedAt < replayHistoryCutoff) return null;
   if (credential.usedAt != null) {
-    await retryTransaction(globalPrismaClient, async (transaction) => {
+    const familyWasRevoked = await retryTransaction(globalPrismaClient, async (transaction) => {
+      // Parent-first lock ordering matches display deletion's cascade order. If
+      // credential mutation locked the child first, concurrent unpairing could
+      // form a child→parent / parent→child deadlock.
+      const displays = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "TvDisplay"
+        WHERE "id" = ${credential.displayId}::UUID
+        FOR UPDATE
+      `;
+      if (displays.length === 0) return false;
+      if (displays.length !== 1) throw new HexclaveAssertionError("TV display credential lock returned an unexpected row set.");
       await transaction.$executeRaw`
         UPDATE "TvDisplayCredential" SET "revokedAt" = ${now}
         WHERE "displayId" = ${credential.displayId}::UUID AND "familyId" = ${credential.familyId}::UUID AND "revokedAt" IS NULL
@@ -494,18 +496,31 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
         UPDATE "TvDisplay" SET "credentialVersion" = "credentialVersion" + 1, "updatedAt" = ${now}
         WHERE "id" = ${credential.displayId}::UUID
       `;
+      return true;
     });
-    const tenancy = await getTenancy(credential.tenancyId);
-    if (tenancy != null) {
-      logTvDisplayAuditInBackground(tenancy, {
-        action: "refresh-reuse-detected",
-        displayId: credential.displayId,
-        actorUserId: null,
-      });
+    if (familyWasRevoked) {
+      const tenancy = await getTenancy(credential.tenancyId);
+      if (tenancy != null) {
+        logTvDisplayAuditInBackground(tenancy, {
+          action: "refresh-reuse-detected",
+          displayId: credential.displayId,
+          actorUserId: null,
+        });
+      }
     }
     return null;
   }
+  if (credential.expiresAt <= now) return null;
   const replacement = await retryTransaction(globalPrismaClient, async (transaction): Promise<RefreshRotationResult> => {
+    // Lock the parent before the child credential for the same reason as the
+    // replay path above. A missing parent means unpairing already committed.
+    const displays = await transaction.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "TvDisplay"
+      WHERE "id" = ${credential.displayId}::UUID
+      FOR UPDATE
+    `;
+    if (displays.length === 0) return { status: "unavailable" };
+    if (displays.length !== 1) throw new HexclaveAssertionError("TV display credential lock returned an unexpected row set.");
     const consumed = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       UPDATE "TvDisplayCredential" SET "usedAt" = ${now}
       WHERE "id" = ${credential.id}::UUID AND "usedAt" IS NULL AND "revokedAt" IS NULL AND "expiresAt" > ${now}
@@ -541,8 +556,26 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
     await transaction.$executeRaw`
       UPDATE "TvDisplayCredential" SET "replacementId" = ${id}::UUID WHERE "id" = ${credential.id}::UUID
     `;
+    const deletedCredentialCount = await transaction.$executeRaw`
+      DELETE FROM "TvDisplayCredential"
+      WHERE "displayId" = ${credential.displayId}::UUID
+        AND "familyId" = ${credential.familyId}::UUID
+        AND "id" IN (
+          SELECT "id"
+          FROM "TvDisplayCredential"
+          WHERE "displayId" = ${credential.displayId}::UUID
+            AND "familyId" = ${credential.familyId}::UUID
+            AND "usedAt" < ${replayHistoryCutoff}
+          ORDER BY "usedAt", "id"
+          LIMIT ${USED_CREDENTIAL_CLEANUP_LIMIT}
+        )
+    `;
+    if (deletedCredentialCount > USED_CREDENTIAL_CLEANUP_LIMIT) {
+      throw new HexclaveAssertionError("TV display credential cleanup exceeded its per-family bound.");
+    }
     return { status: "rotated", id, rawToken };
   });
+  if (replacement.status === "unavailable") return null;
   if (replacement.status === "reused") {
     const tenancy = await getTenancy(credential.tenancyId);
     if (tenancy != null) {
@@ -561,18 +594,9 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
     displayName: credential.displayName,
     pairedAt: credential.pairedAt,
     lastSeenAt: credential.lastSeenAt,
-    revokedAt: null,
     credentialVersion: credential.credentialVersion,
     financialVisibilityAcknowledgedAt: credential.financialVisibilityAcknowledgedAt,
   };
-  const tenancy = await getTenancy(display.tenancyId);
-  if (tenancy != null) {
-    logTvDisplayAuditInBackground(tenancy, {
-      action: "credential-rotated",
-      displayId: display.id,
-      actorUserId: null,
-    });
-  }
   return {
     accessToken: await signDisplayAccessToken(display, replacement.id),
     refreshToken: replacement.rawToken,
@@ -581,10 +605,10 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
 
 export async function listTvDisplays(tenancy: Tenancy, now = new Date()) {
   const rows = await globalPrismaClient.$replica().$queryRaw<DisplayRow[]>(Prisma.sql`
-    SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt", "revokedAt",
+    SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt",
       "credentialVersion", "financialVisibilityAcknowledgedAt"
     FROM "TvDisplay"
-    WHERE "tenancyId" = ${tenancy.id}::UUID AND "revokedAt" IS NULL
+    WHERE "tenancyId" = ${tenancy.id}::UUID
     ORDER BY "updatedAt" DESC, "id"
   `);
   return await Promise.all(rows.map(async (display) => await getTvDisplayResource(tenancy, display, now)));
@@ -600,40 +624,37 @@ export async function getTvDisplayResource(tenancy: Tenancy, display: DisplayRow
     profileId: display.profileId,
     profileDisplayName: profile?.configuration.displayName ?? "Profile Unavailable",
     profileFinancialVisibility: profile?.configuration.financialVisibility ?? "redacted",
-    state: display.revokedAt != null
-      ? "revoked"
-      : display.lastSeenAt == null
-        ? "never-connected"
-        : now.getTime() - display.lastSeenAt.getTime() <= 2 * 60 * 1000
-          ? "online"
-          : "offline",
+    state: display.lastSeenAt == null
+      ? "never-connected"
+      : now.getTime() - display.lastSeenAt.getTime() <= 2 * 60 * 1000
+        ? "online"
+        : "offline",
     pairedAt: display.pairedAt.toISOString(),
     lastSeenAt: display.lastSeenAt?.toISOString() ?? null,
-    revokedAt: display.revokedAt?.toISOString() ?? null,
     exactFinancialsAcknowledged: acknowledgementIsCurrent,
   };
 }
 
-export async function revokeTvDisplay(
+export async function deleteTvDisplay(
   tenancy: Tenancy,
   displayId: string,
-  reason: string,
-  now = new Date(),
   actorUserId: string | null = null,
 ): Promise<boolean> {
   const rows = await globalPrismaClient.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    UPDATE "TvDisplay"
-    SET "revokedAt" = ${now}, "revokedReason" = ${reason},
-      "credentialVersion" = "credentialVersion" + 1, "updatedAt" = ${now}
-    WHERE "id" = ${displayId}::UUID AND "tenancyId" = ${tenancy.id}::UUID AND "revokedAt" IS NULL
+    DELETE FROM "TvDisplay"
+    WHERE "id" = ${displayId}::UUID
+      AND "tenancyId" = ${tenancy.id}::UUID
     RETURNING "id"
   `);
   if (rows.length === 0) return false;
-  await globalPrismaClient.$executeRaw`
-    UPDATE "TvDisplayCredential" SET "revokedAt" = ${now}
-    WHERE "displayId" = ${displayId}::UUID AND "revokedAt" IS NULL
-  `;
-  logTvDisplayAuditInBackground(tenancy, { action: "display-revoked", displayId, actorUserId });
+  if (rows.length !== 1) {
+    throw new HexclaveAssertionError("TV display deletion returned an unexpected row set.");
+  }
+  logTvDisplayAuditInBackground(tenancy, {
+    action: "display-revoked",
+    displayId: rows[0]?.id ?? throwErr("TV display deletion returned no display ID."),
+    actorUserId,
+  });
   return true;
 }
 
@@ -660,7 +681,6 @@ export async function updateTvDisplay(options: {
       FROM "TvDisplay"
       WHERE "id" = ${options.displayId}::UUID
         AND "tenancyId" = ${options.tenancy.id}::UUID
-        AND "revokedAt" IS NULL
       FOR UPDATE
     `);
     const existing = rows.at(0);

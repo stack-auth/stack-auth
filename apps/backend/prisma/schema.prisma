@@ -919,8 +919,6 @@ model TvDisplay {
   pairedByAdminUserId String @db.Uuid
   pairedAt             DateTime @default(now())
   lastSeenAt           DateTime?
-  revokedAt            DateTime?
-  revokedReason        String? @db.VarChar(120)
   credentialVersion    Int @default(1)
 
   financialVisibilityAcknowledgedAt DateTime?
@@ -931,8 +929,8 @@ model TvDisplay {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([tenancyId, revokedAt, updatedAt(sort: Desc), id], name: "TvDisplay_tenancy_active_idx")
-  @@index([tenancyId, profileId, revokedAt], name: "TvDisplay_profile_assignment_idx")
+  @@index([tenancyId, updatedAt(sort: Desc), id], name: "TvDisplay_tenancy_updatedAt_id_idx")
+  @@index([tenancyId, profileId], name: "TvDisplay_profile_assignment_idx")
 }
 
 model TvDisplayPairingChallenge {
@@ -975,7 +973,6 @@ model TvDisplayCredential {
   replacementId  String? @db.Uuid
 
   @@index([displayId, familyId, revokedAt], name: "TvDisplayCredential_family_idx")
-  @@index([expiresAt], name: "TvDisplayCredential_expiresAt_idx")
 }
 
 model TvDisplayPairingRateLimitBucket {

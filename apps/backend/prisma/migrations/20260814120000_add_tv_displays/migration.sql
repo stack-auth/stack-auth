@@ -8,8 +8,6 @@ CREATE TABLE "TvDisplay" (
   "pairedByAdminUserId" UUID NOT NULL,
   "pairedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "lastSeenAt" TIMESTAMP(3),
-  "revokedAt" TIMESTAMP(3),
-  "revokedReason" VARCHAR(120),
   "credentialVersion" INTEGER NOT NULL DEFAULT 1,
   "financialVisibilityAcknowledgedAt" TIMESTAMP(3),
   "financialVisibilityAcknowledgedByAdminUserId" UUID,
@@ -19,8 +17,8 @@ CREATE TABLE "TvDisplay" (
   CONSTRAINT "TvDisplay_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE INDEX "TvDisplay_tenancy_active_idx" ON "TvDisplay"("tenancyId", "revokedAt", "updatedAt" DESC, "id");
-CREATE INDEX "TvDisplay_profile_assignment_idx" ON "TvDisplay"("tenancyId", "profileId", "revokedAt");
+CREATE INDEX "TvDisplay_tenancy_updatedAt_id_idx" ON "TvDisplay"("tenancyId", "updatedAt" DESC, "id");
+CREATE INDEX "TvDisplay_profile_assignment_idx" ON "TvDisplay"("tenancyId", "profileId");
 
 CREATE TABLE "TvDisplayPairingChallenge" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -64,7 +62,6 @@ CREATE TABLE "TvDisplayCredential" (
 
 CREATE UNIQUE INDEX "TvDisplayCredential_tokenHash_key" ON "TvDisplayCredential"("tokenHash");
 CREATE INDEX "TvDisplayCredential_family_idx" ON "TvDisplayCredential"("displayId", "familyId", "revokedAt");
-CREATE INDEX "TvDisplayCredential_expiresAt_idx" ON "TvDisplayCredential"("expiresAt");
 
 CREATE TABLE "TvDisplayPairingRateLimitBucket" (
   "keyHash" VARCHAR(64) NOT NULL,

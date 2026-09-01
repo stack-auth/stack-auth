@@ -9,14 +9,14 @@ describe("TV display refresh cookie policy", () => {
     vi.unstubAllEnvs();
   });
 
-  it("issues alias-scoped credentials while clearing the legacy broad cookie", () => {
+  it("issues alias-scoped credentials with the 30-day idle lifetime while clearing the legacy broad cookie", () => {
     const set = vi.fn();
     setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
 
     expect(set.mock.calls).toEqual([
       ["tv-refresh", "", expect.objectContaining({ path: "/api", expires: new Date(0), maxAge: 0 })],
-      ["tv-refresh", "secret", expect.objectContaining({ path: "/api/latest/tv-displays", maxAge: 90 * 24 * 60 * 60 })],
-      ["tv-refresh", "secret", expect.objectContaining({ path: "/api/v1/tv-displays", maxAge: 90 * 24 * 60 * 60 })],
+      ["tv-refresh", "secret", expect.objectContaining({ path: "/api/latest/tv-displays", maxAge: 30 * 24 * 60 * 60 })],
+      ["tv-refresh", "secret", expect.objectContaining({ path: "/api/v1/tv-displays", maxAge: 30 * 24 * 60 * 60 })],
     ]);
     for (const [, , options] of set.mock.calls) {
       expect(options).toEqual(expect.objectContaining({ httpOnly: true, secure: false, sameSite: "strict" }));

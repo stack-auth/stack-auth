@@ -31,7 +31,6 @@ describe("TV display admin API", () => {
               state: "online",
               pairedAt: "2026-08-14T12:00:00.000Z",
               lastSeenAt: "2026-08-14T12:01:00.000Z",
-              revokedAt: null,
               exactFinancialsAcknowledged: false,
             }],
           }), { status: 200, headers: { "content-type": "application/json" } });
