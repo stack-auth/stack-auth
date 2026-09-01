@@ -350,13 +350,12 @@ describe("definition sync", () => {
   });
 
   it("stores a mixed port list and rejects the ones it could not serve", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
 
     await syncServices({
       database: { type: "serverless", ports: { 5432: { protocol: "tcp" } }, env: {} },
-      // Several PRIVATE ports of mixed protocols. min_instances is written out because this
-      // project is on the Free plan, where an always-on instance — a `server`'s default — is
-      // refused before any of the port handling under test runs.
+      // Several PRIVATE ports of mixed protocols, on the only type that may declare
+      // TCP ports at all.
       gateway: {
         type: "server",
         min_instances: 0,
@@ -432,8 +431,9 @@ describe("definition sync", () => {
   it("rejects always-on instances on the Free plan, naming the offending services", async ({ expect }) => {
     // A project created through the internal projects API is owned by a billing
     // team that starts on the Free plan (Project.create waits for that
-    // entitlement), so this exercises the gate's POSITIVE path — unlike the
-    // other tests here, whose projects have no owner team and are never gated.
+    // entitlement), so this exercises the gate's POSITIVE path. Every other
+    // project in this file is gated as Free too; the tests that need a paid
+    // capability opt in with Project.createAndSwitchOnPaidPlan().
     const { createProjectResponse } = await Project.createAndSwitch();
     expect(createProjectResponse.body.owner_team_id).toEqual(expect.any(String));
 
@@ -491,8 +491,69 @@ describe("definition sync", () => {
     expect(accepted.status).toBe(200);
   });
 
+  it("rejects `server` services on the Free plan, whatever their minInstances", async ({ expect }) => {
+    // A `server` is a VM that runs until the service is torn down — GCP has no
+    // idle-suspend and no wake-on-request, so `minInstances: 0` is accepted and
+    // ignored rather than scaling it to zero. The gate therefore refuses the
+    // TYPE, not the instance floor: gating on minInstances alone let a Free
+    // project hold a machine up around the clock by writing the one value that
+    // reads like opting out of exactly that.
+    const { createProjectResponse } = await Project.createAndSwitch();
+    expect(createProjectResponse.body.owner_team_id).toEqual(expect.any(String));
+
+    const planUsage = await niceBackendFetch("/api/v1/internal/plan-usage", { accessType: "admin" });
+    const enforced = (planUsage.body as any)?.are_plan_limits_enforced !== false;
+
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        source_id: "server-plan-src",
+        services: {
+          // The value that used to buy its way past the gate.
+          db: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, env: {} },
+          web: { type: "serverless", ports: { 3000: { protocol: "http" } }, min_instances: 0, env: {} },
+        },
+      },
+    });
+
+    if (!enforced) {
+      // Plan limits off: the gate must fail OPEN, not half-apply.
+      expect(response.status).toBe(200);
+      return;
+    }
+
+    expect(response.status).toBe(400);
+    const message = JSON.stringify(response.body);
+    expect(message).toContain("Free plan");
+    expect(message).toContain("`db`");
+    // The scale-to-zero serverless alongside it is untouched, and the message
+    // must not tell the author to set a minInstances they already set.
+    expect(message).not.toContain("`web`");
+
+    // Nothing was written: the gate runs before the upsert.
+    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
+    expect((listResponse.body as any).items).toEqual([]);
+
+    // The same config syncs once the billing team is on a paid plan — proving
+    // the refusal is the entitlement, not the definition.
+    await Project.grantBillingTeamPlan(createProjectResponse.body.owner_team_id);
+    const accepted = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        source_id: "server-plan-src",
+        services: {
+          db: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, env: {} },
+          web: { type: "serverless", ports: { 3000: { protocol: "http" } }, min_instances: 0, env: {} },
+        },
+      },
+    });
+    expect(accepted.status).toBe(200);
+  });
+
   it("stores a volume and surfaces it on the service", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const serviceId = uniqueServiceId("vol");
     const { sourceId } = await syncServices({
       [serviceId]: { type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: 10 } }, env: {} },
@@ -512,10 +573,9 @@ describe("definition sync", () => {
   });
 
   it("rejects shrinking a volume at sync time, before anything is uploaded", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const serviceId = uniqueServiceId("shrink");
-    // min_instances is written out because this project is on the Free plan, which does not
-    // allow an always-on instance — and a `server` defaults to one.
+    // A `server`, because only a single-instance service may hold a disk.
     const definition = (sizeGb: number) => ({
       [serviceId]: { type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: sizeGb } }, env: {} },
     });
@@ -543,7 +603,7 @@ describe("definition sync", () => {
   });
 
   it("rejects a volume on a service that could run more than one instance", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     // A persistent disk attaches to one VM, so a fleet would silently give each
     // instance its own separate disk. Only a "server" is single-instance by
     // construction, so that is where the rule lives now.
@@ -575,7 +635,7 @@ describe("definition sync", () => {
   });
 
   it("rejects a volume mount path that is not a normalized absolute path", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     for (const path of ["data", "/", "/data/../etc"]) {
       const response = await niceBackendFetch("/api/v1/deployments/services", {
         method: "PUT",
@@ -606,12 +666,11 @@ describe("definition sync", () => {
   });
 
   it("stores a prebuilt image, normalized, and refuses one that also builds", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const ok = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      // min_instances written out: a `server` defaults to 1, and this project's
-      // billing team is on the Free plan, which refuses always-on instances.
+      // A `server`, because this one holds a TCP port.
       body: { source_id: "img-src", services: { db: { type: "server", ports: { 5432: { protocol: "tcp" } }, min_instances: 0, image: "postgres:16", env: {} } } },
     });
     expect(ok.status).toBe(200);
@@ -643,7 +702,7 @@ describe("definition sync", () => {
   });
 
   it("stores build and start commands, and turns an image into a base", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const ok = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
@@ -978,15 +1037,15 @@ describe("deploys against the Marshal runtime", () => {
   });
 
   it("deploys a prebuilt image with no upload and no build at all", { timeout: 120_000 }, async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     await InternalApiKey.createAndSetProjectKeys();
     const serviceId = uniqueServiceId("db");
     const { syncId: definitionSyncId, sourceId } = await syncServices({
       [serviceId]: {
         type: "server",
         ports: { 5432: { protocol: "tcp" } },
-        // min_instances stays 0 (suspend when idle): this project's billing team
-        // is on the Free plan, which refuses always-on instances.
+        // Accepted on a `server`, but inert: the VM runs from apply until the
+        // service is torn down, so this pins storage, not runtime behaviour.
         min_instances: 0,
         max_instances: 1,
         image: "postgres:16",
@@ -1025,7 +1084,7 @@ describe("deploys against the Marshal runtime", () => {
     // The two halves of the feature in one deploy: a start command that costs no
     // build (the image service still has none), and a build command that turns a
     // service with no Dockerfile into a base-image build.
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     await InternalApiKey.createAndSetProjectKeys();
     const cacheServiceId = uniqueServiceId("cache");
     const webServiceId = uniqueServiceId("web");
@@ -1072,7 +1131,7 @@ describe("deploys against the Marshal runtime", () => {
     // The common shape: an app built from the repo, wired to a stock database
     // image. One deployment, one build covering only the built service, and both
     // applied in dependency order.
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     await InternalApiKey.createAndSetProjectKeys();
     const dbServiceId = uniqueServiceId("db");
     const webServiceId = uniqueServiceId("web");
@@ -1168,7 +1227,7 @@ describe("deploys against the Marshal runtime", () => {
     // outright, so the outcome stayed "pending" whatever the runtime reported.
     // The storage layer cannot represent it, so the honest fix is to say so on
     // the request that introduces it rather than mid-deploy.
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     await InternalApiKey.createAndSetProjectKeys();
     const response = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
@@ -1183,7 +1242,7 @@ describe("deploys against the Marshal runtime", () => {
   });
 
   it("refuses an upload for a deployment that builds nothing", async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     await InternalApiKey.createAndSetProjectKeys();
     const serviceId = uniqueServiceId("db");
     const { syncId: definitionSyncId, sourceId } = await syncServices({
@@ -1261,11 +1320,9 @@ describe("deploys against the Marshal runtime", () => {
   });
 
   it("provisions a volume and mounts it on the machine", { timeout: 120_000 }, async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const serviceId = uniqueServiceId("vol");
-    // `server`, because only a single-instance service may hold a disk. Its
-    // min_instances 0 is scale-to-zero by SUSPENDING, so the disk comes back
-    // with the machine (and Free-plan projects can't pin instances anyway).
+    // `server`, because only a single-instance service may hold a disk.
     const { uploadId, definitionSyncId, sourceId } = await syncServiceAndUpload(serviceId, {
       type: "server",
       min_instances: 0,
@@ -1300,7 +1357,7 @@ describe("deploys against the Marshal runtime", () => {
   });
 
   it("adds a volume to an already-deployed service by recreating the machine", { timeout: 180_000 }, async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const serviceId = uniqueServiceId("voladd");
 
     // Deploy WITHOUT a volume first. `server` from the start, so that the only
@@ -1396,7 +1453,7 @@ describe("deploys against the Marshal runtime", () => {
   });
 
   it("resolves url connections between services deterministically, named or not", { timeout: 120_000 }, async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const apiServiceId = uniqueServiceId("api");
     const webServiceId = uniqueServiceId("web");
 
@@ -1961,7 +2018,7 @@ describe("deployments of a whole deployment source", () => {
   });
 
   it("removes a service the deploy file no longer declares, keeping its disk", { timeout: 120_000 }, async ({ expect }) => {
-    await Project.createAndSwitch();
+    await Project.createAndSwitchOnPaidPlan();
     const keptServiceId = uniqueServiceId("kept");
     const droppedServiceId = uniqueServiceId("dropped");
     const { syncId, sourceId } = await syncServices({

@@ -265,7 +265,7 @@ export type HexclaveServiceSource =
 
 /**
  * A single always-one-instance service, and the only kind that may hold a
- * persistent volume.
+ * persistent volume. Requires a paid plan.
  */
 export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource & {
   type: "server",
@@ -279,11 +279,10 @@ export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource 
    */
   persistentVolumes?: Record<string, HexclavePersistentVolume>,
   /**
-   * 1 (the default) keeps the single instance up. 0 is what the Free plan
-   * requires; the runtime has no request-triggered suspend for a `server`, so 0
-   * preserves availability and disk semantics but does not guarantee
-   * scale-to-zero billing. A worker (`ports: {}`) has nothing inbound to start
-   * it, so it needs 1.
+   * 1 (the default) keeps the single instance up. 0 is accepted but currently
+   * has NO effect: the runtime has no request-triggered suspend for a `server`,
+   * so it runs from deploy until you tear it down either way. It does not buy a
+   * server onto the Free plan — a `server` is paid-only whatever this says.
    */
   minInstances?: 0 | 1,
   /** Always 1 for a server. Use `type: "serverless"` to scale out. */

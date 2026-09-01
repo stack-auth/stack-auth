@@ -703,7 +703,7 @@ export function evaluateDeploymentConfig(options: {
     }
     if (!(DEPLOYMENT_SERVICE_TYPES as readonly unknown[]).includes(record.type)) {
       throw new CliError(record.type === undefined
-        ? `deploy.services.${serviceId} has no \`type\`. Add \`type: "server"\` (single suspending instance, may have persistentVolumes) or \`type: "serverless"\` (scales out, stops on scale-down).`
+        ? `deploy.services.${serviceId} has no \`type\`. Add \`type: "server"\` (single always-on instance, may have persistentVolumes, paid plan) or \`type: "serverless"\` (scales out, stops on scale-down).`
         : `deploy.services.${serviceId}.type must be ${DEPLOYMENT_SERVICE_TYPES.map((knownType: string) => JSON.stringify(knownType)).join(" or ")} (got ${JSON.stringify(record.type)}).`);
     }
     const serviceType = record.type as DeploymentServiceType;

@@ -1492,8 +1492,8 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema pins a server servic
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "3000": { protocol: "http" } }, max_instances: 2, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances must be 1/);
-  // 0 (suspend when idle) and 1 (stay up) are the only meanings a single
-  // instance can have; anything above is a fleet, which "server" is not.
+  // 0 and 1 are the only meanings a single instance can have; anything above
+  // is a fleet, which "server" is not.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 1, env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
@@ -1502,7 +1502,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema pins a server servic
   }, { abortEarly: false })).resolves.toBeDefined();
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: { "3000": { protocol: "http" } }, min_instances: 2, env: {},
-  }, { abortEarly: false })).rejects.toThrow(/min_instances must be 0 \(suspend when idle\) or 1/);
+  }, { abortEarly: false })).rejects.toThrow(/min_instances must be 0 or 1/);
   // Serverless keeps the full range.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: { "3000": { protocol: "http" } }, min_instances: 1, max_instances: 10, env: {},
