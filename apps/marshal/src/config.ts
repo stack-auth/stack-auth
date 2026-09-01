@@ -7,6 +7,11 @@ import { assertDataEncryptionKeyIsSafe, parseDataEncryptionRootKey } from "./spe
 export type MarshalConfig = {
   port: number,
   apiKey: string,
+  // Vercel sets `Authorization: Bearer $CRON_SECRET` on its cron invocations. Accepted ONLY on
+  // the maintenance routes, so the platform's scheduler does not have to be handed the
+  // credential the backend uses for everything else. Null when unset, which is not a fallback
+  // to anything: unset means Vercel sends no Authorization header and the crons cannot run.
+  cronSecret: string | null,
   webhookSecret: string,
   dataEncryptionRootKey: Buffer,
   // Base URL builder VMs use to reach the completion webhook. Only needed for real builds
@@ -120,6 +125,7 @@ export function getConfig(): MarshalConfig {
   cached = {
     port,
     apiKey,
+    cronSecret: process.env.CRON_SECRET || null,
     webhookSecret: env("MARSHAL_WEBHOOK_SECRET", apiKey),
     dataEncryptionRootKey: parseDataEncryptionRootKey(dataEncryptionKey),
     publicUrl,

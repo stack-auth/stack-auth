@@ -1,6 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { assertMocksExplicitlyAllowed, resolveGcpMockUrl } from "./config.js";
+import { isAuthorized } from "./marshal-app.js";
 import { builderInstanceName, serviceName } from "./naming.js";
 import { redactBuildLogLines, validateServiceSpec } from "./services.js";
 import { loadAndValidateSourceArchive, validateSourceArchive } from "./source-archive.js";
@@ -166,5 +167,28 @@ describe("special environment keys", () => {
     });
     expect(Object.hasOwn(spec.env, "__proto__")).toBe(true);
     expect(spec.env.__proto__).toEqual({ value: "safe" });
+  });
+});
+
+describe("bearer credential matching", () => {
+  it("accepts the api key and rejects anything else", () => {
+    expect(isAuthorized("Bearer key", ["key", null])).toBe(true);
+    expect(isAuthorized("Bearer nope", ["key", null])).toBe(false);
+    expect(isAuthorized(null, ["key", null])).toBe(false);
+    expect(isAuthorized("key", ["key", null])).toBe(false);
+  });
+
+  it("accepts the cron secret only where it is offered as a candidate", () => {
+    // The gate passes the cron secret for /v1/maintenance/ and null everywhere else, so the
+    // same credential must open the maintenance routes and nothing besides them.
+    expect(isAuthorized("Bearer cron", ["key", "cron"])).toBe(true);
+    expect(isAuthorized("Bearer cron", ["key", null])).toBe(false);
+  });
+
+  // An unset CRON_SECRET reaches config as null, but an empty candidate must never turn the
+  // bare header "Bearer " into a valid credential.
+  it("never matches an empty candidate", () => {
+    expect(isAuthorized("Bearer ", ["key", ""])).toBe(false);
+    expect(isAuthorized("Bearer ", ["", ""])).toBe(false);
   });
 });

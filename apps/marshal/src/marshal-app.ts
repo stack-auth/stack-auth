@@ -90,11 +90,18 @@ async function handle(fn: () => Promise<Response | Record<string, unknown>>): Pr
   }
 }
 
-function isAuthorized(header: string | null, apiKey: string): boolean {
+// Every candidate is compared, with no short-circuit, so that which credential matched is not
+// observable in the response time.
+export function isAuthorized(header: string | null, candidates: readonly (string | null)[]): boolean {
   if (header === null) return false;
   const provided = Buffer.from(header, "utf8");
-  const wanted = Buffer.from(`Bearer ${apiKey}`, "utf8");
-  return provided.length === wanted.length && timingSafeEqual(provided, wanted);
+  let matched = false;
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === "") continue;
+    const wanted = Buffer.from(`Bearer ${candidate}`, "utf8");
+    if (provided.length === wanted.length && timingSafeEqual(provided, wanted)) matched = true;
+  }
+  return matched;
 }
 
 
@@ -102,6 +109,10 @@ function isAuthorized(header: string | null, apiKey: string): boolean {
 // form a nanosecond log cursor, so an unbounded number would produce exponential-notation
 // (`1e+36`) tokens that break BigInt parsing downstream.
 const MAX_CURSOR_MILLIS = 9_000_000_000_000; // ~2255-01-01
+
+// Shared by the authentication gate and the routes themselves, so a cron path cannot come to
+// accept CRON_SECRET without the gate agreeing that it is one.
+const MAINTENANCE_PATH_PREFIX = "/v1/maintenance/";
 /**
  * The `size_bytes` an upload request declared, or undefined when it said nothing
  * usable. Advisory only — it decides whether to mint a multipart slot, never
@@ -178,7 +189,11 @@ export function createMarshalApp() {
         }
         return;
       }
-      if (!isAuthorized(request.headers.get("authorization"), config.apiKey)) {
+      // The maintenance crons additionally accept CRON_SECRET, so Vercel's scheduler need not
+      // be given MARSHAL_API_KEY. It is scoped to those paths alone: everywhere else, and when
+      // CRON_SECRET is unset, the API key remains the only credential.
+      const cronCredential = url.pathname.startsWith(MAINTENANCE_PATH_PREFIX) ? config.cronSecret : null;
+      if (!isAuthorized(request.headers.get("authorization"), [config.apiKey, cronCredential])) {
         return jsonResponse(401, { error: "unauthenticated", message: "missing or invalid bearer credential" });
       }
     })
@@ -215,15 +230,17 @@ export function createMarshalApp() {
     // Maintenance crons (apps/marshal/vercel.json). Deliberately under /v1/ and NOT /internal/:
     // that prefix carries the per-deployment webhook auth bypass above and 404s anything it
     // does not recognize, so a route placed there would either be unauthenticated or dead.
-    // Under /v1/ they use the ordinary bearer check — Vercel's CRON_SECRET is set to
-    // MARSHAL_API_KEY, so the platform's cron invocation authenticates like any other caller.
+    // Under /v1/ they use the ordinary bearer check, which additionally accepts CRON_SECRET on
+    // this prefix (see the gate above), so Vercel's scheduler authenticates without holding
+    // MARSHAL_API_KEY. CRON_SECRET must still be SET in Vercel: with it unset the platform
+    // sends no Authorization header at all and every invocation is rejected.
     //
     // GET because that is what Vercel Cron issues. Both are idempotent in the sense that
     // matters: each is a single leased pass over durable state, safe to repeat and safe to
     // overlap (contention is reported as skipped, not as an error).
-    .get("/v1/maintenance/project-pool/step", () => handle(async () => await stepProjectPool()))
+    .get(`${MAINTENANCE_PATH_PREFIX}project-pool/step`, () => handle(async () => await stepProjectPool()))
 
-    .get("/v1/maintenance/project-pool/reap", () => handle(async () => await reapProjectPool()))
+    .get(`${MAINTENANCE_PATH_PREFIX}project-pool/reap`, () => handle(async () => await reapProjectPool()))
 
     .get("/v1/namespaces/:ns", ({ params }) => handle(async () => {
       const ns = validateNamespace(params.ns);

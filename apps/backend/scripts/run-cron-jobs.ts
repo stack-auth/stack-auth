@@ -36,8 +36,9 @@ async function main() {
 
   // Marshal is a separate service on its own port and with its own credential. In production
   // it has its own Vercel crons; locally this runner drives it too, so the pool behaves the
-  // same way in dev as it does hosted. Its bearer is MARSHAL_API_KEY (which is also what
-  // Vercel's CRON_SECRET is set to for that project), not the backend's CRON_SECRET.
+  // same way in dev as it does hosted. Its bearer is MARSHAL_API_KEY, not the backend's
+  // CRON_SECRET. (Hosted, Marshal's maintenance routes also accept that project's own
+  // CRON_SECRET, which is what Vercel's scheduler sends; this runner uses the API key.)
   const marshalApiKey = getEnvVariable("HEXCLAVE_MARSHAL_API_KEY", "");
   const marshalBaseUrl = getEnvVariable("HEXCLAVE_MARSHAL_URL", "") || `http://localhost:${portPrefix}47`;
 
