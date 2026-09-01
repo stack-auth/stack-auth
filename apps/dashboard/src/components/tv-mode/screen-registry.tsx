@@ -113,8 +113,6 @@ export function formatTvExactUsd(cents: number): string {
   }).format(cents / 100);
 }
 
-/** Percentage of the plot area a full-scale bar occupies; the grid lines must use the same factor to stay aligned. */
-
 export function formatTvSignedPercent(percent: number): string {
   if (percent === 0) return "0%";
   return `${percent > 0 ? "↑" : "↓"} ${Math.abs(percent)}%`;
@@ -261,8 +259,7 @@ function TvStackedBars({ points, colors, labels }: {
         ))}
       </div>
       <div className="relative flex min-h-0 flex-1 items-end justify-around gap-[clamp(0.5rem,1.5vw,2rem)] border-b border-white/[0.08]">
-        {/* The tick label rides on its own grid line instead of being spread evenly down the side, so that the
-            label, the line and the bar tops all read off the same plot-height factor. */}
+        {/* Grid lines and bars share the plot baseline; labels live in the sibling axis row below. */}
         {yAxisValues.map((value) => <div key={value} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.06]" style={{ bottom: `${(value / chartMaximum) * 100}%` }}>
           <span className="absolute right-full top-0 -translate-y-1/2 pr-[clamp(0.5rem,0.6vw,1.5rem)] text-right text-[clamp(0.66rem,0.72vw,1.75rem)] font-medium tabular-nums text-white/[0.38]">{formatCompact(Math.round(value))}</span>
         </div>)}

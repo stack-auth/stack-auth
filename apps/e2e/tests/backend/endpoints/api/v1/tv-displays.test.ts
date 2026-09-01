@@ -77,11 +77,18 @@ async function createPairedDisplay(displayName: string) {
     refreshCookie: updateCookiesFromResponse("", statusResponse),
     challenge,
     project,
+    statusResponse,
   };
 }
 
 it("pairs a narrow display principal, preserves tenancy assignment, and detects refresh replay", async ({ expect }) => {
-  const { pairing, refreshCookie: firstRefreshCookie, challenge, project: firstProject } = await createPairedDisplay("E2E Lobby Display");
+  const {
+    pairing,
+    refreshCookie: firstRefreshCookie,
+    challenge,
+    project: firstProject,
+    statusResponse,
+  } = await createPairedDisplay("E2E Lobby Display");
   const refreshSetCookies = statusResponse.headers.getSetCookie()
     .filter((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
   expect(refreshSetCookies).toHaveLength(3);

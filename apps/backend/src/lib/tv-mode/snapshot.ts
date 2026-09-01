@@ -454,6 +454,26 @@ async function loadActivityScreens(
         },
         format: "JSONEachRow",
       }),
+      clickhouse.query({
+        query: `
+          SELECT uniqExact(assumeNotNull(user_id)) AS today_active_users
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {until:DateTime}
+            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+        `,
+        query_params: {
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          since: formatClickhouseDateTime(todayStartsAt),
+          until: formatClickhouseDateTime(now),
+        },
+        format: "JSONEachRow",
+      }),
     ]);
     const audienceActivityQuery = Promise.all([
       clickhouse.query({
@@ -550,6 +570,7 @@ async function loadActivityScreens(
       ? Promise.all([
         liveActivity.value[0].json<{ live_users: number | string }>(),
         liveActivity.value[1].json<{ hour: string, active_users: number | string }>(),
+        liveActivity.value[2].json<{ today_active_users: number | string }>(),
       ])
       : Promise.reject(new TvSnapshotInvariantError("TV live activity query group did not return all responses."));
     const audienceRowsQuery = audienceActivity.status === "fulfilled"
@@ -578,11 +599,13 @@ async function loadActivityScreens(
     const audienceRowsError = audienceRowsResult.status === "rejected" ? audienceRowsResult.reason : null;
     const liveRows = liveRowsResult.status === "fulfilled" ? liveRowsResult.value[0] : [];
     const hourlyRows = liveRowsResult.status === "fulfilled" ? liveRowsResult.value[1] : [];
+    const todayRows = liveRowsResult.status === "fulfilled" ? liveRowsResult.value[2] : [];
     const usersRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[0] : [];
     const lifecycleRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[1] : [];
     const mauRows = audienceRowsResult.status === "fulfilled" ? audienceRowsResult.value[2] : [];
     const liveRow = liveRows.at(0);
-    const livePulse = liveActivityError != null || liveRowsError != null || liveRow == null
+    const todayRow = todayRows.at(0);
+    const livePulse = liveActivityError != null || liveRowsError != null || liveRow == null || todayRow == null
       ? errorScreen(emptyLive, "users-activity", liveActivityError ?? liveRowsError ?? new TvSnapshotInvariantError("TV live activity aggregate returned no summary row."), tenancy)
       : (() => {
         const liveUsers = Number(liveRow.live_users);
@@ -597,7 +620,7 @@ async function loadActivityScreens(
           screen: createReadyTvLivePulseScreen({
             now,
             liveUsers,
-            todayActiveUsers: 0,
+            todayActiveUsers: Number(todayRow.today_active_users),
             hourlyActivity: todayHourly,
           }),
         };

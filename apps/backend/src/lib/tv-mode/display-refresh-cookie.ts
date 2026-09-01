@@ -1,4 +1,5 @@
 import type { ResponseCookieOptions } from "@/lib/runtime/request-context";
+import { getConfiguredTvDisplayOrigin } from "./display-origin";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 const TV_DISPLAY_REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -14,7 +15,7 @@ type TvDisplayRefreshCookieStore = {
 
 function baseTvDisplayRefreshCookieOptions(path: string): ResponseCookieOptions {
   const secure = getNodeEnvironment() !== "development" && getNodeEnvironment() !== "test";
-  const configuredDisplayOrigin = getEnvVariable("HEXCLAVE_TV_DISPLAY_ORIGIN", "").trim();
+  const configuredDisplayOrigin = getConfiguredTvDisplayOrigin();
   let crossSiteDisplay = false;
   if (configuredDisplayOrigin !== "") {
     const backendOrigin = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "").trim();
