@@ -1,13 +1,16 @@
-// Platform-admin diagnostic tool. Stats-based signals are evaluated against
-// the internal project's own sign-ups because this request has no source IP.
+// Platform-admin diagnostic tool. Supplied IP addresses are treated as trusted
+// because the admin is asserting them; stats-based signals fall back to the
+// internal project's own sign-ups only when no IP is given.
 
 import { ensurePlatformAdmin } from "@/lib/platform-admin";
 import { calculateSignUpRiskAssessment, signUpRiskSignalIds } from "@/lib/risk-scores";
+import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { riskScoreFieldSchema } from "@hexclave/shared/dist/interface/crud/users";
-import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, countryCodeSchema, emailSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
 import { INTERNAL_PROJECT_ID } from "../newly-created-projects/helpers";
 
 export const POST = createSmartRouteHandler({
@@ -20,7 +23,14 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema.defined(),
     }),
     body: yupObject({
-      emails: yupArray(emailSchema.defined()).min(1).max(50).defined(),
+      entries: yupArray(yupObject({
+        email: emailSchema.defined(),
+        ip_address: yupString()
+          .test("is-ip", "must be an IP address", (value) => value == null || isIpAddress(value))
+          .nullable()
+          .optional(),
+        country_code: countryCodeSchema.nullable().optional(),
+      }).defined()).min(1).max(50).defined(),
     }).defined(),
   }),
   response: yupObject({
@@ -29,6 +39,8 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       results: yupArray(yupObject({
         email: emailSchema.defined(),
+        ip_address: yupString().nullable().defined(),
+        country_code: yupString().nullable().defined(),
         scores: yupObject({
           bot: riskScoreFieldSchema,
           free_trial_abuse: riskScoreFieldSchema,
@@ -57,19 +69,32 @@ export const POST = createSmartRouteHandler({
     }
     await ensurePlatformAdmin(req.auth.user);
 
-    const emails = [...new Set(req.body.emails.map((email) => email.trim().toLowerCase()))];
-    const results = await Promise.all(emails.map(async (email) => {
+    const entries = req.body.entries.map((entry) => ({
+      email: entry.email.trim().toLowerCase(),
+      ipAddress: entry.ip_address ?? null,
+      countryCode: entry.country_code ?? null,
+    })).filter((entry, index, allEntries) => allEntries.findIndex((candidate) =>
+      candidate.email === entry.email &&
+      candidate.ipAddress === entry.ipAddress &&
+      candidate.countryCode === entry.countryCode
+    ) === index);
+    const results = await Promise.all(entries.map(async (entry) => {
+      const countryCode = getDerivedSignUpCountryCode(entry.countryCode, entry.email);
       const assessment = await calculateSignUpRiskAssessment(req.auth.tenancy, {
-        primaryEmail: email,
+        primaryEmail: entry.email,
         primaryEmailVerified: false,
         authMethod: "password",
         oauthProvider: null,
-        ipAddress: null,
-        ipTrusted: null,
+        ipAddress: entry.ipAddress,
+        ipTrusted: entry.ipAddress != null ? true : null,
+        countryCode,
+        oauthAccountCreatedAtMillis: null,
         turnstileAssessment: { status: "ok" },
       });
       return {
-        email,
+        email: entry.email,
+        ip_address: entry.ipAddress,
+        country_code: countryCode,
         scores: {
           bot: assessment.scores.bot,
           free_trial_abuse: assessment.scores.free_trial_abuse,

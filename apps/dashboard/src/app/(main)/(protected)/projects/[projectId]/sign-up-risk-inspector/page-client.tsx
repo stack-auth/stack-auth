@@ -5,7 +5,6 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
-  DesignInput,
   DesignTable,
   DesignTableBody,
   DesignTableCell,
@@ -19,6 +18,7 @@ import { sendInternalUserRequest } from "@/lib/hexclave-app-internals";
 import { emailSchema } from "@hexclave/shared/dist/schema-fields";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
 import { useStackApp, useUser } from "@hexclave/next";
 import {
   yupArray,
@@ -34,6 +34,12 @@ import { PageLayout } from "../page-layout";
 import { useProjectId } from "../use-admin-app";
 
 const signUpRiskSignalIds = ["emailable", "same_ip", "same_email", "similar_email", "turnstile", "blacklist", "country", "public_email_provider", "connected_account_age"] as const;
+type InspectorEntry = {
+  email: string,
+  ipAddress: string | null,
+  countryCode: string | null,
+  invalidToken?: string,
+};
 
 const breakdownSchema = yupObject({
   signal: yupString().oneOf([...signUpRiskSignalIds]).defined(),
@@ -47,6 +53,8 @@ const breakdownSchema = yupObject({
 const responseSchema = yupObject({
   results: yupArray(yupObject({
     email: emailSchema.defined(),
+    ip_address: yupString().nullable().defined(),
+    country_code: yupString().nullable().defined(),
     scores: yupObject({
       bot: yupNumber().integer().min(0).max(100).defined(),
       free_trial_abuse: yupNumber().integer().min(0).max(100).defined(),
@@ -95,56 +103,82 @@ function AuthenticatedPage() {
 
 function InspectorContent() {
   const app = useStackApp();
-  const [emails, setEmails] = useState<string[]>([]);
-  const [bulkEmails, setBulkEmails] = useState("");
-  const [singleEmail, setSingleEmail] = useState("");
+  const [entries, setEntries] = useState<InspectorEntry[]>([]);
+  const [bulkInput, setBulkInput] = useState("");
   const [limitExceeded, setLimitExceeded] = useState(false);
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [state, setState] = useState<InspectorState>({ status: "idle" });
   const isLoading = state.status === "loading";
 
-  const invalidEmails = emails.filter((email) => !emailSchema.isValidSync(email));
-  const addEmails = (values: string[]) => {
+  const invalidEntries = entries.filter((entry) => entry.invalidToken != null || !emailSchema.isValidSync(entry.email));
+  const entryKey = (entry: Pick<InspectorEntry, "email" | "ipAddress" | "countryCode">) =>
+    `${entry.email}|${entry.ipAddress ?? ""}|${entry.countryCode ?? ""}`;
+  const addEntries = (values: InspectorEntry[]) => {
     if (isLoading) return;
-    const combined = [...new Set([...emails, ...values])];
-    setLimitExceeded(combined.length > 50);
-    setEmails(combined.slice(0, 50));
-  };
-  const addBulkEmails = () => {
-    if (isLoading) return;
-    addEmails(
-      bulkEmails
-        .split(/[\s,;]+/)
-        .map((email) => email.trim().toLowerCase())
-        .filter((email) => email.length > 0),
+    const combined = [...entries, ...values].filter((entry, index, allEntries) =>
+      allEntries.findIndex((candidate) => entryKey(candidate) === entryKey(entry)) === index
     );
-    setBulkEmails("");
+    setLimitExceeded(combined.length > 50);
+    setEntries(combined.slice(0, 50));
   };
-  const addSingleEmail = () => {
+  const addBulkEntries = () => {
     if (isLoading) return;
-    const email = singleEmail.trim().toLowerCase();
-    if (email.length > 0) {
-      addEmails([email]);
-      setSingleEmail("");
+    const parsedEntries: InspectorEntry[] = [];
+    for (const line of bulkInput.split(/\r?\n/)) {
+      const tokens = line.split(/[\s,;]+/).filter((token) => token.length > 0);
+      let currentEntry: InspectorEntry | null = null;
+      for (const token of tokens) {
+        const normalizedToken = token.trim();
+        if (emailSchema.isValidSync(normalizedToken)) {
+          currentEntry = {
+            email: normalizedToken.toLowerCase(),
+            ipAddress: null,
+            countryCode: null,
+          };
+          parsedEntries.push(currentEntry);
+        } else if (isIpAddress(normalizedToken) && currentEntry != null) {
+          currentEntry.ipAddress = normalizedToken;
+        } else if (/^[a-z]{2}$/i.test(normalizedToken) && currentEntry != null) {
+          currentEntry.countryCode = token.toUpperCase();
+        } else if (currentEntry == null) {
+          currentEntry = {
+            email: normalizedToken,
+            ipAddress: null,
+            countryCode: null,
+            invalidToken: normalizedToken,
+          };
+          parsedEntries.push(currentEntry);
+        } else if (currentEntry.invalidToken == null) {
+          currentEntry.invalidToken = normalizedToken;
+        }
+      }
     }
+    addEntries(parsedEntries);
+    setBulkInput("");
   };
-  const removeEmail = (email: string) => {
+  const removeEntry = (entryToRemove: InspectorEntry) => {
     if (isLoading) return;
-    setEmails((current) => current.filter((entry) => entry !== email));
+    setEntries((current) => current.filter((entry) => entryKey(entry) !== entryKey(entryToRemove)));
     setLimitExceeded(false);
   };
-  const clearEmails = () => {
+  const clearEntries = () => {
     if (isLoading) return;
-    setEmails([]);
+    setEntries([]);
     setLimitExceeded(false);
   };
   const calculate = async () => {
-    if (emails.length === 0 || invalidEmails.length > 0 || limitExceeded) return;
+    if (entries.length === 0 || invalidEntries.length > 0 || limitExceeded) return;
     setState({ status: "loading" });
     try {
       const response = await sendInternalUserRequest(app, "/internal/sign-up-risk-inspector", {
         method: "POST",
-        body: JSON.stringify({ emails }),
+        body: JSON.stringify({
+          entries: entries.map((entry) => ({
+            email: entry.email,
+            ip_address: entry.ipAddress,
+            country_code: entry.countryCode,
+          })),
+        }),
         headers: { "content-type": "application/json" },
       });
       if (response.status === 403) {
@@ -170,70 +204,61 @@ function InspectorContent() {
     <div className="flex flex-col gap-4">
       <DesignCard
         title="Emails"
-        subtitle="Paste a batch or add individual addresses"
+        subtitle="Paste one entry per line, or comma-separated emails"
         icon={EnvelopeSimpleIcon}
         contentClassName="p-4"
       >
         <div className="flex flex-col gap-3">
           <div className="flex items-end gap-2">
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Batch input</span>
+              <span className="text-muted-foreground">Email, optional IP, optional country</span>
               <Textarea
-                value={bulkEmails}
-                onChange={(event) => setBulkEmails(event.target.value)}
-                placeholder="Paste emails — comma, semicolon, whitespace or newline separated"
+                value={bulkInput}
+                onChange={(event) => setBulkInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    addBulkEntries();
+                  }
+                }}
+                placeholder="One entry per line: email [ip] [country]. Plain comma-separated emails also work."
                 rows={3}
                 disabled={isLoading}
               />
             </label>
-            <DesignButton variant="secondary" size="sm" onClick={addBulkEmails} disabled={isLoading}>Add</DesignButton>
-          </div>
-          <div className="flex items-end gap-2">
-            <label className="flex min-w-0 max-w-xl flex-1 flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Single email</span>
-              <DesignInput
-                size="sm"
-                value={singleEmail}
-                onChange={(event) => setSingleEmail(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    if (!isLoading) addSingleEmail();
-                  }
-                }}
-                placeholder="name@example.com"
-                disabled={isLoading}
-              />
-            </label>
-            <DesignButton variant="secondary" size="sm" onClick={addSingleEmail} disabled={isLoading}>Add</DesignButton>
+            <DesignButton variant="secondary" size="sm" onClick={addBulkEntries} disabled={isLoading}>Add</DesignButton>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {emails.map((email) => (
-              <span key={email} className="hexclave-sensitive inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs">
-                {emailSchema.isValidSync(email) ? (
-                  <DesignBadge label={email} color="blue" size="sm" />
+            {entries.map((entry) => (
+              <span key={entryKey(entry)} className="hexclave-sensitive inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs">
+                {entry.invalidToken == null && emailSchema.isValidSync(entry.email) ? (
+                  <DesignBadge label={entry.email} color="blue" size="sm" />
                 ) : (
-                  <DesignBadge label={`${email} · invalid`} color="red" size="sm" />
+                  <DesignBadge label={`${entry.email} · invalid`} color="red" size="sm" />
                 )}
+                {entry.ipAddress != null ? <span className="text-muted-foreground">· {entry.ipAddress}</span> : null}
+                {entry.countryCode != null ? <span className="text-muted-foreground">· {entry.countryCode}</span> : null}
                 <button
                   type="button"
                   className="rounded px-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  aria-label={`Remove ${email}`}
-                  onClick={() => removeEmail(email)}
+                  aria-label={`Remove ${entry.email}`}
+                  onClick={() => removeEntry(entry)}
                   disabled={isLoading}
                 >
                   ×
                 </button>
               </span>
             ))}
-            <span className="text-xs text-muted-foreground">{emails.length}/50</span>
-            {emails.length > 0 ? (
-              <DesignButton variant="ghost" size="sm" onClick={clearEmails} disabled={isLoading}>Clear</DesignButton>
+            <span className="text-xs text-muted-foreground">{entries.length}/50</span>
+            {entries.length > 0 ? (
+              <DesignButton variant="ghost" size="sm" onClick={clearEntries} disabled={isLoading}>Clear</DesignButton>
             ) : null}
           </div>
-          {invalidEmails.length > 0 ? (
+          {invalidEntries.length > 0 ? (
             <DesignAlert variant="error">
-              Invalid email{invalidEmails.length === 1 ? "" : "s"}: {invalidEmails.join(", ")}
+              Invalid entr{invalidEntries.length === 1 ? "y" : "ies"}: {invalidEntries.map((entry) =>
+                entry.invalidToken == null ? entry.email : `${entry.email} (${entry.invalidToken})`
+              ).join(", ")}
             </DesignAlert>
           ) : null}
           {limitExceeded ? (
@@ -242,7 +267,7 @@ function InspectorContent() {
           <div>
             <DesignButton
               onClick={calculate}
-              disabled={emails.length === 0 || invalidEmails.length > 0 || limitExceeded || isLoading}
+              disabled={entries.length === 0 || invalidEntries.length > 0 || limitExceeded || isLoading}
             >
               Calculate risk scores
             </DesignButton>
@@ -288,6 +313,8 @@ function ResultsCard(props: {
         <DesignTableHeader>
           <DesignTableRow>
             <DesignTableHead>Email</DesignTableHead>
+            <DesignTableHead>IP</DesignTableHead>
+            <DesignTableHead>Country</DesignTableHead>
             <DesignTableHead>Bot</DesignTableHead>
             <DesignTableHead>FTA</DesignTableHead>
             <DesignTableHead>Normalized</DesignTableHead>
@@ -299,14 +326,17 @@ function ResultsCard(props: {
         </DesignTableHeader>
         <DesignTableBody>
           {props.data.results.map((result) => {
-            const expanded = props.expandedEmail === result.email;
+            const resultKey = `${result.email}|${result.ip_address ?? ""}|${result.country_code ?? ""}`;
+            const expanded = props.expandedEmail === resultKey;
             return (
-              <Fragment key={result.email}>
+              <Fragment key={resultKey}>
                 <DesignTableRow
                   className="cursor-pointer"
-                  onClick={() => props.onToggleEmail(result.email)}
+                  onClick={() => props.onToggleEmail(resultKey)}
                 >
                   <DesignTableCell><code className="hexclave-sensitive text-xs">{result.email}</code></DesignTableCell>
+                  <DesignTableCell><code className="hexclave-sensitive text-xs">{result.ip_address ?? "—"}</code></DesignTableCell>
+                  <DesignTableCell>{result.country_code ?? "—"}</DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.bot)}>{result.scores.bot}</span></DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.free_trial_abuse)}>{result.scores.free_trial_abuse}</span></DesignTableCell>
                   <DesignTableCell><code className="hexclave-sensitive text-xs">{result.heuristic_facts.email_normalized ?? "—"}</code></DesignTableCell>
@@ -323,8 +353,8 @@ function ResultsCard(props: {
                   })}
                 </DesignTableRow>
                 {expanded ? (
-                  <DesignTableRow key={`${result.email}-details`}>
-                    <DesignTableCell colSpan={5 + signUpRiskSignalIds.length}>
+                  <DesignTableRow key={`${resultKey}-details`}>
+                    <DesignTableCell colSpan={7 + signUpRiskSignalIds.length}>
                       <div className="grid gap-1 text-xs">
                         {result.breakdown.map((entry) => (
                           <div key={entry.signal} className="flex gap-2">

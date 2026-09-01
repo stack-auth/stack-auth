@@ -31,7 +31,7 @@ describe("internal sign-up risk inspector", () => {
     const unauthenticated = await niceBackendFetch(BASE_PATH, {
       method: "POST",
       accessType: "client",
-      body: { emails: ["a@example.com"] },
+      body: { entries: [{ email: "a@example.com" }] },
     });
     expect(unauthenticated.status).toBe(401);
 
@@ -40,7 +40,7 @@ describe("internal sign-up risk inspector", () => {
     const customerProject = await niceBackendFetch(BASE_PATH, {
       method: "POST",
       accessType: "client",
-      body: { emails: ["a@example.com"] },
+      body: { entries: [{ email: "a@example.com" }] },
     });
     expect([400, 401]).toContain(customerProject.status);
 
@@ -49,7 +49,7 @@ describe("internal sign-up risk inspector", () => {
     const nonPlatformAdmin = await niceBackendFetch(BASE_PATH, {
       method: "POST",
       accessType: "client",
-      body: { emails: ["a@example.com"] },
+      body: { entries: [{ email: "a@example.com" }] },
     });
     expect([401, 403]).toContain(nonPlatformAdmin.status);
   });
@@ -62,13 +62,18 @@ describe("internal sign-up risk inspector", () => {
       method: "POST",
       accessType: "client",
       body: {
-        emails: ["someone@mailinator.com", "Clean.User+tag@Gmail.com", "someone@mailinator.com"],
+        entries: [
+          { email: "someone@mailinator.com" },
+          { email: "Clean.User+tag@Gmail.com" },
+          { email: "someone@mailinator.com" },
+        ],
       },
     });
 
     expect(response.status).toBe(200);
     expect(response.body.results).toHaveLength(2);
     expect(response.body.results[1].email).toBe("clean.user+tag@gmail.com");
+    expect(response.body.results[1].ip_address).toBeNull();
 
     if (hasPrivateRiskEngine) {
       expect(response.body.results[1].heuristic_facts.email_normalized).toBe("cleanuser@gmail.com");
@@ -85,24 +90,86 @@ describe("internal sign-up risk inspector", () => {
     }
   });
 
-  it("rejects invalid and empty email lists", async ({ expect }) => {
+  it("preserves IP and country pairing", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+
+    const response = await niceBackendFetch(BASE_PATH, {
+      method: "POST",
+      accessType: "client",
+      body: {
+        entries: [
+          { email: "pair@example.com", ip_address: "203.0.113.5", country_code: "de" },
+          { email: "pair@example.com" },
+        ],
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.results).toHaveLength(2);
+    expect(response.body.results[0].ip_address).toBe("203.0.113.5");
+    expect(response.body.results[0].country_code).toBe("DE");
+    if (hasPrivateRiskEngine) {
+      expect(response.body.results[0].breakdown.find((entry: { signal: string }) => entry.signal === "same_ip")).toMatchObject({
+        details: {
+          signUpIp: "203.0.113.5",
+          signUpIpTrusted: true,
+        },
+      });
+    }
+  });
+
+  it("derives country from development email tags", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+
+    const response = await niceBackendFetch(BASE_PATH, {
+      method: "POST",
+      accessType: "client",
+      body: { entries: [{ email: "geo+ca@example.com" }] },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.results[0].country_code).toBe("CA");
+  });
+
+  it("rejects invalid IP and country values", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+
+    const invalidIp = await niceBackendFetch(BASE_PATH, {
+      method: "POST",
+      accessType: "client",
+      body: { entries: [{ email: "pair@example.com", ip_address: "not-an-ip" }] },
+    });
+    expect(invalidIp.status).toBe(400);
+
+    const invalidCountry = await niceBackendFetch(BASE_PATH, {
+      method: "POST",
+      accessType: "client",
+      body: { entries: [{ email: "pair@example.com", country_code: "XX1" }] },
+    });
+    expect(invalidCountry.status).toBe(400);
+  });
+
+  it("rejects invalid and empty entry lists", async ({ expect }) => {
     const internalUserAuth = await signInAsInternalAdmin();
     backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
 
     const invalidEmail = await niceBackendFetch(BASE_PATH, {
       method: "POST",
       accessType: "client",
-      body: { emails: ["not-an-email"] },
+      body: { entries: [{ email: "not-an-email" }] },
     });
     expect(invalidEmail.status).toBe(400);
-    expect(JSON.stringify(invalidEmail.body)).toContain("emails");
+    expect(JSON.stringify(invalidEmail.body)).toContain("entries");
 
-    const emptyEmails = await niceBackendFetch(BASE_PATH, {
+    const emptyEntries = await niceBackendFetch(BASE_PATH, {
       method: "POST",
       accessType: "client",
-      body: { emails: [] },
+      body: { entries: [] },
     });
-    expect(emptyEmails.status).toBe(400);
-    expect(JSON.stringify(emptyEmails.body)).toContain("emails");
+    expect(emptyEntries.status).toBe(400);
+    expect(JSON.stringify(emptyEntries.body)).toContain("entries");
   });
 });
