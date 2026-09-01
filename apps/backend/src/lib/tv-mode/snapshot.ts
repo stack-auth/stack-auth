@@ -31,6 +31,21 @@ import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/util
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAID_INVOICE_STATUSES = ["paid", "succeeded"] as const;
 
+// Every TV active-user aggregate must agree on what counts as an active user;
+// keeping the predicate in one place stops the copies from silently diverging.
+const TV_ACTIVE_USER_EVENT_FILTER = `
+    event_type = '$token-refresh'
+    AND project_id = {projectId:String}
+    AND branch_id = {branchId:String}
+    AND user_id IS NOT NULL
+    AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+`;
+
+const TV_ACTIVE_USER_WINDOW_FILTER = `${TV_ACTIVE_USER_EVENT_FILTER}
+    AND event_at >= {since:DateTime}
+    AND event_at < {until:DateTime}
+`;
+
 // Keep the TV lifecycle query aligned with the memory-bounded metrics overview
 // shape. Carrying raw UUIDs through DISTINCT + lagInFrame materializes one row
 // per active user/day; this instead keeps one UInt64 day mask per hashed user.
@@ -50,13 +65,7 @@ export const TV_AUDIENCE_LIFECYCLE_QUERY = `
         sipHash64(assumeNotNull(user_id)) AS entity_id,
         groupBitOr(bitShiftLeft(toUInt64(1), toUInt8(dateDiff('day', toDate({since:DateTime}), toDate(event_at))))) AS active_days
       FROM analytics_internal.events
-      WHERE event_type = '$token-refresh'
-        AND project_id = {projectId:String}
-        AND branch_id = {branchId:String}
-        AND user_id IS NOT NULL
-        AND event_at >= {since:DateTime}
-        AND event_at < {until:DateTime}
-        AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+      WHERE ${TV_ACTIVE_USER_WINDOW_FILTER}
       GROUP BY entity_id
     ) AS activity
     LEFT JOIN (
@@ -64,12 +73,8 @@ export const TV_AUDIENCE_LIFECYCLE_QUERY = `
         sipHash64(assumeNotNull(user_id)) AS entity_id,
         toDate(min(event_at)) AS first_date
       FROM analytics_internal.events
-      WHERE event_type = '$token-refresh'
-        AND project_id = {projectId:String}
-        AND branch_id = {branchId:String}
-        AND user_id IS NOT NULL
+      WHERE ${TV_ACTIVE_USER_EVENT_FILTER}
         AND event_at < {until:DateTime}
-        AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
       GROUP BY entity_id
     ) AS first_activity USING (entity_id)
   )
@@ -415,13 +420,7 @@ async function loadActivityScreens(
         query: `
           SELECT uniqExact(assumeNotNull(user_id)) AS live_users
           FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {until:DateTime}
-            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          WHERE ${TV_ACTIVE_USER_WINDOW_FILTER}
         `,
         query_params: {
           projectId: tenancy.project.id,
@@ -436,13 +435,7 @@ async function loadActivityScreens(
           SELECT toStartOfHour(event_at) AS hour,
             uniqExact(assumeNotNull(user_id)) AS active_users
           FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {until:DateTime}
-            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          WHERE ${TV_ACTIVE_USER_WINDOW_FILTER}
           GROUP BY hour
           ORDER BY hour
         `,
@@ -458,13 +451,7 @@ async function loadActivityScreens(
         query: `
           SELECT uniqExact(assumeNotNull(user_id)) AS today_active_users
           FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {until:DateTime}
-            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          WHERE ${TV_ACTIVE_USER_WINDOW_FILTER}
         `,
         query_params: {
           projectId: tenancy.project.id,
@@ -537,13 +524,7 @@ async function loadActivityScreens(
         query: `
           SELECT uniqExact(assumeNotNull(user_id)) AS mau
           FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {until:DateTime}
-            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          WHERE ${TV_ACTIVE_USER_WINDOW_FILTER}
         `,
         query_params: {
           projectId: tenancy.project.id,
