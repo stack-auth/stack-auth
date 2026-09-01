@@ -1,3 +1,7 @@
+
+//===========================================
+// THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY UNLESS YOU ALSO EDIT THE CORRESPONDING FILE IN packages/template
+//===========================================
 import { HexclaveClientInterface, KnownError, KnownErrors } from "@hexclave/shared";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
@@ -41,7 +45,6 @@ import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-s
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
-import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
@@ -88,25 +91,13 @@ export function stripBrowserActionQueryParam() {
   stripActionId();
 }
 
-// IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
-// END_PLATFORM
-// IF_PLATFORM js-like
 import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 import { mountPushedConfigErrorOverlay } from "../../../../pushed-config-error-overlay";
 import { showSetupErrorOverlay } from "../../../../setup-error-overlay";
-// END_PLATFORM
 
 let isReactServer = false;
-// IF_PLATFORM next
-import * as sc from "@hexclave/sc";
-import { cookies } from "@hexclave/sc";
-isReactServer = sc.isReactServer;
-
-// NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
-const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
-// END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 const oauthAfterCallbackRedirectUrlQueryParam = "after_callback_redirect_url";
@@ -333,7 +324,6 @@ function getHeaderValueFromRequestLikeHeaders(headers: RequestLike["headers"], n
   return null;
 }
 
-// IF_PLATFORM tanstack-start
 function getTanStackStartRequestHeader(name: string): string | null {
   const { getRequestHeader } = tanstackStartServerContext;
   if (getRequestHeader == null) {
@@ -341,12 +331,8 @@ function getTanStackStartRequestHeader(name: string): string | null {
   }
   return getRequestHeader(name) ?? null;
 }
-// END_PLATFORM
 
 async function getServerRequestHost(): Promise<string | null> {
-  // IF_PLATFORM next
-  return (await sc.headers?.())?.get("host") ?? null;
-  // ELSE_IF_PLATFORM tanstack-start
   if (import.meta.env?.SSR !== true) {
     // Outside a server render there is no request to compare origins against, so the caller must
     // treat the redirect target as cross-origin rather than letting TanStack's request-context
@@ -354,9 +340,6 @@ async function getServerRequestHost(): Promise<string | null> {
     return null;
   }
   return getTanStackStartRequestHeader("host");
-  // ELSE_PLATFORM
-  return null;
-  // END_PLATFORM
 }
 
 async function isServerRedirectTargetCrossOrigin(url: string): Promise<boolean> {
@@ -466,9 +449,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this._getUserOAuthConnectionCacheFn({
         getUser: async () => Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only")),
         getOrWaitOAuthToken: async () => Result.orThrow(await this._currentUserOAuthConnectionAccessTokensCache.getOrWait([session, providerId, scope || ""] as const, "write-only")),
-        // IF_PLATFORM react-like
         useOAuthToken: () => useAsyncCache(this._currentUserOAuthConnectionAccessTokensCache, [session, providerId, scope || ""] as const, "connection.useAccessToken()"),
-        // END_PLATFORM
         providerId,
         scope,
         redirect,
@@ -688,9 +669,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected async _getUserOAuthConnectionCacheFn(options: {
     getUser: () => Promise<CurrentUserCrud['Client']['Read'] | null>,
     getOrWaitOAuthToken: () => Promise<{ accessToken: string } | null>,
-    // IF_PLATFORM react-like
     useOAuthToken: () => { accessToken: string } | null,
-    // END_PLATFORM
     providerId: ProviderType,
     scope: string | null,
   } & ({ redirect: true, session: InternalSession | null } | { redirect: false }),): Promise<DeprecatedOAuthConnection | null> {
@@ -745,7 +724,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
         return result;
       },
-      // IF_PLATFORM react-like
       useAccessToken() {
         const result = options.useOAuthToken();
         if (!result) {
@@ -753,7 +731,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
         return result;
       }
-      // END_PLATFORM
     };
   }
 
@@ -777,7 +754,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
         return Result.ok(result);
       },
-      // IF_PLATFORM react-like
       useAccessToken(options?: { scopes?: string[] }) {
         const scopeString = options?.scopes?.join(" ") ?? "";
         const result = useAsyncCache(app._currentUserOAuthConnectionAccessTokensByAccountCache, [session, providerId, providerAccountId, scopeString] as const, "connection.useAccessToken()");
@@ -787,7 +763,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
         return Result.ok(result);
       },
-      // END_PLATFORM
     };
   }
 
@@ -821,14 +796,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         clientVersion,
         ...(publishableClientKey != null ? { publishableClientKey } : {}),
         prepareRequest: async () => {
-          await cookies?.(); // THIS_LINE_PLATFORM next
         }
       });
     }
 
     this._tokenStoreInit = resolvedOptions.tokenStore;
     this._redirectMethod = resolvedOptions.redirectMethod || (isBrowserLike() ? "window" : "none");
-    this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
@@ -942,7 +915,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       saveRedirectBackStateFromUrl({ url: urlAtConstructionTime, projectId: this.projectId });
     }
 
-    // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
       mountDevTool(this as any, resolvedOptions.devTool);
     }
@@ -953,7 +925,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       mountClickmapOverlay(this as any);
       mountPushedConfigErrorOverlay(this as any);
     }
-    // END_PLATFORM
   }
 
   protected _initUniqueIdentifier() {
@@ -1008,7 +979,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     await Promise.all(this._pendingAuthResolutionPromises);
   }
 
-  // IF_PLATFORM react-like
   protected _usePendingAuthResolutions(overrideTokenStoreInit?: TokenStoreInit) {
     if (
       overrideTokenStoreInit !== undefined
@@ -1019,7 +989,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     use(Promise.all(this._pendingAuthResolutionPromises));
   }
-  // END_PLATFORM
 
   protected _isOAuthCallbackUrlHosted(): boolean {
     const oauthCallbackTarget = this._urlOptions.oauthCallback ?? this._urlOptions.default;
@@ -1682,11 +1651,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     switch (tokenStoreInit) {
       case "cookie": {
-        // IF_PLATFORM tanstack-start
         if (!isBrowserLike()) {
           return this._getOrCreateTokenStore(cookieHelper, "nextjs-cookie");
         }
-        // END_PLATFORM
         return this._getBrowserCookieTokenStore();
       }
       case "nextjs-cookie": {
@@ -1793,19 +1760,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
-  // IF_PLATFORM react-like
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
-    // IF_PLATFORM tanstack-start
     if (!isBrowserLike()) {
       return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
     }
-    // END_PLATFORM
     suspendIfSsr();
     const cookieHelper = createBrowserCookieHelper();
     const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit);
     return tokenStore;
   }
-  // END_PLATFORM
 
   /**
    * A map from token stores and session keys to sessions.
@@ -1860,7 +1823,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return session;
   }
 
-  // IF_PLATFORM react-like
   protected _useSession(overrideTokenStoreInit?: TokenStoreInit): InternalSession {
     this._usePendingAuthResolutions(overrideTokenStoreInit);
     const tokenStore = this._useTokenStore(overrideTokenStoreInit);
@@ -1874,7 +1836,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const getSnapshot = useCallback(() => this._getSessionFromTokenStore(tokenStore), [tokenStore]);
     return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   }
-  // END_PLATFORM
 
   private _signInAttemptCounter = 0;
   protected async _signInToAccountWithTokens(tokens: { accessToken: string | null, refreshToken: string }) {
@@ -2087,22 +2048,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         await app._currentUserTeamsCache.refresh([session]);
         await app._currentUserCache.refresh([session]);
       },
-      // IF_PLATFORM react-like
       useUsers() {
         const result = useAsyncCache(app._teamMemberProfilesCache, [session, crud.id] as const, "team.useUsers()");
         return result.map((crud) => app._clientTeamUserFromCrud(crud));
       },
-      // END_PLATFORM
       async listInvitations() {
         const result = Result.orThrow(await app._teamInvitationsCache.getOrWait([session, crud.id], "write-only"));
         return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
-      // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._teamInvitationsCache, [session, crud.id] as const, "team.useInvitations()");
         return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
-      // END_PLATFORM
       async update(data: TeamUpdateOptions) {
         await app._interface.updateTeam({ data: teamUpdateOptionsToCrud(data), teamId: crud.id }, session);
         await app._currentUserTeamsCache.refresh([session]);
@@ -2112,12 +2069,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         await app._currentUserTeamsCache.refresh([session]);
       },
 
-      // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._teamApiKeysCache, [session, crud.id] as const, "team.useApiKeys()");
         return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
       },
-      // END_PLATFORM
 
       async listApiKeys() {
         const results = Result.orThrow(await app._teamApiKeysCache.getOrWait([session, crud.id], "write-only"));
@@ -2294,7 +2249,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
             refreshToken: tokens?.refreshToken?.token ?? null,
           };
         },
-        // IF_PLATFORM react-like
         useTokens() {
           const subscribe = useCallback((cb: () => void) => {
             const { unsubscribe: unsubscribeInvalidate } = session.onInvalidate(cb);
@@ -2320,55 +2274,44 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
             refreshToken: session.getRefreshToken()?.token ?? null,
           };
         },
-        // END_PLATFORM
       },
       async getAccessToken(): Promise<string | null> {
         const tokens = await this.currentSession.getTokens();
         return tokens.accessToken;
       },
-      // IF_PLATFORM react-like
       useAccessToken(): string | null {
         return this.currentSession.useTokens().accessToken;
       },
-      // END_PLATFORM
       async getRefreshToken(): Promise<string | null> {
         const tokens = await this.currentSession.getTokens();
         return tokens.refreshToken;
       },
-      // IF_PLATFORM react-like
       useRefreshToken(): string | null {
         return this.currentSession.useTokens().refreshToken;
       },
-      // END_PLATFORM
       async getAuthorizationHeader(): Promise<string | null> {
         return getAuthorizationHeaderValueFromAuthJson(await this.getAuthJson());
       },
-      // IF_PLATFORM react-like
       useAuthorizationHeader(): string | null {
         return getAuthorizationHeaderValueFromAuthJson(this.useAuthJson());
       },
-      // END_PLATFORM
       async getAuthHeaders(): Promise<{ "x-stack-auth": string }> {
         return {
           "x-stack-auth": JSON.stringify(await this.getAuthJson()),
         };
       },
-      // IF_PLATFORM react-like
       useAuthHeaders(): { "x-stack-auth": string } {
         return {
           "x-stack-auth": JSON.stringify(this.useAuthJson()),
         };
       },
-      // END_PLATFORM
       async getAuthJson(): Promise<{ accessToken: string | null, refreshToken: string | null }> {
         const tokens = await this.currentSession.getTokens();
         return tokens;
       },
-      // IF_PLATFORM react-like
       useAuthJson(): { accessToken: string | null, refreshToken: string | null } {
         return this.currentSession.useTokens();
       },
-      // END_PLATFORM
       signOut(options?: { redirectUrl?: URL | string }) {
         return app._signOut(session, options);
       },
@@ -2454,7 +2397,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return Result.orThrow(await app._currentUserOAuthConnectionCache.getOrWait([session, idOrAccount, scopeString, options?.or === 'redirect'], "write-only"));
     }
 
-    // IF_PLATFORM react-like
     /**
      * @deprecated The string-based overloads are deprecated. Use `useOrLinkConnectedAccount` for redirect behavior,
      * or `useConnectedAccount({ provider, providerAccountId })` for existence check.
@@ -2486,7 +2428,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // Original behavior: by provider ID (returns first match)
       return useAsyncCache(app._currentUserOAuthConnectionCache, [session, idOrAccount, scopeString, options?.or === 'redirect'] as const, "user.useConnectedAccount()");
     }
-    // END_PLATFORM
     return {
       async getActiveSessions() {
         const sessions = await app._interface.listSessions(session);
@@ -2509,11 +2450,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async listConnectedAccounts() {
         return Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
       },
-      // IF_PLATFORM react-like
       useConnectedAccounts() {
         return useAsyncCache(app._currentUserConnectedAccountsCache, [session] as const, "user.useConnectedAccounts()");
       },
-      // END_PLATFORM
       async linkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
         const scopeString = options?.scopes?.join(" ") ?? "";
         const location = await getNewOAuthProviderOrScopeUrl(
@@ -2544,34 +2483,28 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         await this.linkConnectedAccount(provider, options);
         return await neverResolve();
       },
-      // IF_PLATFORM react-like
       useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection {
         const scopeString = options?.scopes?.join(" ") ?? "";
         return useAsyncCache(app._currentUserValidConnectedAccountForProviderCache, [session, provider, scopeString] as const, "user.useOrLinkConnectedAccount()");
       },
-      // END_PLATFORM
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
         return teams.find((t) => t.id === teamId) ?? null;
       },
-      // IF_PLATFORM react-like
       useTeam(teamId: string) {
         const teams = this.useTeams();
         return useMemo(() => {
           return teams.find((t) => t.id === teamId) ?? null;
         }, [teams, teamId]);
       },
-      // END_PLATFORM
       async listTeams() {
         const teams = Result.orThrow(await app._currentUserTeamsCache.getOrWait([session], "write-only"));
         return teams.map((crud) => app._clientTeamFromCrud(crud, session));
       },
-      // IF_PLATFORM react-like
       useTeams() {
         const teams = useAsyncCache(app._currentUserTeamsCache, [session], "user.useTeams()");
         return useMemo(() => teams.map((crud) => app._clientTeamFromCrud(crud, session)), [teams]);
       },
-      // END_PLATFORM
       async createTeam(data: TeamCreateOptions) {
         const crud = await app._interface.createClientTeam(teamCreateOptionsToCrud(data, 'me'), session);
         await app._currentUserTeamsCache.refresh([session]);
@@ -2587,12 +2520,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
         return invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud));
       },
-      // IF_PLATFORM react-like
       useTeamInvitations() {
         const invitations = useAsyncCache(app._currentUserTeamInvitationsCache, [session], "user.useTeamInvitations()");
         return useMemo(() => invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud)), [invitations]);
       },
-      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
@@ -2606,7 +2537,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           return permissions.map((crud) => app._clientPermissionFromCrud(crud));
         }
       },
-      // IF_PLATFORM react-like
       usePermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): TeamPermission[] {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
@@ -2620,8 +2550,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           return useMemo(() => permissions.map((crud) => app._clientPermissionFromCrud(crud)), [permissions]);
         }
       },
-      // END_PLATFORM
-      // IF_PLATFORM react-like
       usePermission(scopeOrPermissionId: Team | string, permissionId?: string): TeamPermission | null {
         if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
           const scope = scopeOrPermissionId;
@@ -2633,7 +2561,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           return useMemo(() => permissions.find((p) => p.id === pid) ?? null, [permissions, pid]);
         }
       },
-      // END_PLATFORM
       async getPermission(scopeOrPermissionId: Team | string, permissionId?: string): Promise<TeamPermission | null> {
         if (scopeOrPermissionId && typeof scopeOrPermissionId !== 'string') {
           const scope = scopeOrPermissionId;
@@ -2682,12 +2609,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const result = Result.orThrow(await app._currentUserTeamProfileCache.getOrWait([session, team.id], "write-only"));
         return app._editableTeamProfileFromCrud(result, session);
       },
-      // IF_PLATFORM react-like
       useTeamProfile(team: Team) {
         const result = useAsyncCache(app._currentUserTeamProfileCache, [session, team.id] as const, "user.useTeamProfile()");
         return app._editableTeamProfileFromCrud(result, session);
       },
-      // END_PLATFORM
       async delete() {
         await app._interface.deleteCurrentUser(session);
         session.markInvalid();
@@ -2696,33 +2621,27 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const result = Result.orThrow(await app._clientContactChannelsCache.getOrWait([session], "write-only"));
         return result.map((crud) => app._clientContactChannelFromCrud(crud, session));
       },
-      // IF_PLATFORM react-like
       useContactChannels() {
         const result = useAsyncCache(app._clientContactChannelsCache, [session] as const, "user.useContactChannels()");
         return result.map((crud) => app._clientContactChannelFromCrud(crud, session));
       },
-      // END_PLATFORM
       async createContactChannel(data: ContactChannelCreateOptions) {
         const crud = await app._interface.createClientContactChannel(contactChannelCreateOptionsToCrud('me', data), session);
         await app._clientContactChannelsCache.refresh([session]);
         return app._clientContactChannelFromCrud(crud, session);
       },
-      // IF_PLATFORM react-like
       useNotificationCategories() {
         const results = useAsyncCache(app._notificationCategoriesCache, [session] as const, "user.useNotificationCategories()");
         return results.map((crud) => app._clientNotificationCategoryFromCrud(crud, session));
       },
-      // END_PLATFORM
       async listNotificationCategories() {
         const results = Result.orThrow(await app._notificationCategoriesCache.getOrWait([session], "write-only"));
         return results.map((crud) => app._clientNotificationCategoryFromCrud(crud, session));
       },
-      // IF_PLATFORM react-like
       useApiKeys() {
         const result = useAsyncCache(app._userApiKeysCache, [session] as const, "user.useApiKeys()");
         return result.map((crud) => app._clientApiKeyFromCrud(session, crud));
       },
-      // END_PLATFORM
 
       async listApiKeys() {
         const results = await app._interface.listProjectApiKeys({ user_id: 'me' }, session, "client");
@@ -2739,24 +2658,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         return app._clientApiKeyFromCrud(session, result);
       },
 
-      // IF_PLATFORM react-like
       useOAuthProviders() {
         const results = useAsyncCache(app._currentUserOAuthProvidersCache, [session] as const, "user.useOAuthProviders()");
         return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
       },
-      // END_PLATFORM
 
       async listOAuthProviders() {
         const results = Result.orThrow(await app._currentUserOAuthProvidersCache.getOrWait([session], "write-only"));
         return results.map((crud) => app._clientOAuthProviderFromCrud(crud, session));
       },
 
-      // IF_PLATFORM react-like
       useOAuthProvider(id: string) {
         const providers = this.useOAuthProviders();
         return useMemo(() => providers.find((p) => p.id === id) ?? null, [providers, id]);
       },
-      // END_PLATFORM
 
       async getOAuthProvider(id: string) {
         const providers = await this.listOAuthProviders();
@@ -2819,11 +2734,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       listOwnedProjects() {
         return app._listOwnedProjects(session);
       },
-      // IF_PLATFORM react-like
       useOwnedProjects() {
         return app._useOwnedProjects(session);
       },
-      // END_PLATFORM
     };
   }
 
@@ -2836,12 +2749,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const response = Result.orThrow(await app._customerBillingCache.getOrWait([effectiveSession, type, userIdOrTeamId], "write-only"));
         return app._customerBillingFromResponse(response);
       },
-      // IF_PLATFORM react-like
       useBilling() {
         const response = useAsyncCache(app._customerBillingCache, [effectiveSession, type, userIdOrTeamId] as const, "customer.useBilling()");
         return app._customerBillingFromResponse(response);
       },
-      // END_PLATFORM
       async createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent> {
         const body = await app._interface.createCustomerPaymentMethodSetupIntent(type, userIdOrTeamId, effectiveSession);
         return {
@@ -2857,27 +2768,21 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async getItem(itemId: string) {
         return await app.getItem({ itemId, ...customerOptions });
       },
-      // IF_PLATFORM react-like
       useItem(itemId: string) {
         return app.useItem({ itemId, ...customerOptions });
       },
-      // END_PLATFORM
       async listProducts(options?: CustomerProductsListOptions) {
         return await app.listProducts({ ...options, ...customerOptions });
       },
-      // IF_PLATFORM react-like
       useProducts(options?: CustomerProductsListOptions) {
         return app.useProducts({ ...options, ...customerOptions });
       },
-      // END_PLATFORM
       async listInvoices(options?: CustomerInvoicesListOptions) {
         return await app.listInvoices({ ...options, ...customerOptions });
       },
-      // IF_PLATFORM react-like
       useInvoices(options?: CustomerInvoicesListOptions) {
         return app.useInvoices({ ...options, ...customerOptions });
       },
-      // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
         return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl, "client");
       },
@@ -2913,7 +2818,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return this._clientItemFromCrud(crud);
   }
 
-  // IF_PLATFORM react-like
   useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Item {
     const session = this._useSession();
     const [cache, ownerId] =
@@ -2922,7 +2826,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const crud = useAsyncCache(cache, [session, ownerId, options.itemId] as const, "app.useItem()");
     return this._clientItemFromCrud(crud);
   }
-  // END_PLATFORM
 
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
     const currentUser = await this.getUser();
@@ -2968,7 +2871,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       await this._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === session && teamId === customerId);
     }
   }
-  // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
     const cache = "userId" in options ? this._userProductsCache : "teamId" in options ? this._teamProductsCache : this._customProductsCache;
@@ -2977,8 +2879,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
     return this._customerProductsFromResponse(response);
   }
-  // END_PLATFORM
-  // IF_PLATFORM react-like
   useInvoices(options: CustomerInvoicesRequestOptions): CustomerInvoicesList {
     const session = this._useSession();
     const cache = "userId" in options ? this._userInvoicesCache : this._teamInvoicesCache;
@@ -2987,7 +2887,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
     return this._customerInvoicesFromResponse(response);
   }
-  // END_PLATFORM
 
   protected _currentUserFromCrud(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): ProjectCurrentUser<ProjectId> {
     const currentUser = withUserDestructureGuard({
@@ -3320,14 +3219,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     if (this._redirectMethod === "none") {
       return;
-      // IF_PLATFORM next
-    } else if (isReactServer && this._redirectMethod === "nextjs") {
-      NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
-      // END_PLATFORM
-      // IF_PLATFORM tanstack-start
     } else if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
       throw TanStackRouter.redirect({ href: options.url.toString(), replace: options.replace });
-      // END_PLATFORM
     } else if (typeof this._redirectMethod === "object" && this._redirectMethod.navigate) {
       this._redirectMethod.navigate(options.url.toString());
     } else {
@@ -3341,26 +3234,17 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     await wait(2000);
   }
 
-  // IF_PLATFORM react-like
   useNavigate(): (to: string) => void {
     if (typeof this._redirectMethod === "object") {
       return this._redirectMethod.useNavigate();
     } else if (this._redirectMethod === "window") {
       return (to: string) => window.location.assign(to);
-      // IF_PLATFORM next
-    } else if (this._redirectMethod === "nextjs") {
-      const router = NextNavigation.useRouter();
-      return (to: string) => router.push(to);
-      // END_PLATFORM
-      // IF_PLATFORM tanstack-start
     } else if (this._redirectMethod === "tanstack-start") {
       return (to: string) => window.location.assign(to);
-      // END_PLATFORM
     } else {
       return (to: string) => { };
     }
   }
-  // END_PLATFORM
   protected async _redirectIfTrusted(url: string, options?: RedirectToOptions) {
     if (!await this._isTrusted(url)) {
       throwSetupError(createUntrustedUrlError({
@@ -3477,7 +3361,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
-    // IF_PLATFORM tanstack-start
     if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
       const rawHandlerUrl = getUrls(this._urlOptions, { projectId: this.projectId })[handlerName];
       if (this._isHandlerRedirectBrowserOnly(handlerName)) {
@@ -3489,7 +3372,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       }
       throw TanStackRouter.redirect({ href: rawHandlerUrl, replace: options?.replace });
     }
-    // END_PLATFORM
     return false;
   }
 
@@ -3637,7 +3519,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return crud && this._currentUserFromCrud(crud, session);
   }
 
-  // IF_PLATFORM react-like
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): ProjectCurrentUser<ProjectId>;
@@ -3706,7 +3587,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return crud && this._currentUserFromCrud(crud, session);
     }, [crud, session, options?.or]);
   }
-  // END_PLATFORM
 
   _getTokenPartialUserFromSession(session: InternalSession, options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | null {
     const accessToken = session.getAccessTokenIfNotExpiredYet(0, null);
@@ -3764,7 +3644,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       }
     }
   }
-  // IF_PLATFORM react-like
   usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): TokenPartialUser | null;
   usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): TokenPartialUser | null;
   usePartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): TokenPartialUser | SyncedPartialUser | null {
@@ -3784,7 +3663,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       }
     }
   }
-  // END_PLATFORM
   getConvexClientAuth(options: { tokenStore: TokenStoreInit }): (args: { forceRefreshToken: boolean }) => Promise<string | null> {
     return async (args: { forceRefreshToken: boolean }) => {
       const session = await this._getSession(options.tokenStore ?? this._tokenStoreInit);
@@ -4370,7 +4248,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return null;
   }
 
-  // IF_PLATFORM react-like
   useAccessToken(options?: { tokenStore?: TokenStoreInit }): string | null {
     const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
@@ -4378,7 +4255,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     return null;
   }
-  // END_PLATFORM
 
   async getRefreshToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
     const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
@@ -4388,7 +4264,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return null;
   }
 
-  // IF_PLATFORM react-like
   useRefreshToken(options?: { tokenStore?: TokenStoreInit }): string | null {
     const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
@@ -4396,17 +4271,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     return null;
   }
-  // END_PLATFORM
 
   async getAuthorizationHeader(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
     return getAuthorizationHeaderValueFromAuthJson(await this.getAuthJson(options));
   }
 
-  // IF_PLATFORM react-like
   useAuthorizationHeader(options?: { tokenStore?: TokenStoreInit }): string | null {
     return getAuthorizationHeaderValueFromAuthJson(this.useAuthJson(options));
   }
-  // END_PLATFORM
 
   async getAuthHeaders(options?: { tokenStore?: TokenStoreInit }): Promise<{ "x-stack-auth": string }> {
     return {
@@ -4414,13 +4286,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     };
   }
 
-  // IF_PLATFORM react-like
   useAuthHeaders(options?: { tokenStore?: TokenStoreInit }): { "x-stack-auth": string } {
     return {
       "x-stack-auth": JSON.stringify(this.useAuthJson(options)),
     };
   }
-  // END_PLATFORM
 
   async getAuthJson(options?: { tokenStore?: TokenStoreInit }): Promise<{ accessToken: string | null, refreshToken: string | null }> {
     const user = await this.getUser({ tokenStore: options?.tokenStore ?? undefined as any });
@@ -4430,7 +4300,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return { accessToken: null, refreshToken: null };
   }
 
-  // IF_PLATFORM react-like
   useAuthJson(options?: { tokenStore?: TokenStoreInit }): { accessToken: string | null, refreshToken: string | null } {
     const user = this.useUser({ tokenStore: options?.tokenStore ?? undefined as any });
     if (user) {
@@ -4438,19 +4307,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     return { accessToken: null, refreshToken: null };
   }
-  // END_PLATFORM
 
   async getProject(): Promise<Project> {
     const crud = Result.orThrow(await this._currentProjectCache.getOrWait([], "write-only"));
     return this._clientProjectFromCrud(crud);
   }
 
-  // IF_PLATFORM react-like
   useProject(): Project {
     const crud = useAsyncCache(this._currentProjectCache, [], "clientApp.useProject()");
     return useMemo(() => this._clientProjectFromCrud(crud), [crud]);
   }
-  // END_PLATFORM
 
   protected async _listOwnedProjects(session: InternalSession): Promise<AdminOwnedProject[]> {
     this._ensureInternalProject();
@@ -4461,7 +4327,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     ));
   }
 
-  // IF_PLATFORM react-like
   protected _useOwnedProjects(session: InternalSession): AdminOwnedProject[] {
     this._ensureInternalProject();
     const projects = useAsyncCache(this._ownedProjectsCache, [session], "clientApp.useOwnedProjects()");
@@ -4470,7 +4335,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       () => this._refreshOwnedProjects(session),
     )), [projects]);
   }
-  // END_PLATFORM
   protected async _createProject(session: InternalSession, newProject: AdminProjectUpdateOptions & { displayName: string, teamId: string }): Promise<AdminOwnedProject> {
     this._ensureInternalProject();
     const crud = await this._interface.createProject(adminProjectCreateOptionsToCrud(newProject), session);
