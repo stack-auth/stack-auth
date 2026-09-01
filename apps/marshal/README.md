@@ -81,7 +81,24 @@ The simulator deliberately reproduces provider details Marshal depends on: permi
 
 ## Required IAM
 
-Use Application Default Credentials. Prefer an attached workload identity in production; use `GOOGLE_APPLICATION_CREDENTIALS` only for local administration and never copy a key into this repository or a tenant project.
+Credentials resolve in three ways, in this order: workload identity federation, an explicit
+`GOOGLE_APPLICATION_CREDENTIALS` file, then the GCE metadata server.
+
+Prefer federation for any hosted deployment, and required on one with no metadata server (Vercel):
+set `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_AUDIENCE` to the provider resource and
+`HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT` to the controller service account it
+impersonates. Marshal exchanges the host's per-invocation OIDC assertion (`VERCEL_OIDC_TOKEN`,
+or whatever `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_TOKEN_ENV` names) for a federated token and
+impersonates the service account with it, so no long-lived key exists anywhere. This matters
+more here than it usually does: the controller identity can create, bill, and delete every
+tenant project, so a static key for it would be the most valuable secret the system holds.
+
+Use `GOOGLE_APPLICATION_CREDENTIALS` only for local administration, and never copy a key into
+this repository or a tenant project.
+
+[`scripts/bootstrap-gcp.sh`](./scripts/bootstrap-gcp.sh) provisions everything below —
+tenant folder, platform project, controller service account, every role binding, the org
+policies Marshal depends on, and the federation pool — and is idempotent.
 
 The Marshal controller needs:
 
