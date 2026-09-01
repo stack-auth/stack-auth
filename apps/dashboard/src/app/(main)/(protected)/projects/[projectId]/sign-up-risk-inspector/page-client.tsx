@@ -328,7 +328,7 @@ function ResultsCard(props: {
                       <div className="grid gap-1 text-xs">
                         {result.breakdown.map((entry) => (
                           <div key={entry.signal} className="flex gap-2">
-                            <span className="w-28 shrink-0 font-medium">{entry.signal}</span>
+                            <span className="w-48 shrink-0 font-medium">{entry.signal}</span>
                             <code className="hexclave-sensitive break-all text-muted-foreground">{JSON.stringify(entry.details)}</code>
                           </div>
                         ))}
