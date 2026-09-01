@@ -291,17 +291,21 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     }))).toThrow("use the `hexclave` context object instead");
   });
 
-  it("rejects a self-referential PUBLIC url but allows a private one", () => {
-    // The public URL only exists once the service is up, which its own first
-    // deploy cannot provide.
+  it("rejects a self-referential address, private one included", () => {
+    // Every service address is produced by that service's own rollout, so no self-reference
+    // to one can resolve before the deploy that creates it finishes.
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", public: true, ports: { 3000: { protocol: "http" } }, env: { SELF: (service("web") as any).url(3000) } },
-    }))).toThrow("cannot exist before the service does");
-    // A private port's URL is deterministic, so a service may reference its own.
-    const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
+    }))).toThrow("cannot exist before the service is deployed");
+    // The private url used to be exempt, on the premise that it was name-derived and therefore
+    // known in advance. Nothing publishes such a record since the move off Fly, so it blocks on
+    // the real address like any other output — and reached the deploy as an unresolvable ref.
+    expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { SELF: (service("web") as any).url(3000) } },
-    }));
-    expect(services.get("web")?.definition.env.SELF).toEqual({ type: "connection", value: "web.url:3000" });
+    }))).toThrow("cannot exist before the service is deployed");
+    expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { SELF: (service("web") as any).hostname() } },
+    }))).toThrow("cannot exist before the service is deployed");
   });
 
   it("rejects assigning the whole service() return instead of an output", () => {
@@ -763,11 +767,12 @@ describe("computeDeploymentLevels", () => {
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });
 
-  it("does not treat a self internalUrl reference as a cycle", () => {
-    // A self `internalUrl` is deterministic (see evaluateDeploymentConfig), so it must not
-    // create a self-edge that computeDeploymentLevels would report as a false cycle.
-    const services = build(({ service }) => ({
-      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { SELF: (service("web") as any).url(3000) } },
+  it("does not treat a hexclave output reference as a cycle", () => {
+    // `hexclave.*` comes from the managed service, which always exists, so it must not become
+    // an edge. Self-references to a service's own address never reach here at all — they are
+    // rejected during evaluation, since no rollout can produce an address it needs first.
+    const services = build(({ hexclave }) => ({
+      web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { PROJECT_ID: (hexclave as any).projectId } },
     }));
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });

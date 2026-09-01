@@ -78,7 +78,10 @@ async function ensureServerGateway(stored: StoredSpec, instance: ComputeInstance
   });
 }
 
-export async function applyRuntimeService(stored: StoredSpec, image: string, env: Record<string, string>, lease: ReconciliationLeaseGuard): Promise<string | null> {
+// `hasDomainClaim` comes from the caller rather than from the domain store: this module is the
+// provider layer and reads no control-plane state, and the caller already holds the service's
+// reconciliation lease, so what it read cannot change underneath this apply.
+export async function applyRuntimeService(stored: StoredSpec, image: string, env: Record<string, string>, lease: ReconciliationLeaseGuard, hasDomainClaim: boolean): Promise<string | null> {
   const config = getConfig();
   const context = await tenantContext(stored.ns);
   await lease.assertOwned();
@@ -132,7 +135,10 @@ export async function applyRuntimeService(stored: StoredSpec, image: string, env
     volume: volume === null ? null : { diskName: volume.diskName, path: volume.path },
     serviceKeyHash: serviceKeyHash(stored.key),
   });
-  if (stored.spec.config.public) {
+  // A custom domain routes through the SAME gateway (see ensureDomainGateway), so a private
+  // server that owns one still needs it. Deleting it here on every apply is what silently
+  // and permanently broke the domain: the claim survived, the route it pointed at did not.
+  if (stored.spec.config.public || hasDomainClaim) {
     await ensureServerGateway(stored, instance, lease);
   } else {
     // Visibility can change without changing the service type. Removing the gateway is the

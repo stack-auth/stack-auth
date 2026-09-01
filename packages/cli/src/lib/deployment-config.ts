@@ -954,26 +954,23 @@ export function evaluateDeploymentConfig(options: {
     }
   }
 
-  // A service referencing its own PUBLIC url can never be satisfied: that URL
-  // only exists once the service is up (or a domain verifies), which its own
-  // first deploy cannot provide. Its private address is deterministic and fine
-  // to self-reference. Mirrors the backend check, but fails before anything is
-  // uploaded.
+  // A service referencing its OWN address can never be satisfied: every service address is
+  // produced by that service's own rollout, so the reference would have to resolve before the
+  // deploy that creates it has finished.
+  //
+  // This used to apply only to a PUBLIC url, because a private address was name-derived and
+  // therefore known before anything ran. That stopped being true with the move off Fly 6PN
+  // DNS: nothing publishes such a record now, and `hostname` and a private `url` block on the
+  // target's real address like every other service output (see connectionRequiresTargetDeployed).
+  // Caught here rather than at deploy time, where it surfaced as "blocked on unresolved refs"
+  // after the upload — and where no retry could ever clear it.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind !== "connection") continue;
       const parsed = parseConnectionValue(value.reference);
-      if (parsed === null || parsed.serviceId !== serviceId || parsed.outputKey !== "url") continue;
-      // Only a PUBLIC service's own url() is a cycle: it resolves to the platform
-      // URL, which does not exist until the service is up. A private service's
-      // resolves from its deterministic hostname, so it can name itself.
-      if (service.definition.public !== true) continue;
-      const ports = deploymentPortEntries(service.definition.ports);
-      const port = parsed.port === null
-        ? ports.filter((entry) => entry.protocol === "http")[0]
-        : ports.find((entry) => entry.port === parsed.port);
-      if (port === undefined) continue;
-      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} connects to the service's own public URL (port ${port.port}), which cannot exist before the service does. Use service("${serviceId}").hostname() for its own address.`);
+      if (parsed === null || parsed.serviceId !== serviceId) continue;
+      if (!connectionRequiresTargetDeployed(parsed.outputKey)) continue;
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} connects to the service's own ${parsed.outputKey}, which cannot exist before the service is deployed. Set it as a plain env var, or have the service read its own address at runtime.`);
     }
   }
 
@@ -999,10 +996,10 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // connections to services of ANOTHER deployment source are resolved
       // against already-deployed state, since that source deploys on its own
       // schedule and is not part of this deploy at all.
-      // Self-references never create a deploy edge: a self `url` is rejected outright above,
-      // and self internal outputs are deterministic from the synced definition (they don't depend on the
-      // service having deployed). Adding a self-edge here would make computeDeploymentLevels
-      // report a false circular-dependency error for a config that deploys fine.
+      // Self-references never create a deploy edge: every self-reference to an address output
+      // is rejected outright above, and the outputs that remain do not depend on the service
+      // having deployed. Adding a self-edge here would make computeDeploymentLevels report a
+      // circular-dependency error where the check above gives the specific reason.
       //
       // The same reasoning excludes DETERMINISTIC cross-service references: only
       // `url` and a bare `internalUrl()` need the target deployed. Counting the

@@ -27,6 +27,15 @@ function stubExchange(expiresInMillis = 3600_000) {
   return fetchMock;
 }
 
+// An assertion the way the platform mints one: a JWT whose `aud` is this pool provider.
+// recordHostIdentityAssertion only caches assertions that carry it, so an opaque string is no
+// longer a usable stand-in — an unauthenticated caller could otherwise post one at /health and
+// poison the credential every provider-backed route depends on.
+function assertion(claims: Record<string, unknown> = {}): string {
+  const payload = Buffer.from(JSON.stringify({ aud: AUDIENCE, ...claims }), "utf8").toString("base64url");
+  return `header.${payload}.signature`;
+}
+
 function request(headers: Record<string, string>): Request {
   return new Request("https://marshal.example.com/v1/namespaces/n", { headers });
 }
@@ -34,7 +43,7 @@ function request(headers: Record<string, string>): Request {
 describe("workload identity federation", () => {
   it("exchanges the host's OIDC assertion and impersonates the controller service account", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     const fetchMock = stubExchange();
 
     expect(await googleAccessToken()).toBe("impersonated-token");
@@ -46,7 +55,7 @@ describe("workload identity federation", () => {
     // The audience is the single most important value this module forwards: a wrong one is a
     // 400 from STS that no other assertion here would catch.
     expect(exchange.get("audience")).toBe(AUDIENCE);
-    expect(exchange.get("subject_token")).toBe("header.payload.signature");
+    expect(exchange.get("subject_token")).toBe(assertion({ sub: "build-time" }));
     expect(exchange.get("subject_token_type")).toBe("urn:ietf:params:oauth:token-type:jwt");
     expect(exchange.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:token-exchange");
     expect(exchange.get("scope")).toBe("https://www.googleapis.com/auth/cloud-platform");
@@ -63,21 +72,21 @@ describe("workload identity federation", () => {
     vi.stubEnv("VERCEL_OIDC_TOKEN", "");
     const fetchMock = stubExchange();
 
-    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": "from-the-request" }));
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": assertion({ sub: "from-the-request" }) }));
 
     expect(await googleAccessToken()).toBe("impersonated-token");
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe("from-the-request");
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe(assertion({ sub: "from-the-request" }));
   });
 
   it("prefers the request header over the build-time environment variable", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "build-time-assertion");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     const fetchMock = stubExchange();
 
-    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": "invocation-assertion" }));
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": assertion({ sub: "invocation" }) }));
     await googleAccessToken();
 
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe("invocation-assertion");
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe(assertion({ sub: "invocation" }));
   });
 
   it("keeps the last assertion when a request carries none, rather than clearing it", async () => {
@@ -85,27 +94,43 @@ describe("workload identity federation", () => {
     vi.stubEnv("VERCEL_OIDC_TOKEN", "");
     const fetchMock = stubExchange();
 
-    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": "invocation-assertion" }));
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": assertion({ sub: "invocation" }) }));
     recordHostIdentityAssertion(request({}));
 
     await expect(googleAccessToken()).resolves.toBe("impersonated-token");
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe("invocation-assertion");
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe(assertion({ sub: "invocation" }));
+  });
+
+  it("ignores an assertion that is not for this workload identity pool", async () => {
+    // This header is read before authentication and on /health, so ANY Internet caller can set
+    // it. It grants them nothing, but caching it over a working credential would let a loop of
+    // junk requests deny every provider-backed route until a real assertion arrived.
+    stubFederationEnv();
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+    const fetchMock = stubExchange();
+
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": assertion({ sub: "real" }) }));
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": assertion({ aud: "//iam.googleapis.com/projects/9/attacker" }) }));
+    recordHostIdentityAssertion(request({ "x-vercel-oidc-token": "not-even-a-jwt" }));
+
+    await expect(googleAccessToken()).resolves.toBe("impersonated-token");
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe(assertion({ sub: "real" }));
   });
 
   it("reads the assertion from the env var the host is configured to use", async () => {
     stubFederationEnv();
     vi.stubEnv("HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_TOKEN_ENV", "SOME_OTHER_HOST_OIDC_TOKEN");
-    vi.stubEnv("SOME_OTHER_HOST_OIDC_TOKEN", "other-host-assertion");
+    vi.stubEnv("SOME_OTHER_HOST_OIDC_TOKEN", assertion({ sub: "other-host" }));
     const fetchMock = stubExchange();
 
     await googleAccessToken();
 
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe("other-host-assertion");
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0][1]?.body)).get("subject_token")).toBe(assertion({ sub: "other-host" }));
   });
 
   it("serves a still-valid token without a further exchange", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     const fetchMock = stubExchange();
 
     await googleAccessToken();
@@ -131,7 +156,7 @@ describe("workload identity federation", () => {
 
   it("takes precedence over an explicit credential file", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     // Reordering the chain would read this path and fail with ENOENT instead.
     vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "/nonexistent/service-account.json");
     const fetchMock = stubExchange();
@@ -160,7 +185,7 @@ describe("workload identity federation", () => {
 
   it("never serves a token whose expiry it could not parse", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => url.startsWith("https://sts.googleapis.com/")
       ? new Response(JSON.stringify({ access_token: "federated-token" }), { status: 200 })
       : new Response(JSON.stringify({ accessToken: "impersonated-token", expireTime: "whenever" }), { status: 200 }));
@@ -175,7 +200,7 @@ describe("workload identity federation", () => {
 
   it("does not report the STS response body, which can echo the assertion back", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "invalid_grant", subject_token: "header.payload.signature" }), { status: 400 })));
 
     await expect(googleAccessToken()).rejects.toThrow(/^Google STS token exchange failed with HTTP 400$/);
@@ -183,7 +208,7 @@ describe("workload identity federation", () => {
 
   it("does not report the impersonation response body, which can echo the federated token back", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     vi.stubGlobal("fetch", vi.fn(async (url: string) => url.startsWith("https://sts.googleapis.com/")
       ? new Response(JSON.stringify({ access_token: "federated-token" }), { status: 200 })
       : new Response(JSON.stringify({ error: { message: "denied for federated-token" } }), { status: 403 })));
@@ -193,7 +218,7 @@ describe("workload identity federation", () => {
 
   it("reports a status rather than a parse error when a proxy returns a non-JSON page", async () => {
     stubFederationEnv();
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "header.payload.signature");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", assertion({ sub: "build-time" }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>502 Bad Gateway</html>", { status: 502 })));
 
     await expect(googleAccessToken()).rejects.toThrow(/^Google STS token exchange failed with HTTP 502$/);

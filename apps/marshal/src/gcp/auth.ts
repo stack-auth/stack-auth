@@ -111,7 +111,34 @@ async function metadataToken(signal?: AbortSignal): Promise<AccessToken> {
  */
 export function recordHostIdentityAssertion(request: Request): void {
   const assertion = (request.headers.get(OIDC_TOKEN_HEADER) || "").trim();
-  if (assertion !== "") requestAssertion = assertion;
+  // This header is read before authentication, on /health included, so ANY Internet caller can
+  // set it. It grants the caller nothing — it is the platform's identity, not theirs — but an
+  // unchecked value still becomes the credential the next Google token exchange presents, and
+  // a caller looping junk at /health would deny every provider-backed route. Store it only if
+  // it is an assertion for the identity we expect; a mismatch is someone else's header.
+  if (assertion !== "" && assertionMatchesConfiguredAudience(assertion)) requestAssertion = assertion;
+}
+
+// The audience is what ties an assertion to THIS workload identity pool provider: Google
+// rejects any other, so anything else is noise we must not cache over a working credential.
+// Signature verification belongs to Google's STS, not here — this only decides which header
+// is worth presenting to it.
+function assertionMatchesConfiguredAudience(assertion: string): boolean {
+  const config = workloadIdentityConfig();
+  if (config === null) return false;
+  const segments = assertion.split(".");
+  if (segments.length !== 3) return false;
+  let claims: unknown;
+  try {
+    claims = JSON.parse(Buffer.from(segments[1]!, "base64url").toString("utf8"));
+  } catch {
+    return false;
+  }
+  if (!isRecord(claims)) return false;
+  const audience = claims.aud;
+  return typeof audience === "string"
+    ? audience === config.audience
+    : Array.isArray(audience) && audience.includes(config.audience);
 }
 
 function hostIdentityAssertion(tokenEnvVar: string): string {

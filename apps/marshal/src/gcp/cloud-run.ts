@@ -60,7 +60,12 @@ function observedInstances(service: Record<string, unknown>): number {
 function parseObservation(value: unknown): CloudRunObservation {
   if (!isRecord(value)) throw new Error("Cloud Run returned an invalid service resource");
   const terminalCondition = value.terminalCondition;
-  const ready = isRecord(terminalCondition) && terminalCondition.state === "CONDITION_SUCCEEDED";
+  // `reconciling` has to be part of readiness. During an update Cloud Run keeps the PREVIOUS
+  // successful terminalCondition while it rolls the new revision, and the revision label this
+  // observation reads for targetRevision is updated by the PATCH immediately — so terminal
+  // condition alone reports ready AND at-target against the old latestReadyRevision and image
+  // digest, which is a green deploy of the image the service was already running.
+  const ready = value.reconciling !== true && isRecord(terminalCondition) && terminalCondition.state === "CONDITION_SUCCEEDED";
   const labels = isRecord(value.labels) ? value.labels : {};
   return {
     exists: true,

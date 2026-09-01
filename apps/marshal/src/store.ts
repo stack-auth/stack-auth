@@ -909,19 +909,23 @@ export async function unclaimPoolProject(projectId: string, ns: string): Promise
 // without a CAS because every creation happens under the project-pool lease.
 const POOL_CREATION_LEDGER_KEY = "gcp-project-pool-ledger.json";
 
-export async function readPoolCreationLedger(): Promise<number[]> {
-  const stored = await getJson<unknown>(POOL_CREATION_LEDGER_KEY);
-  if (stored === null) return [];
-  const value = readAuthenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, stored);
+export async function readPoolCreationLedgerVersioned(): Promise<{ etag: string | null, createdAtMillis: number[] }> {
+  const stored = await getJsonVersioned<unknown>(POOL_CREATION_LEDGER_KEY);
+  if (stored === null) return { etag: null, createdAtMillis: [] };
+  const value = readAuthenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, stored.value);
   if (!isRecord(value)
     || !Array.isArray(value.created_at_millis)
     || !value.created_at_millis.every((timestamp): timestamp is number => typeof timestamp === "number" && Number.isSafeInteger(timestamp) && timestamp >= 0)) {
     throw new Error("the authenticated tenant project pool creation ledger is malformed");
   }
-  return value.created_at_millis;
+  return { etag: stored.etag, createdAtMillis: value.created_at_millis };
 }
 
-export async function writePoolCreationLedger(createdAtMillis: number[]): Promise<void> {
-  const value = { created_at_millis: createdAtMillis };
-  await putJson(POOL_CREATION_LEDGER_KEY, authenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, value));
+// Fenced on the ETag rather than written blind. The pool lease normally serializes this, but
+// the cap it enforces is the backstop for exactly the case where the lease does NOT hold — an
+// expired lease whose owner is still running — and an unconditional PUT there silently drops
+// the newer tick's reservations. A lost CAS means someone else recorded first; re-read.
+export async function writePoolCreationLedgerConditionally(createdAtMillis: number[], etag: string | null): Promise<boolean> {
+  const value = authenticatedControlPlaneState(POOL_CREATION_LEDGER_KEY, { created_at_millis: createdAtMillis });
+  return await putJsonConditionally(POOL_CREATION_LEDGER_KEY, value, etag === null ? { ifNoneMatch: true } : { ifMatch: etag }) !== null;
 }

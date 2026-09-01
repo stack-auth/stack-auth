@@ -109,9 +109,16 @@ vi.mock("./store.js", () => ({
     if (stored === undefined || value?.state !== "claimed" || value.ns !== ns) return false;
     return put(poolKey(projectId), { ...value, state: "ready", state_since_millis: Date.now(), ns: null }, { ifMatch: stored.etag }) !== null;
   }),
-  readPoolCreationLedger: vi.fn(async () => ((objects.get("ledger")?.value as { created_at_millis: number[] } | undefined)?.created_at_millis ?? [])),
-  writePoolCreationLedger: vi.fn(async (created: number[]) => {
-    objects.set("ledger", { etag: `etag-${++etagCounter}`, value: { created_at_millis: created } });
+  readPoolCreationLedgerVersioned: vi.fn(async () => {
+    const stored = objects.get("ledger");
+    return stored === undefined
+      ? { etag: null, createdAtMillis: [] }
+      : { etag: stored.etag, createdAtMillis: (stored.value as { created_at_millis: number[] }).created_at_millis };
+  }),
+  // The CAS is the point of this ledger, so the fake enforces it rather than accepting writes.
+  writePoolCreationLedgerConditionally: vi.fn(async (created: number[], etag: string | null) => {
+    const condition = etag === null ? { ifNoneMatch: true as const } : { ifMatch: etag };
+    return put("ledger", { created_at_millis: created }, condition) !== null;
   }),
   readReconciliationLease: vi.fn(async (ns: string, key: string) => {
     const stored = objects.get(`lease/${ns}/${key}`);

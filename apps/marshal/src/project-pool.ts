@@ -33,12 +33,12 @@ import {
   createPoolProject,
   deletePoolProject,
   listPoolProjects,
-  readPoolCreationLedger,
+  readPoolCreationLedgerVersioned,
   readPoolProject,
   readTenantProjectAssignment,
   unclaimPoolProject,
   updatePoolProject,
-  writePoolCreationLedger,
+  writePoolCreationLedgerConditionally,
 } from "./store.js";
 
 // The claim and the assignment write must both land for a pooled project to be considered
@@ -249,14 +249,21 @@ async function advanceProject(manager: TenantProjectManager, projectId: string, 
 // write and the create must over-count, never under-count.
 async function consumeCreationBudget(wanted: number, now: number, lease: ReconciliationLeaseGuard): Promise<number> {
   if (wanted <= 0) return 0;
-  await lease.assertOwned();
-  const recent = (await readPoolCreationLedger()).filter((at) => at > now - CREATION_WINDOW_MILLIS);
-  const allowed = Math.max(0, Math.min(wanted, MAX_CREATIONS_PER_HOUR - recent.length));
-  if (allowed > 0) {
+  // CAS rather than a blind write, and retried on a lost race: this cap is what stands between
+  // a runaway advancer and the organization's project quota, which deleted projects hold for
+  // thirty days. It has to hold even when the lease that normally serializes it does not.
+  for (let attempt = 0; attempt < 5; attempt++) {
     await lease.assertOwned();
-    await writePoolCreationLedger([...recent, ...Array.from({ length: allowed }, () => now)]);
+    const { etag, createdAtMillis } = await readPoolCreationLedgerVersioned();
+    const recent = createdAtMillis.filter((at) => at > now - CREATION_WINDOW_MILLIS);
+    const allowed = Math.max(0, Math.min(wanted, MAX_CREATIONS_PER_HOUR - recent.length));
+    if (allowed === 0) return 0;
+    await lease.assertOwned();
+    if (await writePoolCreationLedgerConditionally([...recent, ...Array.from({ length: allowed }, () => now)], etag)) return allowed;
   }
-  return allowed;
+  // Someone else is reserving against the same ledger. Creating nothing this tick is the safe
+  // outcome: the next tick recounts, and under-creating only costs pool latency.
+  return 0;
 }
 
 async function createAndAdvance(manager: TenantProjectManager, deadline: number, lease: ReconciliationLeaseGuard): Promise<AdvanceOutcome | "collided"> {

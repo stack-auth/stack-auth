@@ -250,46 +250,57 @@ export class ComputeClient {
     if (operation.errorMessage !== null) throw new GcpApiError(502, operation.selfLink, operation.errorMessage);
   }
 
+  // Read-then-create is not atomic, and this runs on the first deploy into a namespace — so
+  // two concurrent first deploys both observe a missing resource and both POST. Compute Engine
+  // answers the loser with 409 ALREADY_EXISTS, which is the state this is asking for rather
+  // than a reason to fail that deployment. Wait for the winner's resource to become readable
+  // so callers can rely on it existing either way.
+  private async createOrConverge(readUrl: string, collectionUrl: string, body: unknown): Promise<void> {
+    if (await this.client.request(readUrl, { allow404: true }) !== null) return;
+    try {
+      await this.waitForOperation(await this.client.request(collectionUrl, { method: "POST", body }));
+      return;
+    } catch (error) {
+      if (!(error instanceof GcpApiError) || error.status !== 409) throw error;
+    }
+    const startedAt = performance.now();
+    while (await this.client.request(readUrl, { allow404: true }) === null) {
+      if (performance.now() - startedAt >= 2 * 60 * 1000) {
+        throw new GcpApiError(408, readUrl, "timed out waiting for a concurrently created Compute Engine resource");
+      }
+      await delay(1000);
+    }
+  }
+
   async ensureNetwork(): Promise<void> {
     const networkUrl = this.projectUrl(`/global/networks/${encodeURIComponent(this.config.network)}`);
-    if (await this.client.request(networkUrl, { allow404: true }) === null) {
-      await this.waitForOperation(await this.client.request(this.projectUrl("/global/networks"), {
-        method: "POST",
-        body: { name: this.config.network, autoCreateSubnetworks: false, routingConfig: { routingMode: "REGIONAL" } },
-      }));
-    }
+    await this.createOrConverge(networkUrl, this.projectUrl("/global/networks"), {
+      name: this.config.network,
+      autoCreateSubnetworks: false,
+      routingConfig: { routingMode: "REGIONAL" },
+    });
     const subnetUrl = this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks/${encodeURIComponent(this.config.subnetwork)}`);
-    if (await this.client.request(subnetUrl, { allow404: true }) === null) {
-      await this.waitForOperation(await this.client.request(this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks`), {
-        method: "POST",
-        body: {
-          name: this.config.subnetwork,
-          network: networkUrl,
-          ipCidrRange: "10.128.0.0/20",
-          privateIpGoogleAccess: true,
-          stackType: "IPV4_ONLY",
-        },
-      }));
-    }
+    await this.createOrConverge(subnetUrl, this.projectUrl(`/regions/${encodeURIComponent(this.config.region)}/subnetworks`), {
+      name: this.config.subnetwork,
+      network: networkUrl,
+      ipCidrRange: "10.128.0.0/20",
+      privateIpGoogleAccess: true,
+      stackType: "IPV4_ONLY",
+    });
     const firewallName = `${this.config.network}-internal`;
     const firewallUrl = this.projectUrl(`/global/firewalls/${encodeURIComponent(firewallName)}`);
-    if (await this.client.request(firewallUrl, { allow404: true }) === null) {
-      await this.waitForOperation(await this.client.request(this.projectUrl("/global/firewalls"), {
-        method: "POST",
-        body: {
-          name: firewallName,
-          network: networkUrl,
-          direction: "INGRESS",
-          sourceRanges: ["10.128.0.0/20"],
-          targetTags: ["hexclave-service"],
-          allowed: [
-            { IPProtocol: "tcp", ports: ["1-65535"] },
-            { IPProtocol: "udp", ports: ["1-65535"] },
-            { IPProtocol: "icmp" },
-          ],
-        },
-      }));
-    }
+    await this.createOrConverge(firewallUrl, this.projectUrl("/global/firewalls"), {
+      name: firewallName,
+      network: networkUrl,
+      direction: "INGRESS",
+      sourceRanges: ["10.128.0.0/20"],
+      targetTags: ["hexclave-service"],
+      allowed: [
+        { IPProtocol: "tcp", ports: ["1-65535"] },
+        { IPProtocol: "udp", ports: ["1-65535"] },
+        { IPProtocol: "icmp" },
+      ],
+    });
   }
 
   async getDisk(name: string): Promise<ComputeDisk | null> {

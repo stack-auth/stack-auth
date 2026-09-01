@@ -30,7 +30,7 @@ vi.mock("./config.js", () => ({
   UPLOAD_EXPIRY_SECONDS: 1,
 }));
 
-import { assignTenantProject, claimDomain, createDeployment, createPoolProject, readDeployment, readDomainClaimVersioned, readPoolCreationLedger, readPoolProject, readSpec, readTenantProjectAssignment, readUpload, releaseDomainClaim, writePoolCreationLedger, writeSpec } from "./store.js";
+import { assignTenantProject, claimDomain, createDeployment, createPoolProject, readDeployment, readDomainClaimVersioned, readPoolCreationLedgerVersioned, readPoolProject, readSpec, readTenantProjectAssignment, readUpload, releaseDomainClaim, writePoolCreationLedgerConditionally, writeSpec } from "./store.js";
 
 describe("domain claim release", () => {
   const claim = {
@@ -120,16 +120,18 @@ describe("authoritative state authentication", () => {
   });
 
   it("authenticates the project creation-rate ledger", async () => {
-    send.mockResolvedValueOnce({});
-    await writePoolCreationLedger([100, 200]);
+    send.mockResolvedValueOnce({ ETag: '"v1"' });
+    await expect(writePoolCreationLedgerConditionally([100, 200], null)).resolves.toBe(true);
     const body = send.mock.calls[0][0].input.Body;
     expect(typeof body).toBe("string");
+    // A first write must not overwrite a ledger someone else already created.
+    expect(send.mock.calls[0][0].input.IfNoneMatch).toBe("*");
 
-    send.mockResolvedValueOnce({ Body: { transformToString: async () => body } });
-    await expect(readPoolCreationLedger()).resolves.toEqual([100, 200]);
+    send.mockResolvedValueOnce({ ETag: '"v1"', Body: { transformToString: async () => body } });
+    await expect(readPoolCreationLedgerVersioned()).resolves.toEqual({ etag: '"v1"', createdAtMillis: [100, 200] });
 
-    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ created_at_millis: [100, 200] }) } });
-    await expect(readPoolCreationLedger()).rejects.toThrow("is unsigned");
+    send.mockResolvedValueOnce({ ETag: '"v1"', Body: { transformToString: async () => JSON.stringify({ created_at_millis: [100, 200] }) } });
+    await expect(readPoolCreationLedgerVersioned()).rejects.toThrow("is unsigned");
   });
 
   it("does not let an unsigned ready-pool record become a signed tenant assignment", async () => {

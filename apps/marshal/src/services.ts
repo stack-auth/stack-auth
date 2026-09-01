@@ -629,7 +629,10 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   }
   let imageRef: string | null = null;
   try {
-    imageRef = await applyRuntimeService(stored, stored.spec.source.image, resolved.env, lease);
+    // A claimed custom domain routes through the persistent-server gateway, so the apply has to
+    // know about it or it will tear that gateway down as though the service were merely private.
+    const hasDomainClaim = (await listDomainClaimsForService(ns, key)).length > 0;
+    imageRef = await applyRuntimeService(stored, stored.spec.source.image, resolved.env, lease, hasDomainClaim);
     stored.last_apply_error = null;
   } catch (error) {
     if (isReconciliationFencingError(error)) throw error;
