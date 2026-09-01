@@ -21,10 +21,6 @@
     {
       "path": "/api/latest/internal/issues/reconciler",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/latest/internal/growth-watchdog-step",
-      "schedule": "*/5 * * * *"
     }
   ],
   "github": {

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, DatabaseIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TrendUpIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, DatabaseIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -30,9 +30,10 @@ type AppNavigationItem = {
   section?: string,
   external?: boolean,
   /**
-   * When true, this nav item is intended only for Hexclave-internal surfaces
-   * (e.g. GTM admin). Call sites that render navigation should filter these out
-   * for non-internal viewers when that gating is wired up.
+   * When true, sidebar rendering hides this item unless the current project is
+   * `internal`. isAppNavigationItemVisible is the filter. No shipped item sets
+   * this after Growth/GTM was removed; the field stays so that helper and the
+   * AppNavigationItem type stay the same shape.
    */
   internalOnly?: boolean,
   matchPath?: (relativePart: string) => boolean,
@@ -122,7 +123,7 @@ export function testItemPath(projectId: string, appFrontend: NavigableAppFronten
   const matched = matchedItemPathname(projectId, appFrontend, item, fullUrl);
   if (matched == null) return false;
 
-  // Nav items can nest, for example Growth's settings under its overview root. A prefix match alone lights up
+  // Nav items can nest, for example an app's settings under its overview root. A prefix match alone lights up
   // both, so the most specific matching item wins — an item that only matches because
   // it is an ancestor of the sibling the user actually navigated to is not the current page. Siblings with a
   // custom `matchPath` are left out of the comparison, since they answer yes/no without a path to rank.
@@ -492,27 +493,6 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
         <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
-      </>
-    ),
-  },
-  gtm: {
-    icon: TrendUpIcon,
-    href: "gtm",
-    navigationItems: [
-      // Lifecycle and detail pages are deliberately not nav items. They are reached from the
-      // overview, and the most-specific-wins matching below highlights "Overview" for them.
-      { displayName: "Overview", href: "." },
-      { displayName: "Chat", href: "chat" },
-      // { displayName: "Ad accounts", href: "ad-accounts" },
-      { displayName: "Settings", href: "settings" },
-      { displayName: "Admin", href: "admin", internalOnly: true },
-    ],
-    screenshots: [],
-    storeDescription: (
-      <>
-        <p>Growth analyzes your product and your project&apos;s data, interviews you about your business, and turns the result into a growth report with one-click actionable items.</p>
-        <p>Every day it delivers a brief comparing signups, returning users, transactions, and emails against the day before.</p>
-        <p>An AI assistant with full growth context and reviewable automations keep the loop running.</p>
       </>
     ),
   },

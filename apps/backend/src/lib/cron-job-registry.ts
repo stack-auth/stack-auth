@@ -36,12 +36,6 @@ export const CRON_JOB_REGISTRY: readonly CronJobDefinition[] = [
     schedule: "*/5 * * * *",
     localRunner: true,
   },
-  {
-    id: "growth-watchdog",
-    path: "/api/latest/internal/growth-watchdog-step",
-    schedule: "*/5 * * * *",
-    localRunner: true,
-  },
 ];
 
 export function getLocalCronJobPaths(): readonly string[] {
