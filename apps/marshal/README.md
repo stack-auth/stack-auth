@@ -69,7 +69,7 @@ Service mapping:
 - source build → a short-lived Container-Optimized OS VM running the existing BuildKit harness. It obtains a short-lived Artifact Registry token from the metadata server; Marshal deletes the VM after recording the completion webhook.
 - custom domain → Marshal first returns a tenant-bound TXT record at `_hexclave-verification.<hostname>` plus the shared frontend's A record. The user creates both during domain setup; polling the domain endpoint verifies the TXT proof before Marshal claims or routes the hostname. A verified hostname receives a per-domain serverless NEG and `EXTERNAL_MANAGED` backend service in the tenant project, routed through one environment-scoped global external Application Load Balancer in `HEXCLAVE_MARSHAL_GCP_PLATFORM_PROJECT_ID`. Certificate Manager certificates/map entries, the global IP, URL map, target HTTPS proxy, forwarding rule, and empty fallback backend remain in that platform project. This keeps Cloud Run and its backend security boundary tenant-local while avoiding one fixed-cost frontend per tenant or domain. Marshal serializes URL-map reconciliation with a distributed lease so concurrent tenant updates cannot discard routes.
 
-The platform project and tenant projects must belong to the same organization. Global cross-project backend references do not require Shared VPC, but they do require the controller to have `compute.backendServices.use` on tenant backends. At larger fleet sizes, monitor the URL map's 1 MiB configuration limit and Certificate Manager map-entry quotas and shard tenants across additional environment-scoped frontends before reaching either limit. The shared frontend reduces fixed cost but creates a control-plane blast radius: isolate its project, restrict its administrators, and use the `compute.restrictCrossProjectServices` organization policy to allow only approved platform projects to reference tenant services.
+The platform project and tenant projects must belong to the same organization. Global cross-project backend references do not require Shared VPC, but they do require the controller to have `compute.backendServices.use` on tenant backends. At larger fleet sizes, monitor the URL map's 1 MiB configuration limit and Certificate Manager map-entry quotas and shard tenants across additional environment-scoped frontends before reaching either limit. The shared frontend reduces fixed cost but creates a control-plane blast radius: isolate its project, restrict its administrators, and set the `compute.restrictCrossProjectServices` organization policy on the platform project — it is evaluated against the project holding the URL map, so it bounds which backends that frontend may reference to the tenant folder alone.
 
 Cloud Run has no equivalent of Fly's request-triggered VM suspend/resume for a persistent server. A `server` with `min_instances: 0` therefore remains eligible to run as its single GCE instance; it preserves availability and disk semantics but does not guarantee scale-to-zero billing.
 
@@ -84,26 +84,38 @@ The simulator deliberately reproduces provider details Marshal depends on: permi
 Credentials resolve in three ways, in this order: workload identity federation, an explicit
 `GOOGLE_APPLICATION_CREDENTIALS` file, then the GCE metadata server.
 
-Prefer federation for any hosted deployment, and required on one with no metadata server (Vercel):
-set `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_AUDIENCE` to the provider resource and
+Prefer federation for any hosted deployment; it is required on a host with no metadata server
+(Vercel). Set `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_AUDIENCE` to the provider resource and
 `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT` to the controller service account it
-impersonates. Marshal exchanges the host's per-invocation OIDC assertion (`VERCEL_OIDC_TOKEN`,
-or whatever `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_TOKEN_ENV` names) for a federated token and
-impersonates the service account with it, so no long-lived key exists anywhere. This matters
-more here than it usually does: the controller identity can create, bill, and delete every
-tenant project, so a static key for it would be the most valuable secret the system holds.
+impersonates — setting only one of the two is a startup error rather than a fallback. Marshal
+exchanges the host's OIDC assertion for a federated token and impersonates the service account
+with it, so no long-lived key exists anywhere. This matters more here than it usually does: the
+controller identity can create, bill, and delete every tenant project, so a static key for it
+would be the most valuable secret the system holds.
+
+The assertion is read from the incoming request's `x-vercel-oidc-token` header, falling back to
+`VERCEL_OIDC_TOKEN` (or whatever `HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_TOKEN_ENV` names) for
+builds and local development. Those are genuinely different places, not redundancy: Vercel
+populates the environment variable during builds and in `vercel dev`, but a running Function
+receives the assertion as a per-invocation header and has no such variable, so a deployment
+that only read the environment would authenticate locally and hold no credential in production.
+OIDC federation must also be enabled on the Vercel project itself, or no assertion is issued at
+all.
 
 Use `GOOGLE_APPLICATION_CREDENTIALS` only for local administration, and never copy a key into
 this repository or a tenant project.
 
-[`scripts/bootstrap-gcp.sh`](./scripts/bootstrap-gcp.sh) provisions everything below —
-tenant folder, platform project, controller service account, every role binding, the org
-policies Marshal depends on, and the federation pool — and is idempotent.
+[`scripts/bootstrap-gcp.sh`](./scripts/bootstrap-gcp.sh) provisions the IAM and org-policy
+prerequisites below — tenant folder, platform project, controller service account, every role
+binding, the org policies Marshal depends on, and the federation pool — and is idempotent. It
+does not raise the organization's project-creation quota or touch the Logging default sink;
+it prints both as remaining manual steps.
 
 The Marshal controller needs:
 
 - `roles/resourcemanager.projectCreator` and `roles/resourcemanager.projectDeleter` on the configured tenant-project parent.
-- `roles/billing.user` on `HEXCLAVE_MARSHAL_GCP_BILLING_ACCOUNT`.
+- `roles/billing.user` on `HEXCLAVE_MARSHAL_GCP_BILLING_ACCOUNT`, **and** `roles/billing.projectManager` on the tenant-project parent. Both are needed: attaching billing to a new tenant project requires a permission on the billing account and another on the project itself, so `billing.user` alone fails the first deploy with a 403.
+- `roles/browser` (or another role granting `resourcemanager.projects.get`) on the tenant-project parent, for the project lookups reconciliation performs.
 - inherited access on the tenant-project folder equivalent to `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/compute.admin`, `roles/run.admin`, `roles/artifactregistry.admin`, `roles/iam.serviceAccountUser`, and `roles/logging.viewer`.
 - `roles/compute.loadBalancerServiceUser` (or another role containing `compute.backendServices.use`) on tenant projects whose backends the platform URL map references.
 - `roles/compute.loadBalancerAdmin` and `roles/certificatemanager.owner` on the platform project. Certificate Manager's predefined editor role omits resource deletion, so it cannot clean up certificates, map entries, or maps. Enable `compute.googleapis.com` and `certificatemanager.googleapis.com` there before starting Marshal.

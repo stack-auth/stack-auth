@@ -135,6 +135,12 @@ export class GcpClient {
       // mutation was already dispatched would surface as a definite failure when the provider
       // may well have applied it.
       let text: string;
+      // Credentials are acquired BEFORE the mutation fence below, and bounded by the read
+      // timeout rather than the mutation one. Federation makes this two extra round trips
+      // (STS, then impersonation), and a failure in either means nothing was ever dispatched —
+      // reporting that as outcome-unknown would hold a reconciliation lease through the drain
+      // grace for what is simply a credential error.
+      const token = this.mock?.token ?? await googleAccessToken(AbortSignal.timeout(PROVIDER_READ_TIMEOUT_MS));
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(new Error(`Google Cloud ${method} request timed out`)), method === "GET" ? PROVIDER_READ_TIMEOUT_MS : PROVIDER_MUTATION_TIMEOUT_MS);
       try {
@@ -142,7 +148,7 @@ export class GcpClient {
           method,
           signal: controller.signal,
           headers: {
-            authorization: `Bearer ${this.mock?.token ?? await googleAccessToken(controller.signal)}`,
+            authorization: `Bearer ${token}`,
             accept: "application/json",
             ...(options?.body === undefined ? {} : { "content-type": "application/json" }),
           },

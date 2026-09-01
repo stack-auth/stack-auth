@@ -13,6 +13,7 @@ import { attachDomain, detachDomain, normalizeHostnameOrThrow, readDomain } from
 import { MarshalError } from "./errors.js";
 import { MutationOutcomeUnknownError } from "./mutation-safety.js";
 import { ReconciliationLeaseLostError } from "./reconciliation-lock.js";
+import { recordHostIdentityAssertion } from "./gcp/auth.js";
 import { GcpApiError } from "./gcp/client.js";
 import { reapProjectPool, stepProjectPool } from "./project-pool.js";
 import { tenantContext } from "./gcp/context.js";
@@ -126,6 +127,13 @@ export function createMarshalApp() {
 
   const app = new Elysia({ adapter: node() })
     .onRequest(({ request }) => {
+      // Before any authentication, and on EVERY route including /health: this is the platform's
+      // OIDC assertion, which is how Marshal authenticates to Google when it holds no key (see
+      // recordHostIdentityAssertion). A Vercel Function receives it as a request header and has
+      // no environment variable carrying it, so a deployment that never reads one off a request
+      // has no Google credential at all. It is the caller's proof of the PLATFORM's identity,
+      // not of the caller's, so it grants nothing here and is safe to read this early.
+      recordHostIdentityAssertion(request);
       const url = new URL(request.url);
       // /health is the only unauthenticated surface.
       if (url.pathname === "/health") return;

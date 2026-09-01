@@ -6,9 +6,13 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const METADATA_TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
 const STS_TOKEN_URL = "https://sts.googleapis.com/v1/token";
 const IAM_CREDENTIALS_URL = "https://iamcredentials.googleapis.com/v1";
-// The platform-injected OIDC assertion. Vercel writes this per invocation; another host that
-// mints one under a different name is configured through
-// HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_TOKEN_ENV.
+// Where the platform-injected OIDC assertion comes from. On Vercel these are two DIFFERENT
+// places depending on context, which is the whole reason for the request hook below: the env
+// var is populated during builds and in local development, but a running Function receives the
+// assertion as a per-invocation REQUEST HEADER and has no such variable
+// (https://vercel.com/docs/oidc/reference). Reading only the env var authenticates fine
+// locally and then fails every call in production.
+const OIDC_TOKEN_HEADER = "x-vercel-oidc-token";
 const DEFAULT_OIDC_TOKEN_ENV_VAR = "VERCEL_OIDC_TOKEN";
 const TOKEN_REFRESH_SKEW_MILLIS = 5 * 60 * 1000;
 
@@ -95,6 +99,26 @@ async function metadataToken(signal?: AbortSignal): Promise<AccessToken> {
   return { value: body.access_token, expiresAtMillis: Date.now() + body.expires_in * 1000 };
 }
 
+/**
+ * Records the OIDC assertion carried by an incoming request.
+ *
+ * Called once per request from the HTTP layer, because a Vercel Function's assertion lives in
+ * a header rather than the environment. The most recent one is kept rather than a per-request
+ * store: every request to a given deployment carries an assertion for the SAME identity, so
+ * concurrent requests cannot hand each other a credential they were not already entitled to,
+ * and the newest is by construction the freshest. An assertion-less request (local dev, the
+ * builder webhook on a host that mints none) deliberately does not clear what is held.
+ */
+export function recordHostIdentityAssertion(request: Request): void {
+  const assertion = (request.headers.get(OIDC_TOKEN_HEADER) || "").trim();
+  if (assertion !== "") requestAssertion = assertion;
+}
+
+function hostIdentityAssertion(tokenEnvVar: string): string {
+  // The header wins: where both exist, the request-borne one is the current invocation's.
+  return requestAssertion ?? (process.env[tokenEnvVar] || "").trim();
+}
+
 function workloadIdentityConfig(): WorkloadIdentityConfig | null {
   const audience = (process.env.HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_AUDIENCE || "").trim();
   const serviceAccountEmail = (process.env.HEXCLAVE_MARSHAL_GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT || "").trim();
@@ -115,9 +139,9 @@ async function workloadIdentityToken(config: WorkloadIdentityConfig, signal?: Ab
   // Deliberately read at every refresh rather than cached with the credential: the host
   // re-injects this assertion per invocation and the previous one expires within the hour, so
   // a value captured at import time would start failing partway through the process's life.
-  const subjectToken = (process.env[config.tokenEnvVar] || "").trim();
+  const subjectToken = hostIdentityAssertion(config.tokenEnvVar);
   if (subjectToken === "") {
-    throw new Error(`workload identity federation is configured but ${config.tokenEnvVar} is empty; the host did not inject an OIDC token`);
+    throw new Error(`workload identity federation is configured but no OIDC assertion is available: neither the ${OIDC_TOKEN_HEADER} request header nor ${config.tokenEnvVar} carried one`);
   }
 
   const exchange = await fetch(STS_TOKEN_URL, {
@@ -133,10 +157,13 @@ async function workloadIdentityToken(config: WorkloadIdentityConfig, signal?: Ab
       subject_token: subjectToken,
     }),
   });
-  const exchanged: unknown = await exchange.json();
+  // Status checked BEFORE the body is parsed: a proxy's HTML error page would otherwise throw
+  // a SyntaxError carrying a snippet of that page instead of this message.
+  if (!exchange.ok) throw new Error(`Google STS token exchange failed with HTTP ${exchange.status}`);
+  const exchanged: unknown = await exchange.json().catch(() => null);
   // Status only, never the body: an STS error can echo the assertion back.
-  if (!exchange.ok || !isRecord(exchanged) || typeof exchanged.access_token !== "string") {
-    throw new Error(`Google STS token exchange failed with HTTP ${exchange.status}`);
+  if (!isRecord(exchanged) || typeof exchanged.access_token !== "string") {
+    throw new Error("Google STS token exchange returned no access token");
   }
 
   const impersonation = await fetch(
@@ -148,9 +175,10 @@ async function workloadIdentityToken(config: WorkloadIdentityConfig, signal?: Ab
       body: JSON.stringify({ scope: [CLOUD_PLATFORM_SCOPE] }),
     },
   );
-  const impersonated: unknown = await impersonation.json();
-  if (!impersonation.ok || !isRecord(impersonated) || typeof impersonated.accessToken !== "string" || typeof impersonated.expireTime !== "string") {
-    throw new Error(`Google service account impersonation failed with HTTP ${impersonation.status}`);
+  if (!impersonation.ok) throw new Error(`Google service account impersonation failed with HTTP ${impersonation.status}`);
+  const impersonated: unknown = await impersonation.json().catch(() => null);
+  if (!isRecord(impersonated) || typeof impersonated.accessToken !== "string" || typeof impersonated.expireTime !== "string") {
+    throw new Error("Google service account impersonation returned no access token");
   }
   const expiresAtMillis = Date.parse(impersonated.expireTime);
   // An unparseable expiry must not be treated as far future: that would cache a token past its
@@ -160,8 +188,13 @@ async function workloadIdentityToken(config: WorkloadIdentityConfig, signal?: Ab
 }
 
 let cachedToken: AccessToken | null = null;
+// Which resolution mode minted `cachedToken`. Without this a token minted under one mode is
+// served for its whole life after the configuration changes, which also silently skips the
+// half-configured error above for as long as the cache holds.
+let cachedTokenMode: "federation" | "credential-file" | "metadata" | null = null;
 let cachedCredential: ServiceAccountCredential | null = null;
 let cachedCredentialPath: string | null = null;
+let requestAssertion: string | null = null;
 
 async function applicationCredential(signal?: AbortSignal): Promise<ServiceAccountCredential | null> {
   const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -180,19 +213,27 @@ async function applicationCredential(signal?: AbortSignal): Promise<ServiceAccou
 // leads because it is the only one of the three a hosted platform can offer without a stored
 // secret, and a host that has it configured never wants either fallback.
 export async function googleAccessToken(signal?: AbortSignal): Promise<string> {
-  if (cachedToken !== null && cachedToken.expiresAtMillis - TOKEN_REFRESH_SKEW_MILLIS > Date.now()) return cachedToken.value;
   const federation = workloadIdentityConfig();
-  if (federation !== null) {
-    cachedToken = await workloadIdentityToken(federation, signal);
+  const credential = federation === null ? await applicationCredential(signal) : null;
+  const mode = federation !== null ? "federation" : credential !== null ? "credential-file" : "metadata";
+  // The mode is resolved BEFORE the cache is consulted so that a configuration change
+  // invalidates the token it minted, and so a half-configured federation throws immediately
+  // rather than only once the previous token expires.
+  if (cachedToken !== null && cachedTokenMode === mode && cachedToken.expiresAtMillis - TOKEN_REFRESH_SKEW_MILLIS > Date.now()) {
     return cachedToken.value;
   }
-  const credential = await applicationCredential(signal);
-  cachedToken = credential === null ? await metadataToken(signal) : await serviceAccountToken(credential, signal);
-  return cachedToken.value;
+  const token = federation !== null
+    ? await workloadIdentityToken(federation, signal)
+    : credential !== null ? await serviceAccountToken(credential, signal) : await metadataToken(signal);
+  cachedToken = token;
+  cachedTokenMode = mode;
+  return token.value;
 }
 
 export function resetGoogleAuthCacheForTests(): void {
   cachedToken = null;
+  cachedTokenMode = null;
+  requestAssertion = null;
   cachedCredential = null;
   cachedCredentialPath = null;
 }

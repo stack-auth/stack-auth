@@ -28,13 +28,24 @@ SA_EMAIL="${SA_NAME}@${PLATFORM_PROJECT}.iam.gserviceaccount.com"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 say "1/8  Tenant folder"
-FOLDER_ID="$(gcloud resource-manager folders list --organization="$ORG_ID" \
-  --filter="displayName=$TENANT_FOLDER_NAME" --format='value(name)' | sed 's|folders/||' | head -n1)"
+# The filter value is quoted because gcloud's `=` matches on word boundaries and treats `-` as
+# a separator, so an unquoted name would also match a sibling folder named "<name>-old".
+# --limit=1 rather than a `| head` pipeline: under `set -o pipefail`, head exiting early kills
+# the producer with SIGPIPE and takes the whole script down.
+folder_id() {
+  gcloud resource-manager folders list --organization="$ORG_ID" \
+    --filter="displayName=\"$TENANT_FOLDER_NAME\"" --limit=1 --format='value(name.basename())'
+}
+FOLDER_ID="$(folder_id)"
 if [[ -z "$FOLDER_ID" ]]; then
   gcloud resource-manager folders create --display-name="$TENANT_FOLDER_NAME" --organization="$ORG_ID"
-  FOLDER_ID="$(gcloud resource-manager folders list --organization="$ORG_ID" \
-    --filter="displayName=$TENANT_FOLDER_NAME" --format='value(name)' | sed 's|folders/||' | head -n1)"
+  FOLDER_ID="$(folder_id)"
 fi
+# Folder listing is search-backed and eventually consistent, so a freshly created folder can
+# legitimately not be listed yet. `set -u` does not catch a set-but-EMPTY variable, and an empty
+# one here would silently write policies named "folders//policies/..." and hand back
+# PROJECT_PARENT=folders/.
+[[ -n "$FOLDER_ID" ]] || { echo "tenant folder is not visible yet; re-run in a minute" >&2; exit 1; }
 echo "tenant folder: folders/${FOLDER_ID}"
 
 say "2/8  Platform project (deliberately OUTSIDE the tenant folder)"
@@ -54,6 +65,7 @@ gcloud services enable \
   serviceusage.googleapis.com \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
+  orgpolicy.googleapis.com \
   sts.googleapis.com \
   run.googleapis.com \
   artifactregistry.googleapis.com \
@@ -113,7 +125,6 @@ EOF
 cat > "${POLICY_DIR}/serial-port.yaml" <<EOF
 name: folders/${FOLDER_ID}/policies/compute.disableSerialPortAccess
 spec:
-  inheritFromParent: false
   rules:
   - enforce: false
 EOF
@@ -123,22 +134,36 @@ for FILE in "${POLICY_DIR}"/*.yaml; do
 done
 
 # Cross-project backend references: the platform URL map points at tenant backend services.
-# Verify the accepted value format for your org before relying on this one.
+# The constraint is evaluated against the project that holds the URL MAP, which is the platform
+# project (see src/gcp/domains.ts) and NOT the tenant folder — a policy on the folder would
+# constrain nothing. Values must be `under:<resource>` or a fully-qualified backend service, so
+# the tenant folder is named as a subtree.
 cat > "${POLICY_DIR}/cross-project.yaml" <<EOF
-name: folders/${FOLDER_ID}/policies/compute.restrictCrossProjectServices
+name: projects/${PLATFORM_PROJECT}/policies/compute.restrictCrossProjectServices
 spec:
   inheritFromParent: false
   rules:
   - values:
       allowedValues:
-      - projects/${PLATFORM_PROJECT}
+      - under:folders/${FOLDER_ID}
 EOF
-gcloud org-policies set-policy "${POLICY_DIR}/cross-project.yaml" >/dev/null \
-  && echo "  applied cross-project.yaml" \
-  || echo "  SKIPPED cross-project.yaml (constraint absent or value format differs — check manually)"
+gcloud org-policies set-policy "${POLICY_DIR}/cross-project.yaml" >/dev/null
+echo "  applied cross-project.yaml"
 
 say "8/8  Workload Identity Federation for Vercel"
+# Two caveats the operator cannot see from here:
+#   * VERCEL_ISSUER above assumes Vercel's TEAM issuer mode. In global mode the issuer is
+#     https://oidc.vercel.com with no team segment, and a mismatch surfaces only at runtime as
+#     an opaque STS 400 (Marshal reports the status and never the body, by design). That issuer
+#     is shared with every other Vercel customer, so in global mode also pass
+#     --attribute-condition to the provider below, pinning assertion.owner to the team slug.
+#   * The subject binds the team SLUG and project NAME, so renaming either in Vercel silently
+#     breaks authentication until this binding is updated. Only `production` is bound; a preview
+#     deployment of Marshal cannot authenticate to Google.
 if [[ "$USE_WIF" == "1" ]]; then
+  # `describe` also succeeds on a SOFT-DELETED pool or provider (30-day retention), in which
+  # case these guards skip the create and every later call fails against a dead resource.
+  # Recovering from that needs an explicit undelete, not a re-run.
   gcloud iam workload-identity-pools describe vercel --location=global --project="$PLATFORM_PROJECT" >/dev/null 2>&1 \
     || gcloud iam workload-identity-pools create vercel --location=global --project="$PLATFORM_PROJECT" \
          --display-name="Vercel OIDC"
@@ -173,6 +198,8 @@ ${WIF_ENV}
 Controller identity: ${SA_EMAIL}
 
 Still manual:
+  0. Enable OIDC Federation on the Vercel project (Settings > Security > OIDC Federation).
+     Without it Vercel issues no assertion and Marshal has no Google credential at all.
   1. Raise the org's PROJECT CREATION quota. The pool creates continuously and deleted
      projects hold quota for 30 days: IAM & Admin > Quotas, "Projects per organization".
   2. Confirm the org/folder Logging default sink still writes Cloud Run + Compute entries to
