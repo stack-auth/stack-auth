@@ -293,7 +293,7 @@ function ResultsCard(props: {
             <DesignTableHead>Normalized</DesignTableHead>
             <DesignTableHead>Base</DesignTableHead>
             {signUpRiskSignalIds.map((signal) => (
-              <DesignTableHead key={signal}>{signal.replace("_", " ")}</DesignTableHead>
+              <DesignTableHead key={signal}>{signal.replaceAll("_", " ")}</DesignTableHead>
             ))}
           </DesignTableRow>
         </DesignTableHeader>
