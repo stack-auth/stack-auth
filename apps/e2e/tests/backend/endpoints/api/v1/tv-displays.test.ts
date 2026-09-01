@@ -92,6 +92,9 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
     expect(refreshSetCookie).toContain("HttpOnly");
     expect(refreshSetCookie).toContain("SameSite=Strict");
   }
+  for (const refreshSetCookie of refreshSetCookies.filter((cookie) => !cookie.includes("Max-Age=0"))) {
+    expect(refreshSetCookie).toContain("Max-Age=2592000");
+  }
 
   const snapshotResponse = await publicJsonRequest(
     "/tv-displays/snapshot?projectId=not-trusted&profileId=engineering-office",
@@ -121,6 +124,14 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
   });
   expect(crossTenantUpdate.status).toBe(404);
 
+  const crossTenantDelete = await adminJsonRequest({
+    path: `/internal/tv-mode/displays/${encodeURIComponent(pairing.display.id)}`,
+    projectId: secondProject.projectId,
+    adminAccessToken: secondProject.adminAccessToken,
+    method: "DELETE",
+  });
+  expect(crossTenantDelete.status).toBe(404);
+
   const secondProjectDisplays = await adminJsonRequest({
     path: "/internal/tv-mode/displays",
     projectId: secondProject.projectId,
@@ -148,7 +159,7 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
   expect(compromisedFamilySnapshot.status).toBe(401);
 });
 
-it("lists only active displays after an administrator unpairs one", async ({ expect }) => {
+it("hard-deletes a display after an administrator unpairs it and rejects its remote credentials", async ({ expect }) => {
   const project = await Project.createAndSwitch();
   const challengeResponse = await publicJsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
   expect(challengeResponse.status).toBe(200);
@@ -175,6 +186,7 @@ it("lists only active displays after an administrator unpairs one", async ({ exp
   expect(statusResponse.status).toBe(200);
   const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
   if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
+  const refreshCookie = updateCookiesFromResponse("", statusResponse);
 
   const activeDisplays = await adminJsonRequest({
     path: "/internal/tv-mode/displays",
@@ -186,13 +198,13 @@ it("lists only active displays after an administrator unpairs one", async ({ exp
     displays: [expect.objectContaining({ id: pairing.display.id, state: "never-connected" })],
   });
 
-  const revokeResponse = await adminJsonRequest({
+  const unpairResponse = await adminJsonRequest({
     path: `/internal/tv-mode/displays/${encodeURIComponent(pairing.display.id)}`,
     projectId: project.projectId,
     adminAccessToken: project.adminAccessToken,
     method: "DELETE",
   });
-  expect(revokeResponse.status).toBe(200);
+  expect(unpairResponse.status).toBe(200);
 
   const remainingDisplays = await adminJsonRequest({
     path: "/internal/tv-mode/displays",
@@ -201,4 +213,71 @@ it("lists only active displays after an administrator unpairs one", async ({ exp
   });
   expect(remainingDisplays.status).toBe(200);
   expect(remainingDisplays.body).toEqual({ displays: [] });
+
+  const staleSnapshot = await publicJsonRequest("/tv-displays/snapshot", {
+    authorization: pairing.accessToken,
+  });
+  expect(staleSnapshot.status).toBe(401);
+  const staleRefresh = await publicJsonRequest("/tv-displays/auth/refresh", {
+    method: "POST",
+    cookie: refreshCookie,
+  });
+  expect(staleRefresh.status).toBe(401);
+
+  const repeatedUnpair = await publicJsonRequest("/tv-displays/unpair", {
+    method: "POST",
+    authorization: pairing.accessToken,
+    cookie: refreshCookie,
+  });
+  expect(repeatedUnpair.status).toBe(401);
+});
+
+it("clears every refresh-cookie path when a display unpairs itself", async ({ expect }) => {
+  const project = await Project.createAndSwitch();
+  const challengeResponse = await publicJsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
+  expect(challengeResponse.status).toBe(200);
+  const challenge = await TvDisplayPairingChallengeSchema.validate(challengeResponse.body, { strict: true });
+  const approvalResponse = await adminJsonRequest({
+    path: "/internal/tv-mode/displays",
+    projectId: project.projectId,
+    adminAccessToken: project.adminAccessToken,
+    method: "POST",
+    body: {
+      pairingCode: challenge.pairingCode,
+      profileId: "company-pulse",
+      displayName: "Self Unpair Display",
+      acknowledgeExactFinancials: false,
+    },
+  });
+  expect(approvalResponse.status).toBe(200);
+  const statusResponse = await publicJsonRequest(
+    `/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`,
+    { method: "POST", body: { deviceSecret: challenge.deviceSecret } },
+  );
+  const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
+  if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
+  const refreshCookie = updateCookiesFromResponse("", statusResponse);
+
+  const unpairResponse = await publicJsonRequest("/tv-displays/unpair", {
+    method: "POST",
+    authorization: pairing.accessToken,
+    cookie: refreshCookie,
+  });
+  expect(unpairResponse.status).toBe(200);
+  expect(unpairResponse.body).toEqual({ success: true });
+  const clearedCookies = unpairResponse.headers.getSetCookie()
+    .filter((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
+  expect(clearedCookies).toHaveLength(3);
+  expect(clearedCookies).toEqual(expect.arrayContaining([
+    expect.stringContaining("Path=/api/latest/tv-displays"),
+    expect.stringContaining("Path=/api/v1/tv-displays"),
+    expect.stringContaining("Path=/api;"),
+  ]));
+  for (const clearedCookie of clearedCookies) expect(clearedCookie).toContain("Max-Age=0");
+
+  const staleRefresh = await publicJsonRequest("/tv-displays/auth/refresh", {
+    method: "POST",
+    cookie: refreshCookie,
+  });
+  expect(staleRefresh.status).toBe(401);
 });

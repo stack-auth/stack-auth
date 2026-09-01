@@ -13,7 +13,7 @@ import { toast } from "@/components/ui";
 import {
   approveTvDisplayOrThrow,
   fetchTvDisplaysOrThrow,
-  revokeTvDisplayOrThrow,
+  unpairTvDisplayOrThrow,
   TvProfileRequestError,
   updateTvDisplayOrThrow,
 } from "@/lib/hexclave-app-internals";
@@ -362,10 +362,10 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
       setSaveError(getManagementFailureNotice("save"));
     }
   };
-  const revoke = async () => {
+  const unpair = async () => {
     setUnpairNotice(null);
     try {
-      await revokeTvDisplayOrThrow(adminApp, display.id);
+      await unpairTvDisplayOrThrow(adminApp, display.id);
       onRemoved(display.id);
       setUnpairOpen(false);
       toast({
@@ -391,7 +391,7 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-semibold text-foreground">{display.displayName}</p>
-              <DesignBadge label={stateLabel(display.state)} color={display.state === "online" ? "green" : display.state === "revoked" ? "red" : "blue"} size="sm" />
+              <DesignBadge label={stateLabel(display.state)} color={display.state === "online" ? "green" : "blue"} size="sm" />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{display.lastSeenAt == null ? "Not connected yet" : `Last seen ${new Date(display.lastSeenAt).toLocaleString()}`}</p>
             <p className="mt-1 truncate text-xs text-muted-foreground">Profile: {profile?.configuration.displayName ?? display.profileDisplayName}</p>
@@ -446,7 +446,7 @@ function DisplayRow({ adminApp, display, profiles, onChanged, onRemoved }: {
         footer={(
           <>
             <DesignButton type="button" variant="outline" onClick={() => setUnpairOpen(false)}>Keep Display</DesignButton>
-            <DesignButton type="button" variant="destructive" onClick={revoke}>Unpair Display</DesignButton>
+            <DesignButton type="button" variant="destructive" onClick={unpair}>Unpair Display</DesignButton>
           </>
         )}
       >

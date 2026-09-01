@@ -1,6 +1,6 @@
 import {
+  deleteTvDisplay,
   requireTvDisplayAdminUserId,
-  revokeTvDisplay,
   TvDisplayOperationError,
   updateTvDisplay,
 } from "@/lib/tv-mode/displays";
@@ -65,8 +65,8 @@ export const DELETE = createSmartRouteHandler({
   response: successResponse,
   handler: async ({ auth, params }) => {
     const adminUserId = requireTvDisplayAdminUserId(auth.adminUserId);
-    const revoked = await revokeTvDisplay(auth.tenancy, params.displayId, "ADMIN_REVOKED", new Date(), adminUserId);
-    if (!revoked) throw new StatusError(404, "tv_display_not_found");
+    const deleted = await deleteTvDisplay(auth.tenancy, params.displayId, adminUserId);
+    if (!deleted) throw new StatusError(404, "tv_display_not_found");
     return { statusCode: 200, bodyType: "json", body: { success: true } };
   },
 });

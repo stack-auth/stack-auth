@@ -39,6 +39,7 @@ import { TvPresentation } from "@/components/tv-mode/tv-presentation";
 import { useTvPresentationLauncher } from "@/components/tv-mode/presentation-window";
 import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
 import { createTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
+import { devFeaturesEnabledForProject } from "@/lib/utils";
 import {
   createTvProfileOrThrow,
   deleteTvProfileOrThrow,
@@ -63,6 +64,35 @@ import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { TvProfileDeleteDialog } from "./tv-profile-delete-dialog";
 
+type TimingCategory = "celebration" | "incident" | "critical-incident";
+
+const TIMING_CATEGORY_OPTIONS = [
+  { value: "celebration", label: "Celebrations" },
+  { value: "incident", label: "Incidents" },
+  { value: "critical-incident", label: "Critical Incidents" },
+];
+
+const TAKEOVER_DURATION_OPTIONS = [
+  { value: "30", label: "30 seconds" },
+  { value: "60", label: "60 seconds" },
+  { value: "90", label: "90 seconds" },
+  { value: "120", label: "2 minutes" },
+];
+
+const HIGHLIGHT_DURATION_OPTIONS = [
+  { value: "3600", label: "1 hour" },
+  { value: "21600", label: "6 hours" },
+  { value: "43200", label: "12 hours" },
+  { value: "86400", label: "24 hours" },
+];
+
+const ANIMATION_DURATION_OPTIONS = [
+  { value: "600", label: "10 minutes" },
+  { value: "1800", label: "30 minutes" },
+  { value: "3600", label: "1 hour" },
+  { value: "7200", label: "2 hours" },
+];
+
 function getProfileIdFromPath(pathname: string): string {
   const segments = pathname.split("/");
   const profilesIndex = segments.indexOf("profiles");
@@ -75,6 +105,19 @@ function getProfileIdFromPath(pathname: string): string {
 
 function cloneProfile(profile: TvProfileFixture): TvProfileFixture {
   return structuredClone(profile);
+}
+
+function parseTimingCategory(value: string): TimingCategory {
+  switch (value) {
+    case "celebration":
+    case "incident":
+    case "critical-incident": {
+      return value;
+    }
+    default: {
+      throw new Error(`Unexpected TV timing category "${value}"`);
+    }
+  }
 }
 
 function parseDurationOption(value: string): number {
@@ -237,6 +280,7 @@ export default function PageClient() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [timingCategory, setTimingCategory] = useState<TimingCategory>("celebration");
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [savedNoticeVisible, setSavedNoticeVisible] = useState(false);
   const [createSavePending, setCreateSavePending] = useState(false);
@@ -244,6 +288,7 @@ export default function PageClient() {
   draftRef.current = draft;
   const { setNeedConfirm } = useRouterConfirm();
   const { launchPresentation, popupBlocked } = useTvPresentationLauncher(projectId);
+  const developerPreviewsEnabled = devFeaturesEnabledForProject(projectId);
 
   useEffect(() => {
     let active = true;
@@ -386,7 +431,7 @@ export default function PageClient() {
         {saveError != null ? <DesignAlert variant="error" title="Profile Was Not Saved" description={saveError} /> : null}
         {duplicateError != null ? <DesignAlert variant="error" title="Profile Was Not Duplicated" description={duplicateError} /> : null}
 
-        <div inert={createSavePending} aria-busy={createSavePending} className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+        <div inert={createSavePending} aria-busy={createSavePending}>
           <div className="space-y-4">
             <DesignCard title="Profile" subtitle="Identity and profile details" icon={MonitorPlayIcon} gradient="cyan" glassmorphic>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -504,11 +549,10 @@ export default function PageClient() {
               </div>
             </DesignCard>
 
-            <DesignCard title="Timing" subtitle="Default pacing for the room" icon={ClockIcon} gradient="purple" glassmorphic>
-              <div className="grid gap-x-6 gap-y-5 2xl:grid-cols-2">
+            <DesignCard title="Timing" subtitle="Control rotation and presentation duration" icon={ClockIcon} gradient="purple" glassmorphic>
+              <div className="grid gap-4 lg:grid-cols-2">
                 <div className="min-w-0">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation</p>
-                  <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-medium text-foreground">Rotation Speed</label>
+                  <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation Speed</label>
                   <DesignSelectorDropdown
                     triggerId="tv-default-duration"
                     value={draft.defaultDurationSeconds.toString()}
@@ -522,11 +566,24 @@ export default function PageClient() {
                       { value: "30", label: "30 seconds" },
                     ]}
                   />
-                  <Typography variant="secondary" className="mt-3 text-xs">Individual playlist screens may override this value.</Typography>
+                  <Typography variant="secondary" className="mt-2 text-xs">Individual playlist screens may override this value.</Typography>
                 </div>
                 <div className="min-w-0">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Celebrations</p>
-                  <div>
+                  <label htmlFor="tv-presentation-timing" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Presentation Timing</label>
+                  <DesignSelectorDropdown
+                    triggerId="tv-presentation-timing"
+                    value={timingCategory}
+                    onValueChange={(value) => setTimingCategory(parseTimingCategory(value))}
+                    size="lg"
+                    options={TIMING_CATEGORY_OPTIONS}
+                  />
+                  <Typography variant="secondary" className="mt-2 text-xs">Choose which presentation timings to configure.</Typography>
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-foreground/[0.06] pt-1">
+                {timingCategory === "celebration" ? (
+                  <>
                     {settingRow({
                       title: "Celebration Takeover",
                       description: "Full-screen milestone moment.",
@@ -536,12 +593,7 @@ export default function PageClient() {
                           ...draft.interruptionTiming,
                           celebration: { ...draft.interruptionTiming.celebration, takeoverSeconds: parseTakeoverSeconds(value) },
                         },
-                      })} options={[
-                        { value: "30", label: "30 seconds" },
-                        { value: "60", label: "60 seconds" },
-                        { value: "90", label: "90 seconds" },
-                        { value: "120", label: "2 minutes" },
-                      ]} />,
+                      })} options={TAKEOVER_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Celebration Effect",
@@ -559,12 +611,7 @@ export default function PageClient() {
                             ),
                           },
                         },
-                      })} options={[
-                        { value: "600", label: "10 minutes" },
-                        { value: "1800", label: "30 minutes" },
-                        { value: "3600", label: "1 hour" },
-                        { value: "7200", label: "2 hours" },
-                      ]} />,
+                      })} options={ANIMATION_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Celebration Highlight",
@@ -582,18 +629,11 @@ export default function PageClient() {
                             ),
                           },
                         },
-                      })} options={[
-                        { value: "3600", label: "1 hour" },
-                        { value: "21600", label: "6 hours" },
-                        { value: "43200", label: "12 hours" },
-                        { value: "86400", label: "24 hours" },
-                      ]} />,
+                      })} options={HIGHLIGHT_DURATION_OPTIONS} />,
                     })}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Incidents</p>
-                  <div>
+                  </>
+                ) : timingCategory === "incident" ? (
+                  <>
                     {settingRow({
                       title: "Incident Takeover",
                       description: "Temporary attention period before rotation resumes.",
@@ -603,12 +643,7 @@ export default function PageClient() {
                           ...draft.interruptionTiming,
                           incident: { ...draft.interruptionTiming.incident, takeoverSeconds: parseTakeoverSeconds(value) },
                         },
-                      })} options={[
-                        { value: "30", label: "30 seconds" },
-                        { value: "60", label: "60 seconds" },
-                        { value: "90", label: "90 seconds" },
-                        { value: "120", label: "2 minutes" },
-                      ]} />,
+                      })} options={TAKEOVER_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Incident Recovery Takeover",
@@ -622,16 +657,11 @@ export default function PageClient() {
                             recoveryTakeoverSeconds: parseTakeoverSeconds(value),
                           },
                         },
-                      })} options={[
-                        { value: "30", label: "30 seconds" },
-                        { value: "60", label: "60 seconds" },
-                        { value: "90", label: "90 seconds" },
-                        { value: "120", label: "2 minutes" },
-                      ]} />,
+                      })} options={TAKEOVER_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Incident Restored Highlight",
-                      description: "How long an ordinary restored incident remains visible.",
+                      description: "How long a restored incident remains visible.",
                       control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
                         ...draft,
                         interruptionTiming: {
@@ -641,18 +671,11 @@ export default function PageClient() {
                             resolvedHighlightSeconds: parseHighlightSeconds(value),
                           },
                         },
-                      })} options={[
-                        { value: "3600", label: "1 hour" },
-                        { value: "21600", label: "6 hours" },
-                        { value: "43200", label: "12 hours" },
-                        { value: "86400", label: "24 hours" },
-                      ]} />,
+                      })} options={HIGHLIGHT_DURATION_OPTIONS} />,
                     })}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Critical Incidents</p>
-                  <div>
+                  </>
+                ) : (
+                  <>
                     {settingRow({
                       title: "Critical Incident Takeover",
                       description: "Urgent attention period before rotation resumes with a Critical Highlight.",
@@ -665,12 +688,7 @@ export default function PageClient() {
                             takeoverSeconds: parseTakeoverSeconds(value),
                           },
                         },
-                      })} options={[
-                        { value: "30", label: "30 seconds" },
-                        { value: "60", label: "60 seconds" },
-                        { value: "90", label: "90 seconds" },
-                        { value: "120", label: "2 minutes" },
-                      ]} />,
+                      })} options={TAKEOVER_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Critical Recovery Takeover",
@@ -684,12 +702,7 @@ export default function PageClient() {
                             recoveryTakeoverSeconds: parseTakeoverSeconds(value),
                           },
                         },
-                      })} options={[
-                        { value: "30", label: "30 seconds" },
-                        { value: "60", label: "60 seconds" },
-                        { value: "90", label: "90 seconds" },
-                        { value: "120", label: "2 minutes" },
-                      ]} />,
+                      })} options={TAKEOVER_DURATION_OPTIONS} />,
                     })}
                     {settingRow({
                       title: "Critical Restored Highlight",
@@ -703,21 +716,13 @@ export default function PageClient() {
                             resolvedHighlightSeconds: parseHighlightSeconds(value),
                           },
                         },
-                      })} options={[
-                        { value: "3600", label: "1 hour" },
-                        { value: "21600", label: "6 hours" },
-                        { value: "43200", label: "12 hours" },
-                        { value: "86400", label: "24 hours" },
-                      ]} />,
+                      })} options={HIGHLIGHT_DURATION_OPTIONS} />,
                     })}
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             </DesignCard>
 
-          </div>
-
-          <div className="space-y-4">
             <DesignCard title="Interruption Policy" subtitle="How important events take over this TV" icon={WarningCircleIcon} gradient="orange" glassmorphic>
               <div>
                 {settingRow({
@@ -777,44 +782,48 @@ export default function PageClient() {
               <DesignAlert variant="success" title="Backend-Enforced Privacy" description="Live TV snapshots expose aggregate metrics only. User identities, email subjects, recipients, support messages, and session replay content are excluded by the backend." />
             </DesignCard>
 
-            <DesignCard title="Event Previews" subtitle="Preview milestone and incident presentations" icon={BroadcastIcon} gradient="cyan" glassmorphic>
-              <div className="grid gap-4 2xl:grid-cols-2">
-                {TV_EVENT_PREVIEW_GROUPS.map((group) => (
-                  <div key={group.title} className="min-w-0">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.title}</p>
-                    <div className="grid gap-2">
-                      {group.previews.map((preview) => (
-                        <button
-                          type="button"
-                          key={preview.fixture}
-                          onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${preview.fixture}`)}
-                          className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
-                        >
-                          <span className="min-w-0">{preview.label}</span>
-                          <ArrowSquareOutIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        </button>
-                      ))}
-                    </div>
+            {developerPreviewsEnabled ? (
+              <>
+                <DesignCard title="Event Previews" subtitle="Preview milestone and incident presentations" icon={BroadcastIcon} gradient="cyan" glassmorphic>
+                  <div className="grid gap-4 2xl:grid-cols-2">
+                    {TV_EVENT_PREVIEW_GROUPS.map((group) => (
+                      <div key={group.title} className="min-w-0">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.title}</p>
+                        <div className="grid gap-2">
+                          {group.previews.map((preview) => (
+                            <button
+                              type="button"
+                              key={preview.fixture}
+                              onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${preview.fixture}`)}
+                              className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
+                            >
+                              <span className="min-w-0">{preview.label}</span>
+                              <ArrowSquareOutIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </DesignCard>
+                </DesignCard>
 
-            <DesignCard title="State Previews" subtitle="Validate honest failure and freshness behavior" icon={WarningCircleIcon} gradient="orange" glassmorphic>
-              <div className="grid grid-cols-2 gap-2">
-                {TV_STATE_PREVIEWS.map((state) => (
-                  <button
-                    type="button"
-                    key={state.fixture}
-                    onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.fixture}`)}
-                    className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground hover:bg-foreground/[0.04]"
-                  >
-                    {state.label}
-                    <ArrowSquareOutIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
-            </DesignCard>
+                <DesignCard title="State Previews" subtitle="Validate honest failure and freshness behavior" icon={WarningCircleIcon} gradient="orange" glassmorphic>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {TV_STATE_PREVIEWS.map((state) => (
+                      <button
+                        type="button"
+                        key={state.fixture}
+                        onClick={() => launchPresentation(urlString`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${state.fixture}`)}
+                        className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
+                      >
+                        {state.label}
+                        <ArrowSquareOutIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                </DesignCard>
+              </>
+            ) : null}
           </div>
         </div>
 

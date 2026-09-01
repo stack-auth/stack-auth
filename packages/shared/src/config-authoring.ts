@@ -165,10 +165,6 @@ type HexclaveServiceBase = {
    * "serverless" with `minInstances` above zero) or it will never run.
    */
   ports: Record<number, HexclavePort>,
-  /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
-  rootDirectory?: string,
-  /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
-  dockerfilePath?: string,
   /** Run locally by `hexclave dev --service-id`. Never sent to the server. */
   devCommand?: string,
   /** Environment variables. Values may be literals, `null` to omit, or references from the context object. */
@@ -176,10 +172,53 @@ type HexclaveServiceBase = {
 };
 
 /**
+ * Where a service's container comes from: either it is BUILT from your source,
+ * or it is an already-built IMAGE.
+ *
+ * A union rather than three independent optional fields, so that naming an
+ * image AND a source directory does not compile. The two describe different
+ * things — where your code lives versus what to run — and a service that gave
+ * both would leave the deploy with two answers to the same question. (Same
+ * reasoning as `public` living on the service rather than the port: make the
+ * invalid state unrepresentable instead of validating it after the fact.)
+ */
+export type HexclaveServiceSource =
+  | {
+    image?: undefined,
+    /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
+    rootDirectory?: string,
+    /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
+    dockerfilePath?: string,
+  }
+  | {
+    /**
+     * An already-built image to run instead of building one: `"postgres:16"`,
+     * `"ghcr.io/org/app:1.2.3"`, or a digest. Nothing is built and nothing is
+     * uploaded for this service, so a deploy of it takes seconds.
+     *
+     * A tag is resolved when the image is PULLED, by the platform rather than
+     * at deploy time. So a tag can name different bytes on machines started at
+     * different moments, and a redeploy of an unchanged tag rolls nothing at
+     * all — name a digest if a deploy must always run the same bytes. An
+     * explicit tag or digest is required either way: a bare `"postgres"` means
+     * `:latest`, which can change under you between deploys.
+     *
+     * Env vars reach the container at RUNTIME only. There is no build, so
+     * nothing can be baked into the image — a framework that inlines values at
+     * build time (`NEXT_PUBLIC_*`) needs a source build instead.
+     *
+     * Only public registries are supported today.
+     */
+    image: string,
+    rootDirectory?: never,
+    dockerfilePath?: never,
+  };
+
+/**
  * A single always-one-instance service, and the only kind that may hold a
  * persistent volume.
  */
-export type HexclaveServerService = HexclaveServiceBase & {
+export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource & {
   type: "server",
   /**
    * Persistent disks keyed by volume id. At most one is supported today.
@@ -208,7 +247,7 @@ export type HexclaveServerService = HexclaveServiceBase & {
  * scale-down, so every start is a cold start. It cannot hold a persistent
  * volume: each instance would get its own separate disk.
  */
-export type HexclaveServerlessService = HexclaveServiceBase & {
+export type HexclaveServerlessService = HexclaveServiceBase & HexclaveServiceSource & {
   type: "serverless",
   /** Lower scaling bound, 0–10. Defaults to 0 (scales to zero). Above 0 needs a paid plan. */
   minInstances?: number,
@@ -229,9 +268,9 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * // hexclave.deploy.ts
  * import type { HexclaveDeploymentConfig } from "@hexclave/js";
  *
- * // Identifies this file as a deployment source. Required here, and unique
+ * // Identifies this file as a deployment group. Required here, and unique
  * // across every deploy file that deploys into the same project.
- * export const id = "backend";
+ * export const deploymentGroupId = "backend";
  *
  * export const deploy: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
  *   services: {
@@ -250,7 +289,7 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * be deployed from several repositories, each shipping the services it owns and
  * each deploying on its own schedule. The same export is accepted in
  * hexclave.config.ts for a project that has only one; those services belong to a
- * deployment source named after that file.
+ * deployment group named after that file.
  */
 export type HexclaveDeploymentConfig = (context: HexclaveDeploymentContext) => {
   services: Record<string, HexclaveService>,

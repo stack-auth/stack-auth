@@ -436,7 +436,20 @@ describe("independent TV display contracts", () => {
       state: "online",
       pairedAt: "2026-08-14T12:00:00.000Z",
       lastSeenAt: "2026-08-14T12:01:00.000Z",
-      revokedAt: null,
+    }, { strict: true })).rejects.toThrow();
+  });
+
+  it("rejects obsolete soft-revocation display state", async () => {
+    await expect(TvDisplayResourceSchema.validate({
+      id: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
+      displayName: "Lobby",
+      profileId: "company-pulse",
+      profileDisplayName: "Company Pulse",
+      profileFinancialVisibility: "redacted",
+      state: "revoked",
+      pairedAt: "2026-08-14T12:00:00.000Z",
+      lastSeenAt: null,
+      exactFinancialsAcknowledged: false,
     }, { strict: true })).rejects.toThrow();
   });
 });

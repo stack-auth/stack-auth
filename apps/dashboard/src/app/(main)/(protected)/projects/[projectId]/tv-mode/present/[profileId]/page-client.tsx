@@ -12,22 +12,17 @@ import { fetchTvProfileOrThrow } from "@/lib/hexclave-app-internals";
 import { profileResourceToEditorDraft } from "@/lib/tv-mode/profile-editor-model";
 import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { useTvLiveSnapshot } from "@/lib/tv-mode/live-snapshot";
+import { devFeaturesEnabledForProject } from "@/lib/utils";
 import {
-  TV_FIXTURE_VARIANTS,
   TV_SCREEN_IDS,
-  type TvFixtureVariant,
   type TvScreenId,
 } from "@/lib/tv-mode/types";
+import { resolveTvFixtureVariant } from "@/lib/tv-mode/fixture-route";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useAdminApp } from "../../../use-admin-app";
 
-const TV_FIXTURE_VARIANT_SET = new Set<string>(TV_FIXTURE_VARIANTS);
 const TV_SCREEN_ID_SET = new Set<string>(TV_SCREEN_IDS);
-
-function isTvFixtureVariant(value: string | null): value is TvFixtureVariant {
-  return value != null && TV_FIXTURE_VARIANT_SET.has(value);
-}
 
 function isTvScreenId(value: string | null): value is TvScreenId {
   return value != null && TV_SCREEN_ID_SET.has(value);
@@ -55,7 +50,7 @@ export default function PageClient() {
   const { projectId, profileId } = getRouteValues(usePathname());
   const fixtureParam = useSearchParams().get("fixture");
   const screenParam = useSearchParams().get("screen");
-  const fixtureVariant = isTvFixtureVariant(fixtureParam) ? fixtureParam : null;
+  const fixtureVariant = resolveTvFixtureVariant(fixtureParam, devFeaturesEnabledForProject(projectId));
   const adminApp = useAdminApp();
   const fixtureLoadKey = fixtureVariant == null ? null : `${profileId}\u0000${fixtureVariant}`;
   const [fixtureLoad, setFixtureLoad] = useState<{

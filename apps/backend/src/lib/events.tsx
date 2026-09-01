@@ -215,7 +215,6 @@ const UserRestrictedEventType = {
 export const TV_DISPLAY_SECURITY_ACTIONS = [
   "pairing-approved",
   "credential-issued",
-  "credential-rotated",
   "refresh-reuse-detected",
   "display-renamed",
   "profile-reassigned",

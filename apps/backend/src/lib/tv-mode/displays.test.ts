@@ -3,19 +3,25 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaSchemaForTenancy, globalPrismaClient, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { flushInFlightPromises } from "@/utils/background-tasks";
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { logEventMock } = vi.hoisted(() => ({ logEventMock: vi.fn() }));
+vi.mock("@/lib/events", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/events")>(),
+  logEvent: logEventMock,
+}));
 import {
   approveTvDisplayPairing,
   consumeTvDisplayPairingRateLimit,
   createTvDisplayPairingChallenge,
   decodeDisplayAccessToken,
+  deleteTvDisplay,
   getAuthorizedTvDisplay,
   getTvDisplayResource,
   listTvDisplays,
   pollTvDisplayPairing,
   refundTvDisplayPairingRateLimit,
   refreshTvDisplayCredential,
-  revokeTvDisplay,
   updateTvDisplay,
 } from "./displays";
 import { createTvProfile, deleteTvProfile, TvProfileAssignedToDisplaysError } from "./profiles";
@@ -44,6 +50,7 @@ describe.sequential("independent TV display persistence", () => {
   }
 
   beforeEach(async () => {
+    logEventMock.mockClear();
     tenancy = await createTenancy();
     otherTenancy = await createTenancy();
   });
@@ -64,19 +71,22 @@ describe.sequential("independent TV display persistence", () => {
     return challenge;
   }
 
-  async function pairDisplay() {
-    const challenge = await createChallenge();
+  async function pairDisplay(options: { tenancy?: Tenancy, now?: Date } = {}) {
+    const targetTenancy = options.tenancy ?? tenancy;
+    const challenge = await createChallenge(options.now);
     await approveTvDisplayPairing({
-      tenancy,
+      tenancy: targetTenancy,
       pairingCode: challenge.pairingCode,
       profileId: "company-pulse",
       displayName: "Lobby Display",
       adminUserId: randomUUID(),
       acknowledgeExactFinancials: false,
+      now: options.now,
     });
     const result = await pollTvDisplayPairing({
       challengeId: challenge.challengeId,
       deviceSecret: challenge.deviceSecret,
+      now: options.now,
     });
     if (result.status !== "paired") throw new Error(`Expected paired result, received ${result.status}.`);
     return result;
@@ -183,22 +193,69 @@ describe.sequential("independent TV display persistence", () => {
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(false);
   });
 
-  it("keeps display assignment server-authoritative and tenancy-scoped", async () => {
+  it("hard-deletes only the exact tenancy-scoped display and its credentials", async () => {
     const paired = await pairDisplay();
+    const sibling = await pairDisplay();
+    const otherTenantDisplay = await pairDisplay({ tenancy: otherTenancy });
     const payload = await decodeDisplayAccessToken(paired.accessToken);
     expect(payload?.displayId).toBe(paired.display.id);
     const authorized = await getAuthorizedTvDisplay(paired.accessToken);
     expect(authorized?.tenancy.id).toBe(tenancy.id);
     expect(authorized?.display.profileId).toBe("company-pulse");
 
-    await expect(revokeTvDisplay(otherTenancy, paired.display.id, "WRONG_TENANCY")).resolves.toBe(false);
+    await expect(deleteTvDisplay(tenancy, randomUUID())).resolves.toBe(false);
+    await expect(deleteTvDisplay(otherTenancy, paired.display.id)).resolves.toBe(false);
     await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.not.toBeNull();
-    await expect(listTvDisplays(tenancy)).resolves.toEqual([
-      expect.objectContaining({ id: paired.display.id }),
-    ]);
-    await expect(revokeTvDisplay(tenancy, paired.display.id, "TEST_REVOKED")).resolves.toBe(true);
+    // PostgreSQL returns UUIDs in canonical lowercase even when a valid route
+    // parameter uses uppercase hexadecimal characters.
+    await expect(deleteTvDisplay(tenancy, paired.display.id.toUpperCase())).resolves.toBe(true);
     await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toBeNull();
-    await expect(listTvDisplays(tenancy)).resolves.toEqual([]);
+    await expect(refreshTvDisplayCredential(paired.refreshToken)).resolves.toBeNull();
+    await expect(globalPrismaClient.tvDisplay.findUnique({ where: { id: paired.display.id } })).resolves.toBeNull();
+    await expect(globalPrismaClient.tvDisplayCredential.count({ where: { displayId: paired.display.id } })).resolves.toBe(0);
+    await expect(getAuthorizedTvDisplay(sibling.accessToken)).resolves.not.toBeNull();
+    await expect(getAuthorizedTvDisplay(otherTenantDisplay.accessToken)).resolves.not.toBeNull();
+    await expect(globalPrismaClient.tvDisplayCredential.count({ where: { displayId: sibling.display.id } })).resolves.toBe(1);
+    await expect(globalPrismaClient.tvDisplayCredential.count({ where: { displayId: otherTenantDisplay.display.id } })).resolves.toBe(1);
+    await expect(listTvDisplays(tenancy)).resolves.toEqual([
+      expect.objectContaining({ id: sibling.display.id }),
+    ]);
+  });
+
+  it("supports immediate re-pairing with a new display and credential family", async () => {
+    const first = await pairDisplay();
+    const firstCredential = await globalPrismaClient.tvDisplayCredential.findFirstOrThrow({
+      where: { displayId: first.display.id },
+      select: { familyId: true },
+    });
+    await expect(deleteTvDisplay(tenancy, first.display.id)).resolves.toBe(true);
+
+    const second = await pairDisplay();
+    const secondCredential = await globalPrismaClient.tvDisplayCredential.findFirstOrThrow({
+      where: { displayId: second.display.id },
+      select: { familyId: true },
+    });
+    expect(second.display.id).not.toBe(first.display.id);
+    expect(secondCredential.familyId).not.toBe(firstCredential.familyId);
+    await expect(getAuthorizedTvDisplay(second.accessToken)).resolves.not.toBeNull();
+  });
+
+  it("leaves no usable credential when refresh and hard deletion race", async () => {
+    const paired = await pairDisplay();
+    const [refreshResult, deletionResult] = await Promise.all([
+      refreshTvDisplayCredential(paired.refreshToken),
+      deleteTvDisplay(tenancy, paired.display.id),
+    ]);
+
+    expect(deletionResult).toBe(true);
+    await expect(globalPrismaClient.tvDisplay.findUnique({ where: { id: paired.display.id } })).resolves.toBeNull();
+    await expect(globalPrismaClient.tvDisplayCredential.count({ where: { displayId: paired.display.id } })).resolves.toBe(0);
+    await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toBeNull();
+    await expect(refreshTvDisplayCredential(paired.refreshToken)).resolves.toBeNull();
+    if (refreshResult != null) {
+      await expect(getAuthorizedTvDisplay(refreshResult.accessToken)).resolves.toBeNull();
+      await expect(refreshTvDisplayCredential(refreshResult.refreshToken)).resolves.toBeNull();
+    }
   });
 
   it("supports multiple displays and applies profile reassignment server-side", async () => {
@@ -235,6 +292,149 @@ describe.sequential("independent TV display persistence", () => {
     await expect(refreshTvDisplayCredential(paired.refreshToken)).resolves.toBeNull();
     await expect(getAuthorizedTvDisplay(rotated.accessToken)).resolves.toBeNull();
     await expect(refreshTvDisplayCredential(rotated.refreshToken)).resolves.toBeNull();
+  });
+
+  it("uses a rolling 30-day idle lifetime for refresh credentials", async () => {
+    const pairedAt = new Date("2026-08-31T12:00:00.000Z");
+    const paired = await pairDisplay({ now: pairedAt });
+    const initialPayload = await decodeDisplayAccessToken(paired.accessToken);
+    if (initialPayload == null) throw new Error("Initial display access token was invalid.");
+    await expect(globalPrismaClient.tvDisplayCredential.findUniqueOrThrow({
+      where: { id: initialPayload.credentialId },
+      select: { expiresAt: true },
+    })).resolves.toEqual({ expiresAt: new Date("2026-09-30T12:00:00.000Z") });
+
+    const refreshAt = new Date("2026-09-29T12:00:00.000Z");
+    const rotated = await refreshTvDisplayCredential(paired.refreshToken, refreshAt);
+    if (rotated == null) throw new Error("Active display credential did not renew.");
+    const rotatedPayload = await decodeDisplayAccessToken(rotated.accessToken);
+    if (rotatedPayload == null) throw new Error("Rotated display access token was invalid.");
+    await expect(globalPrismaClient.tvDisplayCredential.findUniqueOrThrow({
+      where: { id: rotatedPayload.credentialId },
+      select: { expiresAt: true },
+    })).resolves.toEqual({ expiresAt: new Date("2026-10-29T12:00:00.000Z") });
+
+    const idleDisplay = await pairDisplay({ now: pairedAt });
+    await expect(refreshTvDisplayCredential(
+      idleDisplay.refreshToken,
+      new Date("2026-09-30T12:00:00.001Z"),
+    )).resolves.toBeNull();
+  });
+
+  it("keeps exactly 24 hours of replay detection without revoking older descendants", async () => {
+    const pairedAt = new Date("2026-08-31T12:00:00.000Z");
+    const paired = await pairDisplay({ now: pairedAt });
+    const rotated = await refreshTvDisplayCredential(paired.refreshToken, new Date("2026-08-31T12:10:00.000Z"));
+    if (rotated == null) throw new Error("Display credential did not rotate.");
+
+    await expect(refreshTvDisplayCredential(
+      paired.refreshToken,
+      new Date("2026-09-01T12:10:00.001Z"),
+    )).resolves.toBeNull();
+    await expect(refreshTvDisplayCredential(
+      rotated.refreshToken,
+      new Date("2026-09-01T12:11:00.000Z"),
+    )).resolves.not.toBeNull();
+
+    const replayProtected = await pairDisplay({ now: pairedAt });
+    const replayProtectedRotation = await refreshTvDisplayCredential(
+      replayProtected.refreshToken,
+      new Date("2026-08-31T12:10:00.000Z"),
+    );
+    if (replayProtectedRotation == null) throw new Error("Replay-protected credential did not rotate.");
+    await expect(refreshTvDisplayCredential(
+      replayProtected.refreshToken,
+      new Date("2026-09-01T12:10:00.000Z"),
+    )).resolves.toBeNull();
+    await expect(getAuthorizedTvDisplay(replayProtectedRotation.accessToken)).resolves.toBeNull();
+  });
+
+  it("detects recent replay even after the used credential's original idle expiry", async () => {
+    const pairedAt = new Date("2026-08-01T12:00:00.000Z");
+    const paired = await pairDisplay({ now: pairedAt });
+    const rotationAt = new Date("2026-08-31T11:00:00.000Z");
+    const rotated = await refreshTvDisplayCredential(paired.refreshToken, rotationAt);
+    if (rotated == null) throw new Error("Near-expiry display credential did not rotate.");
+
+    // The consumed token's Clock A ended at noon, but its independent replay
+    // window remains active until 24 hours after the successful rotation.
+    await expect(refreshTvDisplayCredential(
+      paired.refreshToken,
+      new Date("2026-08-31T13:00:00.000Z"),
+    )).resolves.toBeNull();
+    await expect(getAuthorizedTvDisplay(rotated.accessToken)).resolves.toBeNull();
+    await expect(refreshTvDisplayCredential(rotated.refreshToken)).resolves.toBeNull();
+  });
+
+  it("bounds expired replay-history cleanup to the exact display and family", async () => {
+    const pairedAt = new Date("2026-08-31T12:00:00.000Z");
+    const now = new Date("2026-09-01T13:00:00.000Z");
+    const paired = await pairDisplay({ now: pairedAt });
+    const sibling = await pairDisplay({ now: pairedAt });
+    const currentCredential = await globalPrismaClient.tvDisplayCredential.findFirstOrThrow({
+      where: { displayId: paired.display.id },
+      select: { familyId: true },
+    });
+    const unrelatedFamilyId = randomUUID();
+    const oldUsedAt = new Date("2026-08-31T12:00:00.000Z");
+    const expiresAt = new Date("2026-09-30T12:00:00.000Z");
+    await globalPrismaClient.tvDisplayCredential.createMany({
+      data: [
+        ...Array.from({ length: 105 }, () => ({
+          id: randomUUID(),
+          displayId: paired.display.id,
+          familyId: currentCredential.familyId,
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "0"),
+          expiresAt,
+          usedAt: oldUsedAt,
+        })),
+        ...Array.from({ length: 2 }, () => ({
+          id: randomUUID(),
+          displayId: paired.display.id,
+          familyId: unrelatedFamilyId,
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
+          expiresAt,
+          usedAt: oldUsedAt,
+        })),
+        ...Array.from({ length: 2 }, () => ({
+          id: randomUUID(),
+          displayId: sibling.display.id,
+          familyId: randomUUID(),
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "2"),
+          expiresAt,
+          usedAt: oldUsedAt,
+        })),
+      ],
+    });
+
+    await expect(refreshTvDisplayCredential(paired.refreshToken, now)).resolves.not.toBeNull();
+    await expect(globalPrismaClient.tvDisplayCredential.count({
+      where: { displayId: paired.display.id, familyId: currentCredential.familyId, usedAt: oldUsedAt },
+    })).resolves.toBe(5);
+    await expect(globalPrismaClient.tvDisplayCredential.count({
+      where: { displayId: paired.display.id, familyId: unrelatedFamilyId },
+    })).resolves.toBe(2);
+    await expect(globalPrismaClient.tvDisplayCredential.count({
+      where: { displayId: sibling.display.id, usedAt: oldUsedAt },
+    })).resolves.toBe(2);
+  });
+
+  it("logs replay detection but not routine successful credential rotation", async () => {
+    const paired = await pairDisplay();
+    await flushInFlightPromises();
+    logEventMock.mockClear();
+
+    const rotated = await refreshTvDisplayCredential(paired.refreshToken);
+    if (rotated == null) throw new Error("Display credential did not rotate.");
+    await flushInFlightPromises();
+    expect(logEventMock).not.toHaveBeenCalled();
+
+    await refreshTvDisplayCredential(paired.refreshToken);
+    await flushInFlightPromises();
+    expect(logEventMock.mock.calls.map((call) => call[1])).toContainEqual(expect.objectContaining({
+      action: "refresh-reuse-detected",
+      displayId: paired.display.id,
+    }));
   });
 
   it("fails closed when two requests concurrently exchange one refresh credential", async () => {
@@ -292,7 +492,7 @@ describe.sequential("independent TV display persistence", () => {
     if (paired.status !== "paired") throw new Error("Display was not paired.");
 
     await expect(deleteTvProfile(tenancy, profile.id, profile.version)).rejects.toBeInstanceOf(TvProfileAssignedToDisplaysError);
-    await revokeTvDisplay(tenancy, paired.display.id, "TEST_REASSIGNED");
+    await deleteTvDisplay(tenancy, paired.display.id);
     await expect(deleteTvProfile(tenancy, profile.id, profile.version)).resolves.toBe(true);
   });
 

@@ -11,7 +11,7 @@ import {
   aggregateSessionReplayChunksByReplayIds,
   querySessionReplayAdminRows,
   sessionReplayAdminRowToApiItem,
-} from "../session-replays/session-replay-admin-rows";
+} from "../../session-replays/session-replay-admin-rows";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { DEFAULT_EMAIL_TEMPLATES } from "@hexclave/shared/dist/helpers/emails";
 import { deepPlainEquals, typedEntries } from "@hexclave/shared/dist/utils/objects";

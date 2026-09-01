@@ -1,7 +1,7 @@
 import type { ResponseCookieOptions } from "@/lib/runtime/request-context";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
-const TV_DISPLAY_REFRESH_MAX_AGE_SECONDS = 90 * 24 * 60 * 60;
+const TV_DISPLAY_REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const TV_DISPLAY_REFRESH_COOKIE_PATHS = [
   "/api/latest/tv-displays",
   "/api/v1/tv-displays",

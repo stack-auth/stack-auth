@@ -16,7 +16,6 @@ const display: TvDisplayResource = {
   state: "online",
   pairedAt: "2026-08-15T12:00:00.000Z",
   lastSeenAt: "2026-08-15T12:00:05.000Z",
-  revokedAt: null,
   exactFinancialsAcknowledged: false,
 };
 

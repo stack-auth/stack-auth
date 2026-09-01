@@ -3,7 +3,7 @@
 import { DesignBadge, DesignButton, DesignInput } from "@/components/design-components";
 import { CopyButton, Label, Spinner, cn } from "@/components/ui";
 import type { AdminDeploymentDomainJson, AdminDeploymentServiceJson, AdminDeploymentServiceOutcomeJson, AdminProject } from "@hexclave/next";
-import { deploymentPortOwnsStandardPorts, parseConnectionValue } from "@hexclave/shared/dist/deployments";
+import { deploymentPortOwnsStandardPorts, parseConnectionValue, sourceManifestEntriesForService, type DeploymentSourceManifest } from "@hexclave/shared/dist/deployments";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowClockwiseIcon,
@@ -348,11 +348,186 @@ function useDeploymentBuildLogs(project: AdminProject, deploymentId: string | nu
   return { logs, error, reload: () => setReloadCounter((c) => c + 1) };
 }
 
-export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }: {
+// ---------------------------------------------------------------------------
+// Source
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What this deploy PACKAGED and sent, for this service's subtree.
+ *
+ * Paths and sizes, never contents: the uploaded tarball is consumed by the build
+ * and deleted, so a listing is what survives it. It exists to answer the two
+ * questions a large or surprising upload provokes — which files are big, and did
+ * my .gitignore/.dockerignore actually exclude what I meant.
+ */
+/** One deployment's source manifest, fetched on demand. See SourceContent. */
+function useSourceManifest(project: AdminProject, deploymentId: string | null) {
+  const [manifest, setManifest] = useState<DeploymentSourceManifest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (deploymentId == null) {
+      setManifest(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setManifest(null);
+    setError(null);
+    setLoading(true);
+    runAsynchronously(async () => {
+      try {
+        const deployment = await project.getDeployment(deploymentId);
+        if (!cancelled) setManifest(deployment.source_manifest);
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, deploymentId]);
+
+  return { manifest, error, loading };
+}
+
+export function SourceContent({ deploymentId, project, service, isHexclave }: {
+  // Read on demand rather than taken from the open deployment: the listing the
+  // board is built from is polled every few seconds and deliberately omits the
+  // manifest, which is per-deployment and can hold thousands of files. Fetched
+  // HERE, so only a reader who opens this tab pays for it.
+  deploymentId: string | null,
+  project: AdminProject,
+  service: BoardService,
+  isHexclave: boolean,
+}) {
+  const skip = isHexclave || service.api?.image != null || deploymentId == null;
+  const { manifest, error, loading } = useSourceManifest(project, skip ? null : deploymentId);
+
+  if (isHexclave) {
+    return <EmptyPanel>The Hexclave service is deployed for you from no source of yours, so this deploy packaged nothing for it.</EmptyPanel>;
+  }
+  // A service that names an image is not built from the upload at all. Said
+  // before the manifest is checked, because "nothing was packaged" and "this
+  // service has no source" are different facts and only one is about this
+  // service.
+  if (service.api?.image != null) {
+    return <EmptyPanel>This service runs an already-built image, so no source is packaged or uploaded for it.</EmptyPanel>;
+  }
+  if (deploymentId == null) {
+    return <EmptyPanel>This service has not been deployed yet, so nothing has been packaged for it.</EmptyPanel>;
+  }
+  if (loading) {
+    return <div className="flex h-full items-center justify-center"><Spinner /></div>;
+  }
+  if (error != null) {
+    return <EmptyPanel>Could not load the source listing: {error}</EmptyPanel>;
+  }
+  if (manifest === null) {
+    return <EmptyPanel>This deploy recorded no source listing. Deploys made before the CLI started reporting one, and deploys that built nothing, have none.</EmptyPanel>;
+  }
+
+  const rootDirectory = service.api?.root_directory ?? null;
+  const { entries, truncated } = sourceManifestEntriesForService(manifest, rootDirectory);
+  const scopeLabel = rootDirectory == null || rootDirectory === "" || rootDirectory === "." ? "the deploy file's directory" : rootDirectory;
+
+  return (
+    // A column rather than one scrolling block, so the file list can take every
+    // pixel the totals and the footnote do not and scroll inside itself. The
+    // listing is the point of this tab; it should not be a short window under a
+    // header that scrolls away with it.
+    <div className="flex h-full flex-col gap-4 p-4">
+      <div className="shrink-0 space-y-2">
+        <SectionLabel>Uploaded for this deploy</SectionLabel>
+        {/* The deployment's totals, not this service's: one deploy uploads ONE
+            tree and every source-built service is built from it, so the number
+            that explains a slow or rejected upload belongs to the deploy. */}
+        <div className="rounded-xl bg-foreground/[0.03] p-3 text-xs ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">{manifest.file_count.toLocaleString()} file{manifest.file_count === 1 ? "" : "s"}</span>
+            <span className="font-mono">{formatFileSize(manifest.compressed_bytes)} sent</span>
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {formatFileSize(manifest.total_bytes)} on disk, compressed to {formatFileSize(manifest.compressed_bytes)}. Every service of this deploy is built from this one upload.
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="shrink-0 space-y-1">
+          <SectionLabel>Files under {scopeLabel}</SectionLabel>
+          {entries.length > 0 && (
+            // Largest first is worth saying out loud: it is what makes the first
+            // row the answer to "why is this upload so big", and it is not the
+            // order a file listing is usually read in.
+            <p className="text-[11px] text-muted-foreground">
+              {entries.length.toLocaleString()} file{entries.length === 1 ? "" : "s"}, largest first.
+            </p>
+          )}
+        </div>
+        {entries.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+            {truncated
+              ? <>None of the {manifest.entries.length.toLocaleString()} files this listing kept are under {scopeLabel}.</>
+              : <>Nothing was packaged under {scopeLabel}.</>}
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+            {entries.map((entry) => (
+              <div key={entry.path} className="flex items-center justify-between gap-3 border-b border-border/40 bg-foreground/[0.02] px-2.5 py-1.5 last:border-b-0">
+                {/* Right-truncated would hide the filename, which is the part
+                    that identifies the row; the title carries the full path. */}
+                <span className="truncate font-mono text-[11px]" dir="rtl" title={entry.path}>{entry.path}</span>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatFileSize(entry.bytes)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {truncated && (
+          // Only ever shown for a tree past the cap, which is far larger than
+          // any ordinary source. Said anyway: a listing that silently stopped
+          // short would be read as "these are the files".
+          <p className="shrink-0 text-[11px] text-muted-foreground">
+            This deploy packaged {manifest.file_count.toLocaleString()} files, more than the listing can hold. The {manifest.entries.length.toLocaleString()} largest are kept; the rest are smaller than every file shown.
+          </p>
+        )}
+      </div>
+
+      <p className="shrink-0 text-[11px] text-muted-foreground">
+        This is what <span className="font-mono">hexclave deploy</span> packaged after your <span className="font-mono">.gitignore</span> and <span className="font-mono">.dockerignore</span> rules. Anything here that shouldn&apos;t be uploaded belongs in one of them.
+      </p>
+    </div>
+  );
+}
+
+export function BuildLogsContent({ deploymentId, hasBuildLogs, outcome, project, isHexclave }: {
   // The deployment whose build produced this service's image. One deploy is one
   // build — every service of the deployment source is built by the same machine
   // — so the log below is that build's, not this service's alone.
   deploymentId: string | null,
+  // Whether that deploy built anything. A deploy whose every service runs an
+  // already-built image starts no builder, so there is no log to fetch — and
+  // fetching anyway would render an empty stream that looks like a failure.
+  hasBuildLogs: boolean,
   outcome: AdminDeploymentServiceOutcomeJson | null,
   project: AdminProject,
   isHexclave: boolean,
@@ -360,13 +535,31 @@ export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }:
   // Hooks first: useDeploymentBuildLogs has to run on every render, so the
   // "nothing to show" cases below are returned after it rather than
   // short-circuiting above it.
-  const { logs, error, reload } = useDeploymentBuildLogs(project, isHexclave ? null : deploymentId);
+  const { logs, error, reload } = useDeploymentBuildLogs(project, isHexclave || !hasBuildLogs ? null : deploymentId);
 
   if (isHexclave) {
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
           The Hexclave service is deployed and updated for you, so it has no build of its own.
+        </div>
+      </div>
+    );
+  }
+
+  if (deploymentId != null && !hasBuildLogs) {
+    return (
+      <div className="h-full overflow-y-auto p-4">
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+          <div>Nothing was built for this deploy — every service in it runs an already-built image.</div>
+          {/* The digest still belongs here. It is the only place the exact bytes
+              this deploy ran are shown — the Settings panel names the tag the
+              author wrote, which is a different fact — and returning early
+              without it would hide that from precisely the deploys where the
+              tag alone does not identify what is running. */}
+          {outcome?.image != null && (
+            <div className="mt-2 truncate font-mono text-[11px]" title={outcome.image}>{outcome.image}</div>
+          )}
         </div>
       </div>
     );
@@ -393,6 +586,12 @@ export function BuildLogsContent({ deploymentId, outcome, project, isHexclave }:
             <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} />
             {outcome?.revision != null && <span className="font-mono text-[11px] text-muted-foreground">{outcome.revision}</span>}
           </div>
+        )}
+        {/* What this deploy actually ran, digest-pinned. The tag an author wrote
+            and the bytes that ran are different facts, and only this one explains
+            a deploy that behaved unexpectedly. */}
+        {outcome?.image != null && (
+          <div className="truncate font-mono text-[11px] text-muted-foreground" title={outcome.image}>{outcome.image}</div>
         )}
         {outcome?.url != null && <ExternalLink hostname={new URL(outcome.url).host} />}
         {outcome?.error != null && <div className="text-xs text-red-600 dark:text-red-400">{outcome.error}</div>}
@@ -655,11 +854,22 @@ export function SettingsContent({ service, isHexclave }: {
 
   const servicePorts = portEntriesOf(service.api?.ports ?? {});
   const isPublic = service.api?.public === true;
-  const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
-    { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
-    // A missing dockerfile_path means "Railpack build" only once a definition was actually
-    // synced — before that (there are no ports either) it just means "not synced yet".
-    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+  // A service either runs an already-built image or is built from the source, so
+  // the two describe the same slot and only one of them has anything to say. The
+  // source rows on an image service would read "./" and "None (Railpack
+  // auto-detected build)" — both false, and the second actively misleading.
+  const prebuiltImage = service.api?.image ?? null;
+  // `fallback` is optional: the Image row below only exists when it has a value,
+  // so a fallback for it would be unreachable.
+  const fields: { label: string, value: string | null | undefined, fallback?: string }[] = [
+    ...(prebuiltImage !== null ? [
+      { label: "Image", value: prebuiltImage },
+    ] : [
+      { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
+      // A missing dockerfile_path means "Railpack build" only once a definition was actually
+      // synced — before that (there are no ports either) it just means "not synced yet".
+      { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: servicePorts.length > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+    ]),
     // Visibility is the SERVICE's, so it gets a row of its own rather than being
     // repeated on every port.
     { label: "Visibility", value: service.api == null ? undefined : service.api.public ? "Public" : "Private", fallback: "Not synced yet" },
@@ -688,7 +898,9 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
+          Container settings are defined in the <span className="font-mono">services</span> member of the <span className="font-mono">deployment</span> export of your <span className="font-mono">hexclave.deploy.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. {prebuiltImage !== null
+            ? <>This service runs an already-built image, so nothing is built for it. A tag is resolved when the image is pulled, so pin it by digest if a deploy must always run the same bytes.</>
+            : <>The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.</>}
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">
@@ -697,7 +909,7 @@ export function SettingsContent({ service, isHexclave }: {
               "truncate rounded-lg bg-foreground/[0.03] px-2.5 py-1.5 font-mono text-xs ring-1 ring-black/[0.04] dark:ring-white/[0.04]",
               field.value != null && field.value !== "" ? "text-foreground" : "text-muted-foreground",
             )}>
-              {field.value != null && field.value !== "" ? field.value : field.fallback}
+              {field.value != null && field.value !== "" ? field.value : field.fallback ?? ""}
             </div>
           </div>
         ))}

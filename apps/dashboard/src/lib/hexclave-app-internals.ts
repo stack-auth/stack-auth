@@ -336,7 +336,7 @@ export async function updateTvDisplayOrThrow(adminApp: object, displayId: string
   );
 }
 
-export async function revokeTvDisplayOrThrow(adminApp: object, displayId: string): Promise<void> {
+export async function unpairTvDisplayOrThrow(adminApp: object, displayId: string): Promise<void> {
   await requestTvProfileJsonOrThrow(
     adminApp,
     `/internal/tv-mode/displays/${encodeURIComponent(displayId)}`,

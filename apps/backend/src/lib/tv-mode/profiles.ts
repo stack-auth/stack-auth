@@ -448,7 +448,6 @@ export async function deleteTvProfile(
         SELECT COUNT(*) AS "count" FROM ${sqlQuoteIdent(schema)}."TvDisplay"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "profileId" = ${profileId}
-          AND "revokedAt" IS NULL
       `).at(0)?.count ?? 0n);
     }
     if (relations.pairing_table != null) {

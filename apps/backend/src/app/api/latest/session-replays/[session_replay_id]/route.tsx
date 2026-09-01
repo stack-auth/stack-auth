@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import {
   aggregateSessionReplayChunksByReplayIds,
   querySessionReplayAdminRows,
@@ -10,10 +10,14 @@ import {
 } from "../session-replay-admin-rows";
 
 export const GET = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "Get session replay",
+    description: "Returns metadata for a single session replay, including the user it belongs to, its start and last-event timestamps, and its chunk and event counts.",
+    tags: ["Session Replays"],
+  },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema.defined(),
+      type: serverOrHigherAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
