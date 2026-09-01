@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
-import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, VOLUME_ID_REGEX, getConfig } from "./config.js";
+import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, VOLUME_ID_REGEX, getConfig } from "./config.js";
 import { applyErrorMessage } from "./apply-error.js";
 import { domainVerificationRecord } from "./domain-verification.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
@@ -346,10 +346,12 @@ export async function resolveEnv(ns: string, env: Record<string, EnvValue>, know
         // Which port the URL means, and what it looks like. The port picks the
         // number; the TARGET SERVICE's visibility picks the address:
         //  - a PUBLIC service resolves to its public URL (the platform URL, or a
-        //    verified custom domain), which exists only once the service is up —
-        //    so it blocks until then;
+        //    verified custom domain), which exists only once the service is up;
         //  - a PRIVATE service resolves to its internal address, built from the
-        //    deterministic hostname and the port itself.
+        //    target's runtime hostname (a VM's internal IP) and the port itself.
+        // Either way the address comes from the target's ROLLOUT, so both block
+        // until the target has one — which is why every service reference is a
+        // deploy-ordering edge (see connectionRequiresTargetDeployed).
         const target = await targetOf(targetKey);
         if (target === null) {
           // Nothing known about the target: it may not have been deployed yet.
@@ -381,16 +383,30 @@ export async function resolveEnv(ns: string, env: Record<string, EnvValue>, know
         // A private server is addressed by the VM's internal IP and the requested port —
         // NOT by internalUrl, which only answers for a sole HTTP port and is null for the
         // tcp-only services (a database, say) that private url() refs exist to reach.
-        const privateServerUrl = address?.hostname === null || address?.hostname === undefined
-          ? null
-          : `http://${address.hostname}:${port.port}`;
-        const url = target.public
-          ? address?.platformUrl ?? null
-          : (target.type === "server" ? privateServerUrl : address?.internalUrl ?? null);
+        if (!target.public) {
+          // A PRIVATE address already carries the port it is reached on, so it is
+          // finished here — it must NOT fall through to the standard-ports suffix
+          // below, which exists only for a public URL that carries no port at all.
+          // Letting it through appended the number a second time and handed the
+          // consumer "http://10.128.0.21:9090:9090".
+          //
+          // A private server is addressed by the VM's internal IP and the requested port —
+          // NOT by internalUrl, which only answers for a sole HTTP port and is null for the
+          // tcp-only services (a database, say) that private url() refs exist to reach. A
+          // private SERVERLESS service is the opposite: its address is the Cloud Run URI,
+          // one port-agnostic HTTPS endpoint that no port number belongs on.
+          const privateUrl = target.type === "server"
+            ? (address?.hostname == null ? null : `http://${address.hostname}:${port.port}`)
+            : address?.internalUrl ?? null;
+          if (privateUrl === null) blockedRefs.push(value.ref);
+          else resolved.set(key, privateUrl);
+          break;
+        }
+        const url = address?.platformUrl ?? null;
         if (url === null) {
           blockedRefs.push(value.ref);
         } else {
-          // computeServiceUrl answers for the port that owns 80/443. Any OTHER
+          // The platform URL answers for the port that owns 80/443. Any OTHER
           // public port of a multi-port service is reachable on its own number
           // and nowhere else, so the ref has to carry it — otherwise every
           // public port of one service would resolve to the same URL and quietly
@@ -1343,12 +1359,17 @@ async function persistDeploymentLog(deployment: StoredDeployment): Promise<void>
  * them as the latter. They come from the deployment's own targets rather than
  * from current specs, so a value edited after the build is still scrubbed from
  * that build's log.
+ *
+ * Values shorter than MIN_REDACTED_ENV_VALUE_LENGTH are the one exception, and it is
+ * about legibility rather than secrecy: "1", "true" and "3000" occur all over an
+ * ordinary build log, so scrubbing them turns it into a wall of <redacted> that hides
+ * the build's actual output while protecting nothing worth hiding.
  */
 export function deploymentLogRedactionValues(deployment: StoredDeployment): string[] {
   const values = [computeWebhookToken(deployment.id, deployment.ns)];
   for (const target of deployment.targets) {
     for (const value of Object.values(buildTimeEnv(target.spec.env))) {
-      if (value.length > 0) values.push(value);
+      if (value.length >= MIN_REDACTED_ENV_VALUE_LENGTH) values.push(value);
     }
   }
   return values;

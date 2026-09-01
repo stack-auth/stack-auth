@@ -189,10 +189,13 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     }))).not.toThrow();
   });
 
-  it("only makes a deploy dependency of references that need the target deployed", () => {
-    // internalHost and internalUrl(<port>) are deterministic — they resolve
-    // before the target exists — so they must not order or serialize deploys.
-    const deterministicallyWired = () => evaluate(({ service }: ServicesFunctionContext) => ({
+  it("makes a deploy dependency of every reference to another service's address", () => {
+    // REGRESSION: url(<port>) on a private target and hostname() used to be treated as
+    // deterministic and produce NO edge, so a consumer could be ordered ahead of the
+    // service it reads. Neither is derivable from the service id any more — both are the
+    // target's runtime address — so a consumer put first fails the deploy on an
+    // unresolved ref. Every service output orders the deploy now.
+    const wired = () => evaluate(({ service }: ServicesFunctionContext) => ({
       web: {
         type: "serverless", public: true, ports: { 3000: { protocol: "http" } },
         env: { API: (service("api") as any).url(8080), DB_HOST: (service("db") as any).hostname() },
@@ -200,21 +203,19 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
       api: { type: "serverless", ports: { 8080: { protocol: "http" }, 9090: { protocol: "http" } } },
       db: { type: "server", ports: { 5432: { protocol: "tcp" } } },
     }));
-    expect(deterministicallyWired).not.toThrow();
-    // One level: nothing waits on anything.
-    expect(computeDeploymentLevels(deterministicallyWired().services)).toEqual([["web", "api", "db"]]);
+    expect(wired).not.toThrow();
+    expect(computeDeploymentLevels(wired().services)).toEqual([["api", "db"], ["web"]]);
 
-    // Mutual wiring through deterministic references is legal, and used to be
-    // rejected as a false circular dependency.
+    // The accepted cost of that: two services that each read the other's address are a
+    // real cycle, because neither can go first. Reported as one, with the way out.
     const mutual = () => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API: (service("api") as any).url() } },
       api: { type: "serverless", ports: { 8080: { protocol: "http" } }, env: { WEB_HOST: (service("web") as any).hostname() } },
     }));
     expect(mutual).not.toThrow();
-    // `web` still waits on `api`: a bare internalUrl() reads the target's ports.
-    expect(computeDeploymentLevels(mutual().services)).toEqual([["api"], ["web"]]);
+    expect(() => computeDeploymentLevels(mutual().services)).toThrow(/circular connection dependency/);
 
-    // A `url` reference is still a real dependency.
+    // A public `url` was always a dependency, and still is.
     const publicUrl = evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API: (service("api") as any).url() } },
       api: { type: "serverless", public: true, ports: { 8080: { protocol: "http" } } },

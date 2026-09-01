@@ -76,7 +76,6 @@ import {
   parseDeploymentImageRef,
   DEPLOYMENT_PORT_KEY_REGEX,
   deploymentPortEntries,
-  deploymentPortEntry,
   reservedStandardPortConflicts,
   standardPortsHolderPort,
   type DeploymentEnvVarDefinition,
@@ -1009,19 +1008,10 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // `url` and a bare `internalUrl()` need the target deployed. Counting the
       // rest would serialize independent deploys and reject mutually-wired
       // services as circular.
-      // Publicness decides whether a url() reference has to wait: a private
-      // service's URL is built from the deterministic hostname, so it resolves
-      // before the target exists. A target this file does not define is not part
-      // of this deploy either way, so it never becomes an edge.
-      const target = services.get(targetServiceId);
-      if (target === undefined) continue;
-      // Null when the named port is not one the target declares — the reference
-      // is invalid, and validateConnections reports it with better context than
-      // a dependency edge could.
-      const targetIsPublic = parsed.port === null || deploymentPortEntry(target.definition.ports, parsed.port) === null
-        ? null
-        : target.definition.public === true;
-      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port, targetIsPublic)) continue;
+      // A target this file does not define is not part of this deploy either way,
+      // so it never becomes an edge.
+      if (!services.has(targetServiceId)) continue;
+      if (!connectionRequiresTargetDeployed(parsed.outputKey)) continue;
       if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId) {
         serviceDependencies.add(targetServiceId);
       }

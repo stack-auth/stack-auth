@@ -630,7 +630,7 @@ describe("definition sync", () => {
       body: { source_id: "img-src", services: { db: { type: "server", ports: {}, min_instances: 0, image: "postgres:16", dockerfile_path: "Dockerfile", env: {} } } },
     });
     expect(both.status).toBe(400);
-    expect(JSON.stringify(both.body)).toContain("cannot do both");
+    expect(JSON.stringify(both.body)).toContain("not both");
 
     // An untagged image means ":latest", which moves under a running service.
     const untagged = await niceBackendFetch("/api/v1/deployments/services", {
@@ -1100,13 +1100,15 @@ describe("deploys against the Marshal runtime", () => {
     expect(serviceOutcome(deployment, webServiceId).status).toBe("deployed");
 
     // The connection resolved across the two kinds of service, which is the whole
-    // point of deploying them together. `hostname()` returns Marshal's stable
-    // private hostname, not the VM's provider-assigned IP (which can change when
-    // the persistent server is recreated).
+    // point of deploying them together. `hostname()` returns the VM's internal IP:
+    // there is no name to return, because nothing on GCP publishes a record for a
+    // service (its own internal DNS names the INSTANCE, "-vm" suffix and all). A
+    // name-derived hostname is what the Fly runtime answered, and handing one out
+    // here produced an env var whose consumer got ENOTFOUND on a green deploy.
     const { service: webCloudRun } = await findMockCloudRun(webServiceId);
     const { instance: dbInstance } = await findMockInstance(dbServiceId);
-    if (!dbInstance.name.endsWith("-vm")) throw new Error(`Mock server instance ${dbInstance.name} does not use the expected -vm suffix`);
-    const expectedDatabaseHostname = `${dbInstance.name.slice(0, -"-vm".length)}.internal`;
+    const expectedDatabaseHostname = dbInstance.networkInterfaces[0]?.networkIP;
+    expect(expectedDatabaseHostname).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(cloudRunEnv(webCloudRun).DATABASE_HOST).toBe(expectedDatabaseHostname);
   });
 
@@ -1441,16 +1443,20 @@ describe("deploys against the Marshal runtime", () => {
       [consumerId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API: { type: "connection", value: `${multiServiceId}.url:9090` } } },
     }, ambiguous.sourceId);
     const namedUpload = await createUpload();
-    // The consumer is applied FIRST, before the target it references: naming a PRIVATE port
-    // makes the URL fully determined from the deployment's own targets, so it resolves
-    // without waiting for the target to come up — which is the whole difference from a
-    // public `url`, and what keeps mutually-wired services from being circular.
+    // The target is applied FIRST. Naming a private port settles WHICH port the URL means,
+    // but not the address it is built from: that is the target VM's internal IP, which only
+    // exists once the target has rolled out. `connectionRequiresTargetDeployed` makes every
+    // service reference a deploy-ordering edge for exactly this reason — a consumer put
+    // ahead of its target fails the deploy on "blocked on unresolved refs".
     await pollDeploymentToStatus(
-      await startDeploy({ sourceId: named.sourceId, uploadId: namedUpload.uploadId, definitionSyncId: named.syncId, levels: [[consumerId], [multiServiceId]] }),
+      await startDeploy({ sourceId: named.sourceId, uploadId: namedUpload.uploadId, definitionSyncId: named.syncId, levels: [[multiServiceId], [consumerId]] }),
       "deployed",
     );
     const { service: consumerCloudRun } = await findMockCloudRun(consumerId);
-    expect(cloudRunEnv(consumerCloudRun).API).toMatch(/^http:\/\/hxc-.+\.internal:9090$/);
+    const { instance: multiInstance } = await findMockInstance(multiServiceId);
+    // The named port, on the target's own address — not on the sole-HTTP-port internal URL,
+    // which is null for a multi-port service and is what a wrong resolution would produce.
+    expect(cloudRunEnv(consumerCloudRun).API).toBe(`http://${multiInstance.networkInterfaces[0]?.networkIP}:9090`);
     // The API must report the reference it actually stored, port and all —
     // reporting a bare `url` would name a DIFFERENT (and, on this multi-port
     // target, invalid) config.

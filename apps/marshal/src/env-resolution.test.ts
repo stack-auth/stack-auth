@@ -89,6 +89,22 @@ describe("url() resolution against a target being changed in the same deploy", (
     expect(resolved).toEqual({ ok: false, blockedRefs: ["db.hostname", "db.url:8080"] });
   });
 
+  // REGRESSION: the private and public branches were merged into one `url` variable, so a
+  // private address — which already carries the port it is reached on — fell through the
+  // standard-ports suffix meant for a public URL that carries no port. Any non-lowest port
+  // of a private multi-port server resolved to "http://10.0.0.5:9090:9090".
+  it("names a private multi-port server's port exactly once", async () => {
+    const twoHttp = ports({ "8080": { protocol: "http" }, "9090": { protocol: "http" } });
+    readSpec.mockResolvedValue({
+      spec: { config: { type: "server", public: false, min_instances: 0, max_instances: 1, ports: twoHttp }, source: { image: "img" }, env: {} },
+      revision: "stored",
+    });
+    runtimeAddress.mockResolvedValue({ hostname: dbIp, platformUrl: null, internalUrl: null });
+    const resolved = await resolveEnv("ns", { A: { ref: "db.url:9090" }, B: { ref: "db.url:8080" } }, new Map());
+    // 8080 is the standard-ports holder and 9090 is not; neither may pick up a second port.
+    expect(resolved).toEqual({ ok: true, env: { A: `http://${dbIp}:9090`, B: `http://${dbIp}:8080` } });
+  });
+
   it("uses the deployed Cloud Run URI for private serverless references", async () => {
     readSpec.mockResolvedValue(storedSpec(false, "serverless"));
     runtimeAddress.mockResolvedValue({ hostname: "web-abc.a.run.app", platformUrl: null, internalUrl: "https://web-abc.a.run.app" });

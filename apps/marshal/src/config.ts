@@ -259,6 +259,11 @@ export const MAX_BUILD_ENV_BYTES = 32 * 1024;
 // Where the harness finds those files: one file per var, filename = var name, contents =
 // the exact value.
 export const BUILD_ENV_DIR = "/marshal-build-env";
+// Tenant env reaches the builder, so its values are scrubbed from build logs alongside
+// Marshal's own credentials. Short values are skipped: "1", "true", "5432" and friends are
+// everywhere in a build log, and redacting them would leave a page of <redacted> with no
+// secret actually protected (nothing that short is a credential worth hiding).
+export const MIN_REDACTED_ENV_VALUE_LENGTH = 8;
 // Where Marshal-generated Dockerfiles (and Dockerfile suffixes) are injected on
 // the builder machine, one directory per target. Kept out of the build CONTEXT
 // (/ctx, the extracted upload) on purpose: a file placed there would be part of
