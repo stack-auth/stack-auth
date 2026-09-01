@@ -1,0 +1,63 @@
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_09a7d82f4ca045::t_56b05e8ca70f03 33-36
+  s_09a7d82f4ca045::t_fd0f6a85f22fb0 3
+apps/backend/scripts/clickhouse-migrations.ts
+  s_09a7d82f4ca045::t_df32884f85813c 33
+  s_09a7d82f4ca045::t_e8a013731ea153 30-32
+apps/growth-agent/.eve/dev-runtime/snapshots/mszdrz41-c069fad3-ecab-4a34-bb4d-ecfa846ad8ef/source/apps/growth-agent/.eve/compile/compile-metadata.json
+  s_bed7ee0985fab1::t_b31eb5ac8ed84e 2-6,8-21,23-25,27-29
+apps/growth-agent/.eve/dev-runtime/snapshots/mszdrz41-c069fad3-ecab-4a34-bb4d-ecfa846ad8ef/source/apps/growth-agent/.eve/compile/compiled-agent-manifest.json
+  s_bed7ee0985fab1::t_f751ebc95302cb 1-6392
+apps/growth-agent/.eve/dev-runtime/snapshots/mszdrz41-c069fad3-ecab-4a34-bb4d-ecfa846ad8ef/source/apps/growth-agent/.eve/compile/module-map.mjs
+  s_bed7ee0985fab1::t_8275ae3dc79e8f 1,3-46,48-110,112-113
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/compile-metadata.json
+  s_ba08843509e897::t_ec3e65aae0e8e4 1-5,7-20,22-29
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/compiled-agent-manifest.json
+  s_ba08843509e897::t_1695d187fa7d83 1-6403
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/module-map.mjs
+  s_ba08843509e897::t_7865f8e03bf101 1,3-46,48-111,113
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/workspace-resources/__root__/skills/first-screen-audit/SKILL.md
+  s_ba08843509e897::t_24c741f135a702 1-3,5,7,9,11-17,19,21-23,25,27-29
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/workspace-resources/__root__/skills/icp-visitor-outreach/SKILL.md
+  s_ba08843509e897::t_173fa7911419a1 1-3,5-29
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/workspace-resources/__root__/skills/seo-aeo-strategy/SKILL.md
+  s_ba08843509e897::t_fb052792a872ca 1-3,5,7,9-32
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/workspace-resources/__root__/skills/traffic-quality/SKILL.md
+  s_ba08843509e897::t_42d29008358da2 1-34
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/authored-modules.json
+  s_ba08843509e897::t_a1fc00fb57fe68 1
+apps/growth-agent/.eve/dev-runtime/snapshots/mtam90ts-adb6da37-bb7d-45ed-bae8-8f974253aec5/source/apps/growth-agent/.eve/compile/authored-modules/ae079a31d2f7951b9f8d6c13f4c5880b4ddd2e851de199b87da5ad7eb6e5bd16.mjs
+  s_ba08843509e897::t_12dc0980629cdf 1-36404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9b670cdc6c6dcff97316d0c77b2864d83564a011",
+  "prompts": {},
+  "sessions": {
+    "s_09a7d82f4ca045": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "646084c2-79bf-408a-8746-02581f401828",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ba08843509e897": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03ff0-5bb0-7c13-92e2-7c63d8c3ae73",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bed7ee0985fab1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "84e806c0-a427-4105-8903-c5136d954028",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
