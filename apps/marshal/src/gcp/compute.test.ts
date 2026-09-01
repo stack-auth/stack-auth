@@ -23,8 +23,13 @@ describe("Compute Engine startup scripts", () => {
     expect(script).toContain("'--log-driver=gcplogs'");
     expect(script).toContain("MARSHAL_SERVICE_READY $REVISION");
     expect(script).toContain("docker inspect --format '{{.State.Running}}' marshal-service");
-    expect(script).toContain("/dev/tcp/127.0.0.1/8080");
-    expect(script).toContain("/dev/tcp/127.0.0.1/9000");
+    expect(script).toContain("probe_port 8080");
+    expect(script).toContain("probe_port 9000");
+    // Container-Optimized OS ships a bash built without --enable-net-redirections, so a
+    // /dev/tcp redirection there is a literal path, not a socket: the readiness gate could
+    // never pass and every server deploy failed. Assert the shape is gone, not just that the
+    // replacement is present.
+    expect(script).not.toContain("/dev/tcp/");
     expect(script.indexOf("MARSHAL_SERVICE_NOT_READY")).toBeLessThan(script.indexOf("MARSHAL_SERVICE_READY $REVISION"));
     expect(script).toContain("MARSHAL_IMAGE_REF $RESOLVED_IMAGE");
     expect(script).not.toContain("configure-docker");
@@ -43,6 +48,12 @@ describe("Compute Engine startup scripts", () => {
     });
     expect(script).toContain("docker-credential-gcr configure-docker");
     expect(script).toContain("us-central1-docker.pkg.dev");
+    // The credential helper defaults to $HOME/.docker — /root/.docker here — but COS mounts /
+    // read-only, so that mkdir fails and set -e kills the script before any container runs.
+    // Only a Google registry reaches this branch, which is why a live test that deploys
+    // public docker.io images cannot catch it.
+    expect(script).toContain("export DOCKER_CONFIG=/var/lib/marshal-home/.docker");
+    expect(script).not.toContain("/root/.docker");
   });
 
   it("obtains short-lived registry credentials from metadata instead of embedding a key", () => {

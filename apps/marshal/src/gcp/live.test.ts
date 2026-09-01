@@ -118,7 +118,7 @@ describe("live disposable GCP tenant", () => {
         env: {},
         ports: [8080],
         revision: "server-1",
-        startCommand: "echo marshal-live-server && exec nginx -g 'daemon off;'",
+        startCommand: "echo marshal-live-server && sed -i 's/listen[[:space:]]*80;/listen 8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'",
         volume: { diskName: "live-data", path: "/data" },
         serviceKeyHash: "live-server",
       });
@@ -129,7 +129,7 @@ describe("live disposable GCP tenant", () => {
         env: { MARSHAL_LIVE_REVISION: "two" },
         ports: [8080],
         revision: "server-2",
-        startCommand: "echo marshal-live-server-updated && exec nginx -g 'daemon off;'",
+        startCommand: "echo marshal-live-server-updated && sed -i 's/listen[[:space:]]*80;/listen 8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'",
         volume: { diskName: "live-data", path: "/data" },
         serviceKeyHash: "live-server",
       });

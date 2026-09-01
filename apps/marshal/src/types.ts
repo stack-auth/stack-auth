@@ -22,8 +22,8 @@ export type VolumeConfig = {
   size_gb: number,
 };
 
-// "server"     → one instance, autostop "suspend": it resumes with memory intact and is
-//                the only type that may mount a volume.
+// "server"     → one Compute Engine instance, the only type that may mount a volume. There
+//                is no request-triggered suspend, so min_instances 0 does not scale it to zero.
 // "serverless" → scales between bounds, autostop "stop": every start is cold, no volume.
 export type ServiceKind = "server" | "serverless";
 

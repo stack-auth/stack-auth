@@ -44,7 +44,11 @@ function cloudRunError(service: Record<string, unknown>): string | null {
   const conditions = service.terminalCondition;
   if (!isRecord(conditions)) return null;
   if (conditions.state !== "CONDITION_FAILED") return null;
-  return typeof conditions.message === "string" ? conditions.message : "Cloud Run revision failed to become ready";
+  // NOTE: `conditions.message` is the provider's own string and reaches ServiceState.error,
+  // which the CLI and dashboard show — it can carry the tenant project, resource name and
+  // image path. Sanitizing it belongs at the runtime.ts boundary (where the raw text is
+  // still available to GcpApiError and the server logs) and is deliberately left for later.
+  return typeof conditions.message === "string" ? conditions.message : "the service revision failed to become ready";
 }
 
 function observedInstances(service: Record<string, unknown>): number {

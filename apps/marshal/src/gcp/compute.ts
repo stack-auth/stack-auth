@@ -97,6 +97,30 @@ function imageRefFromSerialOutput(output: string): string | null {
   return matches.at(-1)?.[1] ?? null;
 }
 
+// Each of these is echoed by the startup script immediately before it exits non-zero, and
+// each names a DIFFERENT stage. Reporting them matters because the tail of the serial console
+// never does: the last lines are always the metadata runner's generic "Script failed with
+// error: exit status 1", "Finished running startup scripts", and konlet's "No metadata
+// present", so a plain tail truncates away the one line that explains the failure and every
+// distinct cause reaches the operator looking identical.
+const SERVICE_FAILURE_MARKERS: { marker: string, reason: string }[] = [
+  { marker: "MARSHAL_SERVICE_START_FAILED", reason: "the image could not be pulled or the container could not be created, after 12 attempts" },
+  { marker: "MARSHAL_SERVICE_NOT_READY", reason: "the container did not stay running with every declared port accepting connections; a service that listens on a different port than it declares fails here" },
+  { marker: "MARSHAL_SERVICE_IMAGE_UNRESOLVED", reason: "the container started but Docker reported no repository digest for its image" },
+];
+
+// The serial console is cumulative over the instance's whole life, so an earlier revision's
+// failure marker can still be present. Take the LAST marker written, which is the one
+// belonging to the run that just failed.
+function serviceFailureReason(output: string): string | null {
+  let latest: { at: number, reason: string, marker: string } | null = null;
+  for (const { marker, reason } of SERVICE_FAILURE_MARKERS) {
+    const at = output.lastIndexOf(marker);
+    if (at !== -1 && (latest === null || at > latest.at)) latest = { at, reason, marker };
+  }
+  return latest === null ? null : `${latest.reason} (${latest.marker})`;
+}
+
 function parseDisk(value: unknown): ComputeDisk {
   if (!isRecord(value) || typeof value.name !== "string" || typeof value.status !== "string") throw new Error("Compute Engine returned an invalid disk");
   const rawSize = value.sizeGb;
@@ -119,8 +143,21 @@ const DATA_MOUNT = "/mnt/disks/hexclave-data";
 
 export function serviceStartupScript(spec: ComputeInstanceSpec): string {
   const registryHost = spec.image.split("/")[0];
+  // docker-credential-gcr writes the credential helper into the Docker config, which defaults
+  // to $HOME/.docker — i.e. /root/.docker for this script. Container-Optimized OS mounts / as
+  // READ-ONLY, so that mkdir fails with "read-only file system" and set -e kills the startup
+  // script before a single container runs. Point both HOME and DOCKER_CONFIG at the stateful
+  // partition (/var/lib is writable on COS, which the builder script already depends on), and
+  // export them so the later docker pull/run in this same script read the same credentials.
+  //
+  // Only a Google registry reaches this branch, which is why the live test never caught it:
+  // that test deploys public docker.io images, leaving this setup empty. A real source build
+  // pushes to Artifact Registry and hits it on the first deploy.
   const registryCredentialSetup = registryHost.endsWith(".pkg.dev") || registryHost.endsWith(".gcr.io") || registryHost === "gcr.io"
-    ? `docker-credential-gcr configure-docker --registries=${shellQuote(registryHost)} >/dev/null`
+    ? `export HOME=/var/lib/marshal-home
+export DOCKER_CONFIG=/var/lib/marshal-home/.docker
+mkdir -p "$DOCKER_CONFIG"
+docker-credential-gcr configure-docker --registries=${shellQuote(registryHost)} >/dev/null`
     : "";
   const dockerArgs = [
     "run", "--detach", "--restart=always", "--name", "marshal-service",
@@ -132,7 +169,7 @@ export function serviceStartupScript(spec: ComputeInstanceSpec): string {
     spec.image,
     ...(spec.startCommand === null ? [] : ["-c", spec.startCommand]),
   ];
-  const portChecks = spec.ports.map((port) => `timeout 1 bash -c '</dev/tcp/127.0.0.1/${port}' || return 1`).join("\n  ");
+  const portChecks = spec.ports.map((port) => `probe_port ${port} || return 1`).join("\n  ");
   return `#!/bin/bash
 set -euo pipefail
 readonly REVISION=${shellQuote(spec.revision)}
@@ -162,6 +199,19 @@ for attempt in $(seq 1 12); do
   echo "MARSHAL_SERVICE_START_RETRY $attempt"
   sleep 10
 done
+# Probe a TCP port WITHOUT bash's /dev/tcp: Container-Optimized OS ships a bash built without
+# --enable-net-redirections, so a /dev/tcp network redirection is not a socket there — bash
+# treats it as a literal path and prints "No such file or directory". That check could
+# therefore never pass on COS, and it failed every "server" deploy regardless of what the
+# container was actually serving. curl is present on COS (the builder script already relies on
+# it) and reports connection refusal as exit 7, so anything OTHER than 7 means the TCP
+# handshake completed — which is what "listening" means for a non-HTTP daemon such as
+# PostgreSQL too, even though it answers the HTTP request with a protocol error.
+probe_port() {
+  local rc=0
+  curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1" || rc=$?
+  [[ "$rc" -ne 7 ]]
+}
 # 'docker run --detach' only proves the container process was created. Wait until it remains
 # running and every declared port accepts a connection before publishing the ready marker;
 # otherwise a crash-looping container is recorded as a successful deployment forever.
@@ -422,7 +472,11 @@ export class ComputeClient {
       // never report ready. Say what actually happened instead of burning the full five
       // minutes and reporting a bare timeout with no cause.
       if (/Script "startup-script" failed/.test(output.contents)) {
-        throw new GcpApiError(502, `instances/${name}/serialPort`, `the service container failed to start; last serial output: ${output.contents.trim().split("\n").slice(-3).join(" | ").slice(0, 500)}`);
+        const tail = output.contents.trim().split("\n").slice(-3).join(" | ").slice(0, 500);
+        const reason = serviceFailureReason(output.contents);
+        throw new GcpApiError(502, `instances/${name}/serialPort`, reason === null
+          ? `the service container failed to start; last serial output: ${tail}`
+          : `the service container failed to start: ${reason}; last serial output: ${tail}`);
       }
       if (performance.now() - startedAt > 5 * 60 * 1000) throw new GcpApiError(408, `instances/${name}/serialPort`, "timed out waiting for the service container to become ready");
       await delay(2000);

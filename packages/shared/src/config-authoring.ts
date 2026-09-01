@@ -279,12 +279,11 @@ export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource 
    */
   persistentVolumes?: Record<string, HexclavePersistentVolume>,
   /**
-   * 1 (the default) keeps the single instance up. 0 lets it SUSPEND when idle,
-   * so it resumes with its memory intact and without a cold start on the next
-   * connection — but a suspended service can only be woken by inbound traffic,
-   * so a worker (`ports: {}`) needs 1.
-   *
-   * The Free plan requires 0.
+   * 1 (the default) keeps the single instance up. 0 is what the Free plan
+   * requires; the runtime has no request-triggered suspend for a `server`, so 0
+   * preserves availability and disk semantics but does not guarantee
+   * scale-to-zero billing. A worker (`ports: {}`) has nothing inbound to start
+   * it, so it needs 1.
    */
   minInstances?: 0 | 1,
   /** Always 1 for a server. Use `type: "serverless"` to scale out. */

@@ -1,6 +1,6 @@
 // Core logic for the Deployments app: service definitions (synced from a deploy
 // file's `services` export into DeploymentService rows) + operational state
-// (Prisma) + the write-through to Marshal, the Fly.io-backed container runtime
+// (Prisma) + the write-through to Marshal, the Google Cloud-backed container runtime
 // (apps/marshal).
 //
 // The shape of the world, because it is easy to mix up:
@@ -310,7 +310,7 @@ export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services
     `Always-on instances are not available on the Free plan, but ${offending.length === 1 ? `service ${list} keeps` : `services ${list} keep`} an instance running (\`minInstances\` above 0).`,
     "",
     "Either:",
-    `  - set \`minInstances: 0\` on ${offending.length === 1 ? "that service" : "those services"} — a \`server\` then suspends when idle and resumes with its memory intact, and a \`serverless\` scales to zero and cold-starts on the next request. Note that a \`server\` defaults to \`minInstances: 1\`, so this has to be written out; or`,
+    `  - set \`minInstances: 0\` on ${offending.length === 1 ? "that service" : "those services"} — a \`serverless\` then scales to zero and cold-starts on the next request, and a \`server\` keeps its single instance and its disk. Note that a \`server\` defaults to \`minInstances: 1\`, so this has to be written out; or`,
     "  - upgrade your plan at https://app.hexclave.com to keep instances always on.",
   ].join("\n"));
 }

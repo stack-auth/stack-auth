@@ -433,11 +433,11 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
 
   const entries = deploymentPortEntries(ports);
 
-  // FLY.IO PLATFORM LIMITATION, VERIFIED against real Fly: a public service is
-  // all-HTTP. Fly's shared public IPv4 tells apps apart by SNI (TLS) or Host
-  // (HTTP); a raw TCP stream carries neither, so the edge accepts the connection
-  // and then drops it. Lifting this needs a dedicated IPv4 per service, which is
-  // a billing decision rather than a code change.
+  // PLATFORM LIMITATION: a public service is all-HTTP. Public traffic arrives
+  // through one shared Application Load Balancer that tells services apart by SNI
+  // (TLS) or Host (HTTP); a raw TCP stream carries neither, so the edge accepts
+  // the connection and then drops it. Lifting this needs a dedicated public
+  // address per service, which is a cost decision rather than a code change.
   const tcpPorts = entries.filter((entry) => entry.protocol === "tcp");
   if (isPublic && tcpPorts.length > 0) {
     throw new CliError(`deploy.services.${serviceId} is \`public: true\` but declares the "tcp" port${tcpPorts.length === 1 ? "" : "s"} ${tcpPorts.map((entry) => entry.port).join(", ")}. Raw TCP carries no SNI or Host header, so a shared public address cannot tell which service a connection is for. Keep the service private and reach it with service(${JSON.stringify(serviceId)}).hostname() and the port number, or move the TCP ports to their own service.`);

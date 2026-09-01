@@ -25,8 +25,11 @@ export type RuntimeObservation = RuntimeAddress & {
 
 function soleHttpPort(spec: ServiceSpec): number {
   const entries = portEntries(spec.config.ports);
+  // The constraint is Cloud Run's — one ingress port per service — but the reason belongs
+  // here rather than in the message: a 400 is relayed to the caller verbatim, and nothing
+  // the provider is named in may travel down that channel (see apply-error.ts).
   if (entries.length !== 1 || entries[0].protocol !== "http") {
-    throw badRequest(`${spec.config.type} services on GCP must declare exactly one HTTP port; Cloud Run has one ingress port per service`);
+    throw badRequest(`${spec.config.type} services must declare exactly one HTTP port; the runtime serves a single ingress port per service`);
   }
   return entries[0].port;
 }

@@ -296,14 +296,14 @@ export type DeploymentEnvVarDefinition = {
 };
 
 export type DeploymentServiceDefinition = {
-  // How the service is run on the Fly-backed Marshal runtime.
+  // How the service is run on the Marshal runtime.
   //
-  // - "server": exactly one instance (max_instances is always 1). With
-  //   min_instances 0 it SUSPENDS when idle rather than stopping, so it resumes
-  //   with its memory intact and without a cold start; with min_instances 1
-  //   (the default) it simply stays up. It is the only type allowed to hold a
-  //   persistent volume — a volume is local disk on one host, which only a
-  //   single instance can ever mount.
+  // - "server": exactly one instance (max_instances is always 1), backed by a
+  //   single Compute Engine VM. There is no request-triggered suspend, so
+  //   min_instances 0 keeps its availability and disk semantics but does not
+  //   guarantee scale-to-zero billing; min_instances 1 (the default) stays up.
+  //   It is the only type allowed to hold a persistent volume — a volume is
+  //   local disk on one host, which only a single instance can ever mount.
   // - "serverless": scales between min_instances and max_instances and STOPS
   //   (not suspends) on scale-down, so every start is a cold start from a clean
   //   rootfs. Persistent volumes are rejected: a fleet would give each instance
@@ -951,12 +951,12 @@ export const deploymentServiceDefinitionSchema = yupObject({
       return value === undefined || reservedStandardPortConflicts(value, (this.parent as { public?: boolean }).public === true).length === 0;
     }),
   // min is capped at the same MAX_INSTANCES_PER_SERVICE as max — an unbounded
-  // min would only ever fail downstream. On a "server" it is the SUSPEND switch
-  // rather than a fleet size:
-  // 1 (the default) keeps its single instance up, and 0 lets it suspend when idle and
-  // resume with its memory intact on the next connection.
+  // min would only ever fail downstream. On a "server" it is not a fleet size:
+  // 1 (the default) keeps its single instance up, and 0 is the Free-plan value.
+  // The runtime has no request-triggered suspend for a server, so 0 does not
+  // currently guarantee scale-to-zero billing.
   min_instances: yupNumber().integer().min(0).max(MAX_INSTANCES_PER_SERVICE).optional()
-    .test("server-is-single-instance-min", 'a "server" service holds a single instance, so min_instances must be 0 (suspend when idle) or 1 (always on) — use type "serverless" to scale out', function (value) {
+    .test("server-is-single-instance-min", 'a "server" service holds a single instance, so min_instances must be 0 or 1 — use type "serverless" to scale out', function (value) {
       return (this.parent as { type?: string }).type !== "server" || value === undefined || value === 0 || value === 1;
     }),
   max_instances: yupNumber().integer().min(1).max(MAX_INSTANCES_PER_SERVICE).optional()
