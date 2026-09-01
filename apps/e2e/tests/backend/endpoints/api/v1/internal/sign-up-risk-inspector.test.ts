@@ -73,7 +73,7 @@ describe("internal sign-up risk inspector", () => {
 
     if (hasPrivateRiskEngine) {
       expect(response.body.results[0].scores.bot).toBe(75);
-      expect(response.body.results[0].breakdown).toHaveLength(6);
+      expect(response.body.results[0].breakdown).toHaveLength(9);
       expect(response.body.results[0].breakdown.find((entry: { signal: string }) => entry.signal === "blacklist")).toMatchObject({
         factor: { bot: 0.75 },
         details: { matchedRules: expect.arrayContaining(["knownDisposableDomain"]) },

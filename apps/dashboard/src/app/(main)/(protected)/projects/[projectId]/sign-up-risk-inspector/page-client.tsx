@@ -33,7 +33,7 @@ import { Fragment, Suspense, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useProjectId } from "../use-admin-app";
 
-const signUpRiskSignalIds = ["emailable", "same_ip", "same_email", "similar_email", "turnstile", "blacklist"] as const;
+const signUpRiskSignalIds = ["emailable", "same_ip", "same_email", "similar_email", "turnstile", "blacklist", "country", "public_email_provider", "connected_account_age"] as const;
 
 const breakdownSchema = yupObject({
   signal: yupString().oneOf([...signUpRiskSignalIds]).defined(),

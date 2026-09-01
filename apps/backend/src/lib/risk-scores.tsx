@@ -25,7 +25,7 @@ export type SignUpRiskScoreContext = {
   turnstileAssessment: SignUpTurnstileAssessment,
 };
 
-export const signUpRiskSignalIds = ["emailable", "same_ip", "same_email", "similar_email", "turnstile", "blacklist"] as const;
+export const signUpRiskSignalIds = ["emailable", "same_ip", "same_email", "similar_email", "turnstile", "blacklist", "country", "public_email_provider", "connected_account_age"] as const;
 export type SignUpRiskSignalId = typeof signUpRiskSignalIds[number];
 export type SignUpRiskFactor = {
   bot: number,
