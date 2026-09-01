@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Marshal (Hexclave Deployments) — one-time GCP org bootstrap.
-# Paste into Cloud Shell. Idempotent: safe to re-run.
+# Idempotent: safe to re-run. Prefer saving it and running `bash bootstrap-gcp.sh`; pasting the
+# whole thing into Cloud Shell also works (see run_bootstrap below).
 #
 # Requires, on the identity running it:
-#   roles/resourcemanager.folderCreator + projectCreator on the org
+#   roles/resourcemanager.folderCreator + folderAdmin + projectCreator on the org
 #   roles/orgpolicy.policyAdmin        on the org  (for the org-policy section)
 #   roles/billing.admin                on the billing account
-set -euo pipefail
+# Step 0 checks for these and grants whatever is missing, which additionally requires
+# roles/resourcemanager.organizationAdmin. Without that it stops and prints the commands
+# for someone who has it.
 
 ############################  FILL THESE IN  ############################
 ORG_ID="000000000000"                       # gcloud organizations list
@@ -26,6 +29,155 @@ VERCEL_AUDIENCE="https://vercel.com/${VERCEL_TEAM_SLUG}"
 
 SA_EMAIL="${SA_NAME}@${PLATFORM_PROJECT}.iam.gserviceaccount.com"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+
+# Reports which command failed and where. Guarded because `set -E` propagates the ERR trap into
+# every helper function, so one failure would otherwise be announced once per stack frame.
+bootstrap_err() {  # <exit-code> <line> <command>
+  if [[ -n "${BOOTSTRAP_REPORTED:-}" ]]; then return "$1"; fi
+  BOOTSTRAP_REPORTED=1
+  printf '\n\033[1;31m== FAILED\033[0m at line %s (exit %s)\n  command: %s\n' "$2" "$1" "$3" >&2
+  return "$1"
+}
+
+# Everything below lives in a function, invoked in a subshell, so that `set -e` and every `exit`
+# stay contained. Pasted into Cloud Shell the lines execute in the INTERACTIVE shell: a top-level
+# `set -euo pipefail` would arm that shell, and the first failing gcloud call would then kill the
+# session — closing the tab and taking the error message with it.
+run_bootstrap() {
+  set -Eeuo pipefail
+  trap 'bootstrap_err "$?" "$LINENO" "$BASH_COMMAND"' ERR
+
+say "0/8  Preflight — permissions on the identity running this"
+# Without this, a missing role surfaces as an opaque gcloud 403 several steps in and leaves a
+# half-built org behind. The expected operator is an organization admin, so anything missing is
+# granted here rather than merely reported. The grants themselves need
+# resourcemanager.organizations.setIamPolicy; without it the script stops and prints the exact
+# commands for someone who has it.
+ME="$(gcloud config get-value account 2>/dev/null || true)"
+[[ -n "$ME" && "$ME" != "(unset)" ]] || { echo "no active gcloud account — run 'gcloud auth login'" >&2; exit 1; }
+MEMBER="user:${ME}"
+if [[ "$ME" == *.gserviceaccount.com ]]; then MEMBER="serviceAccount:${ME}"; fi
+BILLING_ID="${BILLING_ACCOUNT#billingAccounts/}"
+ORG_URL="https://cloudresourcemanager.googleapis.com/v3/organizations/${ORG_ID}"
+BILLING_URL="https://cloudbilling.googleapis.com/v1/billingAccounts/${BILLING_ID}"
+echo "  identity: ${MEMBER}"
+
+# gcloud has no `organizations test-iam-permissions`, so this goes through the REST API. Reading
+# the IAM policy instead would only see DIRECT bindings and would raise a false alarm for anyone
+# holding these roles through a group.
+# One permission per request on purpose: testIamPermissions rejects the whole batch when any
+# single permission is not applicable to the resource, and that 400 is indistinguishable from
+# "you hold none of them".
+# Sets PERM_STATE to granted | missing | unknown.
+check_permission() {  # <resource-url> <permission>
+  local body
+  body="$(curl -sS -X POST "${1}:testIamPermissions" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"permissions\":[\"${2}\"]}" 2>/dev/null || true)"
+  # The error branch is tested first: a rejection quotes the offending permission back in its
+  # message, so the granted-test would match it and report a permission nobody holds.
+  if [[ "$body" == *'"error"'* ]]; then
+    PERM_STATE=unknown
+  elif [[ "$body" == *"\"${2}\""* ]]; then
+    PERM_STATE=granted
+  else
+    PERM_STATE=missing
+  fi
+}
+
+# <permission>|<org|billing>|<role that provides it>
+PREFLIGHT=(
+  "resourcemanager.projects.create|org|roles/resourcemanager.projectCreator"
+  "resourcemanager.folders.create|org|roles/resourcemanager.folderCreator"
+  "resourcemanager.folders.setIamPolicy|org|roles/resourcemanager.folderAdmin"
+  "orgpolicy.policy.set|org|roles/orgpolicy.policyAdmin"
+  "billing.resourceAssociations.create|billing|roles/billing.admin"
+  "billing.accounts.setIamPolicy|billing|roles/billing.admin"
+)
+
+preflight_scan() {
+  MISSING_PERMS=(); MISSING_ROLES_ORG=(); MISSING_ROLES_BILLING=()
+  ACCESS_TOKEN="$(gcloud auth print-access-token)"
+  local entry perm scope role url
+  for entry in "${PREFLIGHT[@]}"; do
+    IFS='|' read -r perm scope role <<<"$entry"
+    if [[ "$scope" == org ]]; then url="$ORG_URL"; else url="$BILLING_URL"; fi
+    check_permission "$url" "$perm"
+    case "$PERM_STATE" in
+      granted) { echo "  ok       $perm"; } ;;
+      # Not fatal: a permission this API declines to evaluate is reported and left to fail
+      # later at its real call site, rather than blocking a correctly-provisioned operator.
+      unknown) { echo "  unknown  $perm (could not be tested here; continuing)"; } ;;
+      missing) {
+        echo "  MISSING  $perm -> $role"
+        MISSING_PERMS+=("$perm")
+        if [[ "$scope" == org ]]; then MISSING_ROLES_ORG+=("$role"); else MISSING_ROLES_BILLING+=("$role"); fi
+      } ;;
+    esac
+  done
+}
+
+preflight_scan
+if (( ${#MISSING_PERMS[@]} > 0 )); then
+  say "0/8  Granting the missing roles to ${MEMBER}"
+  GRANT_FAILED=0
+  GRANT_OK=0
+  for ROLE in $(printf '%s\n' "${MISSING_ROLES_ORG[@]}" | sort -u); do
+    if gcloud organizations add-iam-policy-binding "$ORG_ID" \
+         --member="$MEMBER" --role="$ROLE" --condition=None >/dev/null 2>&1; then
+      echo "  org += $ROLE"
+      GRANT_OK=1
+    else
+      echo "  FAILED  org += $ROLE"
+      GRANT_FAILED=1
+    fi
+  done
+  for ROLE in $(printf '%s\n' "${MISSING_ROLES_BILLING[@]}" | sort -u); do
+    # Billing IAM is a separate surface from the resource hierarchy. Bind on the account itself
+    # first; fall back to the organization, which carries only when the account is org-owned.
+    if gcloud billing accounts add-iam-policy-binding "$BILLING_ID" \
+         --member="$MEMBER" --role="$ROLE" >/dev/null 2>&1; then
+      echo "  billing += $ROLE"
+      GRANT_OK=1
+    elif gcloud organizations add-iam-policy-binding "$ORG_ID" \
+           --member="$MEMBER" --role="$ROLE" --condition=None >/dev/null 2>&1; then
+      echo "  org += $ROLE (self-serve billing account not directly bindable)"
+      GRANT_OK=1
+    else
+      echo "  FAILED  billing += $ROLE"
+      GRANT_FAILED=1
+    fi
+  done
+
+  # A fresh binding is not effective immediately, and every step below would lose that race.
+  # Skipped when nothing was granted: there is no propagation to wait for, only 90s of noise
+  # before the same failure.
+  if (( GRANT_OK )); then
+    for ATTEMPT in 1 2 3 4 5 6; do
+      echo "  waiting for IAM to propagate, re-checking (${ATTEMPT}/6)"
+      sleep 15
+      preflight_scan
+      if (( ${#MISSING_PERMS[@]} == 0 )); then break; fi
+    done
+  fi
+
+  if (( ${#MISSING_PERMS[@]} > 0 )); then
+    echo >&2
+    echo "Still missing after granting: ${MISSING_PERMS[*]}" >&2
+    if (( GRANT_FAILED )); then
+      echo "Some grants were rejected — this identity is probably not an organization admin" >&2
+      echo "(roles/resourcemanager.organizationAdmin carries organizations.setIamPolicy)." >&2
+    fi
+    echo "Have an organization admin run:" >&2
+    for ROLE in $(printf '%s\n' "${MISSING_ROLES_ORG[@]:-}" "${MISSING_ROLES_BILLING[@]:-}" | sort -u | grep .); do
+      echo "  gcloud organizations add-iam-policy-binding $ORG_ID --member='$MEMBER' --role=$ROLE --condition=None" >&2
+    done
+    echo "then re-run this script." >&2
+    exit 1
+  fi
+fi
+echo "  preflight ok"
 
 say "1/8  Tenant folder"
 # The filter value is quoted because gcloud's `=` matches on word boundaries and treats `-` as
@@ -207,3 +359,18 @@ Still manual:
   3. Raise per-region Compute CPUs / in-use external IPs if you expect more than a few tenants.
 ============================================================
 EOF
+}
+
+# Deliberately NOT `if ( run_bootstrap ); then`: a command in a condition context has errexit
+# suppressed, and bash propagates that suppression into the subshell, so every failure inside
+# would be ignored and the script would run to completion after its first broken step.
+( run_bootstrap )
+BOOTSTRAP_RC=$?
+if (( BOOTSTRAP_RC != 0 )); then
+  printf '\n\033[1mStopped at the step above; nothing after it ran. This script is idempotent — fix the cause and re-run it.\033[0m\n' >&2
+  # Only propagate the status when this is a real script run. In an interactive shell (i.e. the
+  # script was pasted) `exit` would close Cloud Shell, which is the failure mode being fixed.
+  if [[ $- != *i* ]]; then
+    exit "$BOOTSTRAP_RC"
+  fi
+fi
