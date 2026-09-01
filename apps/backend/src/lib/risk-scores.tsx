@@ -20,6 +20,8 @@ export type SignUpRiskScoreContext = {
   oauthProvider: string | null,
   ipAddress: string | null,
   ipTrusted: boolean | null,
+  countryCode?: string | null,
+  oauthAccountCreatedAtMillis?: number | null,
   turnstileAssessment: SignUpTurnstileAssessment,
 };
 
@@ -173,6 +175,8 @@ import.meta.vitest?.test("loaded private sign-up risk engine can calculate score
       oauthProvider: null,
       ipAddress: null,
       ipTrusted: null,
+      countryCode: null,
+      oauthAccountCreatedAtMillis: null,
       turnstileAssessment: { status: "ok" },
     }, {
       checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
