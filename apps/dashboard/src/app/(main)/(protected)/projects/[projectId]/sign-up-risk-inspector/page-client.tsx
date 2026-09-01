@@ -201,7 +201,7 @@ function InspectorContent() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {emails.map((email) => (
-              <span key={email} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs">
+              <span key={email} className="hexclave-sensitive inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs">
                 {emailSchema.isValidSync(email) ? (
                   <DesignBadge label={email} color="blue" size="sm" />
                 ) : (
@@ -297,7 +297,7 @@ function ResultsCard(props: {
                   className="cursor-pointer"
                   onClick={() => props.onToggleEmail(result.email)}
                 >
-                  <DesignTableCell><code className="text-xs">{result.email}</code></DesignTableCell>
+                  <DesignTableCell><code className="hexclave-sensitive text-xs">{result.email}</code></DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.bot)}>{result.scores.bot}</span></DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.free_trial_abuse)}>{result.scores.free_trial_abuse}</span></DesignTableCell>
                   <DesignTableCell><code className="text-xs">{result.heuristic_facts.email_normalized ?? "—"}</code></DesignTableCell>
@@ -320,7 +320,7 @@ function ResultsCard(props: {
                         {result.breakdown.map((entry) => (
                           <div key={entry.signal} className="flex gap-2">
                             <span className="w-28 shrink-0 font-medium">{entry.signal}</span>
-                            <code className="truncate text-muted-foreground">{JSON.stringify(entry.details)}</code>
+                            <code className="hexclave-sensitive break-all text-muted-foreground">{JSON.stringify(entry.details)}</code>
                           </div>
                         ))}
                       </div>
