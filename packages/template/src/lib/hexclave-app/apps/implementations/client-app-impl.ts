@@ -341,16 +341,33 @@ function getTanStackStartRequestHeader(name: string): string | null {
   }
   return getRequestHeader(name) ?? null;
 }
+
+/**
+ * TanStack Start keeps the event of the request it is currently handling in an AsyncLocalStorage stored on a global
+ * symbol (see `request-response.ts` in `@tanstack/start-server-core`), and every one of its request accessors throws
+ * an internal error when there is no such request. It exposes no way to ask whether a request is in flight, so we read
+ * that storage ourselves; otherwise server code that plans a redirect outside a request would surface TanStack's
+ * internal AsyncLocalStorage error instead of our own setup error. If TanStack ever renames the symbol we report "no
+ * request", which is the conservative answer: callers then treat the redirect target as cross-origin.
+ */
+function hasActiveTanStackStartRequest(): boolean {
+  const eventStorage: unknown = Reflect.get(globalThis, Symbol.for("tanstack-start:event-storage"));
+  if (eventStorage == null || typeof eventStorage !== "object") {
+    return false;
+  }
+  const getStore: unknown = Reflect.get(eventStorage, "getStore");
+  if (typeof getStore !== "function") {
+    return false;
+  }
+  return Reflect.apply(getStore, eventStorage, []) != null;
+}
 // END_PLATFORM
 
 async function getServerRequestHost(): Promise<string | null> {
   // IF_PLATFORM next
   return (await sc.headers?.())?.get("host") ?? null;
   // ELSE_IF_PLATFORM tanstack-start
-  if (import.meta.env?.SSR !== true) {
-    // Outside a server render there is no request to compare origins against, so the caller must
-    // treat the redirect target as cross-origin rather than letting TanStack's request-context
-    // accessor throw its internal AsyncLocalStorage error.
+  if (!hasActiveTanStackStartRequest()) {
     return null;
   }
   return getTanStackStartRequestHeader("host");
