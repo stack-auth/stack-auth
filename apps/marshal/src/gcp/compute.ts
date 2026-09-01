@@ -208,8 +208,15 @@ readonly REGISTRY_AUTH_B64="$(printf 'oauth2accesstoken:%s' "$ACCESS_TOKEN" | ba
 # Fetch the builder's registry token first, then make the metadata endpoint unreachable
 # before any tenant-controlled build step runs. OUTPUT covers the privileged host-network
 # builder; DOCKER-USER covers BuildKit's ordinary bridged executor networks.
-iptables -I OUTPUT -d 169.254.169.254/32 -j REJECT
-iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT
+#
+# Port 80 ONLY, never the bare address: on Container-Optimized OS that same 169.254.169.254
+# is also the DNS resolver, so rejecting all traffic to it takes out name resolution for the
+# whole build — the very next image pull dies with "lookup registry-1.docker.io on
+# 169.254.169.254:53: write: operation not permitted", and so would the tarball fetch and the
+# Artifact Registry push. The metadata API this is isolating is HTTP on port 80, which is
+# exactly what stays blocked. Verified against real GCP.
+iptables -I OUTPUT -d 169.254.169.254/32 -p tcp --dport 80 -j REJECT
+iptables -I DOCKER-USER -d 169.254.169.254/32 -p tcp --dport 80 -j REJECT
 docker pull ${shellQuote(spec.image)}
 BUILD_EXIT=0
 docker run --rm --privileged --network host --name marshal-builder \

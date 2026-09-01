@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { builderOutputIsTerminal, deploymentStateForApply } from "./services.js";
+import { builderOutputIsTerminal, builderStartupScriptFailed, deploymentStateForApply } from "./services.js";
 import type { ServiceState } from "./types.js";
 
 // The image the spec named. Every outcome reports one — including a failure,
@@ -112,5 +112,24 @@ describe("builder terminal output", () => {
     expect(builderOutputIsTerminal("MARSHAL_BUILD_DONE")).toBe(true);
     expect(builderOutputIsTerminal("MARSHAL_BUILD_FAILED: compilation failed")).toBe(true);
     expect(builderOutputIsTerminal("MARSHAL_BUILD_TIMEOUT")).toBe(true);
+  });
+
+  it("treats a builder whose startup script died as terminal", () => {
+    // Real serial output: the metadata script runner prefixes every line and kernel messages
+    // splice into them, so the marker is never at the start of a line.
+    const serial = [
+      "[   19.153897] google_metadata_script_runner_adapt[783]: Found startup-script in metadata.",
+      "[   22.114974] google_metadata_script_runner_adapt[783]: startup-script: Error response from daemon",
+      `[   22.117450] google_metadata_script_runner_adapt[783]: Script "startup-script" failed with error: exit status 1`,
+    ].join("\n");
+
+    expect(builderStartupScriptFailed(serial)).toBe(true);
+    // No harness marker is ever printed, which is exactly why this needs its own signal.
+    expect(builderOutputIsTerminal(serial)).toBe(false);
+  });
+
+  it("does not call a healthy builder's startup script failed", () => {
+    expect(builderStartupScriptFailed("MARSHAL_BUILD_START\nMARSHAL_TARGET_START web")).toBe(false);
+    expect(builderStartupScriptFailed("")).toBe(false);
   });
 });

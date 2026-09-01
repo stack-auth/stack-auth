@@ -143,4 +143,42 @@ describe("tenant project lifecycle", () => {
     expect(request.mock.calls[0]?.[1]).toMatchObject({ method: "DELETE" });
     expect(request.mock.calls[1]?.[0]).toContain("projects:search?query=id%3Ahxc-test-absent");
   });
+
+  it("fails loudly when the billing account is out of project quota", async () => {
+    // Cloud Billing answers an exhausted billing-account quota with the SAME status and
+    // message as a project it cannot see yet; only the QuotaFailure detail differs. Retrying
+    // it as propagation would park the pool forever on something waiting cannot fix.
+    const client = new GcpClient();
+    vi.spyOn(client, "request").mockRejectedValue(new GcpApiError(
+      400,
+      "/v1/projects/hxc-test-project/billingInfo",
+      "Precondition check failed.",
+      ["google.rpc.QuotaFailure"],
+    ));
+    const manager = new TenantProjectManager(client, {
+      envId: "test",
+      billingAccount: "000000-111111-222222",
+      parent: null,
+      projectPrefix: "hxc-test",
+    });
+
+    await expect(manager.attachBillingOnce("hxc-test-project")).rejects.toThrow("Precondition check failed.");
+  });
+
+  it("still treats an unelaborated precondition failure as billing propagation", async () => {
+    const client = new GcpClient();
+    vi.spyOn(client, "request").mockRejectedValue(new GcpApiError(
+      400,
+      "/v1/projects/hxc-test-project/billingInfo",
+      "Precondition check failed.",
+    ));
+    const manager = new TenantProjectManager(client, {
+      envId: "test",
+      billingAccount: "000000-111111-222222",
+      parent: null,
+      projectPrefix: "hxc-test",
+    });
+
+    await expect(manager.attachBillingOnce("hxc-test-project")).resolves.toBe(false);
+  });
 });

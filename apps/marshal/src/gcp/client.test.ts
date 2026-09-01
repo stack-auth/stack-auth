@@ -106,4 +106,38 @@ describe("Google Cloud API transport", () => {
     await expect(resultPromise).resolves.toEqual({ status: "DONE" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("carries the google.rpc detail types so callers can tell reasons apart", async () => {
+    // This is the shape Cloud Billing returns for an exhausted billing-account quota.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        message: "Precondition check failed.",
+        status: "FAILED_PRECONDITION",
+        details: [{
+          "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+          violations: [{ subject: "billingAccounts/000000-111111-222222", description: "Cloud billing quota exceeded" }],
+        }],
+      },
+    }), { status: 400 })));
+
+    const error = await new GcpClient()
+      .request("https://cloudbilling.googleapis.com/v1/projects/tenant/billingInfo", { method: "PUT", body: {} })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GcpApiError);
+    expect((error as GcpApiError).providerDetailTypes).toEqual(["google.rpc.QuotaFailure"]);
+  });
+
+  it("reports no detail types when Google elaborates nothing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 400, message: "Precondition check failed.", status: "FAILED_PRECONDITION" },
+    }), { status: 400 })));
+
+    const error = await new GcpClient()
+      .request("https://cloudbilling.googleapis.com/v1/projects/tenant/billingInfo", { method: "PUT", body: {} })
+      .catch((caught: unknown) => caught);
+
+    expect((error as GcpApiError).providerDetailTypes).toEqual([]);
+  });
 });

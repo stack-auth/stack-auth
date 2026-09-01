@@ -1373,6 +1373,20 @@ export function builderOutputIsTerminal(serialOutput: string): boolean {
 }
 
 /**
+ * A builder whose startup script died before the harness ever started.
+ *
+ * This is terminal even though the VM is still RUNNING, and the distinction matters: the
+ * harness arms the build watchdog itself and `shutdown -h now` is the last line of the very
+ * script that failed, so nothing on the machine will ever post a webhook, print a
+ * MARSHAL_BUILD_* marker, or power it off. Without this the liveness check below sees a
+ * RUNNING instance forever and the deployment stays "building" with no timeout that can
+ * rescue it. Same signal `waitForServiceReady` already uses for service VMs.
+ */
+export function builderStartupScriptFailed(serialOutput: string): boolean {
+  return /Script "startup-script" failed/.test(serialOutput);
+}
+
+/**
  * Lazy backstop for lost webhooks: a deployment still building long after the
  * harness watchdog must have fired gets finalized as failed on the next read.
  */
@@ -1380,6 +1394,8 @@ export async function maybeFinalizeStaleDeployment(deployment: StoredDeployment)
   if (deployment.status !== "building") return deployment;
   const staleAfterMillis = deployment.started_at_millis + BUILD_TIMEOUT_SECONDS * 1000 + BUILD_STALE_GRACE_MS;
   if (Date.now() < staleAfterMillis) return deployment;
+  let startupScriptFailed = false;
+  let serialTail = "";
   if (deployment.builder_app !== null && deployment.builder_machine_id !== null) {
     let machine;
     let serialOutput = "";
@@ -1398,12 +1414,16 @@ export async function maybeFinalizeStaleDeployment(deployment: StoredDeployment)
     // A VM can remain RUNNING briefly after its one-shot builder container exits. Terminal
     // harness markers take precedence over the VM lifecycle state so a lost webhook cannot
     // strand the deployment until the entire project is removed.
-    const harnessIsTerminal = builderOutputIsTerminal(serialOutput);
+    const harnessIsTerminal = builderOutputIsTerminal(serialOutput) || builderStartupScriptFailed(serialOutput);
     if (!harnessIsTerminal && machine !== null && (machine.status === "RUNNING" || machine.status === "PROVISIONING" || machine.status === "STAGING")) return deployment;
+    startupScriptFailed = builderStartupScriptFailed(serialOutput);
+    serialTail = serialOutput.trim().split("\n").slice(-3).join(" | ").slice(0, 500);
   }
   const current = await readDeploymentVersioned(deployment.ns, deployment.id);
   if (current === null || current.value.status !== "building") return current?.value ?? deployment;
-  const failed = failDeployment(current.value, "the build did not report a result before its timeout");
+  const failed = failDeployment(current.value, startupScriptFailed
+    ? `the builder failed to start; last serial output: ${serialTail}`
+    : "the build did not report a result before its timeout");
   const etag = await replaceDeployment(failed, current.etag);
   const result = etag === null ? (await readDeployment(deployment.ns, deployment.id)) ?? failed : failed;
   await deleteBuilderBestEffort(result);

@@ -56,9 +56,13 @@ describe("Compute Engine startup scripts", () => {
     });
     expect(script).toContain("metadata.google.internal");
     expect(script).toContain("oauth2accesstoken");
-    expect(script).toContain("iptables -I OUTPUT -d 169.254.169.254/32 -j REJECT");
-    expect(script).toContain("iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT");
+    expect(script).toContain("iptables -I OUTPUT -d 169.254.169.254/32 -p tcp --dport 80 -j REJECT");
+    expect(script).toContain("iptables -I DOCKER-USER -d 169.254.169.254/32 -p tcp --dport 80 -j REJECT");
     expect(script.indexOf("iptables -I OUTPUT")).toBeLessThan(script.indexOf("docker pull"));
+    // The metadata address doubles as the DNS resolver on Container-Optimized OS. Blocking it
+    // wholesale kills name resolution for every pull, fetch and push the build has to make, so
+    // the rules must stay scoped to the metadata API's port.
+    expect(script).not.toContain("169.254.169.254/32 -j REJECT");
     expect(script).not.toContain("private_key");
     expect(script).not.toContain("instances/$INSTANCE_NAME");
     expect(script).toContain("shutdown -h now");

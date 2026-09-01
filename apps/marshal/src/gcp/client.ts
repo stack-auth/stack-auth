@@ -13,6 +13,20 @@ function providerMessage(body: unknown): string {
   return error.message.slice(0, 1000);
 }
 
+// The `google.rpc.*` type names carried in `error.details`, which is where Google says WHY a
+// request failed when the status and message alone do not: a quota failure and a not-ready-yet
+// precondition are both `400 "Precondition check failed."`, and only a `QuotaFailure` detail
+// tells them apart. Callers that retry on a message must consult these before deciding.
+function providerDetailTypes(body: unknown): string[] {
+  if (!isRecord(body)) return [];
+  const error = body.error;
+  if (!isRecord(error) || !Array.isArray(error.details)) return [];
+  return error.details.flatMap((detail) => {
+    if (!isRecord(detail) || typeof detail["@type"] !== "string") return [];
+    return [detail["@type"].replace(/^type\.googleapis\.com\//, "")];
+  });
+}
+
 function isApiActivationPropagationError(status: number, message: string): boolean {
   return status === 403
     && message.includes("has not been used in project")
@@ -53,8 +67,13 @@ export class GcpApiError extends Error {
     public readonly status: number,
     public readonly endpoint: string,
     public readonly providerMessage: string,
+    public readonly providerDetailTypes: readonly string[] = [],
   ) {
-    super(`Google Cloud API error at ${endpoint}: HTTP ${status}: ${providerMessage}`);
+    // The detail types belong in the message because they are often the only thing that says
+    // what actually went wrong — "Precondition check failed." reads as a transient hiccup until
+    // a `google.rpc.QuotaFailure` next to it identifies it as an exhausted quota.
+    const elaboration = providerDetailTypes.length === 0 ? "" : ` (${providerDetailTypes.join(", ")})`;
+    super(`Google Cloud API error at ${endpoint}: HTTP ${status}: ${providerMessage}${elaboration}`);
     this.name = "GcpApiError";
   }
 }
@@ -147,7 +166,7 @@ export class GcpClient {
         retryDelayMillis = Math.min(retryDelayMillis * 2, 10_000);
         continue;
       }
-      throw new GcpApiError(response.status, new URL(url).pathname, message);
+      throw new GcpApiError(response.status, new URL(url).pathname, message, providerDetailTypes(body));
     }
   }
 

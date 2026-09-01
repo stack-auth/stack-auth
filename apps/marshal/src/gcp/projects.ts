@@ -83,8 +83,18 @@ function normalizeBillingAccount(value: string): string {
 // A newly ACTIVE Resource Manager project can briefly be unknown to Cloud Billing. This
 // matches ONLY its exact readiness response, so account and permission failures stay loud —
 // the check is deliberately narrow and must stay that way.
+//
+// The status and message alone are NOT narrow enough: Cloud Billing answers a permanently
+// exhausted billing-account project quota with the very same `400 "Precondition check
+// failed."`, and only the `QuotaFailure` in `error.details` separates it from a project that
+// is merely not visible yet. Treating that as propagation parks the pool forever on a
+// condition no amount of waiting fixes, reporting "Cloud Billing has not accepted the project
+// yet" while the real answer is that the account needs a quota increase.
 function isBillingPropagationError(error: unknown): boolean {
-  return error instanceof GcpApiError && error.status === 400 && error.providerMessage === "Precondition check failed.";
+  return error instanceof GcpApiError
+    && error.status === 400
+    && error.providerMessage === "Precondition check failed."
+    && !error.providerDetailTypes.includes("google.rpc.QuotaFailure");
 }
 
 const inFlightProjects = new Map<string, Promise<TenantProject>>();
