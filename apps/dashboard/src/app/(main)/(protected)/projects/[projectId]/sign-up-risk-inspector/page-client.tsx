@@ -101,14 +101,17 @@ function InspectorContent() {
   const [limitExceeded, setLimitExceeded] = useState(false);
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [state, setState] = useState<InspectorState>({ status: "idle" });
+  const isLoading = state.status === "loading";
 
   const invalidEmails = emails.filter((email) => !emailSchema.isValidSync(email));
   const addEmails = (values: string[]) => {
+    if (isLoading) return;
     const combined = [...new Set([...emails, ...values])];
     setLimitExceeded(combined.length > 50);
     setEmails(combined.slice(0, 50));
   };
   const addBulkEmails = () => {
+    if (isLoading) return;
     addEmails(
       bulkEmails
         .split(/[\s,;]+/)
@@ -118,6 +121,7 @@ function InspectorContent() {
     setBulkEmails("");
   };
   const addSingleEmail = () => {
+    if (isLoading) return;
     const email = singleEmail.trim().toLowerCase();
     if (email.length > 0) {
       addEmails([email]);
@@ -125,10 +129,12 @@ function InspectorContent() {
     }
   };
   const removeEmail = (email: string) => {
+    if (isLoading) return;
     setEmails((current) => current.filter((entry) => entry !== email));
     setLimitExceeded(false);
   };
   const clearEmails = () => {
+    if (isLoading) return;
     setEmails([]);
     setLimitExceeded(false);
   };
@@ -177,9 +183,10 @@ function InspectorContent() {
                 onChange={(event) => setBulkEmails(event.target.value)}
                 placeholder="Paste emails — comma, semicolon, whitespace or newline separated"
                 rows={3}
+                disabled={isLoading}
               />
             </label>
-            <DesignButton variant="secondary" size="sm" onClick={addBulkEmails}>Add</DesignButton>
+            <DesignButton variant="secondary" size="sm" onClick={addBulkEmails} disabled={isLoading}>Add</DesignButton>
           </div>
           <div className="flex items-end gap-2">
             <label className="flex min-w-0 max-w-xl flex-1 flex-col gap-1 text-xs">
@@ -191,13 +198,14 @@ function InspectorContent() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    addSingleEmail();
+                    if (!isLoading) addSingleEmail();
                   }
                 }}
                 placeholder="name@example.com"
+                disabled={isLoading}
               />
             </label>
-            <DesignButton variant="secondary" size="sm" onClick={addSingleEmail}>Add</DesignButton>
+            <DesignButton variant="secondary" size="sm" onClick={addSingleEmail} disabled={isLoading}>Add</DesignButton>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {emails.map((email) => (
@@ -212,6 +220,7 @@ function InspectorContent() {
                   className="rounded px-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   aria-label={`Remove ${email}`}
                   onClick={() => removeEmail(email)}
+                  disabled={isLoading}
                 >
                   ×
                 </button>
@@ -219,7 +228,7 @@ function InspectorContent() {
             ))}
             <span className="text-xs text-muted-foreground">{emails.length}/50</span>
             {emails.length > 0 ? (
-              <DesignButton variant="ghost" size="sm" onClick={clearEmails}>Clear</DesignButton>
+              <DesignButton variant="ghost" size="sm" onClick={clearEmails} disabled={isLoading}>Clear</DesignButton>
             ) : null}
           </div>
           {invalidEmails.length > 0 ? (
@@ -233,7 +242,7 @@ function InspectorContent() {
           <div>
             <DesignButton
               onClick={calculate}
-              disabled={emails.length === 0 || invalidEmails.length > 0 || limitExceeded}
+              disabled={emails.length === 0 || invalidEmails.length > 0 || limitExceeded || isLoading}
             >
               Calculate risk scores
             </DesignButton>
@@ -300,8 +309,8 @@ function ResultsCard(props: {
                   <DesignTableCell><code className="hexclave-sensitive text-xs">{result.email}</code></DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.bot)}>{result.scores.bot}</span></DesignTableCell>
                   <DesignTableCell><span className={scoreClass(result.scores.free_trial_abuse)}>{result.scores.free_trial_abuse}</span></DesignTableCell>
-                  <DesignTableCell><code className="text-xs">{result.heuristic_facts.email_normalized ?? "—"}</code></DesignTableCell>
-                  <DesignTableCell><code className="text-xs">{result.heuristic_facts.email_base ?? "—"}</code></DesignTableCell>
+                  <DesignTableCell><code className="hexclave-sensitive text-xs">{result.heuristic_facts.email_normalized ?? "—"}</code></DesignTableCell>
+                  <DesignTableCell><code className="hexclave-sensitive text-xs">{result.heuristic_facts.email_base ?? "—"}</code></DesignTableCell>
                   {signUpRiskSignalIds.map((signal) => {
                     const breakdown = result.breakdown.find((entry) => entry.signal === signal);
                     const bot = Math.round((breakdown?.factor.bot ?? 0) * 100);
