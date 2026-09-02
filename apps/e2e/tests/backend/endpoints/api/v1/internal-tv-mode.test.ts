@@ -236,6 +236,7 @@ it("does not resolve a saved TV profile through another project's tenancy", asyn
       configuration: { ...template.configuration, displayName: "Private Project TV" },
     },
   });
+  expect(createdResponse.status).toBe(200);
   const created = await TvSavedProfileResourceSchema.validate(createdResponse.body.profile, { strict: true });
 
   await Project.createAndSwitch();
