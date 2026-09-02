@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   calculateTvEmailEvidenceRate,
   createTvEmailEvaluatorState,
+  createTvPaymentEvaluatorState,
   evaluateTvEmailDelivery,
+  evaluateTvSubscriptionCollection,
   evaluateTvUserMilestone,
   median,
   TV_EMAIL_RECOVERY_TITLE,
@@ -10,6 +12,8 @@ import {
   type TvEmailEvaluationSample,
   type TvEmailEvaluatorState,
   type TvEmailEvidenceWindow,
+  type TvPaymentSample,
+  type TvPaymentEvaluatorState,
   type TvUserMilestoneEvaluatorState,
 } from "./event-evaluators";
 
@@ -71,6 +75,56 @@ function evaluateSequence(
   let state = result.state;
   for (const sample of samples.slice(1)) {
     result = evaluateTvEmailDelivery(state, sample);
+    state = result.state;
+  }
+  return result;
+}
+
+function paymentSampleAt(minute: number, options?: {
+  current?: PaymentWindowValues,
+  lowVolume?: PaymentWindowValues,
+}): TvPaymentSample {
+  const evaluatedAt = new Date(Date.UTC(2026, 6, 29, 12, minute)).toISOString();
+  return {
+    status: "fresh",
+    evaluatedAt,
+    observedAt: evaluatedAt,
+    current: {
+      startsAt: evaluatedAt,
+      endsAt: evaluatedAt,
+      ...(options?.current ?? { outcomes: 50, successes: 49, failures: 1, successRatePercent: 98 }),
+    },
+    lowVolume: {
+      startsAt: evaluatedAt,
+      endsAt: evaluatedAt,
+      ...(options?.lowVolume ?? { outcomes: 20, successes: 19, failures: 1, successRatePercent: 95 }),
+    },
+    baseline: {
+      computedAt: "2026-07-29T12:00:00.000Z",
+      qualifiedWeeks: 4,
+      assessableOutcomes: 100,
+      medianSuccessRatePercent: 99.7,
+    },
+  };
+}
+
+type PaymentWindowValues = {
+  outcomes: number,
+  successes: number,
+  failures: number,
+  successRatePercent: number | null,
+};
+
+function evaluatePaymentSequence(
+  samples: TvPaymentSample[],
+  initial: TvPaymentEvaluatorState = createTvPaymentEvaluatorState(),
+) {
+  const first = samples.at(0);
+  if (first == null) throw new Error("Payment evaluator sequences require at least one sample.");
+  let result = evaluateTvSubscriptionCollection(initial, first);
+  let state = result.state;
+  for (const sample of samples.slice(1)) {
+    result = evaluateTvSubscriptionCollection(state, sample);
     state = result.state;
   }
   return result;
@@ -231,7 +285,7 @@ describe("email delivery TV event evaluator V2", () => {
     expect(frozen.action).toEqual({ type: "none" });
   });
 
-  it("applies borderline hysteresis to Incident-to-Critical escalation", () => {
+  it("does not retain a critical candidate across a non-critical breach", () => {
     const incident: TvEmailEvaluatorState = { ...createTvEmailEvaluatorState(), activeClass: "incident" };
     const critical = windowAt({ assessable: 50, failures: 11 });
     const candidate = evaluateTvEmailDelivery(incident, sampleAt(0, { current: critical })).state;
@@ -240,18 +294,96 @@ describe("email delivery TV event evaluator V2", () => {
       current: borderline,
       lowVolume: borderline,
     }));
-    expect(frozen.state.candidate).toMatchObject({
+    expect(frozen.state.candidate).toBeNull();
+    const escalated = evaluateTvEmailDelivery(frozen.state, sampleAt(2, { current: critical }));
+    expect(escalated.action).toEqual({ type: "none" });
+    expect(escalated.state.candidate).toMatchObject({
       presentationClass: "critical-incident",
       accumulatedMs: 0,
-      borderlineEvaluations: 1,
+      borderlineEvaluations: 0,
     });
-    const escalated = evaluateTvEmailDelivery(frozen.state, sampleAt(2, { current: critical }));
-    expect(escalated.action).toEqual({ type: "escalate", presentationClass: "critical-incident" });
   });
 
   it("uses a robust median daily baseline", () => {
     expect(median([99, 99.5, 99.8, 70, 72, 99.9, 100])).toBe(99.5);
     expect(median([98, 99, 100, 75])).toBe(98.5);
+  });
+});
+
+describe("payment collection TV event evaluator", () => {
+  const activeIncident: TvPaymentEvaluatorState = {
+    ...createTvPaymentEvaluatorState(),
+    activeClass: "incident",
+  };
+  const critical = {
+    outcomes: 50,
+    successes: 20,
+    failures: 30,
+    successRatePercent: 40,
+  };
+  const nonCriticalBreach = {
+    outcomes: 100,
+    successes: 90,
+    failures: 10,
+    successRatePercent: 90,
+  };
+  const notHealthy = {
+    outcomes: 100,
+    successes: 98,
+    failures: 2,
+    successRatePercent: 98,
+  };
+
+  it("requires a fresh persistence window after a non-critical breach", () => {
+    const afterGap = evaluatePaymentSequence([
+      paymentSampleAt(0, { current: critical }),
+      paymentSampleAt(1, { current: critical }),
+      paymentSampleAt(2, { current: nonCriticalBreach }),
+    ], activeIncident);
+    expect(afterGap.state.candidate).toBeNull();
+
+    const beforeEscalation = evaluatePaymentSequence([
+      paymentSampleAt(3, { current: critical }),
+      paymentSampleAt(4, { current: critical }),
+      paymentSampleAt(5, { current: critical }),
+      paymentSampleAt(6, { current: critical }),
+      paymentSampleAt(7, { current: critical }),
+    ], afterGap.state);
+    expect(beforeEscalation.action).toEqual({ type: "none" });
+
+    expect(evaluateTvSubscriptionCollection(
+      beforeEscalation.state,
+      paymentSampleAt(8, { current: critical }),
+    ).action).toEqual({ type: "escalate", presentationClass: "critical-incident" });
+  });
+
+  it("requires a fresh persistence window after a not-healthy observation", () => {
+    const afterGap = evaluatePaymentSequence([
+      paymentSampleAt(0, { current: critical }),
+      paymentSampleAt(1, { current: critical }),
+      paymentSampleAt(2, { current: notHealthy }),
+    ], activeIncident);
+    expect(afterGap.state.candidate).toBeNull();
+
+    const beforeEscalation = evaluatePaymentSequence([
+      paymentSampleAt(3, { current: critical }),
+      paymentSampleAt(4, { current: critical }),
+      paymentSampleAt(5, { current: critical }),
+      paymentSampleAt(6, { current: critical }),
+      paymentSampleAt(7, { current: critical }),
+    ], afterGap.state);
+    expect(beforeEscalation.action).toEqual({ type: "none" });
+    expect(evaluateTvSubscriptionCollection(
+      beforeEscalation.state,
+      paymentSampleAt(8, { current: critical }),
+    ).action).toEqual({ type: "escalate", presentationClass: "critical-incident" });
+  });
+
+  it("escalates after consecutive critical observations", () => {
+    expect(evaluatePaymentSequence(
+      Array.from({ length: 6 }, (_, minute) => paymentSampleAt(minute, { current: critical })),
+      activeIncident,
+    ).action).toEqual({ type: "escalate", presentationClass: "critical-incident" });
   });
 });
 

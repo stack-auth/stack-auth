@@ -1,4 +1,5 @@
 import { getPublicEnvVar } from "@/lib/env";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 
 type TvDisplayUrlSources = {
   browserDashboardUrl?: string,
@@ -9,7 +10,9 @@ type TvDisplayUrlSources = {
 export function buildTvDisplayUrl(sources: TvDisplayUrlSources): string | null {
   for (const candidate of [sources.browserDashboardUrl, sources.dashboardUrl, sources.currentOrigin]) {
     if (candidate == null || candidate.trim() === "" || !URL.canParse("/tv", candidate)) continue;
-    return new URL("/tv", candidate).toString();
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+    return new URL("/tv", parsed).toString();
   }
   return null;
 }
@@ -23,9 +26,5 @@ export function getConfiguredTvDisplayUrl(currentOrigin?: string): string | null
 }
 
 export function isLocalTvDisplayUrl(url: string): boolean {
-  const hostname = new URL(url).hostname;
-  return hostname === "localhost"
-    || hostname === "127.0.0.1"
-    || hostname === "[::1]"
-    || hostname.endsWith(".localhost");
+  return isLocalhost(new URL(url));
 }

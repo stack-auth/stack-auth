@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignAlert } from "@/components/design-components";
 import { Typography } from "@/components/ui";
 import { ActionDialog } from "@/components/ui/action-dialog";
 
@@ -8,11 +9,13 @@ export function TvProfileDeleteDialog({
   onOpenChange,
   profileName,
   onConfirm,
+  error,
 }: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   profileName: string,
-  onConfirm: () => Promise<void>,
+  onConfirm: () => Promise<"prevent-close" | void>,
+  error?: string | null,
 }) {
   return (
     <ActionDialog
@@ -31,6 +34,7 @@ export function TvProfileDeleteDialog({
         Delete the profile <span className="font-semibold text-foreground">&ldquo;{profileName}&rdquo;</span>?
         Its playlist, timing, privacy, and interruption settings will be permanently removed.
       </Typography>
+      {error != null ? <DesignAlert variant="error" title="Profile Was Not Deleted" description={error} /> : null}
     </ActionDialog>
   );
 }

@@ -211,17 +211,25 @@ export async function consumeTvDisplayPairingRateLimit(options: {
     RETURNING "attempts"
   `);
   // Pairing traffic is rare, so bounded opportunistic cleanup avoids adding a
-  // permanent scheduler solely for ephemeral security buckets.
-  await globalPrismaClient.$executeRaw`
-    DELETE FROM "TvDisplayPairingRateLimitBucket"
-    WHERE ("keyHash", "operation", "windowStart") IN (
-      SELECT "keyHash", "operation", "windowStart"
-      FROM "TvDisplayPairingRateLimitBucket"
-      WHERE "expiresAt" < ${now}
-      ORDER BY "expiresAt"
-      LIMIT 100
-    )
-  `;
+  // permanent scheduler solely for ephemeral security buckets. It is hygiene,
+  // not part of the security decision, so it must not invalidate this increment.
+  try {
+    await globalPrismaClient.$executeRaw`
+      DELETE FROM "TvDisplayPairingRateLimitBucket"
+      WHERE ("keyHash", "operation", "windowStart") IN (
+        SELECT "keyHash", "operation", "windowStart"
+        FROM "TvDisplayPairingRateLimitBucket"
+        WHERE "expiresAt" < ${now}
+        ORDER BY "expiresAt"
+        LIMIT 100
+      )
+    `;
+  } catch (cause) {
+    captureError("tv-display-rate-limit-cleanup-failed", new HexclaveAssertionError(
+      "Opportunistic TV display rate-limit bucket cleanup failed.",
+      { cause },
+    ));
+  }
   return (rows.at(0) ?? throwErr("TV display rate-limit upsert returned no bucket.")).attempts <= options.limit;
 }
 
@@ -604,7 +612,8 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
 }
 
 export async function listTvDisplays(tenancy: Tenancy, now = new Date()) {
-  const rows = await globalPrismaClient.$replica().$queryRaw<DisplayRow[]>(Prisma.sql`
+  // This low-volume admin list follows pairing mutations, so read it from the primary for read-after-write consistency.
+  const rows = await globalPrismaClient.$primary().$queryRaw<DisplayRow[]>(Prisma.sql`
     SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt",
       "credentialVersion", "financialVisibilityAcknowledgedAt"
     FROM "TvDisplay"
@@ -616,8 +625,9 @@ export async function listTvDisplays(tenancy: Tenancy, now = new Date()) {
 
 export async function getTvDisplayResource(tenancy: Tenancy, display: DisplayRow, now = new Date()): Promise<TvDisplayResource> {
   const profile = await resolveTvProfile(tenancy, display.profileId);
-  const acknowledgementIsCurrent = display.financialVisibilityAcknowledgedAt != null
-    && (profile?.updatedAt == null || display.financialVisibilityAcknowledgedAt >= new Date(profile.updatedAt));
+  const acknowledgementIsCurrent = profile?.configuration.financialVisibility !== "exact"
+    || (display.financialVisibilityAcknowledgedAt != null
+      && (profile.updatedAt == null || display.financialVisibilityAcknowledgedAt >= new Date(profile.updatedAt)));
   return {
     id: display.id,
     displayName: display.displayName,

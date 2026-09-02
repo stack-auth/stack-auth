@@ -1,6 +1,6 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { getConfiguredTvDisplayOrigin } from "@/lib/tv-mode/display-origin";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
@@ -59,13 +59,7 @@ const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllo
 
 // The configured TV origin is process-scoped, so resolve its fallback chain once
 // instead of repeating environment lookups for every request.
-const configuredTvOrigin = getEnvVariable(
-  "HEXCLAVE_TV_DISPLAY_ORIGIN",
-  getEnvVariable(
-    "NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL",
-    getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", ""),
-  ),
-);
+const configuredTvOrigin = getConfiguredTvDisplayOrigin();
 
 import.meta.vitest?.test("TV snapshot contract header is allowed by browser CORS", ({ expect }) => {
   const headers = new Headers(getCorsHeadersInit(new Request(

@@ -14,12 +14,13 @@ Run this migration as a dedicated, single-runner deployment step before enabling
 TV snapshot polling in production. Do not rely on application-startup migration
 execution for production-sized tables.
 
-The migration runner keeps an outer interactive transaction open while
-`RUN_OUTSIDE_TRANSACTION_SENTINEL` statements execute on separate connections.
-That transaction currently has an 80-second timeout, and the production database
-may also impose a shorter statement timeout. Index-build time depends on table
-size, active transactions, I/O capacity, and replica load, so the default timeout
-cannot be proven sufficient from the repository.
+The migration runner acquires a session-level advisory lock so only one runner
+proceeds. `RUN_OUTSIDE_TRANSACTION_SENTINEL` statements execute on separate
+connections, and each `CREATE INDEX CONCURRENTLY` uses its own per-statement
+`statement_timeout`. The other migration path runs inside a `$transaction` with
+an 80-second timeout. Index-build time depends on table size, active
+transactions, I/O capacity, and replica load, so the default timeout cannot be
+proven sufficient from the repository.
 
 Use a deployment connection whose statement timeout accommodates the measured
 build, and use a migration execution path whose outer timeout also accommodates

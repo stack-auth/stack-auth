@@ -30,6 +30,7 @@ afterEach(() => {
   cleanup();
   layoutState.pathname = "/tv";
   layoutState.dashboardRendered.mockClear();
+  layoutState.dashboardModuleLoaded.mockClear();
 });
 
 describe("root dashboard layout routing", () => {

@@ -1,13 +1,9 @@
 import { getAuthorizedTvDisplay, getTvDisplayResource } from "@/lib/tv-mode/displays";
+import { readTvDisplayBearerToken } from "@/lib/tv-mode/read-bearer-token";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TvDisplayResourceSchema } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-
-function readBearer(value: string | undefined): string {
-  if (value == null || !value.startsWith("Bearer ")) throw new StatusError(401, "tv_display_access_required");
-  return value.slice("Bearer ".length);
-}
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -20,7 +16,7 @@ export const GET = createSmartRouteHandler({
     body: yupObject({ display: TvDisplayResourceSchema }).noUnknown().defined(),
   }),
   handler: async ({ headers }) => {
-    const authorized = await getAuthorizedTvDisplay(readBearer(headers.authorization?.[0]));
+    const authorized = await getAuthorizedTvDisplay(readTvDisplayBearerToken(headers.authorization?.[0]));
     if (authorized == null) throw new StatusError(401, "tv_display_access_invalid");
     return {
       statusCode: 200,

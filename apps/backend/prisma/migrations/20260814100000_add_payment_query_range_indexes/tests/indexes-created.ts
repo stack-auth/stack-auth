@@ -1,36 +1,112 @@
+import fs from "fs";
+import path from "path";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
 
 export const postMigration = async (sql: Sql) => {
-  const rows = await sql`
-    SELECT
-      table_relation.relname AS table_name,
-      i.indisvalid,
-      i.indisready,
-      i.indisunique,
-      access_method.amname AS access_method,
-      pg_get_expr(i.indpred, i.indrelid) AS predicate,
-      (
-        SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
-        FROM unnest(i.indkey::smallint[]) WITH ORDINALITY AS key(attribute_number, ordinality)
-        JOIN pg_attribute attribute ON attribute.attrelid = i.indrelid AND attribute.attnum = key.attribute_number
-        WHERE key.ordinality <= i.indnkeyatts
-      ) AS key_columns
+  const migrationSql = fs.readFileSync(path.join(__dirname, "..", "migration.sql"), "utf8");
+  const statements = migrationSql.split("SPLIT_STATEMENT_SENTINEL");
+  const schemaRows = await sql<{ schema: string }[]>`SELECT current_schema() AS schema`;
+  const schema = schemaRows[0].schema;
+  const executeMigration = async () => {
+    for (const statement of statements) {
+      await sql.unsafe(statement.replaceAll("/* SCHEMA_NAME_SENTINEL */", `"${schema.replaceAll('"', '""')}"`));
+    }
+  };
+
+  expect(await sql`
+    SELECT 1
     FROM pg_index i
     JOIN pg_class idx ON idx.oid = i.indexrelid
-    JOIN pg_class table_relation ON table_relation.oid = i.indrelid
-    JOIN pg_namespace namespace ON namespace.oid = table_relation.relnamespace
-    JOIN pg_am access_method ON access_method.oid = idx.relam
-    WHERE namespace.nspname = current_schema()
+    JOIN pg_namespace n ON n.oid = idx.relnamespace
+    WHERE n.nspname = current_schema()
       AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx'
-  `;
-  expect(rows).toEqual([expect.objectContaining({
-    table_name: "SubscriptionInvoice",
-    key_columns: ["tenancyId", "paidAt"],
-    indisvalid: true,
-    indisready: true,
-    indisunique: false,
-    access_method: "btree",
-  })]);
-  expect(rows[0].predicate.replace(/[()\s]/g, "")).toBe('"paidAt"ISNOTNULL');
+      AND i.indisvalid
+      AND i.indisready
+  `).toHaveLength(1);
+
+  try {
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx" ON "SubscriptionInvoice"("createdAt")`);
+    const preflight = statements.find((statement) => statement.includes("ALTER INDEX"));
+    if (preflight == null) throw new Error("Expected migration preflight.");
+    await expect(sql.unsafe(preflight)).rejects.toThrow(/unexpected definition/);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx" ON "SubscriptionInvoice"("tenancyId", "paidAt") WHERE "paidAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = false WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx')`);
+    await executeMigration();
+    expect(await sql`
+      SELECT 1 FROM pg_class idx
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid'
+    `).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx" ON "SubscriptionInvoice"("tenancyId", "paidAt") WHERE "paidAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx')`);
+    await executeMigration();
+    expect(await sql`
+      SELECT 1 FROM pg_class idx
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid'
+    `).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx_invalid" ON "SubscriptionInvoice"("tenancyId", "paidAt") WHERE "paidAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid')`);
+    await executeMigration();
+    expect(await sql`
+      SELECT 1 FROM pg_class idx
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid'
+    `).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx_invalid" ON "SubscriptionInvoice"("tenancyId", "paidAt") INCLUDE ("createdAt") WHERE "paidAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid' AND NOT i.indisvalid
+    `).toHaveLength(1);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx_invalid" ON "SubscriptionInvoice"("tenancyId", "paidAt")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/unexpected definition/);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_paidAt_idx_invalid' AND NOT i.indisvalid
+    `).toHaveLength(1);
+  } finally {
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_paidAt_idx" ON "SubscriptionInvoice"("tenancyId", "paidAt") WHERE "paidAt" IS NOT NULL`);
+  }
 };

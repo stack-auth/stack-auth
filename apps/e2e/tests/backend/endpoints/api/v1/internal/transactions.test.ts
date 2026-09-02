@@ -372,6 +372,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   const creationInvoiceEvent = {
     id: `evt_sub_invoice_creation_${idSuffix}`,
     type: "invoice.payment_succeeded",
+    created: Math.floor(Date.now() / 1000),
     account: accountId,
     data: {
       object: {
@@ -385,6 +386,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   const renewalInvoiceEvent = {
     id: `evt_sub_invoice_cycle_${idSuffix}`,
     type: "invoice.payment_succeeded",
+    created: Math.floor(Date.now() / 1000),
     account: accountId,
     data: {
       object: {
@@ -501,6 +503,7 @@ it("books subscription-renewal money when a free trial converts via subscription
   const creationRes = await sendStripeWebhook({
     id: `evt_trial_create_${idSuffix}`,
     type: "invoice.payment_succeeded",
+    created: Math.floor(Date.now() / 1000),
     account: accountId,
     data: {
       object: {
@@ -533,6 +536,7 @@ it("books subscription-renewal money when a free trial converts via subscription
   const cycleRes = await sendStripeWebhook({
     id: `evt_trial_cycle_${idSuffix}`,
     type: "invoice.payment_succeeded",
+    created: Math.floor(Date.now() / 1000),
     account: accountId,
     data: {
       object: {

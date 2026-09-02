@@ -47,39 +47,48 @@ async function adminJsonRequest(options: {
   });
 }
 
-it("pairs a narrow display principal, preserves tenancy assignment, and detects refresh replay", async ({ expect }) => {
-  const firstProject = await Project.createAndSwitch();
+async function createPairedDisplay(displayName: string) {
+  const project = await Project.createAndSwitch();
   const challengeResponse = await publicJsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
-  expect(challengeResponse.status).toBe(200);
+  if (challengeResponse.status !== 200) throw new Error(`Expected pairing challenge, received ${challengeResponse.status}.`);
   const challenge = await TvDisplayPairingChallengeSchema.validate(challengeResponse.body, { strict: true });
-
   const approvalResponse = await adminJsonRequest({
     path: "/internal/tv-mode/displays",
-    projectId: firstProject.projectId,
-    adminAccessToken: firstProject.adminAccessToken,
+    projectId: project.projectId,
+    adminAccessToken: project.adminAccessToken,
     method: "POST",
     body: {
       pairingCode: challenge.pairingCode,
       profileId: "company-pulse",
-      displayName: "E2E Lobby Display",
+      displayName,
       acknowledgeExactFinancials: false,
     },
   });
-  expect(approvalResponse.status).toBe(200);
-  expect(approvalResponse.body).toMatchObject({
-    success: true,
-    approvedAt: expect.any(String),
-    expiresAt: challenge.expiresAt,
-  });
-
+  if (approvalResponse.status !== 200) throw new Error(`Expected display approval, received ${approvalResponse.status}.`);
   const statusResponse = await publicJsonRequest(
     `/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`,
     { method: "POST", body: { deviceSecret: challenge.deviceSecret } },
   );
-  expect(statusResponse.status).toBe(200);
+  if (statusResponse.status !== 200) throw new Error(`Expected paired status, received ${statusResponse.status}.`);
   const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
   if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
-  const firstRefreshCookie = updateCookiesFromResponse("", statusResponse);
+  return {
+    pairing,
+    refreshCookie: updateCookiesFromResponse("", statusResponse),
+    challenge,
+    project,
+    statusResponse,
+  };
+}
+
+it("pairs a narrow display principal, preserves tenancy assignment, and detects refresh replay", async ({ expect }) => {
+  const {
+    pairing,
+    refreshCookie: firstRefreshCookie,
+    challenge,
+    project: firstProject,
+    statusResponse,
+  } = await createPairedDisplay("E2E Lobby Display");
   const refreshSetCookies = statusResponse.headers.getSetCookie()
     .filter((cookie) => cookie.startsWith("hexclave-tv-display-refresh="));
   expect(refreshSetCookies).toHaveLength(3);
@@ -160,33 +169,7 @@ it("pairs a narrow display principal, preserves tenancy assignment, and detects 
 });
 
 it("hard-deletes a display after an administrator unpairs it and rejects its remote credentials", async ({ expect }) => {
-  const project = await Project.createAndSwitch();
-  const challengeResponse = await publicJsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
-  expect(challengeResponse.status).toBe(200);
-  const challenge = await TvDisplayPairingChallengeSchema.validate(challengeResponse.body, { strict: true });
-
-  const approvalResponse = await adminJsonRequest({
-    path: "/internal/tv-mode/displays",
-    projectId: project.projectId,
-    adminAccessToken: project.adminAccessToken,
-    method: "POST",
-    body: {
-      pairingCode: challenge.pairingCode,
-      profileId: "company-pulse",
-      displayName: "E2E Active Display",
-      acknowledgeExactFinancials: false,
-    },
-  });
-  expect(approvalResponse.status).toBe(200);
-
-  const statusResponse = await publicJsonRequest(
-    `/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`,
-    { method: "POST", body: { deviceSecret: challenge.deviceSecret } },
-  );
-  expect(statusResponse.status).toBe(200);
-  const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
-  if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
-  const refreshCookie = updateCookiesFromResponse("", statusResponse);
+  const { pairing, refreshCookie, project } = await createPairedDisplay("E2E Active Display");
 
   const activeDisplays = await adminJsonRequest({
     path: "/internal/tv-mode/displays",
@@ -233,30 +216,7 @@ it("hard-deletes a display after an administrator unpairs it and rejects its rem
 });
 
 it("clears every refresh-cookie path when a display unpairs itself", async ({ expect }) => {
-  const project = await Project.createAndSwitch();
-  const challengeResponse = await publicJsonRequest("/tv-displays/pairing-challenges", { method: "POST" });
-  expect(challengeResponse.status).toBe(200);
-  const challenge = await TvDisplayPairingChallengeSchema.validate(challengeResponse.body, { strict: true });
-  const approvalResponse = await adminJsonRequest({
-    path: "/internal/tv-mode/displays",
-    projectId: project.projectId,
-    adminAccessToken: project.adminAccessToken,
-    method: "POST",
-    body: {
-      pairingCode: challenge.pairingCode,
-      profileId: "company-pulse",
-      displayName: "Self Unpair Display",
-      acknowledgeExactFinancials: false,
-    },
-  });
-  expect(approvalResponse.status).toBe(200);
-  const statusResponse = await publicJsonRequest(
-    `/tv-displays/pairing-challenges/${encodeURIComponent(challenge.challengeId)}/status`,
-    { method: "POST", body: { deviceSecret: challenge.deviceSecret } },
-  );
-  const pairing = await TvDisplayPairingStatusSchema.validate(statusResponse.body, { strict: true });
-  if (pairing.status !== "paired") throw new Error(`Expected paired display, received ${pairing.status}.`);
-  const refreshCookie = updateCookiesFromResponse("", statusResponse);
+  const { pairing, refreshCookie } = await createPairedDisplay("Self Unpair Display");
 
   const unpairResponse = await publicJsonRequest("/tv-displays/unpair", {
     method: "POST",

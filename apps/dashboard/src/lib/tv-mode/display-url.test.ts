@@ -28,9 +28,21 @@ describe("TV display URL", () => {
     expect(buildTvDisplayUrl({ browserDashboardUrl: "not a URL" })).toBeNull();
   });
 
+  it("skips unsupported protocols and continues to later candidates", () => {
+    expect(buildTvDisplayUrl({
+      browserDashboardUrl: "file:///tmp/dashboard",
+      dashboardUrl: "https://dashboard.example.com",
+    })).toBe("https://dashboard.example.com/tv");
+    expect(buildTvDisplayUrl({
+      browserDashboardUrl: "ftp://dashboard.example.com",
+      dashboardUrl: "file:///tmp/dashboard",
+    })).toBeNull();
+  });
+
   it("identifies loopback and local development hosts", () => {
     expect(isLocalTvDisplayUrl("http://localhost:8101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("http://127.0.0.1:8101/tv")).toBe(true);
+    expect(isLocalTvDisplayUrl("http://127.1.2.3:8101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("http://a.localhost:9101/tv")).toBe(true);
     expect(isLocalTvDisplayUrl("https://app.example.com/tv")).toBe(false);
   });

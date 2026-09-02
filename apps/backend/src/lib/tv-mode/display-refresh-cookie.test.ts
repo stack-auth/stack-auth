@@ -49,4 +49,43 @@ describe("TV display refresh cookie policy", () => {
       expect(options).toEqual(expect.objectContaining({ secure: true }));
     }
   });
+
+  it("uses SameSite=None only for a distinct secure display origin", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("HEXCLAVE_TV_DISPLAY_ORIGIN", "https://tv.example.com");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "https://api.example.com");
+    vi.stubEnv("NEXT_PUBLIC_STACK_API_URL", "https://api.example.com");
+    const set = vi.fn();
+    setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
+    for (const [, , options] of set.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ secure: true, sameSite: "none" }));
+    }
+  });
+
+  it("uses the dashboard URL fallback for a distinct secure display origin", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL", "https://tv.example.com");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "https://api.example.com");
+    vi.stubEnv("NEXT_PUBLIC_STACK_API_URL", "https://api.example.com");
+    const set = vi.fn();
+    setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
+    for (const [, , options] of set.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ secure: true, sameSite: "none" }));
+    }
+  });
+
+  it("keeps SameSite=Strict for same-site and development displays", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("HEXCLAVE_TV_DISPLAY_ORIGIN", "https://api.example.com");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "https://api.example.com");
+    vi.stubEnv("NEXT_PUBLIC_STACK_API_URL", "https://api.example.com");
+    const set = vi.fn();
+    setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
+    expect(set.mock.calls[1][2]).toEqual(expect.objectContaining({ sameSite: "strict" }));
+
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("HEXCLAVE_TV_DISPLAY_ORIGIN", "https://tv.example.com");
+    setTvDisplayRefreshCookie({ set }, "tv-refresh", "secret");
+    expect(set.mock.calls.at(-1)?.[2]).toEqual(expect.objectContaining({ secure: false, sameSite: "strict" }));
+  });
 });

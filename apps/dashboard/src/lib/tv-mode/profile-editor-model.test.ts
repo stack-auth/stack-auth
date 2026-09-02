@@ -1,4 +1,4 @@
-import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { getTvBuiltInProfile, TvProfileDisplayNameSchema } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { describe, expect, it } from "vitest";
 import {
   createTvProfileCopyDisplayName,
@@ -43,5 +43,10 @@ describe("TV profile editor model", () => {
   it("keeps duplicated names within the normalized profile-name limit", () => {
     expect(createTvProfileCopyDisplayName("A".repeat(80))).toBe(`${"A".repeat(75)} Copy`);
     expect(createTvProfileCopyDisplayName(`${"A".repeat(74)}ﬃ`)).toBe(`${"A".repeat(74)} Copy`);
+  });
+
+  it("keeps astral-character copies valid for the raw name schema", async () => {
+    const copyName = createTvProfileCopyDisplayName("😀".repeat(40));
+    await expect(TvProfileDisplayNameSchema.validate(copyName)).resolves.toBe(copyName);
   });
 });

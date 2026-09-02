@@ -5,10 +5,14 @@ import { flushInFlightPromises } from "@/utils/background-tasks";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { logEventMock } = vi.hoisted(() => ({ logEventMock: vi.fn() }));
+const { captureErrorMock, logEventMock } = vi.hoisted(() => ({ captureErrorMock: vi.fn(), logEventMock: vi.fn() }));
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/events")>(),
   logEvent: logEventMock,
+}));
+vi.mock("@hexclave/shared/dist/utils/errors", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@hexclave/shared/dist/utils/errors")>(),
+  captureError: captureErrorMock,
 }));
 import {
   approveTvDisplayPairing,
@@ -26,6 +30,7 @@ import {
 } from "./displays";
 import { createTvProfile, deleteTvProfile, TvProfileAssignedToDisplaysError } from "./profiles";
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { signJWT } from "@hexclave/shared/dist/utils/jwt";
 
 describe.sequential("independent TV display persistence", () => {
@@ -50,6 +55,7 @@ describe.sequential("independent TV display persistence", () => {
   }
 
   beforeEach(async () => {
+    captureErrorMock.mockClear();
     logEventMock.mockClear();
     tenancy = await createTenancy();
     otherTenancy = await createTenancy();
@@ -71,13 +77,13 @@ describe.sequential("independent TV display persistence", () => {
     return challenge;
   }
 
-  async function pairDisplay(options: { tenancy?: Tenancy, now?: Date } = {}) {
+  async function pairDisplay(options: { tenancy?: Tenancy, now?: Date, profileId?: string } = {}) {
     const targetTenancy = options.tenancy ?? tenancy;
     const challenge = await createChallenge(options.now);
     await approveTvDisplayPairing({
       tenancy: targetTenancy,
       pairingCode: challenge.pairingCode,
-      profileId: "company-pulse",
+      profileId: options.profileId ?? "company-pulse",
       displayName: "Lobby Display",
       adminUserId: randomUUID(),
       acknowledgeExactFinancials: false,
@@ -191,6 +197,41 @@ describe.sequential("independent TV display persistence", () => {
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(true);
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(true);
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(false);
+  });
+
+  it("keeps the rate-limit verdict when opportunistic cleanup fails", async () => {
+    const identity = randomUUID();
+    const now = new Date("2026-08-14T12:00:00.000Z");
+    const originalExecuteRaw = globalPrismaClient.$executeRaw;
+    Object.defineProperty(globalPrismaClient, "$executeRaw", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockRejectedValueOnce(new Error("cleanup failed")),
+    });
+    try {
+      await expect(consumeTvDisplayPairingRateLimit({
+        identity,
+        operation: "approval-admin",
+        windowMs: 60_000,
+        limit: 1,
+        now,
+      })).resolves.toBe(true);
+      expect(captureErrorMock).toHaveBeenCalledWith(
+        "tv-display-rate-limit-cleanup-failed",
+        expect.any(HexclaveAssertionError),
+      );
+    } finally {
+      Object.defineProperty(globalPrismaClient, "$executeRaw", {
+        configurable: true,
+        writable: true,
+        value: originalExecuteRaw,
+      });
+      await globalPrismaClient.$executeRaw`
+        DELETE FROM "TvDisplayPairingRateLimitBucket"
+        WHERE "operation" = ${"approval-admin"}
+          AND "windowStart" = ${now}
+      `;
+    }
   });
 
   it("hard-deletes only the exact tenancy-scoped display and its credentials", async () => {
@@ -563,20 +604,22 @@ describe.sequential("independent TV display persistence", () => {
       acknowledgeExactFinancials: false,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    releaseRow.resolve();
-
-    const [deletionResult, approvalResult] = await Promise.allSettled([deletion, approval]);
-    await blocker;
-    expect([deletionResult, approvalResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    if (deletionResult.status === "fulfilled") {
-      expect(deletionResult.value).toBe(true);
-      expect(approvalResult.status).toBe("rejected");
-      if (approvalResult.status !== "rejected") throw new Error("Display approval unexpectedly succeeded after profile deletion.");
-      expect(approvalResult.reason).toBeInstanceOf(Error);
-      expect(approvalResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
-    } else {
-      expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
-      expect(approvalResult.status).toBe("fulfilled");
+    try {
+      const [deletionResult, approvalResult] = await Promise.allSettled([deletion, approval]);
+      expect([deletionResult, approvalResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      if (deletionResult.status === "fulfilled") {
+        expect(deletionResult.value).toBe(true);
+        expect(approvalResult.status).toBe("rejected");
+        if (approvalResult.status !== "rejected") throw new Error("Display approval unexpectedly succeeded after profile deletion.");
+        expect(approvalResult.reason).toBeInstanceOf(Error);
+        expect(approvalResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
+      } else {
+        expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
+        expect(approvalResult.status).toBe("fulfilled");
+      }
+    } finally {
+      releaseRow.resolve();
+      await blocker;
     }
   });
 
@@ -622,25 +665,27 @@ describe.sequential("independent TV display persistence", () => {
       acknowledgeExactFinancials: false,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    releaseRow.resolve();
-
-    const [deletionResult, reassignmentResult] = await Promise.allSettled([deletion, reassignment]);
-    await blocker;
-    expect([deletionResult, reassignmentResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    if (deletionResult.status === "fulfilled") {
-      expect(deletionResult.value).toBe(true);
-      expect(reassignmentResult.status).toBe("rejected");
-      if (reassignmentResult.status !== "rejected") throw new Error("Display reassignment unexpectedly succeeded after profile deletion.");
-      expect(reassignmentResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
-      await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
-        display: { profileId: "company-pulse" },
-      });
-    } else {
-      expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
-      expect(reassignmentResult.status).toBe("fulfilled");
-      await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
-        display: { profileId: profile.id },
-      });
+    try {
+      const [deletionResult, reassignmentResult] = await Promise.allSettled([deletion, reassignment]);
+      expect([deletionResult, reassignmentResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      if (deletionResult.status === "fulfilled") {
+        expect(deletionResult.value).toBe(true);
+        expect(reassignmentResult.status).toBe("rejected");
+        if (reassignmentResult.status !== "rejected") throw new Error("Display reassignment unexpectedly succeeded after profile deletion.");
+        expect(reassignmentResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
+        await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
+          display: { profileId: "company-pulse" },
+        });
+      } else {
+        expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
+        expect(reassignmentResult.status).toBe("fulfilled");
+        await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
+          display: { profileId: profile.id },
+        });
+      }
+    } finally {
+      releaseRow.resolve();
+      await blocker;
     }
   });
 
@@ -694,6 +739,22 @@ describe.sequential("independent TV display persistence", () => {
     await expect(getTvDisplayResource(tenancy, paired.display, new Date(acknowledgedAt.getTime() + 3_000))).resolves.toMatchObject({
       profileFinancialVisibility: "exact",
       exactFinancialsAcknowledged: false,
+    });
+  });
+
+  it("reports redacted profiles as already acknowledged", async () => {
+    const template = getTvBuiltInProfile("company-pulse");
+    if (template == null) throw new Error("Company Pulse profile is missing.");
+    const profile = await createTvProfile(tenancy, {
+      ...template.configuration,
+      displayName: "Redacted Financial Display Profile",
+      financialVisibility: "redacted",
+    });
+    if (profile == null) throw new Error("TV profile persistence is unavailable.");
+    const paired = await pairDisplay({ profileId: profile.id });
+    await expect(getTvDisplayResource(tenancy, paired.display)).resolves.toMatchObject({
+      profileFinancialVisibility: "redacted",
+      exactFinancialsAcknowledged: true,
     });
   });
 });
