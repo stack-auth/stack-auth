@@ -33,7 +33,6 @@ type JsonSchemaNode = {
   type?: string | string[],
   properties?: Record<string, JsonSchemaNode>,
   required?: string[],
-  items?: JsonSchemaNode,
   /**
    * Convex's own annotation, and the only way to tell its richer types apart:
    * `Id(users)`, `int64 represented as base10 string`, `base64 bytes`.
@@ -81,7 +80,7 @@ export function mapConvexTypeToClickhouse(node: JsonSchemaNode): string {
   }
 }
 
-function describeConvexType(node: JsonSchemaNode): string {
+export function describeConvexType(node: JsonSchemaNode): string {
   const description = node.$description ?? "";
   if (description.startsWith("Id(")) return description;
   if (description.includes("int64")) return "int64";
@@ -90,7 +89,13 @@ function describeConvexType(node: JsonSchemaNode): string {
   return node.type ?? "unknown";
 }
 
-function readTable(component: string, tableName: string, schema: JsonSchemaNode): ProbedTable {
+/**
+ * Only the root app's tables are catalogued. Convex's schema endpoint does not
+ * enumerate installed components, so a table inside one is never offered in the
+ * picker and therefore never synced — the sync loop still matches changes by
+ * component, so supporting them later is a catalog change alone.
+ */
+function readTable(tableName: string, schema: JsonSchemaNode): ProbedTable {
   const properties = schema.properties ?? {};
   const alwaysPresent = new Set(schema.required ?? []);
   const columns: DataSourceColumn[] = Object.entries(properties).map(([name, node]) => ({
@@ -114,7 +119,7 @@ function readTable(component: string, tableName: string, schema: JsonSchemaNode)
   }
 
   return {
-    schemaName: componentToSchemaName(component),
+    schemaName: CONVEX_ROOT_COMPONENT,
     tableName,
     columns,
     // Convex does not expose a row-count estimate, and guessing one would feed a
@@ -137,31 +142,40 @@ async function readCatalog(credentials: ConvexCredentials): Promise<ProbedTable[
   }
 
   return Object.entries(response as Record<string, JsonSchemaNode>)
-    .map(([tableName, schema]) => readTable("", tableName, schema))
+    .map(([tableName, schema]) => readTable(tableName, schema))
     .sort((a, b) => stringCompare(a.tableName, b.tableName));
 }
 
 /**
- * Reads what the deployment holds and confirms the deploy key can read the
- * change feed.
+ * Reads what the deployment holds, and at connect time also confirms the deploy
+ * key can read the change feed.
  *
- * Both are checked, because they fail differently: a key can be valid for the
- * catalog while streaming export is refused, and finding that out at connect
- * time is much better than at the first scheduled sync.
+ * The two fail differently: a key can be valid for the catalog while streaming
+ * export is refused, and finding that out while the customer is still on the
+ * connect screen is much better than at the first scheduled sync.
+ *
+ * That check is *not* repeated before every sync. A cursor-less call to the feed
+ * is page one of a fresh deployment-wide snapshot, so running it every minute
+ * would download and parse a large response purely to read its status code, and
+ * would consume the customer's streaming-export quota to do it. The sync's own
+ * first page surfaces the same failure a moment later anyway.
  */
-export async function probeConvex(connection: DataSourceConnection): Promise<DataSourceProbeResult> {
+export async function probeConvex(
+  connection: DataSourceConnection,
+  options?: { verifyAccess?: boolean },
+): Promise<DataSourceProbeResult> {
   const credentials = await toConvexCredentials(connection);
   const tables = await readCatalog(credentials);
 
-  // A cursor-less call returns the first page of a fresh snapshot without
-  // consuming anything: the cursor we would need to resume is in the response,
-  // and we simply do not keep it. Nothing on the deployment changes.
-  await convexRequest(credentials, "/api/v1/data/sync", { method: "POST", body: {} });
+  if (options?.verifyAccess === true) {
+    // Reads the first page and discards it, including the cursor. Nothing on the
+    // deployment changes: the feed is only consumed by advancing a cursor we keep.
+    await convexRequest(credentials, "/api/v1/data/sync", { method: "POST", body: {} });
+  }
 
   const capabilities: ConvexCapabilities = {
     type: "convex",
     deploymentUrl: credentials.deploymentUrl,
-    hasStreamingExport: true,
     probedAtMillis: Date.now(),
   };
   return { capabilities, tables };

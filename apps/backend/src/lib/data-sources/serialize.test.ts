@@ -31,7 +31,6 @@ describe("data source serialization", () => {
       capabilities: {
         type: "convex",
         deploymentUrl: "https://example.convex.cloud",
-        hasStreamingExport: true,
         probedAtMillis: 0,
       },
       tables: [],
@@ -42,7 +41,6 @@ describe("data source serialization", () => {
     expect(serialized.capabilities).toEqual({
       type: "convex",
       deployment_url: "https://example.convex.cloud",
-      has_streaming_export: true,
       probed_at_millis: 0,
     });
     expect(JSON.stringify(serialized)).not.toContain("wal_level");

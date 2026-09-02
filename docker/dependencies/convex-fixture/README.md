@@ -13,15 +13,28 @@ Note that Convex takes a few seconds to make a fresh commit visible to the chang
 feed, whichever way it was written. Tests wait for a write to appear rather than
 syncing immediately after it.
 
-Deploy it against the local backend from `docker.compose.yaml`:
+Convex is not a standing dev dependency — nothing in the product talks to it, and
+only this test does — so start a backend just for the run, the way the Postgres
+data-source integration test does:
+
+```sh
+docker run -d --name hexclave-convex-test -p 8140:3210 \
+  -e INSTANCE_NAME=hexclave-local -e DISABLE_BEACON=true \
+  ghcr.io/get-convex/convex-backend:latest
+```
+
+`DISABLE_BEACON` stops the backend reporting anonymized usage to Convex on every
+start. Then deploy this app into it:
 
 ```sh
 cd docker/dependencies/convex-fixture
 npm install
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:8140 \
-CONVEX_SELF_HOSTED_ADMIN_KEY="$(docker exec dependencies-convex-1 ./generate_admin_key.sh | tail -1)" \
+CONVEX_SELF_HOSTED_ADMIN_KEY="$(docker exec hexclave-convex-test ./generate_admin_key.sh | tail -1)" \
   npx convex dev --once
 ```
+
+Tear it down with `docker rm -f hexclave-convex-test` when you are done.
 
 The test then drives it over `/api/mutation`, so it needs no Convex client of
 its own.

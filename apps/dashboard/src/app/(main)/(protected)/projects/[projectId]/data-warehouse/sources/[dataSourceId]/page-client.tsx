@@ -9,7 +9,7 @@ import { useState } from "react";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
-import { describeSource } from "../source-types";
+import { SOURCE_TYPES, describeSource } from "../source-types";
 import { StreamPicker, formatRowCount } from "../stream-picker";
 
 const MODE_LABEL: Record<string, string> = { cdc: "CDC", cursor: "Cursor" };
@@ -103,7 +103,7 @@ function DataSourcePage() {
   return (
     <PageLayout
       title={describeSource(dataSource)}
-      description={`PostgreSQL · ${dataSource.streams.length} ${dataSource.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
+      description={`${SOURCE_TYPES[dataSource.type].label} · ${dataSource.streams.length} ${dataSource.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
       actions={
         <div className="flex gap-2">
           <DesignButton variant="secondary" onClick={startEditing} loading={loadingCatalog}>Edit tables</DesignButton>

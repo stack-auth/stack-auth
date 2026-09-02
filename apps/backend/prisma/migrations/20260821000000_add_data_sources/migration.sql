@@ -24,7 +24,6 @@ CREATE TABLE "DataSource" (
     "syncIntervalSeconds" INTEGER NOT NULL DEFAULT 300,
     "capabilities" JSONB,
     "syncCursor" JSONB,
-    "managedResources" JSONB,
     "lastSyncStartedAt" TIMESTAMP(3),
     "lastSyncFinishedAt" TIMESTAMP(3),
 

@@ -17,7 +17,6 @@ import { getPostgresModeAvailability } from "./postgres";
 import type { DataSourceCapabilities, DataSourceSyncMode, DataSourceTableInfo, ModeAvailability } from "./types";
 
 export * from "./types";
-export { getCdcAvailability } from "./postgres";
 
 export const DATA_SOURCE_SYNC_MODES = ["cdc", "cursor"] as const satisfies readonly DataSourceSyncMode[];
 

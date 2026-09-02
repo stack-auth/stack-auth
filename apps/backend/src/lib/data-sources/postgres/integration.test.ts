@@ -52,8 +52,8 @@ const connection = {
 const contextBase = {
   connection,
   sourceCursor: null,
-  managedResources: null,
   dataSourceId: "00000000-0000-4000-8000-000000000001",
+  deadlineMs: Number.POSITIVE_INFINITY,
 };
 
 describe.skipIf(!TEST_SERVER)("Postgres data source", () => {

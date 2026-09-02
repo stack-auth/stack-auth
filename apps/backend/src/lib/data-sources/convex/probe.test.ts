@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getModeAvailability, getRecommendedMode } from "@hexclave/shared/dist/data-sources/modes";
 import type { ConvexCapabilities } from "@hexclave/shared/dist/data-sources/modes";
-import { componentToSchemaName, mapConvexTypeToClickhouse } from "./probe";
+import { componentToSchemaName, describeConvexType, mapConvexTypeToClickhouse } from "./probe";
 
 const capabilities: ConvexCapabilities = {
   type: "convex",
   deploymentUrl: "https://example.convex.cloud",
-  hasStreamingExport: true,
   probedAtMillis: 0,
 };
 
@@ -17,19 +16,31 @@ describe("Convex type mapping", () => {
     expect(mapConvexTypeToClickhouse({ type: "number" })).toBe("Float64");
   });
 
-  it("reads Convex's own annotations, which are the only way to tell its richer types apart", () => {
-    // All three of these are `"type": "string"` in the JSON Schema; only the
-    // $description distinguishes them.
-    expect(mapConvexTypeToClickhouse({ type: "string", $description: "Id(users)" })).toBe("String");
+  it("gives an int64 a column that can hold it, not the String fallback", () => {
+    // An Int64 is `"type": "string"` in the schema; only the annotation says so.
     expect(mapConvexTypeToClickhouse({ type: "string", $description: "int64 represented as base10 string" })).toBe("Int64");
-    expect(mapConvexTypeToClickhouse({ type: "string", $description: "base64 bytes" })).toBe("String");
+    // Compared against the same node without its annotation, so this fails if the
+    // branch is deleted rather than passing on the String fallback.
+    expect(mapConvexTypeToClickhouse({ type: "string" })).toBe("String");
+  });
+
+  it("names Convex's annotated types for the customer, rather than calling them all strings", () => {
+    // Ids, int64s and bytes are indistinguishable by `type` alone, and the column
+    // type is String for two of the three — so the reported `dataType` is the only
+    // place the difference survives.
+    expect(describeConvexType({ type: "string", $description: "Id(users)" })).toBe("Id(users)");
+    expect(describeConvexType({ type: "string", $description: "int64 represented as base10 string" })).toBe("int64");
+    expect(describeConvexType({ type: "string", $description: "base64 bytes" })).toBe("bytes");
+    expect(describeConvexType({ type: "string" })).toBe("string");
+    expect(describeConvexType({ type: ["string", "number"] })).toBe("string | number");
+    expect(describeConvexType({})).toBe("unknown");
   });
 
   it("keeps nested values as JSON text rather than unpacking them", () => {
     // A Convex table may hold documents of different shapes, so unpacking would
     // mean a destination schema that changes whenever a new shape appears.
     expect(mapConvexTypeToClickhouse({ type: "object", properties: { a: { type: "number" } } })).toBe("String");
-    expect(mapConvexTypeToClickhouse({ type: "array", items: { type: "string" } })).toBe("String");
+    expect(mapConvexTypeToClickhouse({ type: "array" })).toBe("String");
   });
 
   it("falls back to String for a field with no single type", () => {

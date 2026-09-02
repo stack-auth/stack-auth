@@ -680,15 +680,61 @@ it("does not let one project touch another's source", async ({ expect }) => {
 // and a single mode rather than a choice. These check that the shared endpoints
 // carry all of that through, and are skipped unless a deployment is pointed at.
 //
-//   docker compose -f docker/dependencies/docker.compose.yaml up -d convex
-//   # deploy the fixture app: docker/dependencies/convex-fixture/README.md
+//   # see docker/dependencies/convex-fixture/README.md for the backend and fixture
 //   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_URL=http://127.0.0.1:8140 \
-//   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY="$(docker exec dependencies-convex-1 ./generate_admin_key.sh | tail -1)" \
+//   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY="$(docker exec hexclave-convex-test ./generate_admin_key.sh | tail -1)" \
 //     pnpm test <this file>
 
 const CONVEX_URL = getEnvVariable("HEXCLAVE_DATA_SOURCE_TEST_CONVEX_URL", "") || undefined;
 const CONVEX_KEY = getEnvVariable("HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY", "") || undefined;
 const CONVEX_ENABLED = CONVEX_URL != null && CONVEX_KEY != null;
+
+/** Writes to the Convex fixture app, so the change feed actually has something to carry. */
+async function convexMutation(name: string, args: Record<string, unknown> = {}) {
+  const response = await fetch(new URL("/api/mutation", CONVEX_URL), {
+    method: "POST",
+    headers: { authorization: `Convex ${CONVEX_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ path: `fixture:${name}`, args, format: "json" }),
+  });
+  const body = await response.json() as { status: string, value: unknown };
+  if (body.status !== "success") throw new HexclaveAssertionError(`Convex mutation ${name} failed`, { body });
+  return body.value;
+}
+
+/**
+ * Convex makes a fresh commit visible to the change feed a few seconds after it
+ * lands, so a sync run immediately after a write can legitimately return
+ * nothing. Polls a throwaway cursor-less session, which consumes nothing, until
+ * the write is there to be read.
+ */
+async function waitForConvexFeed(expectedNames: string[]): Promise<void> {
+  const wanted = [...expectedNames].sort();
+  const deadline = Date.now() + 60_000;
+  let seen: string[] = [];
+  while (Date.now() < deadline) {
+    let cursor: string | null = null;
+    const live = new Map<string, string>();
+    for (let page = 0; page < 100; page++) {
+      const response = await fetch(new URL("/api/v1/data/sync", CONVEX_URL), {
+        method: "POST",
+        headers: { authorization: `Convex ${CONVEX_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify(cursor == null ? {} : { cursor }),
+      });
+      const body = await response.json() as any;
+      for (const change of body.values) {
+        if (change.table !== "it_people") continue;
+        if (change.deleted) live.delete(change.value._id);
+        else live.set(change.value._id, change.value.name);
+      }
+      cursor = body.pagination.nextCursor;
+      if (body.status.type === "upToDate") break;
+    }
+    seen = [...live.values()].sort();
+    if (JSON.stringify(seen) === JSON.stringify(wanted)) return;
+    await wait(1000);
+  }
+  throw new HexclaveAssertionError(`Convex feed shows ${JSON.stringify(seen)}, expected ${JSON.stringify(wanted)}`);
+}
 
 async function connectConvexSource(overrides: Record<string, unknown> = {}) {
   return await niceBackendFetch("/api/v1/data-sources", {
@@ -716,7 +762,7 @@ it.skipIf(!CONVEX_ENABLED)("connects a Convex deployment and offers only its one
   });
   // The deploy key never comes back out, under any name.
   expect(JSON.stringify(response.body.data_source)).not.toContain(CONVEX_KEY);
-  expect(response.body.data_source.capabilities).toMatchObject({ type: "convex", has_streaming_export: true });
+  expect(response.body.data_source.capabilities).toMatchObject({ type: "convex", deployment_url: CONVEX_URL });
   // Postgres-only capability fields must not be invented for a source that has
   // no concept of them.
   expect(response.body.data_source.capabilities).not.toHaveProperty("wal_level");
@@ -742,7 +788,11 @@ it.skipIf(!CONVEX_ENABLED)("refuses a bad Convex deploy key", async ({ expect })
 });
 
 it.skipIf(!CONVEX_ENABLED)("syncs a Convex table into the warehouse", async ({ expect }) => {
-  const { credentials } = await createProjectWithWarehouse();
+  const { projectId, credentials } = await createProjectWithWarehouse();
+  await convexMutation("clearPeople");
+  await convexMutation("addPerson", { name: "ada", age: 36, active: true, tags: ["x"], meta: { rank: 1 } });
+  await waitForConvexFeed(["ada"]);
+
   const { body: { data_source } } = await connectConvexSource();
 
   const configured = await setStreams(data_source.id, [
@@ -762,13 +812,18 @@ it.skipIf(!CONVEX_ENABLED)("syncs a Convex table into the warehouse", async ({ e
   expect(synced.status).toBe(200);
   expect(synced.body.data_source.streams[0].status).toBe("active");
   expect(synced.body.data_source.streams[0].error).toBeNull();
+  expect(synced.body.data_source.streams[0].rows_synced).toBe(1);
 
-  // Read back as the project's own warehouse user, so isolation is exercised
-  // rather than only the happy path.
+  // Read the row back as the project's own warehouse user, so isolation is
+  // exercised and not only the happy path. Asserting on the document rather than
+  // on a count, because a count passes against an empty table.
   const destination = synced.body.data_source.streams[0].destination_table;
-  const result = await queryWarehouse(credentials, `SELECT count() AS n FROM \`${destination}\``);
+  const result = await queryWarehouse(
+    credentials,
+    `SELECT name, age FROM \`${projectId}\`.\`${destination}\` FINAL WHERE _hexclave_deleted = 0`,
+  );
   expect(result.status).toBe(200);
-  expect(Number(result.text)).toBeGreaterThanOrEqual(0);
+  expect(result.text).toBe("ada\t36");
 });
 
 it.skipIf(!CONVEX_ENABLED)("refuses cursor mode for a Convex table", async ({ expect }) => {

@@ -1,10 +1,6 @@
 import type { Client } from "pg";
-import {
-  DELETED_COLUMN,
-  ensureDestinationTable,
-  insertRows,
-  quoteClickhouseIdentifier,
-} from "../clickhouse-destination";
+import { DELETED_COLUMN, insertRows } from "../clickhouse-destination";
+import { prepareDestination, tableKey } from "../destination";
 import { buildDestinationRow, buildSourceRow, versionFromCursorValue } from "../rows";
 import type { ProbedTable, StreamSyncPlan, StreamSyncResult, SyncContext, SyncOutcome } from "../types";
 import { quotePgIdentifier, quotePgQualifiedName, toCredentials, withDataSourceClient } from "./client";
@@ -29,10 +25,6 @@ const CURSOR_SAFETY_LAG_SECONDS = 10;
 /** Alias the cursor's exact text is read back under; never written to the destination. */
 const CURSOR_TEXT_COLUMN = "_hexclave_cursor_text";
 
-function tableKey(schemaName: string, tableName: string): string {
-  return `${schemaName}.${tableName}`;
-}
-
 /**
  * The publication and replication slot this source owns on the customer's server.
  *
@@ -54,21 +46,6 @@ export function getReplicationSlotName(dataSourceId: string): string {
  */
 export function getCursorSyncBatchLimit(primaryKeyColumns: readonly string[]): number | null {
   return primaryKeyColumns.length > 0 ? MAX_BATCHES_PER_CURSOR_SYNC : null;
-}
-
-async function prepareDestination(context: SyncContext, plan: StreamSyncPlan, table: ProbedTable): Promise<void> {
-  if (plan.isPending) {
-    // Rebuilt from scratch rather than merged into: see StreamSyncPlan.isPending.
-    await context.clickhouse.command({
-      query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
-    });
-  }
-  await ensureDestinationTable(context.clickhouse, {
-    databaseName: context.databaseName,
-    tableName: plan.destinationTable,
-    columns: table.columns,
-    primaryKeyColumns: plan.primaryKeyColumns,
-  });
 }
 
 /** Streams a SELECT through a server-side cursor so memory stays bounded whatever the table size. */
@@ -576,15 +553,8 @@ export async function runPostgresStreamSyncs(context: SyncContext, plans: Stream
     }
   }
 
-  // Postgres resumes per stream, so it leaves the source-level cursor alone. The
-  // slot and publication it may just have created are recorded so that teardown
-  // does not depend on this driver still being the one that names them.
-  return {
-    streams: results,
-    managedResources: cdcPlans.length > 0
-      ? { slotName: getReplicationSlotName(context.dataSourceId), publicationName: getReplicationSlotName(context.dataSourceId) }
-      : undefined,
-  };
+  // Postgres resumes per stream, so it leaves the source-level cursor alone.
+  return { streams: results };
 }
 
 export { DELETED_COLUMN };

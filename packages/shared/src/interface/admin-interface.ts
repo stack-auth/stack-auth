@@ -95,8 +95,6 @@ export type PostgresCapabilitiesJson = {
 export type ConvexCapabilitiesJson = {
   type: "convex",
   deployment_url: string,
-  /** Convex Cloud gates the change feed behind a Pro plan; self-hosted does not. */
-  has_streaming_export: boolean,
   probed_at_millis: number,
 };
 
@@ -115,32 +113,26 @@ export type ConvexSourceConfigJson = {
   deployment_url: string,
 };
 
-export type DataSourceJson =
-  | {
-    id: string,
-    type: "postgres",
-    config: PostgresSourceConfigJson,
-    status: "pending" | "active" | "paused" | "failed",
-    error: string | null,
-    sync_interval_seconds: number,
-    /** Null until the source has been probed once. */
-    capabilities: PostgresCapabilitiesJson | null,
-    last_sync_started_at_millis: number | null,
-    last_sync_finished_at_millis: number | null,
-    streams: DataSourceStreamJson[],
-  }
-  | {
-    id: string,
-    type: "convex",
-    config: ConvexSourceConfigJson,
-    status: "pending" | "active" | "paused" | "failed",
-    error: string | null,
-    sync_interval_seconds: number,
-    capabilities: ConvexCapabilitiesJson | null,
-    last_sync_started_at_millis: number | null,
-    last_sync_finished_at_millis: number | null,
-    streams: DataSourceStreamJson[],
-  };
+/** Everything a source has regardless of what it connects to. */
+type DataSourceJsonBase = {
+  id: string,
+  status: "pending" | "active" | "paused" | "failed",
+  error: string | null,
+  sync_interval_seconds: number,
+  last_sync_started_at_millis: number | null,
+  last_sync_finished_at_millis: number | null,
+  streams: DataSourceStreamJson[],
+};
+
+/**
+ * Discriminated by `type`: the connection settings and the capability snapshot
+ * are the two things that differ per source, and `capabilities` is null until
+ * the source has been probed once.
+ */
+export type DataSourceJson = DataSourceJsonBase & (
+  | { type: "postgres", config: PostgresSourceConfigJson, capabilities: PostgresCapabilitiesJson | null }
+  | { type: "convex", config: ConvexSourceConfigJson, capabilities: ConvexCapabilitiesJson | null }
+);
 
 export type DataSourceCatalogTableJson = {
   /** A Postgres schema, or a Convex component (the root app is "app"). */

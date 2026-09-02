@@ -1,7 +1,8 @@
-import { ensureDestinationTable, insertRows, quoteClickhouseIdentifier } from "../clickhouse-destination";
+import { insertRows } from "../clickhouse-destination";
+import { prepareDestination, rebuildDestinationTable, tableKey } from "../destination";
 import { buildDestinationRow } from "../rows";
 import type { ProbedTable, StreamSyncPlan, StreamSyncResult, SyncContext, SyncOutcome } from "../types";
-import { convexRequest, toConvexCredentials, type ConvexCredentials } from "./client";
+import { convexRequest, isInvalidCursorError, toConvexCredentials, type ConvexCredentials } from "./client";
 import { toBigInt } from "./json";
 import { componentToSchemaName } from "./probe";
 import { toDestinationValues } from "./values";
@@ -11,14 +12,15 @@ import { toDestinationValues } from "./values";
  *
  * Convex's feed is unbounded — `pagination.hasMore` is true even once there is
  * nothing left — so the loop ends when the deployment says `upToDate`. This cap
- * exists only so that a deployment producing changes faster than we can drain it
- * cannot hold a sync run open forever; the cursor is saved either way, and the
- * next run picks up where this one stopped.
+ * and the deadline below exist so that a deployment producing changes faster
+ * than we can drain it cannot hold a sync run open forever; the cursor is saved
+ * either way, and the next run picks up where this one stopped.
  */
 const MAX_PAGES_PER_SYNC = 500;
 
-/** Rows buffered before a flush to ClickHouse, so memory stays bounded on a large snapshot. */
+/** Rows buffered per table before a flush, and across all tables before the largest is flushed. */
 const INSERT_BATCH_ROWS = 20_000;
+const MAX_BUFFERED_ROWS = 100_000;
 
 type ConvexSyncPage = {
   /**
@@ -39,10 +41,6 @@ type ConvexSyncPage = {
   }[],
   pagination: { hasMore: boolean, nextCursor: string },
 };
-
-function tableKey(schemaName: string, tableName: string): string {
-  return `${schemaName}.${tableName}`;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,6 +75,7 @@ function readSourceCursor(sourceCursor: unknown): string | null {
  */
 class DestinationBuffer {
   private readonly rowsByTable = new Map<string, Record<string, unknown>[]>();
+  private buffered = 0;
 
   constructor(private readonly context: SyncContext) {}
 
@@ -84,7 +83,23 @@ class DestinationBuffer {
     const rows = this.rowsByTable.get(destinationTable) ?? [];
     rows.push(row);
     this.rowsByTable.set(destinationTable, rows);
-    if (rows.length >= INSERT_BATCH_ROWS) await this.flushTable(destinationTable);
+    this.buffered++;
+    if (rows.length >= INSERT_BATCH_ROWS) {
+      await this.flushTable(destinationTable);
+      return;
+    }
+    // A per-table threshold alone does not bound memory: one feed interleaves
+    // every selected table, so during a snapshot all of them fill at once and
+    // the real ceiling is the threshold times the number of streams.
+    if (this.buffered >= MAX_BUFFERED_ROWS) await this.flushLargestTable();
+  }
+
+  private async flushLargestTable(): Promise<void> {
+    let largest: string | null = null;
+    for (const [table, rows] of this.rowsByTable) {
+      if (largest == null || rows.length > this.rowsByTable.get(largest)!.length) largest = table;
+    }
+    if (largest != null) await this.flushTable(largest);
   }
 
   async flush(): Promise<void> {
@@ -97,27 +112,13 @@ class DestinationBuffer {
     const rows = this.rowsByTable.get(destinationTable);
     if (rows == null || rows.length === 0) return;
     this.rowsByTable.set(destinationTable, []);
+    this.buffered -= rows.length;
     await insertRows(this.context.clickhouse, {
       databaseName: this.context.databaseName,
       tableName: destinationTable,
       rows,
     });
   }
-}
-
-async function prepareDestination(context: SyncContext, plan: StreamSyncPlan, table: ProbedTable): Promise<void> {
-  if (plan.isPending) {
-    // Rebuilt from scratch rather than merged into: see StreamSyncPlan.isPending.
-    await context.clickhouse.command({
-      query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
-    });
-  }
-  await ensureDestinationTable(context.clickhouse, {
-    databaseName: context.databaseName,
-    tableName: plan.destinationTable,
-    columns: table.columns,
-    primaryKeyColumns: plan.primaryKeyColumns,
-  });
 }
 
 /**
@@ -136,15 +137,7 @@ async function applyTruncate(
   buffer: DestinationBuffer,
 ): Promise<void> {
   await buffer.flush();
-  await context.clickhouse.command({
-    query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
-  });
-  await ensureDestinationTable(context.clickhouse, {
-    databaseName: context.databaseName,
-    tableName: plan.destinationTable,
-    columns: table.columns,
-    primaryKeyColumns: plan.primaryKeyColumns,
-  });
+  await rebuildDestinationTable(context, plan, table);
 }
 
 async function fetchPage(credentials: ConvexCredentials, cursor: string | null): Promise<ConvexSyncPage> {
@@ -159,27 +152,26 @@ async function fetchPage(credentials: ConvexCredentials, cursor: string | null):
 }
 
 /**
- * Fetches the first page, falling back to a full re-snapshot if the stored
- * cursor is no longer usable.
+ * Fetches the first page, falling back to a full re-snapshot only when Convex
+ * says the stored cursor itself is unusable.
  *
  * Convex keeps roughly a month of history, so a source that was paused, failing,
  * or simply never scheduled for long enough comes back to a cursor the
- * deployment has forgotten. Starting over is the only way forward, and it is
- * safe: the snapshot truncates and rebuilds every table it covers.
+ * deployment has forgotten. Starting over is then the only way forward, and it
+ * is safe: the snapshot truncates and rebuilds every table it covers.
  *
- * The original error is what surfaces if the retry fails too, so a rejected
- * deploy key still reads as a rejected deploy key rather than as a bad cursor.
+ * Matched on Convex's own `InvalidDataSyncCursor` code rather than on any
+ * failure, because the fallback is destructive. Retrying a timeout or a 502 from
+ * scratch would drop and reload every one of the customer's destination tables
+ * over a transient network blip.
  */
 async function fetchFirstPage(credentials: ConvexCredentials, cursor: string | null): Promise<ConvexSyncPage> {
   if (cursor == null) return await fetchPage(credentials, null);
   try {
     return await fetchPage(credentials, cursor);
   } catch (error) {
-    try {
-      return await fetchPage(credentials, null);
-    } catch {
-      throw error;
-    }
+    if (!isInvalidCursorError(error)) throw error;
+    return await fetchPage(credentials, null);
   }
 }
 
@@ -238,7 +230,15 @@ export async function runConvexStreamSyncs(context: SyncContext, plans: StreamSy
   let cursor = startFromScratch ? null : readSourceCursor(context.sourceCursor);
   const buffer = new DestinationBuffer(context);
 
+  // Whether the feed reached a consistent point before the run had to stop. A
+  // snapshot cut short is not an error, but the streams it was loading hold only
+  // part of their tables and must not be reported as fully synced.
+  let reachedUpToDate = false;
+
   for (let page = 0; page < MAX_PAGES_PER_SYNC; page++) {
+    // Checked before fetching rather than after, so the budget bounds the run
+    // even when a page takes the whole request timeout.
+    if (page > 0 && Date.now() >= context.deadlineMs) break;
     const body = page === 0 ? await fetchFirstPage(credentials, cursor) : await fetchPage(credentials, cursor);
 
     for (const truncate of body.truncates) {
@@ -282,7 +282,10 @@ export async function runConvexStreamSyncs(context: SyncContext, plans: StreamSy
     // a sync that runs immediately after one can legitimately return nothing and
     // pick it up on the next run. That is a property of the source, and the
     // stored cursor is what makes it harmless.
-    if (body.status.type === "upToDate") break;
+    if (body.status.type === "upToDate") {
+      reachedUpToDate = true;
+      break;
+    }
   }
 
   // Every row for this run, written before the cursor that covers them is saved
@@ -296,8 +299,15 @@ export async function runConvexStreamSyncs(context: SyncContext, plans: StreamSy
   // the WAL cannot be acted on mid-stream. Convex hands us the truncate before
   // the rows that follow it, so the rebuild has already happened above — asking
   // for another one would discard everything this run just loaded.
+  //
+  // A run that stopped early keeps its still-loading streams out of ACTIVE. The
+  // cursor is saved either way, so the next run resumes exactly here rather than
+  // starting the snapshot again.
+  const pendingStreamIds = new Set(runnablePlans.filter(plan => plan.isPending).map(plan => plan.streamId));
   return {
-    streams: [...results.values()],
+    streams: [...results.values()].map(result => reachedUpToDate || !pendingStreamIds.has(result.streamId)
+      ? result
+      : { ...result, loadIncomplete: true }),
     sourceCursor: cursor == null ? null : { mode: "convex", value: cursor } satisfies ConvexSourceCursor,
   };
 }

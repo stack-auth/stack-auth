@@ -39,11 +39,6 @@ export type ConvexCapabilities = {
   type: "convex",
   /** The deployment we are pointed at, echoed back for the dashboard to show. */
   deploymentUrl: string,
-  /**
-   * Whether the deployment served the change feed. Convex Cloud gates streaming
-   * export behind a Pro plan; a self-hosted backend has no such gate.
-   */
-  hasStreamingExport: boolean,
   probedAtMillis: number,
 };
 

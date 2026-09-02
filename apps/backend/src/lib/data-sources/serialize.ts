@@ -6,17 +6,8 @@ import {
   getRecommendedMode,
   type DataSourceCapabilities,
 } from "@hexclave/shared/dist/data-sources/modes";
+import { MODE_FROM_PRISMA, TYPE_FROM_PRISMA } from "./enums";
 import type { DataSourceProbeResult } from "./types";
-
-const MODE_FROM_PRISMA = {
-  CURSOR: "cursor",
-  CDC: "cdc",
-} as const;
-
-const TYPE_FROM_PRISMA = {
-  POSTGRES: "postgres",
-  CONVEX: "convex",
-} as const;
 
 const STATUS_FROM_PRISMA = {
   PENDING: "pending",
@@ -76,7 +67,6 @@ function serializeCapabilities(capabilities: DataSourceCapabilities | null) {
       return {
         type: "convex" as const,
         deployment_url: capabilities.deploymentUrl,
-        has_streaming_export: capabilities.hasStreamingExport,
         probed_at_millis: capabilities.probedAtMillis,
       };
     }

@@ -35,7 +35,8 @@ vi.mock("../../../use-admin-app", () => ({
     projectId: "project-1",
     useDataSources: () => [{
       id: "source-1",
-      host: "postgres.example.com",
+      type: "postgres",
+      config: { host: "postgres.example.com", port: 5432, database: "app", username: "reader", ssl_mode: "require" },
       error: null,
       streams: [],
     }],

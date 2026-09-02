@@ -15,10 +15,12 @@
  *
  * Skipped unless a deployment is pointed at explicitly:
  *
- *   docker compose -f docker/dependencies/docker.compose.yaml up -d convex clickhouse
+ *   docker run -d --name hexclave-convex-test -p 8140:3210 \
+ *     -e INSTANCE_NAME=hexclave-local -e DISABLE_BEACON=true \
+ *     ghcr.io/get-convex/convex-backend:latest
  *   # then deploy the fixture app; see docker/dependencies/convex-fixture/README.md
  *   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_URL=http://127.0.0.1:8140 \
- *   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY="$(docker exec dependencies-convex-1 ./generate_admin_key.sh | tail -1)" \
+ *   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY="$(docker exec hexclave-convex-test ./generate_admin_key.sh | tail -1)" \
  *   HEXCLAVE_DATA_SOURCE_TEST_CLICKHOUSE=http://stackframe:PASSWORD-PLACEHOLDER--9gKyMxJeMx@127.0.0.1:8136 \
  *     pnpm test run apps/backend/src/lib/data-sources/convex/integration.test.ts
  */
@@ -81,7 +83,11 @@ function plan(overrides: Partial<StreamSyncPlan> = {}): StreamSyncPlan {
   };
 }
 
-async function sync(plans: StreamSyncPlan[], sourceCursor: unknown): Promise<SyncOutcome> {
+async function sync(
+  plans: StreamSyncPlan[],
+  sourceCursor: unknown,
+  overrides: { deadlineMs?: number } = {},
+): Promise<SyncOutcome> {
   const probe = await probeConvex(connection);
   return await runConvexStreamSyncs({
     connection,
@@ -89,9 +95,9 @@ async function sync(plans: StreamSyncPlan[], sourceCursor: unknown): Promise<Syn
     databaseName: DATABASE_NAME,
     tablesByName: new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t])),
     sourceCursor,
-    managedResources: null,
     startedAt: new Date(),
     dataSourceId: DATA_SOURCE_ID,
+    deadlineMs: overrides.deadlineMs ?? Number.POSITIVE_INFINITY,
   }, plans);
 }
 
@@ -123,7 +129,7 @@ async function waitForFeed(expectedNames: string[]): Promise<void> {
         body: cursor == null ? {} : { cursor },
       }) as any;
       for (const change of body.values) {
-        if (change.table !== TABLE) continue;
+        if (change.table !== TABLE || change.component !== "") continue;
         if (change.deleted) live.delete(change.value._id);
         else live.set(change.value._id, change.value.name);
       }
@@ -175,7 +181,7 @@ describe.skipIf(!ENABLED)("Convex data source", () => {
     const probe = await probeConvex(connection);
     const table = probe.tables.find(t => t.tableName === TABLE);
 
-    expect(probe.capabilities).toEqual(expect.objectContaining({ type: "convex", hasStreamingExport: true }));
+    expect(probe.capabilities).toEqual(expect.objectContaining({ type: "convex", deploymentUrl: connection.config.deploymentUrl }));
     expect(table).toBeDefined();
     // The root component is reported under a readable namespace, and `_id` is
     // always the key — there is no keyless Convex table.
@@ -280,6 +286,42 @@ describe.skipIf(!ENABLED)("Convex data source", () => {
     // that is the spacing of representable values at this magnitude.
     expect(versions.some(version => version % 256n !== 0n)).toBe(true);
   }, 120000);
+
+  it("starts over when Convex no longer recognises the stored cursor", async () => {
+    // Convex keeps about a month of history, so a source that was paused or
+    // failing for long enough comes back to a cursor the deployment has
+    // forgotten. Starting over is the only way forward — but it must happen only
+    // for a genuinely dead cursor, never for a timeout or a 502, because it drops
+    // and reloads every one of the customer's destination tables.
+    await addPerson("ada", 36, 1);
+    await waitForFeed(["ada"]);
+
+    const outcome = await sync([plan({ isPending: false })], { mode: "convex", value: "not-a-real-cursor" });
+
+    expect(outcome.streams[0].error).toBeNull();
+    expect((await readDestination()).map(r => r.name)).toEqual(["ada"]);
+  }, 120000);
+
+  it("stops at its deadline and reports the load as incomplete rather than done", async () => {
+    // A snapshot cut short is not an error — the cursor is saved and the next run
+    // continues — but the stream must not be reported ACTIVE, or the dashboard
+    // tells the customer a partial table is fully synced.
+    await addPerson("ada", 36, 1);
+    await addPerson("grace", 45, 2);
+    await waitForFeed(["ada", "grace"]);
+
+    // A deadline already in the past: page 0 is always fetched, then the loop stops.
+    const outcome = await sync([plan()], null, { deadlineMs: Date.now() - 1 });
+
+    expect(outcome.streams[0].error).toBeNull();
+    expect(outcome.streams[0].loadIncomplete).toBe(true);
+    // The resume point is still saved, so the next run picks up where this stopped.
+    expect(outcome.sourceCursor).toEqual(expect.objectContaining({ mode: "convex" }));
+
+    const resumed = await sync([plan({ isPending: false })], outcome.sourceCursor);
+    expect(resumed.streams[0].loadIncomplete).toBeUndefined();
+    expect((await readDestination()).map(r => r.name)).toEqual(["ada", "grace"]);
+  }, 180000);
 
   it("rebuilds rather than merges when a stream is reconfigured", async () => {
     await addPerson("ada", 36, 1);

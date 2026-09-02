@@ -1,5 +1,7 @@
 import { createClickhouseWarehouseClient } from "@/lib/clickhouse";
 import { getDestinationTableName } from "@/lib/data-sources/clickhouse-destination";
+import { tableKey } from "@/lib/data-sources/destination";
+import { MODE_FROM_PRISMA, MODE_TO_PRISMA, TYPE_FROM_PRISMA, TYPE_TO_PRISMA } from "@/lib/data-sources/enums";
 import { getDriver } from "@/lib/data-sources/drivers";
 import type {
   DataSourceConnection,
@@ -30,23 +32,15 @@ const encryptedSecretSchema = yupObject({
 /** How long a claimed sync may run before the scheduler assumes it died. */
 const SYNC_CLAIM_LEASE_SECONDS = 900;
 
-const MODE_TO_PRISMA = {
-  cursor: "CURSOR",
-  cdc: "CDC",
-} as const;
-const MODE_FROM_PRISMA = {
-  CURSOR: "cursor",
-  CDC: "cdc",
-} as const;
-
-const TYPE_TO_PRISMA = {
-  postgres: "POSTGRES",
-  convex: "CONVEX",
-} as const;
-export const TYPE_FROM_PRISMA = {
-  POSTGRES: "postgres",
-  CONVEX: "convex",
-} as const;
+/**
+ * How long a driver is actually allowed to run, as a fraction of the lease.
+ *
+ * The margin is what stops a run from finishing after its lease expired, when a
+ * second worker may already have claimed the source. The lease fences the
+ * metadata transaction, but both workers write to the customer's warehouse, and
+ * those writes cannot be rolled back.
+ */
+const SYNC_DEADLINE_FRACTION = 0.8;
 
 export type DataSourceWithStreams = DataSource & { streams: DataSourceStream[] };
 
@@ -118,7 +112,7 @@ export async function createDataSource(
   await getWarehouseDatabaseName(tenancy);
 
   const connection: DataSourceConnection = { type: input.type, config: input.config, secret: input.secret };
-  const probe = await getDriver(input.type).probe(connection);
+  const probe = await getDriver(input.type).probe(connection, { verifyAccess: true });
   const encryptedSecret = await encryptWithKms(input.secret);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const source = await prisma.dataSource.create({
@@ -143,13 +137,15 @@ export async function createDataSource(
 async function teardownDriverResources(source: DataSource): Promise<void> {
   const driver = getDriver(TYPE_FROM_PRISMA[source.type]);
   if (driver.teardown == null) return;
-  await driver.teardown({
-    connection: await getConnection(source),
-    dataSourceId: source.id,
-    managedResources: source.managedResources,
-  });
+  await driver.teardown({ connection: await getConnection(source), dataSourceId: source.id });
 }
 
+/**
+ * Deliberately not gated on the data-warehouse entitlement, unlike every other
+ * outbound path. A project that lost the entitlement must still be able to
+ * disconnect: refusing would strand a WAL-retaining replication slot on the
+ * customer's own server with no way to remove it.
+ */
 export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): Promise<void> {
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -212,7 +208,7 @@ export async function setDataSourceStreams(
   const probe = await driver.probe(await getConnection(source));
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const tablesByName = new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
+  const tablesByName = new Map(probe.tables.map(t => [tableKey(t.schemaName, t.tableName), t]));
   const existingByName = new Map(source.streams.map(s => [`${s.schemaName}.${s.tableName}`, s]));
   const previousModes = source.streams.map(stream => MODE_FROM_PRISMA[stream.mode]);
   const nextModes = configs.map(config => config.mode);
@@ -307,7 +303,6 @@ export async function setDataSourceStreams(
         data: {
           status: configs.length > 0 ? "ACTIVE" : "PENDING",
           capabilities: probe.capabilities as unknown as Prisma.InputJsonValue,
-          ...(shouldTeardown ? { managedResources: Prisma.DbNull } : {}),
         },
       });
     });
@@ -360,7 +355,7 @@ async function syncClaimedDataSource(
     return await getDataSourceOrThrow(tenancy, source.id);
   }
 
-  const tablesByName = new Map<string, ProbedTable>(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
+  const tablesByName = new Map<string, ProbedTable>(probe.tables.map(t => [tableKey(t.schemaName, t.tableName), t]));
   const plans: StreamSyncPlan[] = source.streams.map(stream => ({
     streamId: stream.id,
     schemaName: stream.schemaName,
@@ -389,9 +384,9 @@ async function syncClaimedDataSource(
       databaseName,
       tablesByName,
       sourceCursor: source.syncCursor,
-      managedResources: source.managedResources,
       startedAt,
       dataSourceId: source.id,
+      deadlineMs: startedAt.getTime() + SYNC_CLAIM_LEASE_SECONDS * 1000 * SYNC_DEADLINE_FRACTION,
     }, plans);
   } finally {
     await clickhouse.close();
@@ -403,14 +398,18 @@ async function syncClaimedDataSource(
       // A truncated source table cannot be represented incrementally, so the
       // stream goes back to PENDING and the next sync rebuilds it from scratch.
       const resnapshot = result.needsResnapshot === true;
+      // An initial load that ran out of budget stays PENDING: its destination
+      // holds only part of the table, and calling that ACTIVE would tell the
+      // customer a partial table is complete.
+      const incomplete = result.loadIncomplete === true;
       await tx.dataSourceStream.update({
         where: { id: result.streamId },
         data: {
-          status: result.error != null ? "FAILED" : resnapshot ? "PENDING" : "ACTIVE",
+          status: result.error != null ? "FAILED" : resnapshot || incomplete ? "PENDING" : "ACTIVE",
           error: result.error,
           syncCursor: resnapshot ? Prisma.DbNull : result.syncCursor ?? undefined,
           rowsSynced: { increment: BigInt(result.rowsSynced) },
-          lastSyncedAt: result.error == null ? new Date() : undefined,
+          lastSyncedAt: result.error == null && !incomplete ? new Date() : undefined,
         },
       });
     }
@@ -423,14 +422,11 @@ async function syncClaimedDataSource(
         // Surfaced at the source level only when nothing succeeded; a single bad
         // table is already reported on its own stream.
         error: failed.length === results.length ? failed[0]?.error ?? null : null,
-        // A driver that resumes per stream returns neither of these, and its
-        // stored values are then left exactly as they were.
+        // A driver that resumes per stream returns no source cursor, and its
+        // stored value is then left exactly as it was.
         ...(outcome.sourceCursor === undefined
           ? {}
           : { syncCursor: (outcome.sourceCursor ?? Prisma.DbNull) as Prisma.InputJsonValue }),
-        ...(outcome.managedResources === undefined
-          ? {}
-          : { managedResources: (outcome.managedResources ?? Prisma.DbNull) as Prisma.InputJsonValue }),
       },
     });
     if (completed.count === 0) {

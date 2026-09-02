@@ -36,9 +36,10 @@ export function buildDestinationRow(options: {
 }): Record<string, unknown> {
   const row = new Map<string, unknown>();
   for (const column of options.columns) {
-    // `undefined` means the WAL withheld an unchanged TOAST value. Writing null
-    // would erase it, so those columns are simply omitted and ClickHouse's
-    // default applies — the previous version of the row stays queryable.
+    // A column the source did not supply — an unchanged TOAST value Postgres
+    // withheld, or the fields a Convex tombstone omits around its `_id`. Writing
+    // null would erase it, so the column is left out entirely and ClickHouse's
+    // default applies, keeping the previous version of the row queryable.
     if (!Object.hasOwn(options.values, column.name)) continue;
     const value = options.values[column.name];
     if (value === undefined) continue;

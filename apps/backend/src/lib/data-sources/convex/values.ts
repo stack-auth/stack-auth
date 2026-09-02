@@ -19,13 +19,14 @@ import { CONVEX_CREATION_TIME_COLUMN } from "./probe";
  * text — is left for the shared row builder to handle.
  */
 export function toDestinationValues(document: Record<string, unknown>): Record<string, unknown> {
-  const values: Record<string, unknown> = {};
-  for (const [name, value] of Object.entries(document)) {
-    values[name] = name === CONVEX_CREATION_TIME_COLUMN
-      ? toIsoMillis(value)
-      : unwrapBytes(value);
-  }
-  return values;
+  // Built through fromEntries rather than by assignment: assigning a field named
+  // `__proto__` to a plain object mutates its prototype instead of creating an
+  // own property, and `buildDestinationRow` skips anything that is not an own
+  // property — so the column would silently arrive empty.
+  return Object.fromEntries(Object.entries(document).map(([name, value]) => [
+    name,
+    name === CONVEX_CREATION_TIME_COLUMN ? toIsoMillis(value) : unwrapBytes(value),
+  ]));
 }
 
 function toIsoMillis(value: unknown): unknown {
@@ -35,6 +36,12 @@ function toIsoMillis(value: unknown): unknown {
 
 function unwrapBytes(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
-  const wrapper = value as { $bytes?: unknown };
-  return typeof wrapper.$bytes === "string" ? wrapper.$bytes : value;
+  const keys = Object.keys(value);
+  // Only the wrapper itself, never an object that merely contains such a key.
+  // Convex forbids `$`-prefixed field names so a real document cannot hit this,
+  // but collapsing a whole object down to one of its fields is a bad enough
+  // failure to be worth ruling out rather than reasoning about.
+  if (keys.length !== 1 || keys[0] !== "$bytes") return value;
+  const wrapped = (value as { $bytes: unknown }).$bytes;
+  return typeof wrapped === "string" ? wrapped : value;
 }

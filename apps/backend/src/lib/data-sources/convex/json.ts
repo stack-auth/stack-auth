@@ -52,6 +52,12 @@ export function parseJsonPreservingBigIntegers(text: string): unknown {
 
     // Only lossy integers are rewritten. A float is already approximate and
     // quoting it would turn a number into a string for no gain.
+    //
+    // Integer-ness is decided from the text, which relies on Convex always
+    // spelling a float with a `.` or an `e` — serde_json does, which is why
+    // `_creationTime` arrives as `1788367966967.3257`. If that ever changed, a
+    // whole-numbered float above 2^53 would be quoted and its column would take
+    // a string instead of a number.
     const isInteger = !/[.eE]/.test(token);
     if (!isInteger || Number.isSafeInteger(Number(token))) continue;
 

@@ -85,11 +85,19 @@ function selectedCursorIsInsertOnly(table: DataSourceCatalogTableJson, column: s
 }
 
 /**
- * How many modes this table could actually be synced with. One means there is
- * nothing to decide, and the picker says which mode rather than asking.
+ * Whether this table presents the customer with no decision at all: exactly one
+ * mode is possible, and it is already the one selected.
+ *
+ * Both halves matter. A Convex table has one mode and is always on it, so a
+ * dropdown would be a question with one answer. But a Postgres table can be
+ * *stored* as `cdc` and later lose CDC eligibility — the server's wal_level is
+ * reverted, or it fails over to a replica — leaving one available mode that is
+ * not the selected one. Hiding the dropdown there would show "CDC" with no way
+ * to change it, and the save would be rejected by the backend.
  */
-function availableModeCount(table: DataSourceCatalogTableJson): number {
-  return table.available_modes.filter(m => m.available).length;
+export function hasNoModeChoice(table: DataSourceCatalogTableJson, selected: DataSourceSyncMode | null): boolean {
+  const available = table.available_modes.filter(m => m.available);
+  return available.length === 1 && available[0].mode === selected;
 }
 
 function modeOptions(table: DataSourceCatalogTableJson) {
@@ -236,10 +244,7 @@ export function StreamPicker(props: {
                   <td className="px-4 py-2.5">
                     {!syncable ? (
                       <span className="text-xs text-muted-foreground">No mode available</span>
-                    ) : availableModeCount(table) < 2 ? (
-                      // Nothing to choose. A Convex table can only be synced from
-                      // the change log, and a dropdown with one enabled entry
-                      // reads as a decision the customer has to make.
+                    ) : hasNoModeChoice(table, current.mode) ? (
                       <span className="text-xs text-muted-foreground">{MODE_INFO[current.mode ?? "cdc"].label}</span>
                     ) : (
                       <DesignSelectorDropdown

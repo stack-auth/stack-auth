@@ -2810,12 +2810,6 @@ model DataSource {
   // point lives, and the other stays null for the life of the source.
   syncCursor Json?
 
-  // Server-side objects a driver created on the customer's system and is
-  // therefore responsible for cleaning up — Postgres writes its replication slot
-  // and publication names here. Recorded rather than derived so that teardown
-  // never depends on rebuilding a name the source may have stored differently.
-  managedResources Json?
-
   lastSyncStartedAt  DateTime?
   lastSyncFinishedAt DateTime?
 

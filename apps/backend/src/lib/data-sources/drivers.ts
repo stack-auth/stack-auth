@@ -11,7 +11,7 @@ import type { DataSourceDriver } from "./types";
  * the destination isolation and the per-stream error reporting are shared, and a
  * driver that reimplemented any of them would be a bug rather than a feature.
  */
-export const DATA_SOURCE_DRIVERS: Record<DataSourceType, DataSourceDriver> = {
+const DATA_SOURCE_DRIVERS: Record<DataSourceType, DataSourceDriver> = {
   postgres: postgresDriver,
   convex: convexDriver,
 };

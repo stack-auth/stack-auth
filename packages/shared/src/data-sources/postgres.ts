@@ -36,22 +36,26 @@ export function getCdcAvailability(
       return { available: false, reason: "needs a primary key" };
     }
     const postgres = table.postgres;
-    if (postgres != null) {
-      // Adding a REPLICA IDENTITY NOTHING table to a publication makes the
-      // customer's own UPDATEs and DELETEs start failing. Never worth it.
-      if (postgres.replicaIdentity === "n") {
-        return { available: false, reason: "needs a replica identity" };
-      }
-      // Postgres refuses to add these to a publication, and one of them would fail
-      // the whole publication statement, taking every other CDC stream with it.
-      if (!postgres.isLogged) {
-        return { available: false, reason: "table is unlogged" };
-      }
-      // Changes are published under the leaf partition, not the parent we would be
-      // subscribed to, so every change would be silently dropped.
-      if (postgres.isPartitioned) {
-        return { available: false, reason: "table is partitioned" };
-      }
+    // Fail closed. These checks exist because adding the wrong table to a
+    // publication breaks the customer's own UPDATEs; reporting CDC available
+    // because we could not see the facts would be the worst of both.
+    if (postgres == null) {
+      return { available: false, reason: "table details unavailable" };
+    }
+    // Adding a REPLICA IDENTITY NOTHING table to a publication makes the
+    // customer's own UPDATEs and DELETEs start failing. Never worth it.
+    if (postgres.replicaIdentity === "n") {
+      return { available: false, reason: "needs a replica identity" };
+    }
+    // Postgres refuses to add these to a publication, and one of them would fail
+    // the whole publication statement, taking every other CDC stream with it.
+    if (!postgres.isLogged) {
+      return { available: false, reason: "table is unlogged" };
+    }
+    // Changes are published under the leaf partition, not the parent we would be
+    // subscribed to, so every change would be silently dropped.
+    if (postgres.isPartitioned) {
+      return { available: false, reason: "table is partitioned" };
     }
   }
   return { available: true, reason: null };
