@@ -81,6 +81,11 @@ export const postMigration = async (sql: Sql) => {
       JOIN pg_namespace n ON n.oid = idx.relnamespace
       WHERE n.nspname = current_schema() AND idx.relname = 'OneTimePurchase_purchasePage_paidAt_idx' AND i.indisvalid AND i.indisready
     `).toHaveLength(1);
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "OneTimePurchase_purchasePage_paidAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "OneTimePurchase_purchasePage_paidAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "OneTimePurchase_purchasePage_paidAt_idx_invalid" ON "OneTimePurchase"("tenancyId", "paidAt") INCLUDE ("createdAt") WHERE "creationSource" = 'PURCHASE_PAGE'::"PurchaseCreationSource" AND "paidAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'OneTimePurchase_purchasePage_paidAt_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
   } finally {
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "OneTimePurchase_purchasePage_paidAt_idx_invalid"');
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "OneTimePurchase_purchasePage_paidAt_idx"');

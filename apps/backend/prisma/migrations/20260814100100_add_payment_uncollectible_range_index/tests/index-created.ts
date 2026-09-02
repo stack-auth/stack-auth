@@ -81,6 +81,17 @@ export const postMigration = async (sql: Sql) => {
       JOIN pg_namespace n ON n.oid = idx.relnamespace
       WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx' AND i.indisvalid AND i.indisready
     `).toHaveLength(1);
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid" ON "SubscriptionInvoice"("tenancyId", "markedUncollectibleAt") INCLUDE ("createdAt") WHERE "markedUncollectibleAt" IS NOT NULL`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid" ON "SubscriptionInvoice"("createdAt")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
   } finally {
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid"');
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx"');

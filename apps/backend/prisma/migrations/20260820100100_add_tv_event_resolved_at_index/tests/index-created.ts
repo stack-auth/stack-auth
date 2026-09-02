@@ -81,6 +81,17 @@ export const postMigration = async (sql: Sql) => {
       JOIN pg_namespace n ON n.oid = idx.relnamespace
       WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_resolved_lookup_idx' AND i.indisvalid AND i.indisready
     `).toHaveLength(1);
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "TvEventOccurrence_resolved_lookup_idx_invalid" ON "TvEventOccurrence"("tenancyId", "resolvedAt" DESC, "id") INCLUDE ("createdAt")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_resolved_lookup_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
+
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "TvEventOccurrence_resolved_lookup_idx_invalid" ON "TvEventOccurrence"("tenancyId", "resolvedAt", "id")`);
+    await sql.unsafe(`UPDATE pg_index SET indisvalid = false, indisready = true WHERE indexrelid = (SELECT indexrelid FROM pg_class idx JOIN pg_namespace n ON n.oid = idx.relnamespace JOIN pg_index i ON i.indexrelid = idx.oid WHERE n.nspname = current_schema() AND idx.relname = 'TvEventOccurrence_resolved_lookup_idx_invalid')`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
   } finally {
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx_invalid"');
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "TvEventOccurrence_resolved_lookup_idx"');
