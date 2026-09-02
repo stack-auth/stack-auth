@@ -247,10 +247,20 @@ jobs:
         timeout-minutes: 60
         run: |
           set -o pipefail
+          .github/scripts/process-attribution.sh sample \
+            > "$RUNNER_TEMP/process-attribution-samples-pass1.untracked.tsv" &
+          attribution_sampler_pid=$!
+          stop_attribution_sampler() {
+            kill "$attribution_sampler_pid" 2>/dev/null || true
+            wait "$attribution_sampler_pid" 2>/dev/null || true
+          }
+          trap stop_attribution_sampler EXIT
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass1.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass1.untracked.log"
           pipeline_status=("${PIPESTATUS[@]}")
+          stop_attribution_sampler
+          trap - EXIT
           if [[ "${pipeline_status[1]}" -ne 0 ]]; then
             echo "::warning::tee failed while capturing pass 1 output; the test result is still used for the step status"
           fi
@@ -265,7 +275,8 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          .github/scripts/process-attribution.sh snapshot || true
+          .github/scripts/process-attribution.sh snapshot |
+            tee "$RUNNER_TEMP/process-attribution-pass1.untracked.log" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
@@ -296,10 +307,20 @@ jobs:
         timeout-minutes: 75
         run: |
           set -o pipefail
+          .github/scripts/process-attribution.sh sample \
+            > "$RUNNER_TEMP/process-attribution-samples-pass2.untracked.tsv" &
+          attribution_sampler_pid=$!
+          stop_attribution_sampler() {
+            kill "$attribution_sampler_pid" 2>/dev/null || true
+            wait "$attribution_sampler_pid" 2>/dev/null || true
+          }
+          trap stop_attribution_sampler EXIT
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass2.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass2.untracked.log"
           pipeline_status=("${PIPESTATUS[@]}")
+          stop_attribution_sampler
+          trap - EXIT
           if [[ "${pipeline_status[1]}" -ne 0 ]]; then
             echo "::warning::tee failed while capturing pass 2 output; the test result is still used for the step status"
           fi
@@ -314,7 +335,8 @@ jobs:
         if: always() && steps.run_tests_pass2.outcome != 'skipped'
         continue-on-error: true
         run: |
-          .github/scripts/process-attribution.sh snapshot || true
+          .github/scripts/process-attribution.sh snapshot |
+            tee "$RUNNER_TEMP/process-attribution-pass2.untracked.log" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
@@ -345,10 +367,20 @@ jobs:
         timeout-minutes: 105
         run: |
           set -o pipefail
+          .github/scripts/process-attribution.sh sample \
+            > "$RUNNER_TEMP/process-attribution-samples-pass3.untracked.tsv" &
+          attribution_sampler_pid=$!
+          stop_attribution_sampler() {
+            kill "$attribution_sampler_pid" 2>/dev/null || true
+            wait "$attribution_sampler_pid" 2>/dev/null || true
+          }
+          trap stop_attribution_sampler EXIT
           pnpm test run --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/e2e-test-results-pass3.untracked.json" 2>&1 |
             tee "$RUNNER_TEMP/e2e-test-output-pass3.untracked.log"
           pipeline_status=("${PIPESTATUS[@]}")
+          stop_attribution_sampler
+          trap - EXIT
           if [[ "${pipeline_status[1]}" -ne 0 ]]; then
             echo "::warning::tee failed while capturing pass 3 output; the test result is still used for the step status"
           fi
@@ -363,7 +395,8 @@ jobs:
         if: always() && steps.run_tests_pass3.outcome != 'skipped'
         continue-on-error: true
         run: |
-          .github/scripts/process-attribution.sh snapshot || true
+          .github/scripts/process-attribution.sh snapshot |
+            tee "$RUNNER_TEMP/process-attribution-pass3.untracked.log" || true
           pnpm -C apps/backend run with-env:test bash -c \
             '
               mock_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}22"
@@ -428,6 +461,8 @@ jobs:
             ${{ runner.temp }}/e2e-test-results-pass*.untracked.json
             ${{ runner.temp }}/e2e-test-output-pass*.untracked.log
             ${{ runner.temp }}/freestyle-mock-diagnostics-pass*.untracked.json
+            ${{ runner.temp }}/process-attribution-pass*.untracked.log
+            ${{ runner.temp }}/process-attribution-samples-pass*.untracked.tsv
           if-no-files-found: warn
 
       - name: Print Docker Compose logs

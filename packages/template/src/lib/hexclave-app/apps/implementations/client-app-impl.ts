@@ -380,12 +380,35 @@ function getTanStackStartRequestHeader(name: string): string | null {
   }
   return getRequestHeader(name) ?? null;
 }
+
+/**
+ * TanStack Start keeps the event of the request it is currently handling in an AsyncLocalStorage stored on a global
+ * symbol (see `request-response.ts` in `@tanstack/start-server-core`), and every one of its request accessors throws
+ * an internal error when there is no such request. It exposes no way to ask whether a request is in flight, so we read
+ * that storage ourselves; otherwise server code that plans a redirect outside a request would surface TanStack's
+ * internal AsyncLocalStorage error instead of our own setup error. If TanStack ever renames the symbol we report "no
+ * request", which is the conservative answer: callers then treat the redirect target as cross-origin.
+ */
+function hasActiveTanStackStartRequest(): boolean {
+  const eventStorage: unknown = Reflect.get(globalThis, Symbol.for("tanstack-start:event-storage"));
+  if (eventStorage == null || typeof eventStorage !== "object") {
+    return false;
+  }
+  const getStore: unknown = Reflect.get(eventStorage, "getStore");
+  if (typeof getStore !== "function") {
+    return false;
+  }
+  return Reflect.apply(getStore, eventStorage, []) != null;
+}
 // END_PLATFORM
 
 async function getServerRequestHost(): Promise<string | null> {
   // IF_PLATFORM next
   return (await sc.headers?.())?.get("host") ?? null;
   // ELSE_IF_PLATFORM tanstack-start
+  if (!hasActiveTanStackStartRequest()) {
+    return null;
+  }
   return getTanStackStartRequestHeader("host");
   // ELSE_PLATFORM
   return null;
@@ -1864,8 +1887,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (isBrowserLike()) {
           return this._getBrowserCookieTokenStore(options);
         } else {
+          // IF_PLATFORM next
+          const existingStore = this._nextServerCookiesTokenStores.get(cookieHelper.identity);
+          if (existingStore !== undefined) {
+            return existingStore;
+          }
+          // END_PLATFORM
+
           const tokens = this._getTokensFromCookies(cookieHelper.getAll());
           const store = new Store<TokenObject>(tokens);
+          // IF_PLATFORM next
+          // Next returns a stable cookies object for the lifetime of a request. Keying by that identity lets parallel
+          // Server Components share their session and in-flight refresh without leaking state across requests.
+          this._nextServerCookiesTokenStores.set(cookieHelper.identity, store);
+          // END_PLATFORM
           store.onChange((value) => {
             runAsynchronously(async () => {
               // TODO HACK this is a bit of a hack; while the order happens to work in practice (because the only actual

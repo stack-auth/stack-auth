@@ -311,7 +311,7 @@ import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject 
         prices: {},
       },
     },
-  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen, and must not be one of __proto__, constructor, prototype]`);
 });
 
 const branchDomain = yupObject({});
