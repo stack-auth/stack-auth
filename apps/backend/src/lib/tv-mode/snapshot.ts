@@ -1,4 +1,5 @@
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
+import { Prisma } from "@/generated/prisma/client";
 import { type Tenancy } from "@/lib/tenancies";
 import {
   evaluateTvEventsIfDue,
@@ -30,6 +31,12 @@ import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/util
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAID_INVOICE_STATUSES = ["paid", "succeeded"] as const;
+export const TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER = `
+            AND ("markedUncollectibleAt" IS NULL OR "markedUncollectibleAt" <= "paidAt")
+            AND ("voidedAt" IS NULL OR "voidedAt" <= "paidAt")`;
+export const TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER = `
+            AND "markedUncollectibleAt" IS NULL
+            AND "voidedAt" IS NULL`;
 
 // Every TV active-user aggregate must agree on what counts as an active user;
 // keeping the predicate in one place stops the copies from silently diverging.
@@ -797,15 +804,13 @@ async function loadRevenueScreen(
             AND "paidAt" < ${bounds.currentEndsAt}
             AND "amountPaid" IS NOT NULL
             AND "currency" = 'USD'
-            AND ("markedUncollectibleAt" IS NULL OR "markedUncollectibleAt" <= "paidAt")
-            AND ("voidedAt" IS NULL OR "voidedAt" <= "paidAt")
+            ${Prisma.raw(TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER)}
         ), legacy_subscription_revenue AS (
           SELECT "createdAt" AS occurred_at, COALESCE("amountTotal", 0)::BIGINT AS amount
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "paidAt" IS NULL
-            AND "markedUncollectibleAt" IS NULL
-            AND "voidedAt" IS NULL
+            ${Prisma.raw(TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER)}
             AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
             AND "createdAt" >= ${bounds.comparisonStartsAt}
             AND "createdAt" < ${bounds.currentEndsAt}
@@ -984,10 +989,12 @@ async function loadRevenueScreen(
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "paidAt" >= ${bounds.currentStartsAt} AND "paidAt" < ${bounds.currentEndsAt}
             AND "amountPaid" IS NOT NULL AND "currency" = 'USD'
+            ${Prisma.raw(TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER)}
           UNION ALL
           SELECT "createdAt", COALESCE("amountTotal", 0)::BIGINT
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID AND "paidAt" IS NULL
+            ${Prisma.raw(TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER)}
             AND "status" IN (${successfulStatuses[0]}, ${successfulStatuses[1]})
             AND "createdAt" >= ${bounds.currentStartsAt} AND "createdAt" < ${bounds.currentEndsAt}
             AND COALESCE("currency", 'USD') = 'USD'

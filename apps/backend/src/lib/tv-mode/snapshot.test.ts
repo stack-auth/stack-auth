@@ -25,6 +25,8 @@ import {
   sourceHealthFact,
   TV_AUDIENCE_ANALYTICS_QUERY,
   TV_AUDIENCE_LIFECYCLE_QUERY,
+  TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER,
+  TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER,
 } from "./snapshot";
 
 const observedAt = "2026-07-25T12:00:00.000Z";
@@ -215,6 +217,17 @@ describe("assembleTvSnapshot", () => {
 });
 
 describe("TV revenue trend boundaries", () => {
+  it("uses the same terminal-outcome filters for summary totals and daily trends", () => {
+    expect(TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER).toContain(
+      '("markedUncollectibleAt" IS NULL OR "markedUncollectibleAt" <= "paidAt")',
+    );
+    expect(TV_NORMALIZED_SUBSCRIPTION_REVENUE_OUTCOME_FILTER).toContain(
+      '("voidedAt" IS NULL OR "voidedAt" <= "paidAt")',
+    );
+    expect(TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER).toContain('"markedUncollectibleAt" IS NULL');
+    expect(TV_LEGACY_SUBSCRIPTION_REVENUE_OUTCOME_FILTER).toContain('"voidedAt" IS NULL');
+  });
+
   it("includes revenue from every UTC date touched by the trailing timestamp window", () => {
     const trend = buildCumulativeRevenueTrend({
       currentStartsAt: new Date("2026-07-22T12:00:00.000Z"),

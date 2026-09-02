@@ -349,6 +349,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
 }
 
 type StripeInvoiceTransitionSource = {
+  status?: string | null,
   status_transitions?: {
     paid_at?: number | null,
     marked_uncollectible_at?: number | null,
@@ -385,9 +386,9 @@ function getStripeInvoiceOutcomeTimestamps(
         : null
     );
   const markedUncollectibleAt = exactMarkedUncollectibleAt
-    ?? (event.type === "invoice.marked_uncollectible" ? eventTimestamp : null);
+    ?? (event.type === "invoice.marked_uncollectible" || invoice.status === "uncollectible" ? eventTimestamp : null);
   const voidedAt = exactVoidedAt
-    ?? (event.type === "invoice.voided" ? eventTimestamp : null);
+    ?? (event.type === "invoice.voided" || invoice.status === "void" ? eventTimestamp : null);
   return {
     // The watermark only records exact outcomes. Inferred outcomes remain
     // COALESCE-only so a later-delivered exact event can correct them.
@@ -489,6 +490,54 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       markedUncollectibleAtIsExact: false,
       voidedAt: null,
       voidedAtIsExact: false,
+    });
+  });
+
+  test("infers terminal outcomes from invoice status without advancing the watermark", ({ expect }) => {
+    const occurredAtSeconds = 1_787_098_400;
+    const occurredAt = new Date(occurredAtSeconds * 1000);
+    expect(getStripeInvoiceOutcomeTimestamps({ status: "uncollectible" }, {
+      type: "invoice.payment_failed",
+      created: occurredAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: null,
+      markedUncollectibleAt: occurredAt,
+      markedUncollectibleAtIsExact: false,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({ status: "void" }, {
+      type: "invoice.updated",
+      created: occurredAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: null,
+      voidedAt: occurredAt,
+      voidedAtIsExact: false,
+    });
+  });
+
+  test("prefers exact terminal transitions over status inference", ({ expect }) => {
+    const eventAtSeconds = 1_787_098_400;
+    const exactAtSeconds = 1_787_098_100;
+    expect(getStripeInvoiceOutcomeTimestamps({
+      status: "uncollectible",
+      status_transitions: { marked_uncollectible_at: exactAtSeconds },
+    }, {
+      type: "invoice.updated",
+      created: eventAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: new Date(eventAtSeconds * 1000),
+      markedUncollectibleAt: new Date(exactAtSeconds * 1000),
+      markedUncollectibleAtIsExact: true,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({
+      status: "void",
+      status_transitions: { voided_at: exactAtSeconds },
+    }, {
+      type: "invoice.updated",
+      created: eventAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: new Date(eventAtSeconds * 1000),
+      voidedAt: new Date(exactAtSeconds * 1000),
+      voidedAtIsExact: true,
     });
   });
 
