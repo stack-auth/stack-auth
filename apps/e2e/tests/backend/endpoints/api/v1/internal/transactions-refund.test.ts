@@ -823,6 +823,72 @@ it("rejects end_action='now' on a subscription that already ended naturally", as
   expect(refundRes.status).toBe(400);
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
   expect(refundRes.body.error).toMatch(/already ended/);
+
+  // Same for at-period-end — the sub already has endedAt from the product-line
+  // switch, so scheduling another end is rejected.
+  const atPeriodEndRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      end_action: "at-period-end",
+    },
+  });
+  expect(atPeriodEndRes.status).toBe(400);
+  expect(atPeriodEndRes.body.code).toBe("SCHEMA_ERROR");
+  expect(atPeriodEndRes.body.error).toMatch(/already scheduled to end|already ended/i);
+
+  // Money-only must get past the lifecycle guards (not "already ended") and
+  // fail for the money reason instead. API_GRANT has no Stripe payment, so
+  // this is as far as e2e can go without invoice.payments on stripe-mock —
+  // live-mode money-after-end is covered by manual QA.
+  const moneyOnlyRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "10.00",
+    },
+  });
+  expect(moneyOnlyRes.status).toBe(400);
+  expect(moneyOnlyRes.body.code).toBe("SCHEMA_ERROR");
+  expect(moneyOnlyRes.body.error).toMatch(/granted, not purchased/);
+  expect(moneyOnlyRes.body.error).not.toMatch(/already ended/);
+});
+
+it("allows a money-only refund attempt after end_action='now' (not blocked as already-ended)", async () => {
+  // After a refund-driven immediate end, `productRevokedAt` is set so the
+  // natural-end guard must not fire. Money-only should reach the test-mode
+  // money check instead of "already ended".
+  const { subscriptionId } = await createTestModeSubscription();
+
+  const endNowRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(endNowRes.status).toBe(200);
+
+  const moneyOnlyRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "10.00",
+    },
+  });
+  expect(moneyOnlyRes.status).toBe(400);
+  // Reaches the money path (not the natural-end lifecycle guard).
+  expect(moneyOnlyRes.body.code).toBe("TEST_MODE_PURCHASE_NON_REFUNDABLE");
 });
 
 it("refunds a test-mode subscription with end_action='at-period-end' (no money)", async () => {
@@ -994,8 +1060,10 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
 
   const purchaseTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "purchase");
   expect(purchaseTxn).toBeDefined();
+  expect(purchaseTxn.renewal_target_subscription_id).toBeNull();
   const renewalTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "subscription-renewal");
   expect(renewalTxn).toBeDefined();
+  expect(renewalTxn.renewal_target_subscription_id).toBe(purchaseTxn.id);
 
   return {
     userId,
@@ -1055,10 +1123,30 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
   expect(startTxn?.adjusted_by ?? []).toEqual([]);
 
   // Refund row's listed `id` must match the linkage carried by adjusted_by.
+  // Money-less renewal refunds have no money_transfer entry on the refund row.
   const refundRow = txnsAfter.body.transactions.find(
     (tx: any) => tx.type === "refund" && tx.id === refundRes.body.refund_transaction_id,
   );
   expect(refundRow).toBeDefined();
+  expect(refundRow.entries.some((e: { type: string }) => e.type === "money_transfer")).toBe(false);
+});
+
+it("rejects a no-op renewal refund (amount=0, no end_action)", { timeout: 120_000 }, async () => {
+  const { subscriptionId, renewalInvoiceId } = await createLiveModeSubscriptionWithRenewal();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      invoice_id: renewalInvoiceId,
+      amount_usd: "0",
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/Refund must do something/);
 });
 
 it("rejects end_action='now' when invoice_id targets a renewal invoice", { timeout: 120_000 }, async () => {

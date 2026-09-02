@@ -823,6 +823,7 @@ async function handleSubscriptionRefund(options: {
     // payment provider (the listing route derives `test_mode: false` from it).
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
   await persistRefundManualTransaction(prisma, refundRow);
@@ -992,6 +993,7 @@ async function handleOneTimePurchaseRefund(options: {
     customerId: purchase.customerId,
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
   await persistRefundManualTransaction(prisma, refundRow);
