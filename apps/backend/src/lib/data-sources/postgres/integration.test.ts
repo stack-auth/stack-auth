@@ -11,12 +11,12 @@
  *     -e POSTGRES_DB=appdb -p 55432:5432 postgres:16 \
  *     -c wal_level=logical -c max_replication_slots=10 -c max_wal_senders=10
  *   HEXCLAVE_DATA_SOURCE_TEST_POSTGRES=postgres:testpass@localhost:55432/appdb \
- *     pnpm test run apps/backend/src/lib/data-sources/postgres-integration.test.ts
+ *     pnpm test run apps/backend/src/lib/data-sources/postgres/integration.test.ts
  */
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { beforeAll, describe, expect, it } from "vitest";
-import { probeDataSource } from "./probe";
-import { withDataSourceClient } from "./postgres";
+import { probePostgres } from "./probe";
+import { withDataSourceClient } from "./client";
 import { decodePgoutputMessage, formatLsn, type PgoutputRelation } from "./pgoutput";
 
 const TEST_SERVER = getEnvVariable("HEXCLAVE_DATA_SOURCE_TEST_POSTGRES", "") || undefined;
@@ -34,6 +34,27 @@ function parseTestServer(value: string) {
 }
 
 const credentials = parseTestServer(TEST_SERVER ?? "postgres:postgres@localhost:5432/postgres");
+
+/** The stored-connection shape the driver entrypoints take, from the same test server. */
+const connection = {
+  type: "postgres" as const,
+  config: {
+    host: credentials.host,
+    port: credentials.port,
+    database: credentials.database,
+    username: credentials.username,
+    sslMode: credentials.sslMode,
+  },
+  secret: credentials.password,
+};
+
+/** Everything a SyncContext needs that is not about this particular run. */
+const contextBase = {
+  connection,
+  sourceCursor: null,
+  managedResources: null,
+  dataSourceId: "00000000-0000-4000-8000-000000000001",
+};
 
 describe.skipIf(!TEST_SERVER)("Postgres data source", () => {
 
@@ -54,12 +75,12 @@ beforeAll(async () => {
 }, 60000);
 
 it("probes a real server", async () => {
-  const result = await probeDataSource(credentials);
+  const result = await probePostgres(connection);
   console.log("CAPABILITIES", JSON.stringify(result.capabilities));
   for (const table of result.tables) {
     console.log(`TABLE ${table.schemaName}.${table.tableName} rows=${table.approxRows} pk=[${table.primaryKeyColumns}] cursors=[${table.cursorCandidates.map(c => `${c.column}${c.indexed ? "*" : ""}`).join(",")}] cols=${table.columns.map(c => c.name + ":" + c.dataType).join(",")}`);
   }
-  expect(result.capabilities.walLevel).toBe("logical");
+  expect(result.capabilities).toEqual(expect.objectContaining({ type: "postgres", walLevel: "logical" }));
   expect(result.tables.map(t => t.tableName).sort()).toEqual(["events_noindex", "keyless", "plans", "users"]);
 }, 30000);
 
@@ -125,23 +146,21 @@ function recordingClickhouse() {
 }
 
 it("runs cursor mode end to end on the Postgres side", async () => {
-  const { probeDataSource } = await import("./probe");
-  const { runStreamSyncs } = await import("./sync");
-  const probe = await probeDataSource(credentials);
+  const { probePostgres } = await import("./probe");
+  const { runPostgresStreamSyncs } = await import("./sync");
+  const probe = await probePostgres(connection);
   const tablesByName = new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
   const recorder = recordingClickhouse();
 
   const context = {
-    credentials,
+    ...contextBase,
     clickhouse: recorder.client as never,
     databaseName: "wh_test",
     tablesByName,
-    slotName: "hexclave_check2",
-    publicationName: "hexclave_check2",
     startedAt: new Date("2026-08-21T00:00:00Z"),
   };
 
-  const results = await runStreamSyncs(context, [
+  const { streams: results } = await runPostgresStreamSyncs(context, [
     {
       streamId: "s-plans", schemaName: "public", tableName: "plans", mode: "cursor" as const,
       cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_plans", isPending: false, syncCursor: null,
@@ -170,16 +189,16 @@ it("runs cursor mode end to end on the Postgres side", async () => {
 }, 60000);
 
 it("resumes a cursor stream from its watermark", async () => {
-  const { probeDataSource } = await import("./probe");
-  const { runStreamSyncs } = await import("./sync");
-  const probe = await probeDataSource(credentials);
+  const { probePostgres } = await import("./probe");
+  const { runPostgresStreamSyncs } = await import("./sync");
+  const probe = await probePostgres(connection);
   const recorder = recordingClickhouse();
-  const results = await runStreamSyncs({
-    credentials,
+  const { streams: results } = await runPostgresStreamSyncs({
+    ...contextBase,
     clickhouse: recorder.client as never,
     databaseName: "wh_test",
     tablesByName: new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t])),
-    slotName: "x", publicationName: "x", startedAt: new Date(),
+    startedAt: new Date(),
   }, [{
     streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
     cursorColumn: "id", primaryKeyColumns: ["id"], destinationTable: "public_users",
@@ -193,8 +212,8 @@ it("resumes a cursor stream from its watermark", async () => {
 }, 60000);
 
 it("holds a timestamp cursor back from now(), so a late commit is not skipped", async () => {
-  const { probeDataSource } = await import("./probe");
-  const { runStreamSyncs } = await import("./sync");
+  const { probePostgres } = await import("./probe");
+  const { runPostgresStreamSyncs } = await import("./sync");
 
   // Rows written just now sit inside the safety lag and must not be read yet:
   // reading up to now() would move the watermark past a transaction that has not
@@ -203,14 +222,14 @@ it("holds a timestamp cursor back from now(), so a late commit is not skipped", 
     await client.query(`INSERT INTO users (email, updated_at) VALUES ('fresh@example.com', now())`);
   }, { allowWrites: true });
 
-  const probe = await probeDataSource(credentials);
+  const probe = await probePostgres(connection);
   const recorder = recordingClickhouse();
-  const results = await runStreamSyncs({
-    credentials,
+  const { streams: results } = await runPostgresStreamSyncs({
+    ...contextBase,
     clickhouse: recorder.client as never,
     databaseName: "wh_test",
     tablesByName: new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t])),
-    slotName: "x", publicationName: "x", startedAt: new Date(),
+    startedAt: new Date(),
   }, [{
     streamId: "s-users", schemaName: "public", tableName: "users", mode: "cursor" as const,
     cursorColumn: "updated_at", primaryKeyColumns: ["id"], destinationTable: "public_users", isPending: false, syncCursor: null,

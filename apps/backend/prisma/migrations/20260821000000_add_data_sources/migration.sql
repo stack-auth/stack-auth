@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "DataSourceType" AS ENUM ('POSTGRES');
+CREATE TYPE "DataSourceType" AS ENUM ('POSTGRES', 'CONVEX');
 
 -- CreateEnum
 CREATE TYPE "DataSourceStatus" AS ENUM ('PENDING', 'ACTIVE', 'PAUSED', 'FAILED');
@@ -16,19 +16,15 @@ CREATE TABLE "DataSource" (
     "tenancyId" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "type" "DataSourceType" NOT NULL DEFAULT 'POSTGRES',
-    "host" TEXT NOT NULL,
-    "port" INTEGER NOT NULL,
-    "database" TEXT NOT NULL,
-    "username" TEXT NOT NULL,
-    "sslMode" TEXT NOT NULL DEFAULT 'require',
-    "encryptedPassword" JSONB NOT NULL,
+    "type" "DataSourceType" NOT NULL,
+    "config" JSONB NOT NULL,
+    "encryptedSecret" JSONB NOT NULL,
     "status" "DataSourceStatus" NOT NULL DEFAULT 'PENDING',
     "error" TEXT,
     "syncIntervalSeconds" INTEGER NOT NULL DEFAULT 300,
     "capabilities" JSONB,
-    "replicationSlotName" TEXT,
-    "publicationName" TEXT,
+    "syncCursor" JSONB,
+    "managedResources" JSONB,
     "lastSyncStartedAt" TIMESTAMP(3),
     "lastSyncFinishedAt" TIMESTAMP(3),
 

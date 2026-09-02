@@ -7,8 +7,7 @@ function table(tableName: string): DataSourceCatalogTableJson {
     schema_name: "public",
     table_name: tableName,
     approx_rows: 10,
-    replica_identity: "d",
-    is_partitioned: false,
+    postgres: { replica_identity: "d", is_partitioned: false },
     primary_key_columns: ["id"],
     cursor_candidates: [{ column: "id", data_type: "bigint", indexed: true }],
     available_modes: [
@@ -22,6 +21,7 @@ function table(tableName: string): DataSourceCatalogTableJson {
 
 const catalog: DataSourceCatalogJson = {
   capabilities: {
+    type: "postgres",
     version: "16.4",
     wal_level: "logical",
     has_replication: true,

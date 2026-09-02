@@ -1,0 +1,6 @@
+{
+  "name": "hexclave-convex-fixture",
+  "private": true,
+  "type": "module",
+  "dependencies": { "convex": "^1.27.0" }
+}

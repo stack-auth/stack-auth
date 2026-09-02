@@ -5,16 +5,25 @@ import {
   getModeAvailability,
   getRecommendedMode,
   isTemporalCursorType,
-  type DataSourceCapabilities,
   type DataSourceTableInfo,
+  type PostgresCapabilities,
+  type PostgresTableInfo,
 } from "./modes";
 
-const capable: DataSourceCapabilities = {
+const capable: PostgresCapabilities = {
+  type: "postgres",
   version: "16.4", walLevel: "logical", hasReplication: true,
   inRecovery: false, slotsUsed: 0, slotsMax: 10, probedAtMillis: 0,
 };
 
-function table(overrides: Partial<DataSourceTableInfo> = {}): DataSourceTableInfo {
+/**
+ * Postgres-only facts now live in their own bag, so a Convex table is not
+ * obliged to invent a replica identity it has no concept of.
+ */
+function table(
+  overrides: Partial<DataSourceTableInfo> = {},
+  postgres: Partial<PostgresTableInfo> = {},
+): DataSourceTableInfo {
   return {
     schemaName: "public",
     tableName: "users",
@@ -22,9 +31,7 @@ function table(overrides: Partial<DataSourceTableInfo> = {}): DataSourceTableInf
     primaryKeyColumns: ["id"],
     // As format_type() renders it — the shape the probe actually produces.
     cursorCandidates: [{ column: "updated_at", dataType: "timestamp with time zone", indexed: true }],
-    replicaIdentity: "d",
-    isLogged: true,
-    isPartitioned: false,
+    postgres: { replicaIdentity: "d", isLogged: true, isPartitioned: false, ...postgres },
     ...overrides,
   };
 }
@@ -44,13 +51,13 @@ describe("CDC availability", () => {
   it("blocks a table whose replica identity would break the customer's writes", () => {
     // Adding a REPLICA IDENTITY NOTHING table to a publication makes their own
     // UPDATEs start failing, so this must never be offered.
-    expect(getCdcAvailability(capable, table({ replicaIdentity: "n" })).reason).toBe("needs a replica identity");
+    expect(getCdcAvailability(capable, table({}, { replicaIdentity: "n" })).reason).toBe("needs a replica identity");
   });
 
   it("blocks unlogged and partitioned tables", () => {
-    expect(getCdcAvailability(capable, table({ isLogged: false })).reason).toBe("table is unlogged");
+    expect(getCdcAvailability(capable, table({}, { isLogged: false })).reason).toBe("table is unlogged");
     // Changes publish under the leaf partition, not the parent we subscribe to.
-    expect(getCdcAvailability(capable, table({ isPartitioned: true })).reason).toBe("table is partitioned");
+    expect(getCdcAvailability(capable, table({}, { isPartitioned: true })).reason).toBe("table is partitioned");
   });
 
   it("blocks a keyless table even on a fully capable server", () => {

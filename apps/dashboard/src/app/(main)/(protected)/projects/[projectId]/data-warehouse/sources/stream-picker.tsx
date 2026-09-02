@@ -33,8 +33,15 @@ function replicationSlotsAreFull(slotsUsed: number, slotsMax: number | null): bo
   return slotsMax != null && slotsUsed >= slotsMax;
 }
 
-/** Concrete remediation for the specific reason CDC is off, not generic advice. */
+/**
+ * Concrete remediation for the specific reason CDC is off, not generic advice.
+ *
+ * Every reason here is a PostgreSQL server setting, so there is nothing to say
+ * about a source of another type — and saying it anyway would be advice the
+ * customer cannot act on.
+ */
 function getCdcRemediation(capabilities: DataSourceCatalogJson["capabilities"]): string | null {
+  if (capabilities.type !== "postgres") return null;
   if (capabilities.wal_level !== "logical") {
     return "Set wal_level to logical on your server (on RDS, set rds.logical_replication = 1 in the parameter group), then restart it.";
   }
@@ -75,6 +82,14 @@ function selectedCursorIsInsertOnly(table: DataSourceCatalogTableJson, column: s
   if (column == null) return false;
   const candidate = table.cursor_candidates.find(c => c.column === column);
   return candidate != null && !isTemporalCursorType(candidate.data_type);
+}
+
+/**
+ * How many modes this table could actually be synced with. One means there is
+ * nothing to decide, and the picker says which mode rather than asking.
+ */
+function availableModeCount(table: DataSourceCatalogTableJson): number {
+  return table.available_modes.filter(m => m.available).length;
 }
 
 function modeOptions(table: DataSourceCatalogTableJson) {
@@ -219,15 +234,20 @@ export function StreamPicker(props: {
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{formatRowCount(table.approx_rows)}</td>
                   <td className="px-4 py-2.5">
-                    {syncable ? (
+                    {!syncable ? (
+                      <span className="text-xs text-muted-foreground">No mode available</span>
+                    ) : availableModeCount(table) < 2 ? (
+                      // Nothing to choose. A Convex table can only be synced from
+                      // the change log, and a dropdown with one enabled entry
+                      // reads as a decision the customer has to make.
+                      <span className="text-xs text-muted-foreground">{MODE_INFO[current.mode ?? "cdc"].label}</span>
+                    ) : (
                       <DesignSelectorDropdown
                         size="sm"
                         value={current.mode ?? ""}
                         options={modeOptions(table)}
                         onValueChange={value => update(key, { mode: value as DataSourceSyncMode })}
                       />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No mode available</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">

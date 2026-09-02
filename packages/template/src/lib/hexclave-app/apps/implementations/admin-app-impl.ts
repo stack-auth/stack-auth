@@ -1,6 +1,6 @@
 import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
 import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
-import { DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig, DataWarehouseCredentialsJson, DataWarehouseJson, InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
+import { CreateDataSourceOptions, DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig, DataWarehouseCredentialsJson, DataWarehouseJson, InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
@@ -630,22 +630,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return Result.orThrow(await this._adminDataSourcesCache.getOrWait([], "write-only"));
   }
 
-  async createDataSource(options: {
-    host: string,
-    port: number,
-    database: string,
-    username: string,
-    password: string,
-    sslMode?: string,
-  }): Promise<{ dataSource: DataSourceJson, catalog: DataSourceCatalogJson }> {
-    const result = await this._interface.createDataSource({
-      host: options.host,
-      port: options.port,
-      database: options.database,
-      username: options.username,
-      password: options.password,
-      ssl_mode: options.sslMode,
-    });
+  async createDataSource(options: CreateDataSourceOptions): Promise<{ dataSource: DataSourceJson, catalog: DataSourceCatalogJson }> {
+    const result = await this._interface.createDataSource(options);
     await this._adminDataSourcesCache.refresh([]);
     return { dataSource: result.data_source, catalog: result.catalog };
   }

@@ -338,6 +338,30 @@ services:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}39:3000"
     command: start
 
+  # ================= Convex =================
+  #
+  # A Convex deployment to use as a data-source fixture: the self-hosted backend
+  # serves the same change feed (/api/v1/data/sync) and catalog (/api/json_schemas)
+  # that Convex Cloud does, so the driver can be exercised for real without a
+  # Convex account or a Pro plan.
+  #
+  # The admin key is not derivable from the instance secret, so read it out once
+  # the container is up:
+  #   docker exec stack-dependencies-81-convex-1 ./generate_admin_key.sh
+
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    ports:
+      - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}40:3210"
+      - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41:3211"
+    environment:
+      INSTANCE_NAME: hexclave-local
+      INSTANCE_SECRET: 4361726e6974617320697320746865206265737421212121212121212121212a
+      # This backend otherwise reports anonymized usage to Convex on every start.
+      DISABLE_BEACON: "true"
+    volumes:
+      - convex-data:/convex/data
+
   # ================= Drizzle Gateway =================
 
   drizzle-gateway:
@@ -363,6 +387,7 @@ volumes:
   freestyle-module-cache:
   localstack-data:
   clickhouse-data:
+  convex-data:
   drizzle-gateway:
 
 # ================= configs =================

@@ -114,11 +114,12 @@ async function connectSource(database: string, overrides: Record<string, unknown
     method: "POST",
     accessType: "admin",
     body: {
+      type: "postgres",
       host: server.host,
       port: server.port,
       database,
       username: server.username,
-      password: server.password,
+      secret: server.password,
       ssl_mode: "disable",
       ...overrides,
     },
@@ -251,7 +252,7 @@ it("cannot connect a source before the warehouse it would write into exists", as
 
 it("rejects credentials it cannot connect with, and stores nothing", async ({ expect }) => {
   await createProjectWithWarehouse();
-  const response = await connectSource("postgres", { password: "not-the-password" });
+  const response = await connectSource("postgres", { secret: "not-the-password" });
   expect(response.status).toBe(400);
   // A source row that has never connected is worse than no row: it looks configured.
   const list = await listSources();
@@ -271,12 +272,13 @@ it("connects, and returns a catalog with a mode decision per table", async ({ ex
     expect(response.status).toBe(200);
     expect(response.body.data_source).toMatchObject({
       type: "postgres",
-      database: source.database,
+      config: { database: source.database },
       status: "pending",
       streams: [],
     });
-    expect(response.body.data_source).not.toHaveProperty("password");
-    expect(response.body.data_source.capabilities.wal_level).toBe("logical");
+    // The secret never comes back out, under any name.
+    expect(JSON.stringify(response.body.data_source)).not.toContain(sourceServer().password);
+    expect(response.body.data_source.capabilities).toMatchObject({ type: "postgres", wal_level: "logical" });
 
     const tables = response.body.catalog.tables;
     expect(tables.map((t: any) => t.table_name).sort()).toEqual(["events", "keyless", "plans"]);
@@ -669,4 +671,114 @@ it("does not let one project touch another's source", async ({ expect }) => {
   expect((await syncSource(ownedId)).status).toBe(404);
   expect((await setStreams(ownedId, [])).status).toBe(404);
   expect((await deleteSource(ownedId)).status).toBe(404);
+});
+
+// ─── Convex ──────────────────────────────────────────────────────────────────
+//
+// Convex differs from Postgres at every layer the API touches: a deploy key
+// rather than a host and password, one namespace ("app") rather than schemas,
+// and a single mode rather than a choice. These check that the shared endpoints
+// carry all of that through, and are skipped unless a deployment is pointed at.
+//
+//   docker compose -f docker/dependencies/docker.compose.yaml up -d convex
+//   # deploy the fixture app: docker/dependencies/convex-fixture/README.md
+//   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_URL=http://127.0.0.1:8140 \
+//   HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY="$(docker exec dependencies-convex-1 ./generate_admin_key.sh | tail -1)" \
+//     pnpm test <this file>
+
+const CONVEX_URL = getEnvVariable("HEXCLAVE_DATA_SOURCE_TEST_CONVEX_URL", "") || undefined;
+const CONVEX_KEY = getEnvVariable("HEXCLAVE_DATA_SOURCE_TEST_CONVEX_KEY", "") || undefined;
+const CONVEX_ENABLED = CONVEX_URL != null && CONVEX_KEY != null;
+
+async function connectConvexSource(overrides: Record<string, unknown> = {}) {
+  return await niceBackendFetch("/api/v1/data-sources", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      type: "convex",
+      deployment_url: CONVEX_URL,
+      secret: CONVEX_KEY,
+      ...overrides,
+    },
+  });
+}
+
+it.skipIf(!CONVEX_ENABLED)("connects a Convex deployment and offers only its one mode", async ({ expect }) => {
+  await createProjectWithWarehouse();
+  const response = await connectConvexSource();
+
+  expect(response.status).toBe(200);
+  expect(response.body.data_source).toMatchObject({
+    type: "convex",
+    config: { deployment_url: CONVEX_URL },
+    status: "pending",
+    streams: [],
+  });
+  // The deploy key never comes back out, under any name.
+  expect(JSON.stringify(response.body.data_source)).not.toContain(CONVEX_KEY);
+  expect(response.body.data_source.capabilities).toMatchObject({ type: "convex", has_streaming_export: true });
+  // Postgres-only capability fields must not be invented for a source that has
+  // no concept of them.
+  expect(response.body.data_source.capabilities).not.toHaveProperty("wal_level");
+
+  const table = response.body.catalog.tables.find((t: any) => t.table_name === "it_people");
+  expect(table).toBeDefined();
+  // Convex has components, not schemas, and the root app is reported as "app".
+  expect(table.schema_name).toBe("app");
+  expect(table.primary_key_columns).toEqual(["_id"]);
+  expect(table.postgres).toBeNull();
+  expect(table.recommended_mode).toBe("cdc");
+  expect(table.cursor_candidates).toEqual([]);
+  expect(table.available_modes.find((m: any) => m.mode === "cursor")).toEqual({
+    mode: "cursor", available: false, reason: "Convex syncs from its change log",
+  });
+});
+
+it.skipIf(!CONVEX_ENABLED)("refuses a bad Convex deploy key", async ({ expect }) => {
+  await createProjectWithWarehouse();
+  const response = await connectConvexSource({ secret: "convex-self-hosted|deadbeef" });
+  expect(response.status).toBe(400);
+  expect((await listSources()).body.data_sources).toEqual([]);
+});
+
+it.skipIf(!CONVEX_ENABLED)("syncs a Convex table into the warehouse", async ({ expect }) => {
+  const { credentials } = await createProjectWithWarehouse();
+  const { body: { data_source } } = await connectConvexSource();
+
+  const configured = await setStreams(data_source.id, [
+    { schema_name: "app", table_name: "it_people", mode: "cdc" },
+  ]);
+  expect(configured.status).toBe(200);
+  expect(configured.body.data_source.streams[0]).toMatchObject({
+    schema_name: "app",
+    table_name: "it_people",
+    mode: "cdc",
+    // Convex resumes at the deployment level, so a stream carries no cursor.
+    cursor_column: null,
+    primary_key_columns: ["_id"],
+  });
+
+  const synced = await syncSource(data_source.id);
+  expect(synced.status).toBe(200);
+  expect(synced.body.data_source.streams[0].status).toBe("active");
+  expect(synced.body.data_source.streams[0].error).toBeNull();
+
+  // Read back as the project's own warehouse user, so isolation is exercised
+  // rather than only the happy path.
+  const destination = synced.body.data_source.streams[0].destination_table;
+  const result = await queryWarehouse(credentials, `SELECT count() AS n FROM \`${destination}\``);
+  expect(result.status).toBe(200);
+  expect(Number(result.text)).toBeGreaterThanOrEqual(0);
+});
+
+it.skipIf(!CONVEX_ENABLED)("refuses cursor mode for a Convex table", async ({ expect }) => {
+  await createProjectWithWarehouse();
+  const { body: { data_source } } = await connectConvexSource();
+
+  // The dashboard never offers this, but the backend is what has to hold the
+  // line: a mode the driver cannot run must not be storable.
+  const response = await setStreams(data_source.id, [
+    { schema_name: "app", table_name: "it_people", mode: "cursor", cursor_column: "_creationTime" },
+  ]);
+  expect(response.status).toBe(400);
 });

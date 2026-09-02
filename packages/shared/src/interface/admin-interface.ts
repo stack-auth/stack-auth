@@ -80,7 +80,8 @@ export type DataSourceStreamJson = {
   last_synced_at_millis: number | null,
 };
 
-export type DataSourceCapabilitiesJson = {
+export type PostgresCapabilitiesJson = {
+  type: "postgres",
   version: string,
   wal_level: string,
   has_replication: boolean,
@@ -91,32 +92,68 @@ export type DataSourceCapabilitiesJson = {
   probed_at_millis: number,
 };
 
-export type DataSourceJson = {
-  id: string,
-  type: "postgres",
+export type ConvexCapabilitiesJson = {
+  type: "convex",
+  deployment_url: string,
+  /** Convex Cloud gates the change feed behind a Pro plan; self-hosted does not. */
+  has_streaming_export: boolean,
+  probed_at_millis: number,
+};
+
+/** Discriminated by `type`, so a consumer that ignores the tag fails to compile. */
+export type DataSourceCapabilitiesJson = PostgresCapabilitiesJson | ConvexCapabilitiesJson;
+
+export type PostgresSourceConfigJson = {
   host: string,
   port: number,
   database: string,
   username: string,
   ssl_mode: string,
-  status: "pending" | "active" | "paused" | "failed",
-  error: string | null,
-  sync_interval_seconds: number,
-  /** Null until the source has been probed once. */
-  capabilities: DataSourceCapabilitiesJson | null,
-  last_sync_started_at_millis: number | null,
-  last_sync_finished_at_millis: number | null,
-  streams: DataSourceStreamJson[],
 };
 
+export type ConvexSourceConfigJson = {
+  deployment_url: string,
+};
+
+export type DataSourceJson =
+  | {
+    id: string,
+    type: "postgres",
+    config: PostgresSourceConfigJson,
+    status: "pending" | "active" | "paused" | "failed",
+    error: string | null,
+    sync_interval_seconds: number,
+    /** Null until the source has been probed once. */
+    capabilities: PostgresCapabilitiesJson | null,
+    last_sync_started_at_millis: number | null,
+    last_sync_finished_at_millis: number | null,
+    streams: DataSourceStreamJson[],
+  }
+  | {
+    id: string,
+    type: "convex",
+    config: ConvexSourceConfigJson,
+    status: "pending" | "active" | "paused" | "failed",
+    error: string | null,
+    sync_interval_seconds: number,
+    capabilities: ConvexCapabilitiesJson | null,
+    last_sync_started_at_millis: number | null,
+    last_sync_finished_at_millis: number | null,
+    streams: DataSourceStreamJson[],
+  };
+
 export type DataSourceCatalogTableJson = {
+  /** A Postgres schema, or a Convex component (the root app is "app"). */
   schema_name: string,
   table_name: string,
-  /** Null when the source has never been analyzed — not the same as empty. */
+  /** Null when the source cannot cheaply estimate the row count. */
   approx_rows: number | null,
-  /** `pg_class.relreplident`: 'd' default, 'n' nothing, 'f' full, 'i' using index. */
-  replica_identity: string,
-  is_partitioned: boolean,
+  /** Postgres-only facts about the table; null for every other source type. */
+  postgres: {
+    /** `pg_class.relreplident`: 'd' default, 'n' nothing, 'f' full, 'i' using index. */
+    replica_identity: string,
+    is_partitioned: boolean,
+  } | null,
   primary_key_columns: string[],
   cursor_candidates: { column: string, data_type: string, indexed: boolean }[],
   /** Resolved server-side, so the picker never offers a mode the backend would reject. */
@@ -130,6 +167,26 @@ export type DataSourceCatalogJson = {
   capabilities: DataSourceCapabilitiesJson,
   tables: DataSourceCatalogTableJson[],
 };
+
+/**
+ * `secret` is whatever the source authenticates with — a Postgres password, or a
+ * Convex deploy key carrying the `deployment:data:view` permission.
+ */
+export type CreateDataSourceOptions =
+  | {
+    type: "postgres",
+    host: string,
+    port: number,
+    database: string,
+    username: string,
+    ssl_mode?: string,
+    secret: string,
+  }
+  | {
+    type: "convex",
+    deployment_url: string,
+    secret: string,
+  };
 
 export type DataSourceStreamConfig = {
   schema_name: string,
@@ -427,14 +484,7 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /** Verifies the credentials and reads the catalog before anything is stored. */
-  async createDataSource(options: {
-    host: string,
-    port: number,
-    database: string,
-    username: string,
-    password: string,
-    ssl_mode?: string,
-  }): Promise<{ data_source: DataSourceJson, catalog: DataSourceCatalogJson }> {
+  async createDataSource(options: CreateDataSourceOptions): Promise<{ data_source: DataSourceJson, catalog: DataSourceCatalogJson }> {
     const response = await this.sendAdminRequest(`/data-sources`, {
       method: "POST",
       headers: { "content-type": "application/json" },

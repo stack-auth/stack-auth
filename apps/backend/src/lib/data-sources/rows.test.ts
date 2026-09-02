@@ -13,9 +13,9 @@ describe("source row conversion", () => {
     const destination = buildDestinationRow({
       values: source,
       columns: [
-        { name: "__proto__", dataType: "text", nullable: false },
-        { name: "constructor", dataType: "text", nullable: false },
-        { name: "toString", dataType: "text", nullable: false },
+        { name: "__proto__", dataType: "text", nullable: false, clickhouseType: "String" },
+        { name: "constructor", dataType: "text", nullable: false, clickhouseType: "String" },
+        { name: "toString", dataType: "text", nullable: false, clickhouseType: "String" },
       ],
       version: 1n,
       deleted: false,

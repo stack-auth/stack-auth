@@ -1,21 +1,8 @@
-import type { DataSourceCapabilities, DataSourceCursorCandidate, DataSourceTableInfo } from "@hexclave/shared/dist/data-sources/modes";
+import type { DataSourceCursorCandidate, PostgresCapabilities } from "@hexclave/shared/dist/data-sources/modes";
 import type { Client } from "pg";
-import { withDataSourceClient, type DataSourceCredentials } from "./postgres";
-
-export type DataSourceColumn = {
-  name: string,
-  dataType: string,
-  nullable: boolean,
-};
-
-export type ProbedTable = DataSourceTableInfo & {
-  columns: DataSourceColumn[],
-};
-
-export type DataSourceProbeResult = {
-  capabilities: DataSourceCapabilities,
-  tables: ProbedTable[],
-};
+import type { DataSourceColumn, DataSourceConnection, DataSourceProbeResult, ProbedTable } from "../types";
+import { mapPostgresTypeToClickhouse } from "./column-types";
+import { toCredentials, withDataSourceClient } from "./client";
 
 /** Schemas that are Postgres' own bookkeeping and never interesting to sync. */
 const EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema", "pg_toast"];
@@ -36,7 +23,7 @@ export function isCursorCandidateType(dataType: string): boolean {
   return CURSOR_TYPE_PATTERN.test(dataType.trim().replace(/\(\d+(,\s*\d+)?\)/, ""));
 }
 
-async function readCapabilities(client: Client): Promise<DataSourceCapabilities> {
+async function readCapabilities(client: Client): Promise<PostgresCapabilities> {
   const { rows } = await client.query<{
     version: string,
     wal_level: string,
@@ -82,6 +69,7 @@ async function readCapabilities(client: Client): Promise<DataSourceCapabilities>
   }
 
   return {
+    type: "postgres",
     version: row.version,
     walLevel: row.wal_level,
     inRecovery: row.in_recovery,
@@ -188,7 +176,12 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
   for (const row of columns.rows) {
     const k = key(row.schema_name, row.table_name);
     if (!columnsByTable.has(k)) columnsByTable.set(k, []);
-    columnsByTable.get(k)!.push({ name: row.column_name, dataType: row.data_type, nullable: !row.not_null });
+    columnsByTable.get(k)!.push({
+      name: row.column_name,
+      dataType: row.data_type,
+      nullable: !row.not_null,
+      clickhouseType: mapPostgresTypeToClickhouse(row.data_type),
+    });
     // A nullable cursor column would let rows sit permanently below any watermark.
     if (row.not_null && isCursorCandidateType(row.data_type)) {
       if (!cursorsByTable.has(k)) cursorsByTable.set(k, []);
@@ -214,9 +207,11 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
       primaryKeyColumns: pkByTable.get(k) ?? [],
       cursorCandidates: cursorsByTable.get(k) ?? [],
       columns: columnsByTable.get(k) ?? [],
-      replicaIdentity: row.replica_identity,
-      isLogged: row.is_logged,
-      isPartitioned: row.is_partitioned,
+      postgres: {
+        replicaIdentity: row.replica_identity,
+        isLogged: row.is_logged,
+        isPartitioned: row.is_partitioned,
+      },
     };
   });
 }
@@ -227,7 +222,8 @@ async function readCatalog(client: Client): Promise<ProbedTable[]> {
  * well as on connect, so a customer who enables logical replication later is
  * offered CDC without re-adding the source.
  */
-export async function probeDataSource(credentials: DataSourceCredentials): Promise<DataSourceProbeResult> {
+export async function probePostgres(connection: DataSourceConnection): Promise<DataSourceProbeResult> {
+  const credentials = await toCredentials(connection);
   return await withDataSourceClient(credentials, async client => ({
     capabilities: await readCapabilities(client),
     tables: await readCatalog(client),
