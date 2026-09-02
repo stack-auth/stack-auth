@@ -10,7 +10,9 @@ type TvDisplayUrlSources = {
 export function buildTvDisplayUrl(sources: TvDisplayUrlSources): string | null {
   for (const candidate of [sources.browserDashboardUrl, sources.dashboardUrl, sources.currentOrigin]) {
     if (candidate == null || candidate.trim() === "" || !URL.canParse("/tv", candidate)) continue;
-    return new URL("/tv", candidate).toString();
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+    return new URL("/tv", parsed).toString();
   }
   return null;
 }

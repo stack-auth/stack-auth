@@ -41,6 +41,7 @@ import { useTvPresentationLauncher } from "@/components/tv-mode/presentation-win
 import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
 import { createTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
 import { devFeaturesEnabledForProject } from "@/lib/utils";
+import { navigateToTvProfiles } from "@/lib/tv-mode/navigation";
 import {
   createTvProfileOrThrow,
   deleteTvProfileOrThrow,
@@ -279,6 +280,7 @@ export default function PageClient() {
   const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [timingCategory, setTimingCategory] = useState<TimingCategory>("celebration");
@@ -300,6 +302,7 @@ export default function PageClient() {
     setSaved(null);
     setResetDraft(null);
     setSaveError(null);
+    setDeleteError(null);
     setDuplicateError(null);
     runAsynchronously(async () => {
       try {
@@ -902,12 +905,21 @@ export default function PageClient() {
       {resource.origin === "saved" && !createFromTemplate ? (
         <TvProfileDeleteDialog
           open={deleteConfirmationOpen}
-          onOpenChange={setDeleteConfirmationOpen}
+          onOpenChange={(open) => {
+            setDeleteConfirmationOpen(open);
+            if (open) setDeleteError(null);
+          }}
           profileName={resource.configuration.displayName}
+          error={deleteError}
           onConfirm={async () => {
-            await deleteTvProfileOrThrow(adminApp, resource);
-            setNeedConfirm(false);
-            window.location.assign(urlString`/projects/${projectId}/tv-mode`);
+            try {
+              await deleteTvProfileOrThrow(adminApp, resource);
+              setNeedConfirm(false);
+              navigateToTvProfiles(projectId);
+            } catch {
+              setDeleteError("Profile deletion is unavailable. The profile was not deleted.");
+              return "prevent-close";
+            }
           }}
         />
       ) : null}
