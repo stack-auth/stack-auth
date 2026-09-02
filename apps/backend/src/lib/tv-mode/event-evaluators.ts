@@ -246,7 +246,7 @@ export function evaluateTvSubscriptionCollection(
         : { state: { ...baseState, candidate, recovery: null }, action: { type: "none" }, qualification: candidate.rulePath };
     }
     if (breach != null) return {
-      state: { ...baseState, candidate: previous.activeClass === "incident" ? previous.candidate : null, recovery: null },
+      state: { ...baseState, candidate: null, recovery: null },
       action: { type: "none" },
       qualification: breach.rulePath,
     };
@@ -258,13 +258,13 @@ export function evaluateTvSubscriptionCollection(
       : useCurrent
         ? window.failures <= 1 && window.successRatePercent != null && window.successRatePercent >= Math.max(90, baselineRate - 5)
         : window.outcomes >= 5 && window.failures <= 1 && window.successRatePercent != null && window.successRatePercent >= Math.max(80, baselineRate - 10);
-    if (!healthy) return { state: baseState, action: { type: "none" }, qualification: null };
+    if (!healthy) return { state: { ...baseState, candidate: null }, action: { type: "none" }, qualification: null };
     const recoveryWindow = useCurrent ? "current" : "low-volume";
     const accumulatedMs = previous.recovery?.window === recoveryWindow ? previous.recovery.accumulatedMs + elapsed : 0;
     const requiredMs = useCurrent ? 30 * 60_000 : 2 * 60 * 60_000;
     return accumulatedMs >= requiredMs
       ? { state: { ...baseState, activeClass: null, candidate: null, recovery: null }, action: { type: "resolve" }, qualification: "recovery" }
-      : { state: { ...baseState, recovery: { window: recoveryWindow, accumulatedMs } }, action: { type: "none" }, qualification: "recovery" };
+      : { state: { ...baseState, candidate: null, recovery: { window: recoveryWindow, accumulatedMs } }, action: { type: "none" }, qualification: "recovery" };
   }
   if (breach == null) {
     const baselineRate = paymentBaselineRate({ ...sample, baseline });
