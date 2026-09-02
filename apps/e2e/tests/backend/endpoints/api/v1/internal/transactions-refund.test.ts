@@ -327,20 +327,38 @@ it("refunds a live-mode OTP fully (money + end_action='now'), surfaces refund ro
 it("supports multiple partial refunds capped at remaining amount", async () => {
   const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
-  // Partial $20.00 refund — succeeds.
+  // Two intentional partials of the *same* dollar amount must get distinct
+  // refund txn ids — prior advances after the first commit, so the
+  // deterministic fingerprint changes. (A same-payload *retry* before prior
+  // advances would reuse the id; that is covered by unit tests on
+  // makeRefundTxnId.)
   const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "20.00",
+      amount_usd: "10.00",
     },
   });
   expect(refund1.status).toBe(200);
+  expect(refund1.body.refund_transaction_id).toMatch(/^refund:otp:/);
 
-  // Partial $30.00 refund — succeeds (total now $50.00).
   const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "10.00",
+    },
+  });
+  expect(refund2.status).toBe(200);
+  expect(refund2.body.refund_transaction_id).toMatch(/^refund:otp:/);
+  expect(refund2.body.refund_transaction_id).not.toBe(refund1.body.refund_transaction_id);
+
+  // Remaining is $30.00 — a $30.00 refund should succeed and exhaust the cap.
+  const refund3 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
     body: {
@@ -349,10 +367,12 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
       amount_usd: "30.00",
     },
   });
-  expect(refund2.status).toBe(200);
+  expect(refund3.status).toBe(200);
+  expect(refund3.body.refund_transaction_id).not.toBe(refund1.body.refund_transaction_id);
+  expect(refund3.body.refund_transaction_id).not.toBe(refund2.body.refund_transaction_id);
 
-  // Third $0.01 refund — exceeds remaining ($0).
-  const refund3 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+  // Fourth $0.01 refund — exceeds remaining ($0).
+  const refund4 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
     body: {
@@ -361,9 +381,85 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
       amount_usd: "0.01",
     },
   });
-  expect(refund3.status).toBe(400);
-  expect(refund3.body.code).toBe("SCHEMA_ERROR");
-  expect(refund3.body.error).toMatch(/cannot exceed the remaining refundable amount/);
+  expect(refund4.status).toBe(400);
+  expect(refund4.body.code).toBe("SCHEMA_ERROR");
+  expect(refund4.body.error).toMatch(/cannot exceed the remaining refundable amount/);
+});
+
+it("refunds fractional dollar amounts (2.39 then 2.50) with distinct txn ids", async () => {
+  // moneyAmountToStripeUnits turns these into integer cents (239 / 250)
+  // before makeRefundTxnId fingerprints them — so fractional USD must work
+  // end-to-end and must not collide with each other.
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refund239 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "2.39",
+    },
+  });
+  expect(refund239.status).toBe(200);
+  expect(refund239.body.refund_transaction_id).toMatch(/^refund:otp:.+:[0-9a-f]{32}$/);
+
+  const refund250 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "2.50",
+    },
+  });
+  expect(refund250.status).toBe(200);
+  expect(refund250.body.refund_transaction_id).toMatch(/^refund:otp:.+:[0-9a-f]{32}$/);
+  expect(refund250.body.refund_transaction_id).not.toBe(refund239.body.refund_transaction_id);
+
+  // Also accept the shorter "2.5" form (same cents as "2.50") as a later
+  // partial once prior has advanced — distinct from the first 2.50 because
+  // priorRefundedStripeUnits changed.
+  const refund25Again = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "2.5",
+    },
+  });
+  expect(refund25Again.status).toBe(200);
+  expect(refund25Again.body.refund_transaction_id).not.toBe(refund250.body.refund_transaction_id);
+});
+
+it("rejects a full-amount money refund replay once the cap is exhausted", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "50.00",
+    },
+  });
+  expect(refund1.status).toBe(200);
+  expect(refund1.body.refund_transaction_id).toMatch(/^refund:otp:.+:[0-9a-f]{32}$/);
+
+  const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "50.00",
+    },
+  });
+  expect(refund2.status).toBe(400);
+  expect(refund2.body.code).toBe("SCHEMA_ERROR");
+  expect(refund2.body.error).toMatch(/cannot exceed the remaining refundable amount/);
 });
 
 it("rejects ending product access twice on the same OTP (productRevoked short-circuit)", async () => {
