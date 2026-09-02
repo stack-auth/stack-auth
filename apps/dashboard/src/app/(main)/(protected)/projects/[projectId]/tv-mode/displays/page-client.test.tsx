@@ -3,7 +3,7 @@
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { Toaster, TooltipProvider } from "@/components/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import PageClient from "./page-client";
 
 const testState = vi.hoisted(() => ({
@@ -13,6 +13,19 @@ const testState = vi.hoisted(() => ({
   writeText: vi.fn(),
 }));
 let originalClipboardDescriptor: PropertyDescriptor | undefined;
+let clipboardWasPatched = false;
+const nativeClipboardDescriptor: PropertyDescriptor = {
+  configurable: true,
+  value: { writeText: vi.fn() },
+};
+
+beforeAll(() => {
+  Object.defineProperty(navigator, "clipboard", nativeClipboardDescriptor);
+});
+
+afterAll(() => {
+  Reflect.deleteProperty(navigator, "clipboard");
+});
 
 vi.mock("../../use-admin-app", () => ({
   useAdminApp: () => testState.adminApp,
@@ -33,10 +46,13 @@ vi.mock("../display-management", () => ({
 }));
 
 afterEach(() => {
-  if (originalClipboardDescriptor == null) {
-    Reflect.deleteProperty(navigator, "clipboard");
-  } else {
-    Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor);
+  if (clipboardWasPatched) {
+    if (originalClipboardDescriptor == null) {
+      Reflect.deleteProperty(navigator, "clipboard");
+    } else {
+      Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor);
+    }
+    clipboardWasPatched = false;
     originalClipboardDescriptor = undefined;
   }
   cleanup();
@@ -60,6 +76,7 @@ describe("TV displays page", () => {
   it("loads profiles and exposes the independent display link", async () => {
     testState.fetchProfiles.mockResolvedValue(readyProfiles());
     originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    clipboardWasPatched = true;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: testState.writeText },
@@ -96,5 +113,12 @@ describe("TV displays page", () => {
 
     projectBLoad.resolve(readyProfiles());
     expect(await screen.findByText("Display management for 1 profile")).toBeTruthy();
+  });
+
+  it("preserves the native clipboard descriptor after an unpatched test", () => {
+    expect(Object.getOwnPropertyDescriptor(navigator, "clipboard")).toMatchObject({
+      configurable: nativeClipboardDescriptor.configurable,
+      value: nativeClipboardDescriptor.value,
+    });
   });
 });

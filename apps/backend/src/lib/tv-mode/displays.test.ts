@@ -5,10 +5,14 @@ import { flushInFlightPromises } from "@/utils/background-tasks";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { logEventMock } = vi.hoisted(() => ({ logEventMock: vi.fn() }));
+const { captureErrorMock, logEventMock } = vi.hoisted(() => ({ captureErrorMock: vi.fn(), logEventMock: vi.fn() }));
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/events")>(),
   logEvent: logEventMock,
+}));
+vi.mock("@hexclave/shared/dist/utils/errors", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@hexclave/shared/dist/utils/errors")>(),
+  captureError: captureErrorMock,
 }));
 import {
   approveTvDisplayPairing,
@@ -26,6 +30,7 @@ import {
 } from "./displays";
 import { createTvProfile, deleteTvProfile, TvProfileAssignedToDisplaysError } from "./profiles";
 import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { signJWT } from "@hexclave/shared/dist/utils/jwt";
 
 describe.sequential("independent TV display persistence", () => {
@@ -50,6 +55,7 @@ describe.sequential("independent TV display persistence", () => {
   }
 
   beforeEach(async () => {
+    captureErrorMock.mockClear();
     logEventMock.mockClear();
     tenancy = await createTenancy();
     otherTenancy = await createTenancy();
@@ -191,6 +197,41 @@ describe.sequential("independent TV display persistence", () => {
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(true);
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(true);
     await expect(consumeTvDisplayPairingRateLimit(options)).resolves.toBe(false);
+  });
+
+  it("keeps the rate-limit verdict when opportunistic cleanup fails", async () => {
+    const identity = randomUUID();
+    const now = new Date("2026-08-14T12:00:00.000Z");
+    const originalExecuteRaw = globalPrismaClient.$executeRaw;
+    Object.defineProperty(globalPrismaClient, "$executeRaw", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockRejectedValueOnce(new Error("cleanup failed")),
+    });
+    try {
+      await expect(consumeTvDisplayPairingRateLimit({
+        identity,
+        operation: "approval-admin",
+        windowMs: 60_000,
+        limit: 1,
+        now,
+      })).resolves.toBe(true);
+      expect(captureErrorMock).toHaveBeenCalledWith(
+        "tv-display-rate-limit-cleanup-failed",
+        expect.any(HexclaveAssertionError),
+      );
+    } finally {
+      Object.defineProperty(globalPrismaClient, "$executeRaw", {
+        configurable: true,
+        writable: true,
+        value: originalExecuteRaw,
+      });
+      await globalPrismaClient.$executeRaw`
+        DELETE FROM "TvDisplayPairingRateLimitBucket"
+        WHERE "operation" = ${"approval-admin"}
+          AND "windowStart" = ${now}
+      `;
+    }
   });
 
   it("hard-deletes only the exact tenancy-scoped display and its credentials", async () => {

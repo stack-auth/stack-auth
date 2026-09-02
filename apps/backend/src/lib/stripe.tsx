@@ -386,9 +386,9 @@ function getStripeInvoiceOutcomeTimestamps(
         : null
     );
   const markedUncollectibleAt = exactMarkedUncollectibleAt
-    ?? (event.type === "invoice.marked_uncollectible" || invoice.status === "uncollectible" ? eventTimestamp : null);
+    ?? (event.type === "invoice.marked_uncollectible" ? eventTimestamp : null);
   const voidedAt = exactVoidedAt
-    ?? (event.type === "invoice.voided" || invoice.status === "void" ? eventTimestamp : null);
+    ?? (event.type === "invoice.voided" ? eventTimestamp : null);
   return {
     // The watermark only records exact outcomes. Inferred outcomes remain
     // COALESCE-only so a later-delivered exact event can correct them.
@@ -493,7 +493,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
     });
   });
 
-  test("infers terminal outcomes from invoice status without advancing the watermark", ({ expect }) => {
+  test("does not infer terminal outcomes from status-only snapshots", ({ expect }) => {
     const occurredAtSeconds = 1_787_098_400;
     const occurredAt = new Date(occurredAtSeconds * 1000);
     expect(getStripeInvoiceOutcomeTimestamps({ status: "uncollectible" }, {
@@ -501,11 +501,27 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       created: occurredAtSeconds,
     })).toMatchObject({
       paymentOutcomeEventAt: null,
+      markedUncollectibleAt: null,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({ status: "void" }, {
+      type: "invoice.updated",
+      created: occurredAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: null,
+      markedUncollectibleAt: null,
+      voidedAt: null,
+    });
+    expect(getStripeInvoiceOutcomeTimestamps({ status: "uncollectible" }, {
+      type: "invoice.marked_uncollectible",
+      created: occurredAtSeconds,
+    })).toMatchObject({
+      paymentOutcomeEventAt: null,
       markedUncollectibleAt: occurredAt,
       markedUncollectibleAtIsExact: false,
     });
     expect(getStripeInvoiceOutcomeTimestamps({ status: "void" }, {
-      type: "invoice.updated",
+      type: "invoice.voided",
       created: occurredAtSeconds,
     })).toMatchObject({
       paymentOutcomeEventAt: null,
@@ -514,14 +530,14 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
     });
   });
 
-  test("prefers exact terminal transitions over status inference", ({ expect }) => {
+  test("prefers exact terminal transitions over event timestamps", ({ expect }) => {
     const eventAtSeconds = 1_787_098_400;
     const exactAtSeconds = 1_787_098_100;
     expect(getStripeInvoiceOutcomeTimestamps({
       status: "uncollectible",
       status_transitions: { marked_uncollectible_at: exactAtSeconds },
     }, {
-      type: "invoice.updated",
+      type: "invoice.marked_uncollectible",
       created: eventAtSeconds,
     })).toMatchObject({
       paymentOutcomeEventAt: new Date(eventAtSeconds * 1000),
@@ -532,7 +548,7 @@ import.meta.vitest?.describe("getStripeInvoiceOutcomeTimestamps", (test) => {
       status: "void",
       status_transitions: { voided_at: exactAtSeconds },
     }, {
-      type: "invoice.updated",
+      type: "invoice.voided",
       created: eventAtSeconds,
     })).toMatchObject({
       paymentOutcomeEventAt: new Date(eventAtSeconds * 1000),

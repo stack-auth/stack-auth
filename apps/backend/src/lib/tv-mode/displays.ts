@@ -211,17 +211,25 @@ export async function consumeTvDisplayPairingRateLimit(options: {
     RETURNING "attempts"
   `);
   // Pairing traffic is rare, so bounded opportunistic cleanup avoids adding a
-  // permanent scheduler solely for ephemeral security buckets.
-  await globalPrismaClient.$executeRaw`
-    DELETE FROM "TvDisplayPairingRateLimitBucket"
-    WHERE ("keyHash", "operation", "windowStart") IN (
-      SELECT "keyHash", "operation", "windowStart"
-      FROM "TvDisplayPairingRateLimitBucket"
-      WHERE "expiresAt" < ${now}
-      ORDER BY "expiresAt"
-      LIMIT 100
-    )
-  `;
+  // permanent scheduler solely for ephemeral security buckets. It is hygiene,
+  // not part of the security decision, so it must not invalidate this increment.
+  try {
+    await globalPrismaClient.$executeRaw`
+      DELETE FROM "TvDisplayPairingRateLimitBucket"
+      WHERE ("keyHash", "operation", "windowStart") IN (
+        SELECT "keyHash", "operation", "windowStart"
+        FROM "TvDisplayPairingRateLimitBucket"
+        WHERE "expiresAt" < ${now}
+        ORDER BY "expiresAt"
+        LIMIT 100
+      )
+    `;
+  } catch (cause) {
+    captureError("tv-display-rate-limit-cleanup-failed", new HexclaveAssertionError(
+      "Opportunistic TV display rate-limit bucket cleanup failed.",
+      { cause },
+    ));
+  }
   return (rows.at(0) ?? throwErr("TV display rate-limit upsert returned no bucket.")).attempts <= options.limit;
 }
 
