@@ -36,6 +36,7 @@ class ImageContractTests(unittest.TestCase):
         layer = (ROOT / "image/layer/hexclave-tv-box-pilot.yaml").read_text(encoding="utf-8")
         metadata = layer.split("# METAEND", maxsplit=1)[0]
         self.assertNotIn("network-manager", metadata)
+        self.assertIn("# X-Env-Layer-Provides: network-activator", metadata)
         self.assertIn("    - network-manager", layer)
         self.assertIn(': > "$1/etc/machine-id"', layer)
         self.assertIn(': > "$1/etc/hostname"', layer)

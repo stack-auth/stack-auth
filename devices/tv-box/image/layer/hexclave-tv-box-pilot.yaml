@@ -6,6 +6,7 @@
 # X-Env-Layer-Requires: raspbian-trixie-armhf,rpi-debian-trixie,
 #  rpi-misc-utils,rpi-essential-base,rpi-misc-skel,systemd-min,
 #  systemd-timesyncd,fake-hwclock,wireless-regulatory
+# X-Env-Layer-Provides: network-activator
 #
 # X-Env-VarPrefix: tvbox
 #
