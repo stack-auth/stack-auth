@@ -48,6 +48,18 @@ export const postMigration = async (sql: Sql) => {
       WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx' AND i.indisvalid AND i.indisready
     `).toHaveLength(1);
 
+    // This locks in the flags predicate: a valid, correctly-shaped index under the _invalid name is not ours to drop.
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid"');
+    await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx"');
+    await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid" ON "SubscriptionInvoice"("tenancyId", "markedUncollectibleAt") WHERE "markedUncollectibleAt" IS NOT NULL`);
+    await expect(executeMigration()).rejects.toThrow(/refusing to drop it/);
+    expect(await sql`
+      SELECT 1 FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = idx.relnamespace
+      WHERE n.nspname = current_schema() AND idx.relname = 'SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid' AND i.indisvalid AND i.indisready
+    `).toHaveLength(1);
+
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx_invalid"');
     await sql.unsafe('DROP INDEX CONCURRENTLY IF EXISTS "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx"');
     await sql.unsafe(`CREATE INDEX CONCURRENTLY "SubscriptionInvoice_tenancyId_markedUncollectibleAt_idx" ON "SubscriptionInvoice"("tenancyId", "markedUncollectibleAt") WHERE "markedUncollectibleAt" IS NOT NULL`);
