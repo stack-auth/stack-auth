@@ -12,6 +12,7 @@ const testState = vi.hoisted(() => ({
   fetchProfiles: vi.fn(),
   writeText: vi.fn(),
 }));
+let originalClipboardDescriptor: PropertyDescriptor | undefined;
 
 vi.mock("../../use-admin-app", () => ({
   useAdminApp: () => testState.adminApp,
@@ -32,6 +33,12 @@ vi.mock("../display-management", () => ({
 }));
 
 afterEach(() => {
+  if (originalClipboardDescriptor == null) {
+    Reflect.deleteProperty(navigator, "clipboard");
+  } else {
+    Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor);
+    originalClipboardDescriptor = undefined;
+  }
   cleanup();
   testState.projectId = "project-a";
   testState.fetchProfiles.mockReset();
@@ -52,6 +59,7 @@ function readyProfiles() {
 describe("TV displays page", () => {
   it("loads profiles and exposes the independent display link", async () => {
     testState.fetchProfiles.mockResolvedValue(readyProfiles());
+    originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: testState.writeText },

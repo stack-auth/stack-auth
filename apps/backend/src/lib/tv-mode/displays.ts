@@ -604,7 +604,8 @@ export async function refreshTvDisplayCredential(rawRefreshToken: string, now = 
 }
 
 export async function listTvDisplays(tenancy: Tenancy, now = new Date()) {
-  const rows = await globalPrismaClient.$replica().$queryRaw<DisplayRow[]>(Prisma.sql`
+  // This low-volume admin list follows pairing mutations, so read it from the primary for read-after-write consistency.
+  const rows = await globalPrismaClient.$primary().$queryRaw<DisplayRow[]>(Prisma.sql`
     SELECT "id", "tenancyId", "profileId", "displayName", "pairedAt", "lastSeenAt",
       "credentialVersion", "financialVisibilityAcknowledgedAt"
     FROM "TvDisplay"

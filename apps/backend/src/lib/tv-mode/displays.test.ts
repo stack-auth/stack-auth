@@ -563,20 +563,22 @@ describe.sequential("independent TV display persistence", () => {
       acknowledgeExactFinancials: false,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    releaseRow.resolve();
-
-    const [deletionResult, approvalResult] = await Promise.allSettled([deletion, approval]);
-    await blocker;
-    expect([deletionResult, approvalResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    if (deletionResult.status === "fulfilled") {
-      expect(deletionResult.value).toBe(true);
-      expect(approvalResult.status).toBe("rejected");
-      if (approvalResult.status !== "rejected") throw new Error("Display approval unexpectedly succeeded after profile deletion.");
-      expect(approvalResult.reason).toBeInstanceOf(Error);
-      expect(approvalResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
-    } else {
-      expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
-      expect(approvalResult.status).toBe("fulfilled");
+    try {
+      const [deletionResult, approvalResult] = await Promise.allSettled([deletion, approval]);
+      expect([deletionResult, approvalResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      if (deletionResult.status === "fulfilled") {
+        expect(deletionResult.value).toBe(true);
+        expect(approvalResult.status).toBe("rejected");
+        if (approvalResult.status !== "rejected") throw new Error("Display approval unexpectedly succeeded after profile deletion.");
+        expect(approvalResult.reason).toBeInstanceOf(Error);
+        expect(approvalResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
+      } else {
+        expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
+        expect(approvalResult.status).toBe("fulfilled");
+      }
+    } finally {
+      releaseRow.resolve();
+      await blocker;
     }
   });
 
@@ -622,25 +624,27 @@ describe.sequential("independent TV display persistence", () => {
       acknowledgeExactFinancials: false,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    releaseRow.resolve();
-
-    const [deletionResult, reassignmentResult] = await Promise.allSettled([deletion, reassignment]);
-    await blocker;
-    expect([deletionResult, reassignmentResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    if (deletionResult.status === "fulfilled") {
-      expect(deletionResult.value).toBe(true);
-      expect(reassignmentResult.status).toBe("rejected");
-      if (reassignmentResult.status !== "rejected") throw new Error("Display reassignment unexpectedly succeeded after profile deletion.");
-      expect(reassignmentResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
-      await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
-        display: { profileId: "company-pulse" },
-      });
-    } else {
-      expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
-      expect(reassignmentResult.status).toBe("fulfilled");
-      await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
-        display: { profileId: profile.id },
-      });
+    try {
+      const [deletionResult, reassignmentResult] = await Promise.allSettled([deletion, reassignment]);
+      expect([deletionResult, reassignmentResult].filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      if (deletionResult.status === "fulfilled") {
+        expect(deletionResult.value).toBe(true);
+        expect(reassignmentResult.status).toBe("rejected");
+        if (reassignmentResult.status !== "rejected") throw new Error("Display reassignment unexpectedly succeeded after profile deletion.");
+        expect(reassignmentResult.reason).toMatchObject({ message: "tv_display_profile_not_found" });
+        await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
+          display: { profileId: "company-pulse" },
+        });
+      } else {
+        expect(deletionResult.reason).toBeInstanceOf(TvProfileAssignedToDisplaysError);
+        expect(reassignmentResult.status).toBe("fulfilled");
+        await expect(getAuthorizedTvDisplay(paired.accessToken)).resolves.toMatchObject({
+          display: { profileId: profile.id },
+        });
+      }
+    } finally {
+      releaseRow.resolve();
+      await blocker;
     }
   });
 

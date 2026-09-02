@@ -37,6 +37,55 @@ async function refundApprovalRateLimits(
   }
 }
 
+export async function consumeTvDisplayApprovalRateLimits(options: {
+  adminUserId: string,
+  ip: string,
+  now: Date,
+}): Promise<[boolean, boolean]> {
+  const consumeResults = await Promise.allSettled([
+    consumeTvDisplayPairingRateLimit({
+      identity: options.adminUserId,
+      operation: "approval-admin",
+      windowMs: 10 * 60_000,
+      limit: 10,
+      now: options.now,
+    }),
+    consumeTvDisplayPairingRateLimit({
+      identity: options.ip,
+      operation: "approval-ip",
+      windowMs: 10 * 60_000,
+      limit: 20,
+      now: options.now,
+    }),
+  ]);
+  const refundResults = consumeResults.some((result) => result.status === "rejected")
+    ? await Promise.allSettled([
+      consumeResults[0].status === "fulfilled"
+        ? refundTvDisplayPairingRateLimit({ identity: options.adminUserId, operation: "approval-admin", windowMs: 10 * 60_000, now: options.now })
+        : Promise.resolve(),
+      consumeResults[1].status === "fulfilled"
+        ? refundTvDisplayPairingRateLimit({ identity: options.ip, operation: "approval-ip", windowMs: 10 * 60_000, now: options.now })
+        : Promise.resolve(),
+    ])
+    : [];
+  for (const refundResult of refundResults) {
+    if (refundResult.status === "rejected") {
+      captureError("tv-display-rate-limit-refund-failed", new HexclaveAssertionError(
+        "A rejected TV display approval could not refund its rate-limit bucket.",
+        { cause: refundResult.reason },
+      ));
+    }
+  }
+  const rejectedResult = consumeResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (rejectedResult != null) throw rejectedResult.reason;
+  const adminResult = consumeResults[0];
+  const ipResult = consumeResults[1];
+  if (adminResult.status !== "fulfilled" || ipResult.status !== "fulfilled") {
+    throw new HexclaveAssertionError("TV display pairing rate-limit consumption did not settle.");
+  }
+  return [adminResult.value, ipResult.value];
+}
+
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({ auth: adminAuthSchema }),
@@ -76,22 +125,7 @@ export const POST = createSmartRouteHandler({
     const adminUserId = requireTvDisplayAdminUserId(auth.adminUserId);
     const ip = await getExactEndUserIp() ?? "unknown-untrusted-ip";
     const rateLimitNow = new Date();
-    const [adminAllowed, ipAllowed] = await Promise.all([
-      consumeTvDisplayPairingRateLimit({
-        identity: adminUserId,
-        operation: "approval-admin",
-        windowMs: 10 * 60_000,
-        limit: 10,
-        now: rateLimitNow,
-      }),
-      consumeTvDisplayPairingRateLimit({
-        identity: ip,
-        operation: "approval-ip",
-        windowMs: 10 * 60_000,
-        limit: 20,
-        now: rateLimitNow,
-      }),
-    ]);
+    const [adminAllowed, ipAllowed] = await consumeTvDisplayApprovalRateLimits({ adminUserId, ip, now: rateLimitNow });
     if (!adminAllowed || !ipAllowed) {
       const refundResults = await Promise.allSettled([
         adminAllowed
