@@ -1,8 +1,9 @@
 export const TV_SNAPSHOT_POLL_INTERVAL_MS = 15_000;
 export const TV_SNAPSHOT_REQUEST_TIMEOUT_MS = 12_000;
 export const TV_FRESHNESS_INTERVAL_MS = 5_000;
-export const PAIRING_RETRY_INTERVAL_MS = 5_000;
 export const PAIRING_REQUEST_TIMEOUT_MS = 12_000;
+export const DISPLAY_SESSION_RETRY_INITIAL_MS = 5_000;
+export const DISPLAY_SESSION_RETRY_MAXIMUM_MS = 60_000;
 const TV_MAXIMUM_TAKEOVER_DURATION_MS = 120_000;
 
 export const TV_SCREEN_IDS = Object.freeze([
@@ -29,6 +30,26 @@ const TV_EVENT_PRESENTATION_CLASSES = new Set(["celebration", "incident", "criti
 const TV_EVENT_STATUSES = new Set(["active", "resolved"]);
 const TV_TAKEOVER_VARIANTS = new Set(["celebration", "incident", "critical-incident", "recovery-confirmation"]);
 const TV_HIGHLIGHT_VARIANTS = new Set(["celebration", "active-incident", "resolved-incident"]);
+
+export function classifyDisplayRefreshResponse(status) {
+  if (!Number.isInteger(status) || status < 100 || status > 599) {
+    throw new Error("TV display refresh status must be a valid HTTP status code.");
+  }
+  if (status === 401) return "invalid-credential";
+  if (status >= 200 && status < 300) return "refreshed";
+  return "temporary-failure";
+}
+
+export function getDisplaySessionRetryDelay(attempt) {
+  if (!Number.isInteger(attempt) || attempt < 0) {
+    throw new Error("TV display session retry attempt must be a non-negative integer.");
+  }
+  return Math.min(DISPLAY_SESSION_RETRY_INITIAL_MS * (2 ** Math.min(attempt, 16)), DISPLAY_SESSION_RETRY_MAXIMUM_MS);
+}
+
+export function shouldPollDisplaySnapshot(authenticationState, accessToken) {
+  return authenticationState === "paired" && typeof accessToken === "string" && accessToken.length > 0;
+}
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);

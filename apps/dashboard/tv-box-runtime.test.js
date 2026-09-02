@@ -7,16 +7,19 @@ import {
   assertPairingChallenge,
   assertPairingStatus,
   assertTvSnapshot,
+  classifyDisplayRefreshResponse,
   createApiUrl,
   createRequestHeaders,
   getCelebrationEffectState,
   getConnectionStatus,
   getFixturePreviewTime,
+  getDisplaySessionRetryDelay,
   getNextScreenIndex,
   getScreenDurationSeconds,
   replaceStage,
   resolveTvBoxRuntimeConfiguration,
   selectPresentationView,
+  shouldPollDisplaySnapshot,
 } from "./public/tv-box/runtime.mjs";
 
 function createSnapshot() {
@@ -179,6 +182,35 @@ describe("TV Box runtime contract", () => {
 });
 
 describe("TV Box transport and playback helpers", () => {
+  it("distinguishes revoked credentials from temporary refresh failures", () => {
+    expect(classifyDisplayRefreshResponse(200)).toBe("refreshed");
+    expect(classifyDisplayRefreshResponse(204)).toBe("refreshed");
+    expect(classifyDisplayRefreshResponse(401)).toBe("invalid-credential");
+    expect(classifyDisplayRefreshResponse(408)).toBe("temporary-failure");
+    expect(classifyDisplayRefreshResponse(429)).toBe("temporary-failure");
+    expect(classifyDisplayRefreshResponse(503)).toBe("temporary-failure");
+    expect(() => classifyDisplayRefreshResponse(0)).toThrowError(/valid HTTP status/);
+  });
+
+  it("bounds display-session recovery backoff", () => {
+    expect([0, 1, 2, 3, 4, 20].map(getDisplaySessionRetryDelay)).toEqual([
+      5_000,
+      10_000,
+      20_000,
+      40_000,
+      60_000,
+      60_000,
+    ]);
+    expect(() => getDisplaySessionRetryDelay(-1)).toThrowError(/non-negative integer/);
+  });
+
+  it("polls snapshots only for a currently authenticated display session", () => {
+    expect(shouldPollDisplaySnapshot("paired", "access-token")).toBe(true);
+    expect(shouldPollDisplaySnapshot("paired", null)).toBe(false);
+    expect(shouldPollDisplaySnapshot("pairing", "stale-access-token")).toBe(false);
+    expect(shouldPollDisplaySnapshot("restoring", "stale-access-token")).toBe(false);
+  });
+
   it("uses a static accent for celebration highlights", () => {
     const container = document.createElement("div");
     const layer = createCelebrationLayer(container);
