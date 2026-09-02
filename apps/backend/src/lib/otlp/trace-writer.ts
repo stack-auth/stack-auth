@@ -1,4 +1,5 @@
 import { isW3cSpanId, TELEMETRY_UUID_RE, type TelemetrySpanKind, type TelemetrySpanStatusCode } from "@hexclave/shared/dist/utils/analytics-wire";
+import { extractGenAiSpanInfo, type GenAiAttributeReader } from "@hexclave/shared/dist/utils/gen-ai";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { createHash } from "crypto";
 import { stripLoneSurrogates, type ClickHouseClient } from "@/lib/clickhouse";
@@ -143,6 +144,35 @@ export function dateFromUnixNano(value: string, field: string): Date {
   return date;
 }
 
+// Adapts the tagged OTLP attribute union to the shared gen_ai reader contract.
+// Ints stay canonical int64 strings (the extractor validates them as uint64
+// digits itself), so token counts never round-trip through JS doubles.
+function genAiAttributeReader(attributes: OtlpAttributes): GenAiAttributeReader {
+  return (key) => {
+    const value = attributes.get(key);
+    if (value === undefined) return null;
+    if (value.type === "string" || value.type === "boolean" || value.type === "double" || value.type === "int") return value.value;
+    return null;
+  };
+}
+
+function genAiFields(span: CanonicalOtlpSpan) {
+  const genAi = extractGenAiSpanInfo(span.name, genAiAttributeReader(span.attributes));
+  return {
+    gen_ai_operation_name: genAi?.operationName ?? null,
+    gen_ai_provider_name: genAi?.providerName ?? null,
+    gen_ai_request_model: genAi?.requestModel ?? null,
+    gen_ai_response_model: genAi?.responseModel ?? null,
+    gen_ai_input_tokens: genAi?.inputTokens ?? null,
+    gen_ai_output_tokens: genAi?.outputTokens ?? null,
+    gen_ai_cache_read_input_tokens: genAi?.cacheReadInputTokens ?? null,
+    gen_ai_reasoning_output_tokens: genAi?.reasoningOutputTokens ?? null,
+    gen_ai_tool_name: genAi?.toolName ?? null,
+    gen_ai_agent_name: genAi?.agentName ?? null,
+    gen_ai_conversation_id: genAi?.conversationId ?? null,
+  };
+}
+
 function resourceFields(span: CanonicalOtlpSpan) {
   return {
     service_namespace: stringAttribute(span.resource.attributes, "service.namespace"),
@@ -207,6 +237,7 @@ export function buildOtlpTraceRows(spans: CanonicalOtlpSpan[], tenant: OtlpTenan
       session_replay_id: sessionReplayId,
       session_replay_segment_id: sessionReplaySegmentId,
       page_view_span_id: pageViewSpanId,
+      ...genAiFields(span),
       version: span.endTimeUnixNano,
     });
     eventRows.push(...span.events.map((event, eventOrdinal) => ({

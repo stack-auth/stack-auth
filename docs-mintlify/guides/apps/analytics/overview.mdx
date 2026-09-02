@@ -1,31 +1,28 @@
 ---
 title: "Analytics"
-description: "Understand users and product behavior through events, replays, clickmaps, and SQL exploration"
+description: "Understand product usage and user behavior through paths, replays, and clickmaps"
 sidebarTitle: "Overview"
 ---
 
-The Analytics app is the product-behavior surface in Hexclave. It connects users, events, replays, clickmaps, and SQL exploration without mixing logs and code traces into product-event views.
+The Analytics app shows how people use your product. It keeps paths, replays, and clickmaps separate from operational telemetry and data exploration.
 
 ## Overview
 
 Analytics is organized into these areas in the dashboard:
 
-- **Overview and Users**: Understand traffic and connect behavior to the canonical user directory
-- **Events**: Browse product events and interactions; logs and errors are excluded
 - **Paths**: Explore route transitions and compare unique visitors across 2 or 3 exact paths
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
 - **Clickmaps**: Visualize where users click on your pages
-- **Explore**: Browse tables and run reusable ClickHouse SQL queries
 
-Observability is a separate app for Issues, Logs, Traces, Services, and Performance. Enable it independently when you need production diagnostics; it still shares correlation and ingestion foundations with Analytics.
+Observability is a separate app for Issues, Logs, Traces, Services, Performance, and Registry. Warehouse owns Tables and Queries. Enable each app independently under **Apps** in the dashboard.
 
-See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session replays and clickmaps, and [Queries & Tables](./queries-and-tables) for the shared ClickHouse dataset.
+See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session replays and clickmaps. Use [Warehouse](/guides/apps/warehouse/overview) to explore the shared ClickHouse dataset.
 
 ## How Analytics Works
 
 Hexclave records product events and replay chunks, then exposes them through Analytics for read-only querying and investigation. The shared telemetry foundation also correlates these signals with code observability without storing them in the same read model.
 
-User activity in your app flows into Hexclave event ingestion, which stores product events in ClickHouse. This data powers Events, replays, Clickmaps, and Explore.
+User activity in your app flows into Hexclave event ingestion, which stores product events in ClickHouse. This data powers paths, replays, and clickmaps.
 
 Analytics isn't only client events. Hexclave also exposes product data from the rest of your project — users, contact channels, teams, permissions, email outbox, and more — in the same read-only ClickHouse dataset, so you can join product state with behavior in one place.
 
@@ -37,7 +34,7 @@ Hexclave collects both client-side and server-side analytics events:
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
 - **Session spans**: every sign-in session and replay recording is recorded as a span, with a span per recorded browser tab underneath — forming a tree your telemetry attaches to
 - **Custom events**: anything you record with `trackEvent`
-- **Observability signals**: network requests, errors, logs, and custom spans share correlation and ingestion but appear in the separate Observability app — see [Errors & Logs](/guides/apps/analytics/errors-and-logs) and [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
+- **Observability signals**: network requests, errors, logs, and custom spans share correlation and ingestion but appear in the separate Observability app — see [Errors & Logs](/guides/apps/observability/errors-and-logs) and [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
 
 ## Enabling the Analytics App
 

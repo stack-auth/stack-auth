@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
+import { AiSpanDetailSection } from "./ai-span";
 import {
   ErrorDisplay,
   RowDetailDialog,
@@ -735,7 +736,13 @@ export default function PageClient() {
           technicalColumns={SPAN_TECHNICAL_DETAIL_COLUMNS}
           loading={detailLoading}
           extraContent={detailRow == null ? null : (
-            <TelemetryRowLinks row={detailRow} projectId={adminApp.projectId} showTrace={false} />
+            <>
+              <TelemetryRowLinks row={detailRow} projectId={adminApp.projectId} showTrace={false} />
+              {/* Fragment children sit directly inside the dialog's space-y-4
+                  stack, which keeps the AI section above the raw data field
+                  with the standard section spacing. */}
+              <AiSpanDetailSection row={detailRow} />
+            </>
           )}
           onOpenChange={(open) => {
             if (!open) {

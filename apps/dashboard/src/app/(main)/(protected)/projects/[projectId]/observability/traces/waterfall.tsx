@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CaretRightIcon, ChartLineIcon, ClockIcon, KeyboardIcon, LinkSimpleIcon, StackIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AiSpanChip, aiSpanSummaryFromRaw } from "./ai-span";
 import {
   eventMatchesHighlight,
   formatDuration,
@@ -672,6 +673,7 @@ export function TraceWaterfall({
               const widthPct = Math.max(rightPct - leftPct, 0.4);
               const fades = open || futureEndLabel !== undefined;
               const hasError = spanHasError(span);
+              const aiSummary = aiSpanSummaryFromRaw(span.raw);
               const isHighlighted = highlightedRowIndex === rowIndex;
               return (
                 <div
@@ -704,6 +706,7 @@ export function TraceWaterfall({
                     <span className={cn("font-mono text-[11px] truncate", isSystemSpanType(span.spanType) ? "text-muted-foreground" : "font-medium")}>
                       {traceSpanDisplayName(span)}
                     </span>
+                    {aiSummary != null && <AiSpanChip summary={aiSummary} />}
                     {hasError && <WarningCircleIcon className="h-3.5 w-3.5 shrink-0 text-red-500" weight="fill" />}
                   </div>
                   <div className="relative h-4 cursor-ew-resize" onPointerDown={startTimelineDrag} onClick={(e) => e.stopPropagation()}>

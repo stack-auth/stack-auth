@@ -1300,6 +1300,27 @@ export const SPANS_COLUMNS = [
   { name: "session_replay_id", type: "Nullable(String)" },
   { name: "session_replay_segment_id", type: "Nullable(String)" },
   { name: "page_view_span_id", type: "Nullable(String)" },
+  // Canonical AI-telemetry projection, extracted at ingest from the span's
+  // attributes (Vercel AI SDK `ai.*`, current OTel `gen_ai.*`, and pre-rename
+  // `gen_ai.*` spellings all normalize into these — see @hexclave/shared
+  // gen-ai.tsx). First-class columns rather than query-time JSONExtract over
+  // the `attributes` string because AI dashboards aggregate token counts and
+  // filter by model/operation across the whole retention window, and the
+  // attribute bag is a String precisely so tenant keys cannot become physical
+  // subcolumns. All NULL for non-AI spans. Token counts include what the
+  // narrower counts overlap (input_tokens contains cache reads), matching the
+  // OTel GenAI hierarchy — never sum them together.
+  { name: "gen_ai_operation_name", type: "LowCardinality(Nullable(String))" },
+  { name: "gen_ai_provider_name", type: "LowCardinality(Nullable(String))" },
+  { name: "gen_ai_request_model", type: "LowCardinality(Nullable(String))" },
+  { name: "gen_ai_response_model", type: "LowCardinality(Nullable(String))" },
+  { name: "gen_ai_input_tokens", type: "Nullable(UInt64)" },
+  { name: "gen_ai_output_tokens", type: "Nullable(UInt64)" },
+  { name: "gen_ai_cache_read_input_tokens", type: "Nullable(UInt64)" },
+  { name: "gen_ai_reasoning_output_tokens", type: "Nullable(UInt64)" },
+  { name: "gen_ai_tool_name", type: "Nullable(String)" },
+  { name: "gen_ai_agent_name", type: "Nullable(String)" },
+  { name: "gen_ai_conversation_id", type: "Nullable(String)" },
   { name: "created_at", type: "DateTime64(3, 'UTC')", default: "now64(3)" },
   { name: "version", type: "UInt64" },
 ] as const satisfies readonly ClickhouseColumn[];
@@ -1336,11 +1357,20 @@ export const SPANS_PAGE_VIEW_INDEX_NAME = "idx_page_view_span_id";
 export const SPANS_PAGE_VIEW_INDEX_DEFINITION_SQL = "page_view_span_id TYPE bloom_filter(0.01) GRANULARITY 4";
 export const SPANS_SEGMENT_INDEX_NAME = "idx_session_replay_segment_id";
 export const SPANS_SEGMENT_INDEX_DEFINITION_SQL = "session_replay_segment_id TYPE bloom_filter(0.01) GRANULARITY 4";
+// AI queries start from "the AI spans in this time range", not from a trace id,
+// and in most workloads the overwhelming majority of granules contain zero AI
+// spans. A set index over the low-cardinality operation column lets ClickHouse
+// skip those granules for both `= 'chat'`-style filters and IS NOT NULL.
+// set(0) (unbounded per-granule set) matches the events.event_type precedent
+// and stays cheap because the column is LowCardinality.
+export const SPANS_GEN_AI_OPERATION_INDEX_NAME = "idx_gen_ai_operation_name";
+export const SPANS_GEN_AI_OPERATION_INDEX_DEFINITION_SQL = "gen_ai_operation_name TYPE set(0) GRANULARITY 4";
 
 export function buildSpansCreateTableSql(fullTableName: string): string {
   return buildCreateTableSql(fullTableName, SPANS_COLUMNS, SPANS_TABLE_ENGINE_SQL, [
     `INDEX ${SPANS_PAGE_VIEW_INDEX_NAME} ${SPANS_PAGE_VIEW_INDEX_DEFINITION_SQL}`,
     `INDEX ${SPANS_SEGMENT_INDEX_NAME} ${SPANS_SEGMENT_INDEX_DEFINITION_SQL}`,
+    `INDEX ${SPANS_GEN_AI_OPERATION_INDEX_NAME} ${SPANS_GEN_AI_OPERATION_INDEX_DEFINITION_SQL}`,
   ]);
 }
 
@@ -1696,6 +1726,17 @@ SELECT
   CAST(NULL, 'Nullable(String)') AS session_replay_id,
   CAST(NULL, 'Nullable(String)') AS session_replay_segment_id,
   CAST(NULL, 'Nullable(String)') AS page_view_span_id,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS gen_ai_operation_name,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS gen_ai_provider_name,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS gen_ai_request_model,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS gen_ai_response_model,
+  CAST(NULL, 'Nullable(UInt64)') AS gen_ai_input_tokens,
+  CAST(NULL, 'Nullable(UInt64)') AS gen_ai_output_tokens,
+  CAST(NULL, 'Nullable(UInt64)') AS gen_ai_cache_read_input_tokens,
+  CAST(NULL, 'Nullable(UInt64)') AS gen_ai_reasoning_output_tokens,
+  CAST(NULL, 'Nullable(String)') AS gen_ai_tool_name,
+  CAST(NULL, 'Nullable(String)') AS gen_ai_agent_name,
+  CAST(NULL, 'Nullable(String)') AS gen_ai_conversation_id,
   rt.sync_created_at AS created_at
 FROM analytics_internal.refresh_tokens AS rt FINAL
 WHERE rt.sync_is_deleted = 0
@@ -1743,6 +1784,17 @@ export const REFRESH_TOKEN_SPAN_SELECT_ALIASES: readonly string[] = [
   "session_replay_id",
   "session_replay_segment_id",
   "page_view_span_id",
+  "gen_ai_operation_name",
+  "gen_ai_provider_name",
+  "gen_ai_request_model",
+  "gen_ai_response_model",
+  "gen_ai_input_tokens",
+  "gen_ai_output_tokens",
+  "gen_ai_cache_read_input_tokens",
+  "gen_ai_reasoning_output_tokens",
+  "gen_ai_tool_name",
+  "gen_ai_agent_name",
+  "gen_ai_conversation_id",
   "created_at",
 ];
 
@@ -2346,6 +2398,17 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   `ALTER TABLE default.spans COMMENT COLUMN session_replay_segment_id 'Segment within a session replay recording (one per browser tab); represented as a lifecycle ancestor when replay capture is enabled'`,
   `ALTER TABLE default.spans COMMENT COLUMN page_view_span_id 'Which \$page-view span this span happened on. Join default.spans on (trace_id, span_id); hierarchy itself remains parent_span_id'`,
   `ALTER TABLE default.spans COMMENT COLUMN created_at 'When this record was inserted into the database (UTC)'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_operation_name 'AI operation performed by this span, normalized at ingest from OTel GenAI and Vercel AI SDK telemetry: chat, embeddings, execute_tool, invoke_agent, invoke_workflow, and the other gen_ai.operation.name values. NULL for non-AI spans — filter gen_ai_operation_name IS NOT NULL to select AI/agent telemetry'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_provider_name 'AI provider serving the request (e.g. openai, anthropic, aws.bedrock), when reported'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_request_model 'Model name the application requested (e.g. gpt-4.1, claude-fable-5), when reported'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_response_model 'Model name the provider reported actually serving the response, when reported'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_input_tokens 'Input (prompt) tokens consumed, INCLUDING any cached input tokens. NULL when the producer did not report usage'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_output_tokens 'Output (completion) tokens produced, including reasoning output tokens where the provider counts them. NULL when the producer did not report usage'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_cache_read_input_tokens 'Portion of gen_ai_input_tokens served from the provider prompt cache — already counted in gen_ai_input_tokens, do not add them together'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_reasoning_output_tokens 'Portion of output tokens spent on reasoning, when reported separately — already counted in gen_ai_output_tokens, do not add them together'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_tool_name 'Name of the tool executed by an execute_tool span, when reported'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_agent_name 'Name of the agent handling an invoke_agent/create_agent span (for Vercel AI SDK telemetry, the functionId), when reported'`,
+  `ALTER TABLE default.spans COMMENT COLUMN gen_ai_conversation_id 'Application-assigned conversation/session identifier linking multi-turn AI interactions, when reported'`,
 
   // ── users ──
   `ALTER TABLE default.users COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,

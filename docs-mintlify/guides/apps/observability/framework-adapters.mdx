@@ -1,9 +1,9 @@
 ---
-title: "Framework Adapters"
+title: "Framework adapters"
 description: "One-line Next.js, TanStack Start, tRPC, oRPC, Elysia, and Convex integration — auth and session-linked telemetry together"
 ---
 
-The framework adapters wire Hexclave into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that joins the caller's trace via [cross-tier tracing](/guides/apps/analytics/cross-tier-tracing) — it reads the incoming `traceparent` for you, so you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
+The framework adapters wire Hexclave into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that joins the caller's trace via [cross-tier tracing](/guides/apps/observability/cross-tier-tracing) — it reads the incoming `traceparent` for you, so you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
 
 The tRPC, oRPC, Elysia, and Convex adapters ship as subpath exports of every Hexclave SDK package — import from `@hexclave/js/trpc`, `@hexclave/js/orpc`, `@hexclave/js/elysia`, or `@hexclave/js/convex` (the same subpaths exist on `@hexclave/react`, `@hexclave/next`, and `@hexclave/tanstack-start`). They have zero runtime dependency on the frameworks they adapt: you hand them your own framework instances.
 
@@ -80,7 +80,7 @@ export const createOrder = hexclave.serverAction(async ({ user }, formData: Form
 
 `serverAction` prepends a `{ user, hexclave }` context to the action's own arguments — the wrapped action keeps its outward signature, so it works with `<form action={...}>` and direct calls alike. `required` rejections throw (customize with `unauthorized: () => Error`); pass `name` so the span is identifiable (the span type stays low-cardinality).
 
-Separately from the route adapters, export `hexclaveInstrumentation(app)` from your `instrumentation.ts` — see [Server-Side Instrumentation](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation). `register()` installs the managed OTel provider and official instrumentations, adds ambient request attribution (bare `trackEvent`/`withSpan`/`logger` calls inside a request scope link to the caller without `{ request }`), and `onRequestError` reports errors Next.js catches. The pieces are complementary: OTel instrumentation covers libraries and outbound HTTP while route adapters create the per-route span your handler runs inside.
+Separately from the route adapters, export `hexclaveInstrumentation(app)` from your `instrumentation.ts` — see [Server-Side Instrumentation](/guides/apps/observability/cross-tier-tracing#server-side-instrumentation). `register()` installs the managed OTel provider and official instrumentations, adds ambient request attribution (bare `trackEvent`/`withSpan`/`logger` calls inside a request scope link to the caller without `{ request }`), and `onRequestError` reports errors Next.js catches. The pieces are complementary: OTel instrumentation covers libraries and outbound HTTP while route adapters create the per-route span your handler runs inside.
 
 ## TanStack Start
 

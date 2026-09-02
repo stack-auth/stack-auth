@@ -1,5 +1,5 @@
 ---
-title: "Cross-Tier Tracing"
+title: "Cross-tier tracing"
 description: "Backend spans automatically join the trace of the client request that caused them — no glue code"
 ---
 
@@ -7,7 +7,7 @@ When your frontend calls your backend, Hexclave puts both tiers in **one trace**
 
 The hierarchy travels in the standard W3C [`traceparent`](https://www.w3.org/TR/trace-context/) header — the same header OpenTelemetry uses. That is the whole interop story: a Hexclave-instrumented frontend continues a trace into a non-Hexclave backend, an OTel-instrumented service continues a trace into a Hexclave one, and your existing collector, APM, or log pipeline can join on the same ids without a translation layer.
 
-**Zero config is the point.** In managed mode the SDK registers OpenTelemetry's official fetch and XMLHttpRequest instrumentations in browsers and Undici instrumentation on Node. Head-sampled traces carry `traceparent`; `withSpan({ request })` or a [framework adapter](/guides/apps/analytics/framework-adapters) completes the loop.
+**Zero config is the point.** In managed mode the SDK registers OpenTelemetry's official fetch and XMLHttpRequest instrumentations in browsers and Undici instrumentation on Node. Head-sampled traces carry `traceparent`; `withSpan({ request })` or a [framework adapter](/guides/apps/observability/framework-adapters) completes the loop.
 
 ## How It Works
 
@@ -16,7 +16,7 @@ Two halves, both automatic once set up:
 1. **Client**: the official OTel instrumentations create HTTP client spans and attach eligible headers to your own origin and allowlisted cross-origin targets:
    - **`traceparent`** — the standard W3C header carries the HTTP client span's `trace_id` and `span_id`. This establishes the hierarchy.
    - **`baggage`** — the standard W3C baggage header. Hexclave uses namespaced entries for the current tab's segment id, session replay id, and current `$page-view` span id. None of it is parentage or tenant identity.
-2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you) resolves the caller's sign-in session from the request's auth tokens, adopts the trace from `traceparent`, preserves `tracestate`, and reads allowlisted Hexclave correlation from W3C `baggage` — so everything recorded inside is a descendant of the exact `fetch` that triggered the work, and filterable by the page and tab it came from.
+2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/observability/framework-adapters), which does it for you) resolves the caller's sign-in session from the request's auth tokens, adopts the trace from `traceparent`, preserves `tracestate`, and reads allowlisted Hexclave correlation from W3C `baggage` — so everything recorded inside is a descendant of the exact `fetch` that triggered the work, and filterable by the page and tab it came from.
 
 <Info>
 A request that arrives **without** a `traceparent` is a root activity in its own right: the SDK mints a fresh `trace_id` and gives the request's span a `NULL` `parent_span_id`. So a server that nobody traced into still produces complete, well-formed traces.
@@ -148,12 +148,12 @@ With `request`, the SDK resolves:
 - **From `traceparent`**: the sampled trace to join and the span to nest under. A missing or unsampled `traceparent` means this request *is* a root activity — fresh trace, `NULL` parent — because an unsampled context does not promise its parent row exists.
 - **From `baggage`** (labels): valid allowlisted `hexclave.*` entries for the tab segment id, session replay id, and page-view span id, stamped as correlation columns. Other vendors' entries are preserved but not promoted. Baggage never selects the project; authenticated credentials do.
 
-Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextRequest`, or any object whose `headers` either exposes a `get(name)` method or is a plain record of string values. (Node's raw `req.headers` types values as `string | string[]`, so pass a small wrapper rather than the raw `req` — or use a [framework adapter](/guides/apps/analytics/framework-adapters).) Unauthenticated requests are fine — the span still records, just without user attribution.
+Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextRequest`, or any object whose `headers` either exposes a `get(name)` method or is a plain record of string values. (Node's raw `req.headers` types values as `string | string[]`, so pass a small wrapper rather than the raw `req` — or use a [framework adapter](/guides/apps/observability/framework-adapters).) Unauthenticated requests are fine — the span still records, just without user attribution.
 
 `startSpan` is synchronous and cannot resolve a request — use `withSpan(type, { request }, fn)` for request-linked spans.
 
 <Info>
-If you use Next.js, TanStack Start, tRPC, oRPC, Elysia, or Convex, skip the manual `{ request }` entirely — the [framework adapters](/guides/apps/analytics/framework-adapters) resolve the caller and wrap your handlers in request-linked spans automatically.
+If you use Next.js, TanStack Start, tRPC, oRPC, Elysia, or Convex, skip the manual `{ request }` entirely — the [framework adapters](/guides/apps/observability/framework-adapters) resolve the caller and wrap your handlers in request-linked spans automatically.
 </Info>
 
 ### Bare calls on Next.js
@@ -177,7 +177,7 @@ An explicit `request` always wins as an override, and it remains the framework-a
 The server tier gets the same treatment as the browser — and most of it needs no setup at all. Constructing a `HexclaveServerApp` eagerly installs:
 
 - **Outbound HTTP spans**: official Undici instrumentation records allowed `fetch` calls under the active OTel context and propagates the configured W3C context.
-- **The uncaught-exception monitor**: uncaught server errors become [`$error` events](/guides/apps/analytics/errors-and-logs) — observation-only, it never changes your process's crash behavior.
+- **The uncaught-exception monitor**: uncaught server errors become [`$error` events](/guides/apps/observability/errors-and-logs) — observation-only, it never changes your process's crash behavior.
 
 On Next.js, additionally wire up your `instrumentation.ts` for the two pieces that need framework hooks. Next compiles that file for Edge as well as Node — keep the `process.env.NEXT_RUNTIME` check **inline** (not behind a helper) so the Edge bundle does not follow Node-only OpenTelemetry / `async_hooks` code:
 
@@ -213,7 +213,7 @@ export async function onRequestError(
 - `onRequestError` reports every error Next.js catches during request handling as a `$error` event, linked to the caller's client session via the request's headers. This hook only exists through `instrumentation.ts`, so it always needs the wiring above.
 
 <Info>
-If the Analytics app isn't enabled for your project, server telemetry disables itself for the rest of the process after the first rejected batch, with a single console warning — the eager instrumentation never keeps sending doomed batches for every outgoing fetch.
+If the Observability app isn't enabled for your project, server telemetry disables itself for the rest of the process after the first rejected batch, with a single console warning — the eager instrumentation never keeps sending doomed batches for every outgoing fetch.
 </Info>
 
 <Info>

@@ -20,6 +20,8 @@ import {
   REFRESH_TOKEN_SPAN_SELECT_ALIASES,
   REFRESH_TOKEN_SPAN_SELECT_SQL,
   SPANS_COLUMNS,
+  SPANS_GEN_AI_OPERATION_INDEX_DEFINITION_SQL,
+  SPANS_GEN_AI_OPERATION_INDEX_NAME,
   OTEL_METRICS_COLUMNS,
   SPANS_VIEW_SQL,
   SPAN_EVENTS_VIEW_SQL,
@@ -438,6 +440,24 @@ describe("telemetry table physical layout", () => {
     expect(sql).toContain(`SETTINGS non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`);
   });
 
+  test("spans carry the canonical gen_ai projection with a skip index for AI filters", () => {
+    const sql = buildSpansCreateTableSql("analytics_internal.spans");
+    expect(sql).toContain("gen_ai_operation_name LowCardinality(Nullable(String))");
+    expect(sql).toContain("gen_ai_provider_name LowCardinality(Nullable(String))");
+    expect(sql).toContain("gen_ai_input_tokens Nullable(UInt64)");
+    expect(sql).toContain("gen_ai_cache_read_input_tokens Nullable(UInt64)");
+    expect(sql).toContain(`INDEX ${SPANS_GEN_AI_OPERATION_INDEX_NAME} ${SPANS_GEN_AI_OPERATION_INDEX_DEFINITION_SQL}`);
+    // Customer-facing: the public view and its positional refresh-token branch
+    // both expose the projection.
+    expect(SPANS_VIEW_SQL).toContain("gen_ai_operation_name");
+    expect(REFRESH_TOKEN_SPAN_SELECT_SQL).toContain("AS gen_ai_conversation_id");
+    // The derived read models stay AI-free on purpose: trace_roots is the
+    // trace inbox and page_views the product path — AI listings query
+    // default.spans directly via the skip index.
+    expect(names(TRACE_ROOTS_COLUMNS)).not.toContain("gen_ai_operation_name");
+    expect(names(PAGE_VIEWS_COLUMNS)).not.toContain("gen_ai_operation_name");
+  });
+
   test("every physical batch destination enables non-replicated insert deduplication", () => {
     expect(TELEMETRY_INSERT_TABLES.map(buildTelemetryInsertDeduplicationSettingSql)).toEqual([
       `ALTER TABLE analytics_internal.events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
@@ -621,6 +641,53 @@ describe("clickhouse upgrade helpers (integration)", () => {
         trace_id: "trace-page",
         span_id: "span-page",
         data: '{"path":"/new"}',
+      }]);
+    });
+  });
+
+  test("the physical spans table stores canonical uint64-string token counts losslessly", async () => {
+    await withThrowawayDatabase(async (database) => {
+      await client.command({ query: buildSpansCreateTableSql(`${database}.spans`) });
+      // Token counts arrive from the ingest path as canonical uint64 strings
+      // (the OTLP int64 wire form); JSONEachRow must coerce them into the
+      // Nullable(UInt64) columns the same way version already relies on.
+      await client.insert({
+        table: `${database}.spans`,
+        values: [{
+          trace_id: "11111111111111111111111111111111",
+          span_id: "2222222222222222",
+          span_type: "chat gpt-4.1",
+          started_at: new Date("2026-08-01T00:00:00.000Z"),
+          project_id: "p",
+          branch_id: "b",
+          gen_ai_operation_name: "chat",
+          gen_ai_provider_name: "openai",
+          gen_ai_request_model: "gpt-4.1",
+          gen_ai_input_tokens: "18446744073709551615",
+          gen_ai_output_tokens: "92",
+          version: 1,
+        }],
+        format: "JSONEachRow",
+        clickhouse_settings: { date_time_input_format: "best_effort" },
+      });
+
+      const resultSet = await client.query({
+        query: `
+          SELECT gen_ai_operation_name, gen_ai_provider_name, gen_ai_request_model,
+                 toString(gen_ai_input_tokens) AS gen_ai_input_tokens,
+                 toString(gen_ai_output_tokens) AS gen_ai_output_tokens,
+                 gen_ai_tool_name
+          FROM ${database}.spans
+        `,
+        format: "JSONEachRow",
+      });
+      expect(await resultSet.json()).toEqual([{
+        gen_ai_operation_name: "chat",
+        gen_ai_provider_name: "openai",
+        gen_ai_request_model: "gpt-4.1",
+        gen_ai_input_tokens: "18446744073709551615",
+        gen_ai_output_tokens: "92",
+        gen_ai_tool_name: null,
       }]);
     });
   });

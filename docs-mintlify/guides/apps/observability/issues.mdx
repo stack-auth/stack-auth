@@ -25,7 +25,7 @@ Each row is one issue, not one error. The **Issue** cell carries the exception t
 | Release | Release of the most recent occurrence (hidden by default) | — |
 
 <Warning>
-**Events** and **Users** are scoped to the selected time range. **Last seen**, **First seen**, and the all-time count under First seen are lifetime values that ignore the range entirely. They sit next to each other and they are not interchangeable — see [Limits](/guides/apps/observability/overview#limits-and-caveats) for why they can disagree.
+**Events** and **Users** are scoped to the selected time range. **Last seen**, **First seen**, and the all-time count under First seen are lifetime values that ignore the range entirely. They sit next to each other and they are not interchangeable — see [Limits](/guides/apps/observability/error-tracking#limits-and-caveats) for why they can disagree.
 </Warning>
 
 Environment and Release are available from the **Columns** button in the toolbar, along with CSV **Export**. The list pages in automatically as you scroll.
@@ -106,7 +106,7 @@ When every occurrence of an issue has aged out of the 90-day retention window, t
 
 The rail links each occurrence to:
 
-- **Trace** — opens the [trace waterfall](/guides/apps/analytics/cross-tier-tracing) filtered to this trace, so a browser error and the backend request behind it sit in one view.
+- **Trace** — opens the [trace waterfall](/guides/apps/observability/cross-tier-tracing) filtered to this trace, so a browser error and the backend request behind it sit in one view.
 - **Session replay** — opens the recording of the session the error happened in.
 - **User** — opens the user in the user directory.
 - **Release** — the release the occurrence came from.

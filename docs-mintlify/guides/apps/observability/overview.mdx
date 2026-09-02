@@ -1,113 +1,53 @@
 ---
-title: "Error Tracking"
-sidebarTitle: "Error Tracking"
-description: "Uncaught errors become grouped, triageable Issues with a resolve/ignore/regression lifecycle — with nothing to instrument"
+title: "Observability"
+description: "Investigate errors, logs, traces, services, and performance with the user activity that caused them"
+sidebarTitle: "Overview"
 ---
 
-Every `$error` occurrence Hexclave captures is parsed, grouped, and rolled up into an **Issue**: one row per distinct bug, with a stable id, an occurrence count, a lifecycle, and a link back to the trace, session replay, and user that produced it.
+The Observability app connects operational telemetry to the user activity that caused it. Use it to investigate application health and performance without mixing logs and code traces into product analytics.
 
-There is nothing to instrument. If the SDK is capturing errors — which it does once you opt in with `observability: { enabled: true }` — you already have Issues.
+## What Observability includes
 
-Open **Observability -> Issues** in the dashboard.
+- **Issues** groups error occurrences into bugs that you can assign, resolve, ignore, merge, and track across regressions.
+- **Logs** combines captured console output with structured records from `app.logger`.
+- **Traces** shows work across browsers, servers, databases, model calls, and tools in one waterfall.
+- **Services** maps dependencies and compares latency, throughput, and errors between services.
+- **Performance** reports web vitals and route-level browser performance.
+- **Registry** connects releases and source maps to the code behind an error.
 
-## How It Works
+Observability shares correlation identifiers and storage with Analytics, but it is a separate app. Enable Observability independently under **Apps -> Observability** in the dashboard. Use [Warehouse](/guides/apps/warehouse/overview) to browse the underlying tables or run SQL.
 
-```
-your app throws
-      ↓  SDK captures name, message, raw stack, mechanism, release, environment
-   $error event  →  ingest
-      ↓  server parses the stack, normalizes frames, computes issue_hash
-   occurrence row (ClickHouse `errors`)      ← queryable immediately, already grouped
-      ↓  hash → Issue (create or advance), off the request path
-   Issue (Postgres)                          ← counters, status, short id, webhooks
-```
+## Set up collection
 
-Three properties of that pipeline are worth knowing, because they explain most of what you will observe:
+Opt in when you create a client or server app:
 
-- **Grouping happens at ingest, server-side.** The SDK ships the raw stack string; the server parses it and computes the group. An occurrence is grouped at rest the instant it is queryable, and the grouping key is stamped onto the row as `issue_hash`.
-- **The Issue record is eventually consistent.** It is written just after the occurrence lands, off the request path, so a slow Postgres can delay an Issue but can never lose an occurrence or fail telemetry ingestion. Writes are exactly-once per ingest batch, and a background reconciler replays any batch whose Issue write didn't land.
-- **Occurrences and Issues have different lifetimes.** Occurrences are telemetry and expire with the 90-day retention window. The Issue and its lifetime counters live in Postgres and do not expire.
+```ts
+import { HexclaveClientApp, HexclaveServerApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
 
-## What's Automatic, What Isn't
+export const hexclaveClientApp = new HexclaveClientApp({
+  // ...your existing client app options
+  observability: { enabled: true },
+});
 
-| | Status |
-|---|---|
-| Capturing uncaught browser errors and unhandled rejections | Automatic |
-| Capturing Node `uncaughtException` | Automatic once a `HexclaveServerApp` is constructed |
-| Capturing Next.js request errors | Requires [`hexclaveInstrumentation`](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation) |
-| Stack parsing, grouping, and issue creation | Automatic, server-side |
-| Correlation to trace / session replay / user | Automatic |
-| `release` and `environment` on every occurrence | Automatic on Vercel; elsewhere, [set `release` explicitly](/guides/apps/analytics/errors-and-logs#configuration) (`environment` falls back to `NODE_ENV`) |
-| Naming the service an error came from | Inferred; [set `telemetry.resource`](/guides/apps/analytics/overview#identify-every-service) when several apps share a project |
-| Dropping known-noisy errors | Opt-in via `observability.errorCapture.ignoreErrors` |
-| `issue.*` webhooks | Requires the Webhooks app enabled |
-| Original (unminified) source in stack frames | Upload source maps, then look them up under **Observability → Source maps** |
-
-## Enabling It
-
-Issues need two apps enabled on the project:
-
-1. **Analytics** — gates telemetry ingestion. Without it, no `$error` events arrive at all.
-2. **Observability** — gates the Issues surface. Without it, the Issues page is unavailable and the endpoints behind it refuse with `ANALYTICS_NOT_ENABLED`.
-
-Enable both from the **Apps** section of your dashboard. Then throw something:
-
-```tsx
-// anywhere in your app, client or server
-setTimeout(() => { throw new Error("hello from error tracking"); });
+export const hexclaveServerApp = new HexclaveServerApp({
+  // ...your existing server app options
+  observability: { enabled: true },
+});
 ```
 
-Within a moment it shows up under **Observability -> Issues**.
+The setting enables logs, errors, spans, trace propagation, and automatic instrumentation. Analytics capture and session replay use the separate `analytics` configuration.
 
-<Info>
-Error capture itself is configured on the SDK side — `release`, `environment`, `ignoreErrors`, and the flood caps are all documented under [Errors & Logs](/guides/apps/analytics/errors-and-logs#automatic-error-capture). This page picks up where capture ends.
-</Info>
+For framework-specific server instrumentation, see [Framework adapters](/guides/apps/observability/framework-adapters). To control the OpenTelemetry provider and connect browser work to backend work, see [Cross-tier tracing](/guides/apps/observability/cross-tier-tracing).
 
-## An Issue's Identity
+## Investigate telemetry
 
-An Issue's title, message, and culprit are denormalized from the occurrence that **created** it and are never rewritten. That is deliberate: if a later occurrence happened to carry a slightly different message, a title that tracked the newest occurrence would shift under you while you were reading the list.
+Start with the view that matches the question:
 
-Each Issue also has a **short id** — a small integer rendered as `#42`, allocated per project *and branch*. It is stable, it survives a merge (the old short id keeps resolving), and you can navigate straight to it by putting the number in the URL.
+- To triage a failure, open **Issues**, then use its linked trace, replay, and release.
+- To inspect one request or background job, open **Traces**.
+- To search diagnostic output, open **Logs**.
+- To find a slow dependency or route, open **Services** or **Performance**.
+- To inspect raw records or aggregate them with SQL, open **Warehouse**.
 
-<Warning>
-Short ids are allocated per **tenancy**, which is the pair (project, branch). The same logical error therefore carries different short ids on `main` and on a preview branch. Use the issue's UUID when you need an id that is unambiguous across branches.
-
-Short ids are also allocated in blocks per ingest batch, so a failed batch permanently burns its range: gaps in the numbering are expected and are not a sign of deleted issues.
-</Warning>
-
-## Where the Data Lives
-
-| | Store | Retention | Authoritative for |
-|---|---|---|---|
-| Occurrences | ClickHouse `errors` view | 90 days | every individual `$error` row, its stack frames, and its correlation ids |
-| Windowed stats | ClickHouse rollup | 90 days | "how many events / users in the last 24h", sparklines |
-| Issues | Postgres | indefinite | status, short id, lifetime counters, first/last seen |
-
-The split is absolute and it is the reason two numbers on the same row can disagree — see [Limits](#limits-and-caveats).
-
-## Limits and Caveats
-
-**Telemetry is retained for 90 days.** Individual occurrences, their stack frames, and the rollup that powers windowed counts and sparklines all age out at 90 days. The Issue itself, its status, and its lifetime counters do not. An issue whose every occurrence has aged out still shows exact lifetime counts; its detail page says *"No retained occurrence"* rather than pretending it never happened.
-
-**Lifetime counters and windowed stats come from different stores, and can differ.** The **All time** count, **First seen**, and **Last seen** are Postgres lifetime values, maintained exactly-once by ingest. The **Events** and **Users** columns are ClickHouse values scoped to the selected time range. They are labelled differently on purpose, because they look interchangeable and are not:
-
-- A lifetime count can exceed anything the window can show, simply because the window is shorter than the issue's history — or because the occurrences that made it up have aged out.
-- A window count can exceed the lifetime count for the same period. The lifetime counter is deduplicated per ingest batch; the rollup that feeds the window is not, so a retried batch (a flaky network on the client, a retried serverless invocation) is counted once in Postgres and can be counted twice in the window.
-
-Treat lifetime counters as the number to quote, and windowed stats as the shape of recent activity.
-
-**`window_users` is a lower bound for merged issues.** Distinct-user counts are computed per grouping hash. For an issue that owns several hashes (after a merge), the reported figure is the largest per-hash count rather than a true union, so it never overcounts a user active under two hashes — but it can undercount.
-
-**Ranking by window activity is capped.** Sorting the list by Events or Users ranks a bounded candidate set. Past that bound the list shows a *"Ranking is approximate"* notice rather than silently truncating; narrow the filters for an exact ordering.
-
-**Source maps can be uploaded and looked up.** Stack frames still render as the runtime reported them until an artifact is registered for that debug ID. Upload with `hexclave sourcemaps upload` (register → PUT → finalize). **Observability → Source maps** looks up a registered artifact by debug ID so you can confirm the symbolicator can see it. Frame source context and original names appear once lookup succeeds for that occurrence.
-
-**Webhook delivery is best-effort.** See [Issue Webhooks](/guides/apps/observability/webhooks#delivery-guarantees).
-
-## Next Steps
-
-- [Error Grouping](/guides/apps/observability/grouping) — exactly what makes two errors the same issue
-- [Triaging Issues](/guides/apps/observability/issues) — the list, the detail view, and the lifecycle
-- [Querying Errors](/guides/apps/observability/querying-errors) — the `errors` read model in SQL
-- [Issue Webhooks](/guides/apps/observability/webhooks) — `issue.created`, `issue.regressed`, and friends
-- [Errors & Logs](/guides/apps/analytics/errors-and-logs) — how capture itself works and how to configure it
+See [Error tracking](/guides/apps/observability/error-tracking) for the error-to-issue pipeline. See [Errors and logs](/guides/apps/observability/errors-and-logs) for capture and logging configuration.

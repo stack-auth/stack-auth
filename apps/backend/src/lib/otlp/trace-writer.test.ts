@@ -62,23 +62,34 @@ describe("OTLP trace storage mapping", () => {
     expect(rows.spans).toMatchInlineSnapshot(`
       [
         {
-          "attributes": "{\"hexclave.session_replay.id\":{\"type\":\"string\",\"value\":\"11111111-1111-4111-8111-111111111111\"},\"large\":{\"type\":\"int\",\"value\":\"9223372036854775807\"}}",
+          "attributes": "{"hexclave.session_replay.id":{"type":"string","value":"11111111-1111-4111-8111-111111111111"},"large":{"type":"int","value":"9223372036854775807"}}",
           "billing_item": null,
           "branch_id": "authenticated-branch",
-          "data": "{\"hexclave.session_replay.id\":\"11111111-1111-4111-8111-111111111111\",\"large\":\"9223372036854775807\"}",
+          "data": "{"hexclave.session_replay.id":"11111111-1111-4111-8111-111111111111","large":"9223372036854775807"}",
           "deployment_environment_name": null,
           "dropped_attributes": 3,
           "dropped_events": 5,
           "dropped_links": 7,
           "end_time_unix_nano": "1785888000001000002",
           "ended_at": 2026-08-05T00:00:00.001Z,
+          "gen_ai_agent_name": null,
+          "gen_ai_cache_read_input_tokens": null,
+          "gen_ai_conversation_id": null,
+          "gen_ai_input_tokens": null,
+          "gen_ai_operation_name": null,
+          "gen_ai_output_tokens": null,
+          "gen_ai_provider_name": null,
+          "gen_ai_reasoning_output_tokens": null,
+          "gen_ai_request_model": null,
+          "gen_ai_response_model": null,
+          "gen_ai_tool_name": null,
           "kind": "server",
           "page_view_span_id": null,
           "parent_span_id": null,
           "producer": "sdk",
           "project_id": "authenticated-project",
           "refresh_token_id": null,
-          "resource_attributes": "{\"service.instance.id\":{\"type\":\"string\",\"value\":\"instance-1\"},\"service.name\":{\"type\":\"string\",\"value\":\"checkout\"}}",
+          "resource_attributes": "{"service.instance.id":{"type":"string","value":"instance-1"},"service.name":{"type":"string","value":"checkout"}}",
           "resource_dropped_attributes": 1,
           "resource_schema_url": "resource-schema",
           "scope_attributes": "{}",
@@ -254,6 +265,148 @@ describe("OTLP trace storage mapping", () => {
       "hexclave.http.propagated": true,
     });
     expect(row.billing_item).toBeNull();
+  });
+
+  it("normalizes current OTel gen_ai spans into the canonical AI columns", () => {
+    const canonical = normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{
+        scopeSpans: [{
+          spans: [{
+            traceId: "11111111111111111111111111111111",
+            spanId: "2222222222222222",
+            name: "chat gpt-4.1",
+            startTimeUnixNano: "1785888000000000001",
+            endTimeUnixNano: "1785888000001000002",
+            attributes: [
+              { key: "gen_ai.operation.name", value: { stringValue: "chat" } },
+              { key: "gen_ai.provider.name", value: { stringValue: "openai" } },
+              { key: "gen_ai.request.model", value: { stringValue: "gpt-4.1" } },
+              { key: "gen_ai.response.model", value: { stringValue: "gpt-4.1-2026-04-14" } },
+              { key: "gen_ai.usage.input_tokens", value: { intValue: 811 } },
+              { key: "gen_ai.usage.output_tokens", value: { intValue: "92" } },
+              { key: "gen_ai.usage.cache_read.input_tokens", value: { intValue: 640 } },
+              { key: "gen_ai.conversation.id", value: { stringValue: "conv_0123" } },
+            ],
+          }],
+        }],
+      }],
+    });
+    const [row] = buildOtlpTraceRows(canonical, {
+      projectId: "authenticated-project",
+      branchId: "authenticated-branch",
+      userId: null,
+      refreshTokenId: null,
+    }).spans;
+
+    expect(row).toMatchObject({
+      gen_ai_operation_name: "chat",
+      gen_ai_provider_name: "openai",
+      gen_ai_request_model: "gpt-4.1",
+      gen_ai_response_model: "gpt-4.1-2026-04-14",
+      gen_ai_input_tokens: "811",
+      gen_ai_output_tokens: "92",
+      gen_ai_cache_read_input_tokens: "640",
+      gen_ai_reasoning_output_tokens: null,
+      gen_ai_tool_name: null,
+      gen_ai_agent_name: null,
+      gen_ai_conversation_id: "conv_0123",
+    });
+    // Third-party AI spans carry no hexclave.signal.type and are not metered.
+    expect(row.billing_item).toBeNull();
+  });
+
+  it("normalizes legacy Vercel AI SDK spans, preferring gen_ai spellings where both are present", () => {
+    const canonical = normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{
+        scopeSpans: [{
+          spans: [
+            {
+              traceId: "11111111111111111111111111111111",
+              spanId: "2222222222222222",
+              name: "ai.generateText",
+              startTimeUnixNano: "1785888000000000001",
+              endTimeUnixNano: "1785888000001000002",
+              attributes: [
+                { key: "ai.operationId", value: { stringValue: "ai.generateText" } },
+                { key: "ai.model.id", value: { stringValue: "claude-fable-5" } },
+                { key: "ai.model.provider", value: { stringValue: "anthropic.messages" } },
+                { key: "ai.telemetry.functionId", value: { stringValue: "summarize-thread" } },
+                { key: "ai.usage.promptTokens", value: { intValue: 1200 } },
+                { key: "ai.usage.completionTokens", value: { intValue: 300 } },
+              ],
+            },
+            {
+              traceId: "11111111111111111111111111111111",
+              spanId: "3333333333333333",
+              parentSpanId: "2222222222222222",
+              name: "ai.generateText.doGenerate",
+              startTimeUnixNano: "1785888000000000001",
+              endTimeUnixNano: "1785888000001000002",
+              attributes: [
+                { key: "ai.operationId", value: { stringValue: "ai.generateText.doGenerate" } },
+                { key: "ai.model.id", value: { stringValue: "claude-fable-5" } },
+                { key: "ai.model.provider", value: { stringValue: "anthropic.messages" } },
+                // The legacy emitter also writes a subset of (pre-rename)
+                // gen_ai attributes on provider-call spans.
+                { key: "gen_ai.system", value: { stringValue: "anthropic" } },
+                { key: "gen_ai.request.model", value: { stringValue: "claude-fable-5" } },
+                { key: "gen_ai.usage.input_tokens", value: { intValue: 1200 } },
+                { key: "gen_ai.usage.output_tokens", value: { intValue: 300 } },
+              ],
+            },
+          ],
+        }],
+      }],
+    });
+    const rows = buildOtlpTraceRows(canonical, {
+      projectId: "authenticated-project",
+      branchId: "authenticated-branch",
+      userId: null,
+      refreshTokenId: null,
+    }).spans;
+
+    expect(rows[0]).toMatchObject({
+      gen_ai_operation_name: "invoke_agent",
+      gen_ai_provider_name: "anthropic.messages",
+      gen_ai_request_model: "claude-fable-5",
+      gen_ai_agent_name: "summarize-thread",
+      gen_ai_input_tokens: "1200",
+      gen_ai_output_tokens: "300",
+    });
+    expect(rows[1]).toMatchObject({
+      gen_ai_operation_name: "chat",
+      gen_ai_provider_name: "anthropic",
+      gen_ai_input_tokens: "1200",
+      gen_ai_output_tokens: "300",
+      gen_ai_agent_name: null,
+    });
+  });
+
+  it("leaves every gen_ai column NULL for non-AI spans", () => {
+    const canonical = normalizeOtlpJsonTraceRequest({
+      resourceSpans: [{
+        scopeSpans: [{
+          spans: [{
+            traceId: "11111111111111111111111111111111",
+            spanId: "2222222222222222",
+            name: "GET /orders",
+            startTimeUnixNano: "1785888000000000001",
+            endTimeUnixNano: "1785888000001000002",
+            attributes: [{ key: "http.request.method", value: { stringValue: "GET" } }],
+          }],
+        }],
+      }],
+    });
+    const [row] = buildOtlpTraceRows(canonical, {
+      projectId: "authenticated-project",
+      branchId: "authenticated-branch",
+      userId: null,
+      refreshTokenId: null,
+    }).spans;
+
+    expect(row.gen_ai_operation_name).toBeNull();
+    expect(row.gen_ai_input_tokens).toBeNull();
+    expect(row.gen_ai_provider_name).toBeNull();
   });
 
   it("scrubs custom span product data before durable JSON storage", () => {

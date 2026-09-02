@@ -51,6 +51,22 @@ export type SpanInsertRow = {
   session_replay_id: string | null,
   session_replay_segment_id: string | null,
   page_view_span_id: string | null,
+  // Canonical AI-telemetry projection (see @hexclave/shared gen-ai.tsx).
+  // Optional so backend-minted lifecycle spans need not restate a null for
+  // every column; the ClickHouse columns are Nullable and default to NULL.
+  // Token counts are canonical uint64 strings — ClickHouse coerces the quoted
+  // form into UInt64 the same way version/start_time_unix_nano already rely on.
+  gen_ai_operation_name?: string | null,
+  gen_ai_provider_name?: string | null,
+  gen_ai_request_model?: string | null,
+  gen_ai_response_model?: string | null,
+  gen_ai_input_tokens?: string | null,
+  gen_ai_output_tokens?: string | null,
+  gen_ai_cache_read_input_tokens?: string | null,
+  gen_ai_reasoning_output_tokens?: string | null,
+  gen_ai_tool_name?: string | null,
+  gen_ai_agent_name?: string | null,
+  gen_ai_conversation_id?: string | null,
   version: number | string,
 };
 

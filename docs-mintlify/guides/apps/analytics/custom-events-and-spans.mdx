@@ -11,9 +11,9 @@ Hexclave's shared telemetry foundation accepts both product facts and code inter
 - **`startSpan` / `withSpan`**: record an interval, like a checkout flow or a background job
 - **Automatic parenting**: your telemetry nests under any enclosing span without manual wiring, and inherits its trace
 - **Standards-based**: span identity is [W3C trace context](https://www.w3.org/TR/trace-context/) — the same `trace_id`/`span_id`/`parent_span_id` model OpenTelemetry uses, so Hexclave traces interoperate with any OTel-compatible tooling you already run
-- **Queryable**: product events appear in **Analytics -> Events**; spans appear in **Observability -> Traces**; both remain queryable in **Analytics -> Explore -> Queries**
+- **Queryable**: product events support Analytics; spans appear in **Observability -> Traces**; both remain queryable in **Warehouse -> Queries**
 
-Custom events and spans require the Analytics app to be enabled (**Apps -> Analytics** in your dashboard). Their SDK switches remain independent: `analytics.enabled` controls events, while `observability.enabled` controls spans. Events and custom spans also use independent usage items.
+Custom events require Analytics to be enabled under **Apps -> Analytics**. Custom spans require Observability under **Apps -> Observability**. Their SDK switches and usage items remain independent: `analytics.enabled` controls events, while `observability.enabled` controls spans.
 
 ## How It Works
 
@@ -106,7 +106,7 @@ A span is a real OpenTelemetry span. The active provider owns sampling, processi
 | `startSpan(type, options?)` / `withSpan(type, fn)` | Creates a child span |
 | `run(fn)` | Re-enters the span as the ambient parent for `fn` — for timers and third-party callbacks |
 | `spanContext()` | A serializable `{ traceId, spanId }` you can store, JSON-encode, or pass around |
-| `getSpanPropagationHeaders()` / `fetch(input, init?)` | Cross-tier propagation pinned to this span — see [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) |
+| `getSpanPropagationHeaders()` / `fetch(input, init?)` | Cross-tier propagation pinned to this span — see [Cross-Tier Tracing](/guides/apps/observability/cross-tier-tracing) |
 
 `spanContext()` is the currency of span identity everywhere: pass it as a `parent`, put it in a queue message, serialize it into page props. It always carries the trace id alongside the span id, because a span id on its own is only unique *within* its trace — which is why the SDK never accepts a bare id string as a parent.
 
@@ -207,7 +207,7 @@ await hexclaveServerApp.withSpan("import-job", { userId: user.id }, async (span)
 });
 ```
 
-- **Attribution**: pass `userId` (a user UUID) to attribute telemetry to a user; child spans and span-attached events inherit it. To attribute to the calling user *and* link into their client session automatically, pass the incoming request — see [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) — or use a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you. On Next.js with `hexclaveInstrumentation().register()` in your `instrumentation.ts`, even bare calls inside a request scope pick up the caller automatically — see [bare calls on Next.js](/guides/apps/analytics/cross-tier-tracing#bare-calls-on-next-js).
+- **Attribution**: pass `userId` (a user UUID) to attribute telemetry to a user; child spans and span-attached events inherit it. To attribute to the calling user *and* link into their client session automatically, pass the incoming request — see [Cross-Tier Tracing](/guides/apps/observability/cross-tier-tracing) — or use a [framework adapter](/guides/apps/observability/framework-adapters), which does it for you. On Next.js with `hexclaveInstrumentation().register()` in your `instrumentation.ts`, even bare calls inside a request scope pick up the caller automatically — see [bare calls on Next.js](/guides/apps/observability/cross-tier-tracing#bare-calls-on-next-js).
 - **Delivery**: server telemetry coalesces on the next microtask (a loop of `trackEvent` calls costs one request, not N). There is no interval timer — `await` the returned promises or call `await hexclaveServerApp.flush()` before your process exits.
 
 On serverless platforms, fire-and-forget telemetry needs a `waitUntil` hook so batch sends survive runtime teardown without awaiting every call. **On Vercel this is automatic**: when `telemetry.waitUntil` isn't set, the SDK looks up Vercel's active request context on each send (the same one `@vercel/functions`' `waitUntil` uses) — nothing to wire. Platforms that hand the context to your handler, like Cloudflare Workers, still need the explicit option, and an explicit `waitUntil` always wins over the auto-detection:
@@ -245,7 +245,7 @@ Invalid `trackEvent` input rejects its returned promise. Invalid `startSpan`/`wi
 
 ## Querying Your Telemetry
 
-Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, span links in `span_links`, and events in `events`. `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex W3C ids; `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs. Nothing is prefixed.
+Everything is queryable in **Warehouse -> Queries**. Spans live in the `spans` view, span links in `span_links`, and events in `events`. `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex W3C ids; `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs. Nothing is prefixed.
 
 Duration stats per custom span type:
 
@@ -311,7 +311,9 @@ Things to know when writing queries:
 
 ## Next Steps
 
-- [Errors & Logs](/guides/apps/analytics/errors-and-logs) — automatic error capture and `app.logger` structured logging
-- [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) — link backend spans to the client session that caused them
-- [Framework Adapters](/guides/apps/analytics/framework-adapters) — Next.js, TanStack Start, tRPC, oRPC, Elysia, and Convex integration in one line
-- [Analytics app](/guides/apps/analytics/overview) — the Traces, Tables, and Queries views in the dashboard
+- [Errors & Logs](/guides/apps/observability/errors-and-logs) — automatic error capture and `app.logger` structured logging
+- [Cross-Tier Tracing](/guides/apps/observability/cross-tier-tracing) — link backend spans to the client session that caused them
+- [Framework Adapters](/guides/apps/observability/framework-adapters) — Next.js, TanStack Start, tRPC, oRPC, Elysia, and Convex integration in one line
+- [Analytics](/guides/apps/analytics/overview) — paths, replays, and clickmaps
+- [Observability](/guides/apps/observability/overview) — issues, logs, traces, services, performance, and registry
+- [Warehouse](/guides/apps/warehouse/overview) — tables and SQL queries

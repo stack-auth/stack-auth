@@ -159,6 +159,24 @@ describe("analytics trace row parsing", () => {
     expect(spanQuery.query).toContain("ORDER BY s.started_at ASC");
   });
 
+  it("loads the compact AI columns for the waterfall without the span data payload", () => {
+    const spanQuery = getSelectedTraceSpanQuery("0123456789abcdef0123456789abcdef");
+    for (const column of [
+      "s.gen_ai_operation_name",
+      "s.gen_ai_request_model",
+      "s.gen_ai_input_tokens",
+      "s.gen_ai_output_tokens",
+      "s.gen_ai_tool_name",
+      "s.gen_ai_agent_name",
+    ]) {
+      expect(spanQuery.query).toContain(column);
+    }
+    // Provider, response model, subset token counts, and conversation id are
+    // detail-pane-only; the waterfall chip never shows them.
+    expect(spanQuery.query).not.toContain("s.gen_ai_provider_name");
+    expect(spanQuery.query).not.toContain("s.gen_ai_conversation_id");
+  });
+
   it("keeps a directly linked target inside the large-trace safety cap", () => {
     const spanQuery = getSelectedTraceSpanQuery(
       "0123456789abcdef0123456789abcdef",
@@ -271,6 +289,17 @@ describe("analytics trace row parsing", () => {
         "status_code",
         "status_message",
         "deployment_environment_name",
+        "gen_ai_operation_name",
+        "gen_ai_provider_name",
+        "gen_ai_request_model",
+        "gen_ai_response_model",
+        "gen_ai_input_tokens",
+        "gen_ai_output_tokens",
+        "gen_ai_cache_read_input_tokens",
+        "gen_ai_reasoning_output_tokens",
+        "gen_ai_tool_name",
+        "gen_ai_agent_name",
+        "gen_ai_conversation_id",
         "data",
         "user_id",
         "team_id",
@@ -312,6 +341,17 @@ describe("analytics trace row parsing", () => {
       "resource_attributes",
       "producer",
       "created_at",
+      "gen_ai_operation_name",
+      "gen_ai_provider_name",
+      "gen_ai_request_model",
+      "gen_ai_response_model",
+      "gen_ai_input_tokens",
+      "gen_ai_output_tokens",
+      "gen_ai_cache_read_input_tokens",
+      "gen_ai_reasoning_output_tokens",
+      "gen_ai_tool_name",
+      "gen_ai_agent_name",
+      "gen_ai_conversation_id",
     ]);
     for (const nativeColumn of ["span_type", "started_at", "ended_at", "status_code", "status_message", "data", "user_id", "deployment_environment_name"]) {
       expect(SPAN_TECHNICAL_DETAIL_COLUMNS).not.toContain(nativeColumn);

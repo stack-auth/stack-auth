@@ -18,7 +18,16 @@ SELECT
   -- Needed by traceSignalSpanIds to tell spans the customer's own code authored
   -- from auto-instrumented library/framework noise. Both arrive through the SDK;
   -- scope_name is the instrumentation marker.
-  s.producer
+  s.producer,
+  -- AI-span columns (NULL for non-AI spans); gen_ai_operation_name being
+  -- non-null is what marks a span as an AI span. These drive the compact AI
+  -- chip on waterfall rows without loading the full span data payload.
+  s.gen_ai_operation_name,
+  s.gen_ai_request_model,
+  s.gen_ai_input_tokens,
+  s.gen_ai_output_tokens,
+  s.gen_ai_tool_name,
+  s.gen_ai_agent_name
 FROM default.spans AS s
 `;
 
@@ -235,6 +244,17 @@ export const SPAN_DETAIL_COLUMNS: readonly string[] = [
   "status_code",
   "status_message",
   "deployment_environment_name",
+  "gen_ai_operation_name",
+  "gen_ai_provider_name",
+  "gen_ai_request_model",
+  "gen_ai_response_model",
+  "gen_ai_input_tokens",
+  "gen_ai_output_tokens",
+  "gen_ai_cache_read_input_tokens",
+  "gen_ai_reasoning_output_tokens",
+  "gen_ai_tool_name",
+  "gen_ai_agent_name",
+  "gen_ai_conversation_id",
   "data",
   "user_id",
   "team_id",
@@ -272,6 +292,20 @@ export const SPAN_TECHNICAL_DETAIL_COLUMNS: readonly string[] = [
   "resource_attributes",
   "producer",
   "created_at",
+  // These render curated in the detail dialog's "AI" section, so the raw
+  // columns collapse behind the technical-details disclosure instead of
+  // adding eleven mostly-NULL rows to every span's main field list.
+  "gen_ai_operation_name",
+  "gen_ai_provider_name",
+  "gen_ai_request_model",
+  "gen_ai_response_model",
+  "gen_ai_input_tokens",
+  "gen_ai_output_tokens",
+  "gen_ai_cache_read_input_tokens",
+  "gen_ai_reasoning_output_tokens",
+  "gen_ai_tool_name",
+  "gen_ai_agent_name",
+  "gen_ai_conversation_id",
   "user_display_name",
   "user_primary_email",
   "user_profile_image_url",

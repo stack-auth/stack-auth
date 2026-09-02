@@ -4,7 +4,7 @@ sidebarTitle: "Querying Errors"
 description: "The errors read model in SQL — group by issue_hash, count affected users, isolate unhandled crashes, and chart error rate over time"
 ---
 
-Every `$error` occurrence is available as SQL through the `errors` read model in **Analytics -> Explore -> Queries**. Because grouping happens at ingest, each row already carries the group it belongs to — you never have to reconstruct grouping in a query.
+Every `$error` occurrence is available as SQL through the `errors` read model in **Warehouse -> Queries**. Because grouping happens at ingest, each row already carries the group it belongs to — you never have to reconstruct grouping in a query.
 
 ## The `errors` Read Model
 
@@ -182,7 +182,7 @@ ORDER BY event_at DESC
 LIMIT 20;
 ```
 
-Then take a `trace_id` into `spans` or `logs` — see [Errors & Logs](/guides/apps/analytics/errors-and-logs#querying).
+Then take a `trace_id` into `spans` or `logs` — see [Errors & Logs](/guides/apps/observability/errors-and-logs#querying).
 
 ### Reading stack frames
 
@@ -212,4 +212,4 @@ Each frame object has `filename`, `function`, `module`, `absPath`, `lineno`, `co
 
 - [Error Grouping](/guides/apps/observability/grouping) — what `issue_hash` actually hashes
 - [Triaging Issues](/guides/apps/observability/issues) — the same data with a lifecycle attached
-- [Errors & Logs](/guides/apps/analytics/errors-and-logs) — the `logs` read model and capture configuration
+- [Errors & Logs](/guides/apps/observability/errors-and-logs) — the `logs` read model and capture configuration

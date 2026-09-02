@@ -107,6 +107,60 @@ describe("TraceWaterfall span names", () => {
     expect(screen.getAllByText("prisma:client:db_query")).toHaveLength(2);
   });
 
+  it("shows a compact AI chip with model and token usage on AI span rows", () => {
+    const trace: Trace = {
+      root: {
+        span: {
+          traceId: "trace",
+          id: "ai-root",
+          spanType: "chat gpt-4o-mini",
+          startMs: 1000,
+          endMs: 1010,
+          parentSpanId: null,
+          raw: {
+            producer: "sdk",
+            gen_ai_operation_name: "chat",
+            gen_ai_request_model: "gpt-4o-mini",
+            gen_ai_input_tokens: "811",
+            gen_ai_output_tokens: "92",
+          },
+        },
+        depth: 0,
+        children: [],
+        events: [],
+      },
+      spanCount: 1,
+      eventCount: 0,
+      startMs: 1000,
+      endMs: 1010,
+      latestMs: 1010,
+    };
+
+    render(createElement(TraceWaterfall, waterfallProps(trace)));
+
+    expect(screen.getByText("gpt-4o-mini · 811→92 tok")).not.toBeNull();
+  });
+
+  it("renders no AI chip for a span without gen_ai_operation_name", () => {
+    const trace: Trace = {
+      root: {
+        span: { traceId: "trace", id: "plain", spanType: "checkout", startMs: 1000, endMs: 1010, parentSpanId: null, raw: { producer: "sdk", gen_ai_operation_name: null } },
+        depth: 0,
+        children: [],
+        events: [],
+      },
+      spanCount: 1,
+      eventCount: 0,
+      startMs: 1000,
+      endMs: 1010,
+      latestMs: 1010,
+    };
+
+    render(createElement(TraceWaterfall, waterfallProps(trace)));
+
+    expect(screen.queryByText(/tok/)).toBeNull();
+  });
+
   it("shows a linked span directly beneath its owner and opens it", () => {
     const openLink = vi.fn();
     const trace: Trace = {

@@ -126,7 +126,7 @@ From the overlay you can adjust:
 
 ## How this relates to your events
 
-These features build on the same analytics pipeline described in [Queries & Tables](./queries-and-tables):
+These features build on the analytics records available through [Warehouse](/guides/apps/warehouse/overview):
 
 - **`$click` and `$page-view` events** land in the `events` table (ClickHouse). Clickmaps read from a derived table populated automatically from `$click` events.
 - **Session replay recordings** are stored separately (object storage + database), not in ClickHouse. Your analytics events carry a `session_replay_id` so you can connect an event row back to the replay it occurred in.
@@ -134,4 +134,4 @@ These features build on the same analytics pipeline described in [Queries & Tabl
 ## Related
 
 - [Analytics overview](./overview) - enabling Analytics and what gets tracked
-- [Queries & Tables](./queries-and-tables) - the event schema, SQL runner, and Tables view
+- [Warehouse](/guides/apps/warehouse/overview) - the event schema, SQL runner, and Tables view

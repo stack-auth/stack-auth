@@ -248,6 +248,11 @@ export function PathsGraphCanvas({
   ]);
   const [comparison, setComparison] = useState<PathComparisonState>({ kind: "idle" });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const checkedPaths = useMemo(() => new Set(
+    compareInputs
+      .map((input) => input.path.trim())
+      .filter((path) => path !== ""),
+  ), [compareInputs]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -539,7 +544,7 @@ export function PathsGraphCanvas({
           aria-pressed={compareMode}
         >
           <GitDiffIcon className="h-3.5 w-3.5" />
-          Compare paths
+          Check paths
         </DesignButton>
         {manualPositions.size > 0 && (
           <DesignButton onClick={resetPositions} variant="secondary" size="sm" className="gap-1.5 bg-white/95 backdrop-blur dark:bg-background/85">
@@ -564,7 +569,7 @@ export function PathsGraphCanvas({
               <DesignButton size="icon" variant="secondary" className="h-8 w-8" onClick={clearFunnelInputs} aria-label="Clear funnel steps" title="Clear funnel steps">
                 <XCircleIcon className="h-3.5 w-3.5" />
               </DesignButton>
-              <DesignButton size="sm" variant="secondary" loading={comparison.kind === "loading"} onClick={runComparison}>Compare</DesignButton>
+              <DesignButton size="sm" variant="secondary" loading={comparison.kind === "loading"} onClick={runComparison}>Check</DesignButton>
             </div>
           </div>
           <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1">
@@ -603,7 +608,7 @@ export function PathsGraphCanvas({
             </DesignButton>
           </div>
           {comparison.kind === "error" && (
-            <DesignAlert className="mt-2" variant="error" title="Can't compare paths" description={comparison.message} />
+            <DesignAlert className="mt-2" variant="error" title="Can't check paths" description={comparison.message} />
           )}
           {comparison.kind === "ready" && (
             <HorizontalPathFunnel results={comparison.results} />
@@ -671,17 +676,20 @@ export function PathsGraphCanvas({
           const stats = nodeStats.get(node.id);
           const hovered = hoveredNode === node.id;
           const selected = selectedNode === node.id;
+          const checked = compareMode && checkedPaths.has(node.id);
           const dimmed = focusedNodeIds != null && !focusedNodeIds.has(node.id);
           return (
             <button
               type="button"
               key={node.id}
-              aria-pressed={selected}
+              aria-pressed={selected || checked}
               aria-label={`${fullNodeLabel(node)}, ${node.pageViews.toLocaleString()} page views`}
               className={cn(
                 "pointer-events-auto absolute cursor-move rounded-lg border px-2.5 py-1.5 text-left transition-[opacity,box-shadow,border-color] duration-150 hover:transition-none",
                 "border-border bg-card text-card-foreground shadow-sm",
                 (hovered || selected) && "z-10 border-blue-400/60 shadow-md ring-2 ring-blue-500/50",
+                checked && !hovered && "z-10 border-zinc-400/60 bg-zinc-100/50 opacity-70 ring-1 ring-zinc-400/25 dark:border-blue-400/35 dark:bg-blue-500/5 dark:ring-blue-500/25",
+                checked && hovered && "z-10 border-zinc-500 bg-zinc-100 opacity-100 shadow-md ring-2 ring-zinc-500/40 dark:border-blue-400/60 dark:bg-blue-500/10 dark:ring-blue-500/50",
                 dimmed && "opacity-25",
               )}
               style={{ left: node.x - node.width / 2, top: node.y - CARD_HEIGHT / 2, width: node.width, height: CARD_HEIGHT }}
@@ -703,7 +711,7 @@ export function PathsGraphCanvas({
               </div>
               <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                 <span title="Page views">{node.pageViews.toLocaleString()} views</span>
-                {(hovered || selected) && (
+                {(hovered || selected || checked) && (
                   <>
                     <span className="text-muted-foreground/50" aria-hidden>·</span>
                     <span title="Inbound transitions">←{stats?.inbound.toLocaleString() ?? 0}</span>

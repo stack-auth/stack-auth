@@ -86,11 +86,29 @@ describe("PathsGraphCanvas", () => {
     fireEvent.pointerDown(node, { button: 0, pointerId: 3, clientX: 20, clientY: 20 });
     fireEvent.pointerUp(node, { pointerId: 3, clientX: 20, clientY: 20 });
 
-    expect(screen.getByRole("button", { name: "Compare paths" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "Compare paths" }).className).toContain("bg-zinc-100");
-    expect(screen.getByRole("button", { name: "Compare paths" }).className).toContain("dark:bg-primary");
+    expect(screen.getByRole("button", { name: "Check paths" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Check paths" }).className).toContain("bg-zinc-100");
+    expect(screen.getByRole("button", { name: "Check paths" }).className).toContain("dark:bg-primary");
     expect(screen.getByRole("heading", { name: "Path funnel" }).closest("section")?.className).toContain("bg-white");
     expect(screen.getByLabelText("Exact path 1").getAttribute("value")).toBe("/projects/:id/releases");
+    expect(node.getAttribute("aria-pressed")).toBe("true");
+    expect(node.className).toContain("opacity-70");
+    expect(node.className).toContain("ring-1");
+    expect(node.className).toContain("dark:bg-blue-500/5");
+
+    fireEvent.mouseEnter(node);
+    expect(node.className).toContain("opacity-100");
+    expect(node.className).toContain("ring-2");
+    expect(node.className).toContain("shadow-md");
+    expect(node.className).toContain("dark:bg-blue-500/10");
+
+    fireEvent.mouseLeave(node);
+    expect(node.className).toContain("opacity-70");
+    expect(node.className).not.toContain("shadow-md");
+
+    fireEvent.change(screen.getByLabelText("Exact path 1"), { target: { value: "/another-path" } });
+    expect(node.getAttribute("aria-pressed")).toBe("false");
+    expect(node.className).not.toContain("opacity-70");
   });
 
   it("renders ordered comparison results as a horizontal conversion funnel", async () => {
@@ -102,7 +120,7 @@ describe("PathsGraphCanvas", () => {
     fireEvent.change(screen.getByLabelText("Exact path 1"), { target: { value: "/landing" } });
     fireEvent.change(screen.getByLabelText("Exact path 2"), { target: { value: "/signup" } });
     fireEvent.change(screen.getByLabelText("Exact path 3"), { target: { value: "/welcome" } });
-    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
 
     const funnel = await screen.findByRole("list", { name: "Path conversion funnel" });
     const steps = Array.from(funnel.querySelectorAll("li"));
