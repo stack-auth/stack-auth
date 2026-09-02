@@ -1710,8 +1710,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (isBrowserLike()) {
           return this._getBrowserCookieTokenStore();
         } else {
+          // IF_PLATFORM next
+          const existingStore = this._nextServerCookiesTokenStores.get(cookieHelper.identity);
+          if (existingStore !== undefined) {
+            return existingStore;
+          }
+          // END_PLATFORM
+
           const tokens = this._getTokensFromCookies(cookieHelper.getAll());
           const store = new Store<TokenObject>(tokens);
+          // IF_PLATFORM next
+          // Next returns a stable cookies object for the lifetime of a request. Keying by that identity lets parallel
+          // Server Components share their session and in-flight refresh without leaking state across requests.
+          this._nextServerCookiesTokenStores.set(cookieHelper.identity, store);
+          // END_PLATFORM
           store.onChange((value) => {
             runAsynchronously(async () => {
               // TODO HACK this is a bit of a hack; while the order happens to work in practice (because the only actual
