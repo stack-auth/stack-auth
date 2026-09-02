@@ -9,7 +9,6 @@ const endpoints: { path: string, intervalMs: number, target?: Target }[] = [
   { path: "/api/latest/internal/external-db-sync/sequencer", intervalMs: 1000 },
   { path: "/api/latest/internal/external-db-sync/poller", intervalMs: 1000 },
   { path: "/api/latest/internal/workflow-engine-step", intervalMs: 1000 },
-  { path: "/api/latest/internal/growth-watchdog-step", intervalMs: 5 * 60_000 },
   // Marshal's tenant GCP project pool. Its provisioning is a resumable state machine advanced
   // by a cron rather than background work, because the hosted deployment is frozen at response
   // time — see apps/marshal/src/project-pool.ts and apps/marshal/vercel.json, which schedule

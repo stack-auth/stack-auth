@@ -22,7 +22,6 @@ import {
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
 import { getAppEnableConfigUpdate, getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
-import { isAppNavigationItemVisible } from "@/lib/app-navigation-visibility";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import {
@@ -447,7 +446,6 @@ function AppNavItem({
     }
     const navigableFrontend: NavigableAppFrontend = appFrontend;
     const items = navigableFrontend.navigationItems
-      .filter((navItem) => isAppNavigationItemVisible(projectId, navItem))
       .map((navItem) => ({
         name: navItem.displayName,
         href: getItemPath(projectId, navigableFrontend, navItem),
