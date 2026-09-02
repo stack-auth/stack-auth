@@ -1,0 +1,19 @@
+apps/backend/src/lib/ai/models.ts
+  s_0ea8793bd5d5cc::t_cab158094f5e73 21-22,25-26,31-32,35-36,41-42,45-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "853e6f712cdd261bf4cd93681412d6a319708fed",
+  "prompts": {},
+  "sessions": {
+    "s_0ea8793bd5d5cc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "363720dd-7cca-445c-ab51-39450c06ed4b",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
