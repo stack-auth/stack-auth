@@ -1,13 +1,11 @@
 import { getHexclaveServerApp } from "@/hexclave";
-import { WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS, createClickhouseWarehouseClient, getClickhouseExternalClient } from "@/lib/clickhouse";
+import { READ_ONLY_SQL_CLICKHOUSE_SETTINGS, resolveAnalyticsQueryTarget } from "@/lib/analytics-query-target";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
-import { getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
@@ -70,25 +68,11 @@ export const POST = createSmartRouteHandler({
       effectiveTimeoutMs = Math.min(body.timeout_ms, maxAllowedMs);
     }
 
-    // Projects with a Data Warehouse connect as their own ClickHouse user instead of
-    // the shared `limited_user`, so queries can also reach their own database. That
-    // user holds `analytics_reader`, so analytics access is unchanged.
-    //
-    // Its `SQL_project_id`/`SQL_branch_id` are pinned as CONST user settings, so they
-    // must not be sent per query — ClickHouse rejects setting a CONST setting at all.
-    //
-    // The shared client bakes its resource ceiling in at construction; do the same
-    // here, or a warehouse project would fall back to the much looser per-query
-    // memory default of its own settings profile and skip the GROUP BY spill and
-    // bounded join algorithm entirely.
-    const warehouseAuth = await getDataWarehouseQueryAuth(auth.tenancy);
-    const client = warehouseAuth == null
-      ? getClickhouseExternalClient()
-      : createClickhouseWarehouseClient(
-        warehouseAuth,
-        getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
-        WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS,
-      );
+    // Which client, and what keeps the query inside this tenancy, both live in
+    // resolveAnalyticsQueryTarget — see there for why a warehouse gets no scoping
+    // settings. Shared with the dashboard AI's SQL tool so the two cannot drift.
+    const target = await resolveAnalyticsQueryTarget(auth.tenancy);
+    const client = target.client;
     try {
       const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
       const resultSet = await Result.fromPromise(client.query({
@@ -96,16 +80,11 @@ export const POST = createSmartRouteHandler({
         query_id: queryId,
         query_params: body.params,
         clickhouse_settings: {
-          ...warehouseAuth == null ? {
-            SQL_project_id: auth.tenancy.project.id,
-            SQL_branch_id: auth.tenancy.branchId,
-          } : {},
+          ...target.scopeSettings,
+          ...READ_ONLY_SQL_CLICKHOUSE_SETTINGS,
           max_execution_time: effectiveTimeoutMs / 1000,
-          readonly: "1",
-          allow_ddl: 0,
           max_result_rows: MAX_RESULT_ROWS.toString(),
           max_result_bytes: MAX_RESULT_BYTES.toString(),
-          result_overflow_mode: "throw",
         },
         format: "JSONEachRow",
       }));
@@ -127,7 +106,7 @@ export const POST = createSmartRouteHandler({
     } finally {
       // The shared limited-user client is reused; a warehouse client is per request,
       // so close it to release its HTTP agent and sockets.
-      if (warehouseAuth != null) {
+      if (target.isWarehouse) {
         await client.close();
       }
     }

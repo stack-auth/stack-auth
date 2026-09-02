@@ -15,7 +15,9 @@ import { useMemo, useState } from "react";
 const MODE_INFO: Record<DataSourceSyncMode, { label: string, description: string }> = {
   cdc: {
     label: "CDC",
-    description: "Reads your write-ahead log. Near real-time, and the only mode that sees deleted rows.",
+    // Deliberately not "write-ahead log": that is Postgres' name for it, and a
+    // Convex source reads a change feed that is not a WAL.
+    description: "Reads the source's change log. Near real-time, and the only mode that sees deleted rows.",
   },
   cursor: {
     label: "Cursor",
@@ -100,6 +102,33 @@ export function hasNoModeChoice(table: DataSourceCatalogTableJson, selected: Dat
   return available.length === 1 && available[0].mode === selected;
 }
 
+/**
+ * Which modes are worth explaining at the top of the picker.
+ *
+ * A mode nothing can use earns a line only when turning it on is something the
+ * customer could actually do — Postgres CDC waiting on `wal_level`. Convex has
+ * exactly one way to sync, so listing "Cursor — available on 0 of 2 tables"
+ * describes a choice that does not exist and reads like a fault.
+ */
+/**
+ * Whether the mode card is worth rendering at all: it compares modes and says
+ * how to unlock one, so with a single mode and nothing to fix it becomes a
+ * heading over one sentence restating what every table row already shows.
+ */
+export function showsModeComparison(explainedModes: DataSourceSyncMode[], hasCdcRemediation: boolean): boolean {
+  return explainedModes.length > 1 || hasCdcRemediation;
+}
+
+export function getExplainedModes(
+  tables: DataSourceCatalogTableJson[],
+  hasCdcRemediation: boolean,
+): DataSourceSyncMode[] {
+  return MODE_ORDER.filter(mode => {
+    const usableSomewhere = tables.some(t => t.available_modes.find(m => m.mode === mode)?.available);
+    return usableSomewhere || (mode === "cdc" && hasCdcRemediation);
+  });
+}
+
 function modeOptions(table: DataSourceCatalogTableJson) {
   return MODE_ORDER.map(mode => {
     const availability = table.available_modes.find(m => m.mode === mode);
@@ -136,6 +165,13 @@ export function StreamPicker(props: {
   const selectedUsesCursor = selected.some(t => selection[`${t.schema_name}.${t.table_name}`]?.mode === "cursor");
   const remediation = cdcAvailability.available ? null : getCdcRemediation(props.catalog.capabilities);
 
+  const explainedModes = useMemo(
+    () => getExplainedModes(props.catalog.tables, remediation != null),
+    [props.catalog, remediation],
+  );
+
+  const showsCard = showsModeComparison(explainedModes, remediation != null);
+
   // Falls back to the same defaults the row renders with, so ticking a table that
   // the catalog grew after mount submits its recommended mode rather than null.
   const defaultSelectionFor = (key: string): Selection => {
@@ -165,50 +201,64 @@ export function StreamPicker(props: {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="p-5">
-        <Typography type="label" className="mb-3 block">Sync modes</Typography>
-        <div className="flex flex-col">
-          {MODE_ORDER.map((mode, index) => {
-            const availableOn = props.catalog.tables.filter(
+      {showsCard && (
+        <Card className="p-5">
+          <Typography type="label" className="mb-3 block">Sync modes</Typography>
+          <div className="flex flex-col">
+            {explainedModes.map((mode, index) => {
+              const availableOn = props.catalog.tables.filter(
               t => t.available_modes.find(m => m.mode === mode)?.available,
             ).length;
-            const isAvailable = mode === "cdc" ? cdcAvailability.available : availableOn > 0;
-            return (
-              <div
-                key={mode}
-                className={`flex items-start gap-3 py-3 ${index > 0 ? "border-t border-border-in-card" : "pt-0"}`}
-              >
-                <span className="w-28 shrink-0 font-medium">{MODE_INFO[mode].label}</span>
-                <span className="flex-1 text-muted-foreground">{MODE_INFO[mode].description}</span>
-                <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                  <span className={`h-1.5 w-1.5 rounded-full ${isAvailable ? "bg-green-500" : "bg-amber-500"}`} />
-                  {mode === "cdc"
-                    ? (cdcAvailability.available ? "Available" : cdcAvailability.reason ?? "Unavailable")
-                    : `Available on ${availableOn} of ${props.catalog.tables.length} tables`}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {remediation != null && (
-          <p className="mt-3 border-t border-border-in-card pt-3 text-xs text-muted-foreground">
-            To enable CDC: {remediation}
-          </p>
-        )}
-        {selectedUsesCursor && (
-          <p className="mt-3 border-t border-border-in-card pt-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Choosing a cursor column.</span>{" "}
-            Pick a timestamp your application sets on every write, such as <code>updated_at</code> — that way
-            edits are picked up as well as new rows. An id or a <code>created_at</code> only moves when a row is
-            inserted, so it suits an append-only table and nothing else.
-          </p>
-        )}
-        {hasKeylessSelection && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Tables without a primary key are written append-only: every version of a row is kept, because there is no key to deduplicate on.
-          </p>
-        )}
-      </Card>
+              const isAvailable = mode === "cdc" ? cdcAvailability.available : availableOn > 0;
+              return (
+                <div
+                  key={mode}
+                  className={`flex items-start gap-3 py-3 ${index > 0 ? "border-t border-border-in-card" : "pt-0"}`}
+                >
+                  <span className="w-28 shrink-0 font-medium">{MODE_INFO[mode].label}</span>
+                  <span className="flex-1 text-muted-foreground">{MODE_INFO[mode].description}</span>
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    <span className={`h-1.5 w-1.5 rounded-full ${isAvailable ? "bg-green-500" : "bg-amber-500"}`} />
+                    {mode === "cdc"
+                      ? (cdcAvailability.available ? "Available" : cdcAvailability.reason ?? "Unavailable")
+                      : `Available on ${availableOn} of ${props.catalog.tables.length} tables`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {remediation != null && (
+            <p className="mt-3 border-t border-border-in-card pt-3 text-xs text-muted-foreground">
+              To enable CDC: {remediation}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {/*
+        Kept outside the mode card. Neither note is about comparing modes, and
+        each is the only place its warning appears anywhere — a Postgres source
+        whose tables have no primary keys hides that card (one mode, nothing to
+        remediate) and would otherwise sync keyless tables on an insert-only
+        cursor without ever saying so.
+      */}
+      {(selectedUsesCursor || hasKeylessSelection) && (
+        <Card className="flex flex-col gap-2 p-5">
+          {selectedUsesCursor && (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Choosing a cursor column.</span>{" "}
+              Pick a timestamp your application sets on every write, such as <code>updated_at</code> — that way
+              edits are picked up as well as new rows. An id or a <code>created_at</code> only moves when a row is
+              inserted, so it suits an append-only table and nothing else.
+            </p>
+          )}
+          {hasKeylessSelection && (
+            <p className="text-xs text-muted-foreground">
+              Tables without a primary key are written append-only: every version of a row is kept, because there is no key to deduplicate on.
+            </p>
+          )}
+        </Card>
+      )}
 
       <Card>
         <table className="w-full text-sm">
@@ -245,7 +295,13 @@ export function StreamPicker(props: {
                     {!syncable ? (
                       <span className="text-xs text-muted-foreground">No mode available</span>
                     ) : hasNoModeChoice(table, current.mode) ? (
-                      <span className="text-xs text-muted-foreground">{MODE_INFO[current.mode ?? "cdc"].label}</span>
+                      // The card that defines each mode is hidden when there is
+                      // nothing to compare, so the label carries its own meaning.
+                      <SimpleTooltip tooltip={MODE_INFO[current.mode ?? "cdc"].description}>
+                        <span className="cursor-help text-xs text-muted-foreground underline decoration-dotted">
+                          {MODE_INFO[current.mode ?? "cdc"].label}
+                        </span>
+                      </SimpleTooltip>
                     ) : (
                       <DesignSelectorDropdown
                         size="sm"

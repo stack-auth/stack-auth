@@ -5,7 +5,7 @@ import { Card, Input, Label, Typography, useToast } from "@/components/ui";
 import type { CreateDataSourceOptions, DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig } from "@hexclave/shared/dist/interface/admin-interface";
 import { LockSimpleIcon, PlugsIcon } from "@phosphor-icons/react";
 import { useRouter } from "@/components/router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -31,6 +31,16 @@ function SourcesPage() {
   const dataSources = adminApp.useDataSources();
   const [view, setView] = useState<View>({ step: "list" });
 
+  // The App Router keeps this segment mounted-but-hidden rather than unmounting
+  // it, so the wizard's step survives navigating away. Returning to Sources —
+  // from a source's detail page, the sidebar, or the browser's Back button —
+  // would otherwise drop the customer back into "Choose tables", with a full
+  // reload the only way out. Effects are torn down when the segment is hidden
+  // and re-created when it is revealed, so this runs on every return.
+  useEffect(() => {
+    setView({ step: "list" });
+  }, []);
+
   switch (view.step) {
     case "catalog": {
       return <SourceCatalog onBack={() => setView({ step: "list" })} onPick={sourceType => setView({ step: "credentials", sourceType })} />;
@@ -44,7 +54,7 @@ function SourcesPage() {
         : <ConnectPostgres onBack={onBack} onConnected={onConnected} />;
     }
     case "tables": {
-      return <ChooseTables dataSource={view.dataSource} catalog={view.catalog} />;
+      return <ChooseTables dataSource={view.dataSource} catalog={view.catalog} onDone={() => setView({ step: "list" })} />;
     }
     default: {
       return <SourceList dataSources={dataSources} onAdd={() => setView({ step: "catalog" })} />;
@@ -79,21 +89,22 @@ function SourceList({ dataSources, onAdd }: { dataSources: DataSourceJson[], onA
       description={`${dataSources.length} connected`}
       actions={<DesignButton onClick={onAdd}>Add source</DesignButton>}
     >
-      <Card className="divide-y divide-border-in-card">
+      <div className="flex flex-col gap-3">
         {dataSources.map(source => {
           const failing = source.streams.filter(stream => stream.status === "failed").length;
           return (
-            <DesignListItemRow
-              key={source.id}
-              size="sm"
-              icon={SOURCE_TYPES[source.type].icon}
-              title={describeSource(source)}
-              subtitle={`${SOURCE_TYPES[source.type].label} · ${source.streams.length} ${source.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
-              onClick={() => router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/data-warehouse/sources/${encodeURIComponent(source.id)}`)}
-            />
+            <Card key={source.id}>
+              <DesignListItemRow
+                size="sm"
+                icon={SOURCE_TYPES[source.type].icon}
+                title={describeSource(source)}
+                subtitle={`${SOURCE_TYPES[source.type].label} · ${source.streams.length} ${source.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
+                onClick={() => router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/data-warehouse/sources/${encodeURIComponent(source.id)}`)}
+              />
+            </Card>
           );
         })}
-      </Card>
+      </div>
     </PageLayout>
   );
 }
@@ -133,13 +144,37 @@ function SourceCatalog({ onBack, onPick }: { onBack: () => void, onPick: (source
 /** The note under every connect form; the secret is handled the same way for all of them. */
 function SecretNote({ what }: { what: string }) {
   return (
-    <div className="mt-5 flex gap-2.5 border-t border-border-in-card pt-4">
-      <LockSimpleIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="mt-5 flex items-center gap-2.5 border-t border-border-in-card pt-4">
+      <LockSimpleIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
       <Typography type="p" variant="secondary" className="text-xs">
-        <span className="font-medium text-foreground">Your {what} is encrypted at rest.</span>{" "}
-        It is sealed with a key from our KMS before it is written, decrypted only in memory for the
-        seconds a sync runs, and never shown again once saved.
+        Your {what} is encrypted at rest.
       </Typography>
+    </div>
+  );
+}
+
+/**
+ * The two things that make a Convex connection fail, stated before the customer
+ * tries rather than after. Both are settings in the Convex dashboard that cannot
+ * be fixed from here, so they are called out rather than left as hint text under
+ * a field.
+ */
+function ConvexRequirements() {
+  return (
+    <div className="rounded-lg border border-border-in-card bg-muted/40 p-4">
+      <Typography type="label" className="mb-2 block">Before you connect</Typography>
+      <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          Your deployment needs <span className="font-medium text-foreground">streaming export</span> enabled,
+          under Settings → Integrations in the Convex dashboard. This requires a{" "}
+          <span className="font-medium text-foreground">Convex Professional plan</span>.
+        </li>
+        <li>
+          The deploy key needs the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">deployment:data:view</code>{" "}
+          permission.
+        </li>
+      </ol>
     </div>
   );
 }
@@ -174,7 +209,8 @@ function ConnectConvex(props: {
     <PageLayout title="Connect Convex" description="A deploy key that can read your data is enough.">
       <DesignButton variant="ghost" className="self-start" onClick={props.onBack}>← Add source</DesignButton>
       <DesignCard>
-        <div className="grid gap-4">
+        <ConvexRequirements />
+        <div className="mt-5 grid gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="data-source-deployment-url">Deployment URL</Label>
             <Input
@@ -192,17 +228,11 @@ function ConnectConvex(props: {
               value={deployKey}
               onChange={event => setDeployKey(event.target.value)}
             />
-            <Typography type="label" variant="secondary" className="text-xs">
-              Generate one in your Convex dashboard with the{" "}
-              <span className="font-mono">deployment:data:view</span> permission. On Convex Cloud,
-              reading the change feed requires a Pro plan.
-            </Typography>
           </div>
         </div>
         <SecretNote what="deploy key" />
-        <div className="mt-5 flex items-center gap-3">
+        <div className="mt-5">
           <DesignButton onClick={connect} loading={connecting} disabled={deploymentUrl.trim() === "" || deployKey.trim() === ""}>Connect</DesignButton>
-          <Typography type="label" variant="secondary">We will read your table list — nothing syncs yet.</Typography>
         </div>
       </DesignCard>
     </PageLayout>
@@ -278,16 +308,19 @@ function ConnectPostgres(props: {
           {field("password", "Password", "password")}
         </div>
         <SecretNote what="password" />
-        <div className="mt-5 flex items-center gap-3">
+        <div className="mt-5">
           <DesignButton onClick={connect} loading={connecting} disabled={!complete}>Connect</DesignButton>
-          <Typography type="label" variant="secondary">We will read your table list — nothing syncs yet.</Typography>
         </div>
       </DesignCard>
     </PageLayout>
   );
 }
 
-function ChooseTables({ dataSource, catalog }: { dataSource: DataSourceJson, catalog: DataSourceCatalogJson }) {
+function ChooseTables({ dataSource, catalog, onDone }: {
+  dataSource: DataSourceJson,
+  catalog: DataSourceCatalogJson,
+  onDone: () => void,
+}) {
   const adminApp = useAdminApp();
   const router = useRouter();
   const { toast } = useToast();
@@ -295,6 +328,7 @@ function ChooseTables({ dataSource, catalog }: { dataSource: DataSourceJson, cat
   const save = async (streams: DataSourceStreamConfig[]) => {
     try {
       await adminApp.setDataSourceStreams(dataSource.id, streams);
+      onDone();
       router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/data-warehouse/sources/${encodeURIComponent(dataSource.id)}`);
     } catch (error) {
       toast({ variant: "destructive", title: "Could not save", description: error instanceof Error ? error.message : String(error) });
@@ -303,7 +337,7 @@ function ChooseTables({ dataSource, catalog }: { dataSource: DataSourceJson, cat
 
   return (
     <PageLayout title="Choose tables" description="We picked a mode for each table. Change any of them.">
-      <StreamPicker catalog={catalog} submitLabel="Start syncing" onSubmit={save} />
+      <StreamPicker catalog={catalog} submitLabel="Start syncing" onSubmit={save} onCancel={onDone} />
     </PageLayout>
   );
 }

@@ -1,5 +1,6 @@
-import { getClickhouseExternalClient } from "@/lib/clickhouse";
+import { READ_ONLY_SQL_CLICKHOUSE_SETTINGS, resolveAnalyticsQueryTarget } from "@/lib/analytics-query-target";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
+import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { ClickHouseError } from "@clickhouse/client";
 import { tool } from "ai";
 import { z } from "zod";
@@ -25,19 +26,24 @@ export function createSqlQueryTool(targetProjectId?: string | null) {
         .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include a LIMIT clause unless the system prompt tells you to do otherwise."),
     }),
     execute: async ({ query }: { query: string }) => {
-      const client = getClickhouseExternalClient();
+      // Resolved per call rather than when the tool is built: a project can
+      // provision a warehouse mid-conversation, and the answer decides which
+      // database the model is even looking at.
+      const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+      if (tenancy == null) {
+        return { success: false as const, error: `No such project: ${projectId}` };
+      }
+      const target = await resolveAnalyticsQueryTarget(tenancy);
+      const client = target.client;
       try {
         const resultSet = await client.query({
           query,
           clickhouse_settings: {
-            SQL_project_id: projectId,
-            SQL_branch_id: branchId,
+            ...target.scopeSettings,
+            ...READ_ONLY_SQL_CLICKHOUSE_SETTINGS,
             max_execution_time: 5,
-            readonly: "1",
-            allow_ddl: 0,
             max_result_rows: "10000",
             max_result_bytes: (10 * 1024 * 1024).toString(),
-            result_overflow_mode: "throw",
           },
           format: "JSONEachRow",
         });
@@ -78,6 +84,12 @@ export function createSqlQueryTool(targetProjectId?: string | null) {
           success: false as const,
           error: getSafeClickhouseErrorMessage(error, query),
         };
+      } finally {
+        // The shared client is reused across requests; a warehouse client is
+        // built per call, so close it to release its sockets.
+        if (target.isWarehouse) {
+          await client.close();
+        }
       }
     },
   });

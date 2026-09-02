@@ -58,11 +58,22 @@ export class ConvexRequestError extends StatusError {
   }
 }
 
-/** Convex's code for a cursor it can no longer interpret, verified against a live backend. */
+/**
+ * Convex's answer for a cursor it can no longer interpret: 400 with this code,
+ * verified against a live backend.
+ *
+ * Both halves are checked wherever this is used. The caller's response is to
+ * drop and rebuild every one of the customer's destination tables, and the code
+ * is a string chosen by the deployment we are talking to — so a 502 whose body
+ * happens to carry it must not trigger that.
+ */
 export const CONVEX_INVALID_CURSOR_CODE = "InvalidDataSyncCursor";
+const CONVEX_INVALID_CURSOR_STATUS = 400;
 
 export function isInvalidCursorError(error: unknown): boolean {
-  return error instanceof ConvexRequestError && error.convexCode === CONVEX_INVALID_CURSOR_CODE;
+  return error instanceof ConvexRequestError
+    && error.upstreamStatus === CONVEX_INVALID_CURSOR_STATUS
+    && error.convexCode === CONVEX_INVALID_CURSOR_CODE;
 }
 
 /**
@@ -146,6 +157,27 @@ async function sendRequest(
 ): Promise<RawResponse> {
   const transport = url.protocol === "https:" ? https : http;
   return await new Promise<RawResponse>((resolve, reject) => {
+    // A wall-clock deadline as well as the idle timeout below. `setTimeout` on a
+    // request only fires after a period of *inactivity*, so a deployment that
+    // trickles one byte every few seconds would hold the request open
+    // indefinitely — and the whole point of bounding this is that a driver which
+    // outlives its sync lease lets a second worker write the same destination
+    // tables concurrently.
+    const deadline = setTimeout(
+      () => request.destroy(new Error(`exceeded ${REQUEST_TIMEOUT_MS}ms`)),
+      REQUEST_TIMEOUT_MS,
+    );
+    const settle = {
+      resolve: (value: RawResponse) => {
+        clearTimeout(deadline);
+        resolve(value);
+      },
+      reject: (error: unknown) => {
+        clearTimeout(deadline);
+        reject(error);
+      },
+    };
+
     const request = transport.request(url, {
       method: options.method,
       lookup: safeDataSourceDnsLookup,
@@ -161,7 +193,7 @@ async function sendRequest(
       const status = response.statusCode ?? 0;
       if (status >= 300 && status < 400) {
         response.destroy();
-        reject(new StatusError(
+        settle.reject(new StatusError(
           StatusError.BadRequest,
           "The Convex deployment URL redirects. Point the source at the deployment's own URL.",
         ));
@@ -174,19 +206,19 @@ async function sendRequest(
         received += chunk.length;
         if (received > MAX_RESPONSE_BYTES) {
           response.destroy();
-          reject(new StatusError(StatusError.BadRequest, "The Convex deployment returned more data than we can read in one page."));
+          settle.reject(new StatusError(StatusError.BadRequest, "The Convex deployment returned more data than we can read in one page."));
           return;
         }
         chunks.push(chunk);
       });
-      response.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
-      response.on("error", reject);
+      response.on("end", () => settle.resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
+      response.on("error", settle.reject);
     });
 
     request.setTimeout(REQUEST_TIMEOUT_MS, () => {
       request.destroy(new Error(`timed out after ${REQUEST_TIMEOUT_MS}ms`));
     });
-    request.on("error", reject);
+    request.on("error", settle.reject);
     if (options.body !== undefined) request.write(options.body);
     request.end();
   });
@@ -222,7 +254,7 @@ export async function convexRequest(
   }
 
   if (response.status < 200 || response.status >= 300) {
-    throw describeFailure(response.status, response.body);
+    throw describeFailure(response.status, response.body, path);
   }
   // Some Convex routes acknowledge success with an empty body rather than
   // `null`, so an empty response is a result, not a parse failure.
@@ -238,36 +270,65 @@ export async function convexRequest(
 }
 
 /**
+ * What each of Convex's error codes means for the person who has to fix it.
+ *
+ * Keyed on the code rather than the status, because Convex uses 403 for both a
+ * rejected key and a deployment that simply has streaming export switched off —
+ * and telling someone their key is wrong when it is not sends them to re-issue a
+ * perfectly good key.
+ *
+ * A Map rather than an object literal: the code comes from the customer's
+ * deployment, and `Object.prototype` keys pass the identifier check, so
+ * `{"code":"toString"}` would otherwise select a function and report
+ * "function toString() { [native code] }" to the customer.
+ */
+const FAILURE_BY_CONVEX_CODE = new Map<string, string>([
+  ["StreamingExportNotEnabled",
+    "This Convex deployment does not have streaming export enabled. Turn it on in the Convex dashboard under "
+    + "Deployment Settings -> Integrations; it requires a Convex Professional plan."],
+  ["InvalidDeployKey", 'Convex rejected the deploy key. It needs the "deployment:data:view" permission.'],
+]);
+
+/**
  * Turns a failure into something the customer can act on.
  *
- * Deliberately built from the status code and Convex's own error *code* — never
- * from the response body. The deployment URL is customer-supplied, so the body
- * is attacker-chosen content; reflecting it into an error that is returned by
- * the API and persisted on `DataSource.error` would make this endpoint a way to
- * read arbitrary responses back out. The body goes to the error tracker instead,
+ * Deliberately built from Convex's own error *code* and the status — never from
+ * the response body. The deployment URL is customer-supplied, so the body is
+ * attacker-chosen content; reflecting it into an error that is returned by the
+ * API and persisted on `DataSource.error` would make this endpoint a way to read
+ * arbitrary responses back out. The body goes to the error tracker instead,
  * where it is useful for debugging and not a channel.
  */
-function describeFailure(status: number, body: string): ConvexRequestError {
+export function describeFailure(status: number, body: string, path: string): ConvexRequestError {
   const code = extractCode(body);
   // A cursor Convex has forgotten is expected and recovered from, so it is not
   // worth waking anyone; everything else is recorded here rather than reflected.
-  if (code !== CONVEX_INVALID_CURSOR_CODE) {
-    captureError("convex-data-source-request", new Error(`Convex returned ${status} (${code ?? "no code"})`));
+  // Gated on the status as well, so a 500 that merely carries that code is still
+  // reported instead of disappearing. The path is ours, so naming it costs
+  // nothing and saves reading a stack trace to find out which call failed.
+  const isExpectedStaleCursor = status === CONVEX_INVALID_CURSOR_STATUS && code === CONVEX_INVALID_CURSOR_CODE;
+  if (!isExpectedStaleCursor) {
+    captureError(
+      "convex-data-source-request",
+      new Error(`Convex returned ${status} (${code ?? "no code"}) for ${path}`),
+    );
   }
+
+  const known = code == null ? undefined : FAILURE_BY_CONVEX_CODE.get(code);
+  if (known !== undefined) return new ConvexRequestError(status, code, known);
 
   if (status === 401 || status === 403) {
     return new ConvexRequestError(status, code, 'Convex rejected the deploy key. It needs the "deployment:data:view" permission.');
   }
   if (status === 402) {
-    return new ConvexRequestError(status, code, "Convex refused the change feed. Streaming export requires a Convex Pro plan.");
+    return new ConvexRequestError(status, code, "Convex refused the request. Streaming export requires a Convex Professional plan.");
   }
-  return new ConvexRequestError(
-    status,
-    code,
-    // The code is Convex's own short identifier (`InvalidDataSyncCursor`), not
-    // free-form text from the response.
-    code == null ? `Convex returned ${status}.` : `Convex returned ${status} (${code}).`,
-  );
+  // An unrecognised code is deliberately NOT put in the message. It is upstream-
+  // chosen text that would be shown to a project admin and persisted on
+  // `DataSource.error` — `Contact_support_at_evil_example_com` is a valid
+  // identifier, and our UI would lend it credibility. It stays on the error for
+  // branching, and reaches engineers through the capture above.
+  return new ConvexRequestError(status, code, `Convex returned ${status}.`);
 }
 
 /** Convex's structured error code, if the body is its documented error shape. */
