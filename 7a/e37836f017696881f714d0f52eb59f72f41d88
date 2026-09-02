@@ -1,0 +1,19 @@
+.gitignore
+  s_e697fe3a74d7de::t_de0fa7fd7b8951 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "7ae37836f017696881f714d0f52eb59f72f41d88",
+  "prompts": {},
+  "sessions": {
+    "s_e697fe3a74d7de": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ffe1b0cb-452e-499a-8f0a-d1e7f5f078af",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
