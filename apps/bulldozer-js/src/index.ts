@@ -3,7 +3,6 @@ import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/s
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
@@ -394,35 +393,11 @@ function readNonNegativeSafeIntegerField(body: Record<string, unknown>, fieldNam
   return value;
 }
 
-/**
- * Row data as it is persisted: the JSON body's `rowData` object, parsed into
- * Piledriver's value domain at the HTTP boundary so the write path never has to
- * assert what it is storing.
- */
-type PiledriverRowData = { [key: string]: PiledriverObject };
-
-function readRowData(body: unknown): PiledriverRowData {
+function readRowData(body: unknown): Record<string, unknown> {
   const record = readObjectBody(body);
   const rowData = record.rowData;
-  if (!isRecord(rowData)) throw new StatusError(StatusError.BadRequest, "Expected rowData object");
-  const result: PiledriverRowData = {};
-  for (const [key, value] of Object.entries(rowData)) result[key] = readPiledriverValue(value, `rowData.${key}`);
-  return result;
-}
-
-// The framework hands us JSON.parse output for JSON bodies, so this never
-// rejects a well-formed request — it exists so a non-JSON body value (e.g. a
-// multipart File) can never reach storage as something Piledriver cannot
-// represent.
-function readPiledriverValue(value: unknown, path: string): PiledriverObject {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) return value.map((entry, index) => readPiledriverValue(entry, `${path}[${index}]`));
-  if (isRecord(value)) {
-    const result: PiledriverRowData = {};
-    for (const [key, entry] of Object.entries(value)) result[key] = readPiledriverValue(entry, `${path}.${key}`);
-    return result;
-  }
-  throw new StatusError(StatusError.BadRequest, `Expected a JSON value at ${path}`);
+  if (typeof rowData !== "object" || rowData == null || Array.isArray(rowData)) throw new StatusError(StatusError.BadRequest, "Expected rowData object");
+  return Object.fromEntries(Object.entries(rowData));
 }
 
 function readRowTenancyId(rowData: Record<string, unknown>) {
@@ -463,14 +438,6 @@ async function latestRowData<T>(options: { tableId: string, tenancyId: string, c
 // index), rather than linearly skipping every future-dated row. Mirrors the `balanceAt` test helper.
 async function latestItemQuantitiesRowAsOf<T>(options: { tableId: string, tenancyId: string, customerType: CustomerType, customerId: string }, asOfMillis: number): Promise<T | null> {
   const { snapshot } = await bulldozerDb.getSnapshot();
-  return await latestItemQuantitiesRowAsOfSnapshot(snapshot, options, asOfMillis);
-}
-
-async function latestItemQuantitiesRowAsOfSnapshot<T>(
-  snapshot: BulldozerSnapshot,
-  options: { tableId: string, tenancyId: string, customerType: CustomerType, customerId: string },
-  asOfMillis: number,
-): Promise<T | null> {
   const range = { reverse: true, lt: itemQuantitiesLedgerUpperBoundAsOf(asOfMillis), limit: 1 };
   for await (const row of snapshot.listRowsInGroup({ tableId: options.tableId, groupKey: customerGroupKey(options), range })) {
     const txnEffectiveAtMillis = (row.rowData as { txnEffectiveAtMillis: number }).txnEffectiveAtMillis;
@@ -481,7 +448,7 @@ async function latestItemQuantitiesRowAsOfSnapshot<T>(
   return null;
 }
 
-async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: PiledriverRowData }): Promise<void> {
+async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: Record<string, unknown> }): Promise<void> {
   if (readRowTenancyId(options.rowData) !== options.tenancyId) {
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
@@ -490,7 +457,7 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
-      newRowData: options.rowData,
+      newRowData: options.rowData as unknown as PiledriverObject,
     }));
   } catch (error) {
     // Attach which table/row poisoned the cascade so Sentry's beforeSend surfaces it
@@ -541,7 +508,14 @@ function readBatchRows(body: unknown): unknown[] {
  * — we validate each row matches the URL tenancy, same as the single routes.
  */
 async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown, rowIdField?: string }) {
-  const rows = readStoredRowsFromBodies(options);
+  const idField = options.rowIdField ?? "id";
+  const rows = readBatchRows(options.body).map(element => {
+    const rowData = readRowData(element);
+    if (readRowTenancyId(rowData) !== options.tenancyId) {
+      throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(rowData)} does not match URL tenancyId ${options.tenancyId}`);
+    }
+    return { rowIdentifier: readStringField(rowData, idField), newRowData: rowData as unknown as PiledriverObject };
+  });
   try {
     await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
   } catch (error) {
@@ -555,86 +529,6 @@ async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: st
       rowCount: rows.length,
     });
   }
-}
-
-function readStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown, rowIdField?: string }) {
-  const idField = options.rowIdField ?? "id";
-  return readBatchRows(options.body).map(element => {
-    const rowData = readRowData(element);
-    if (readRowTenancyId(rowData) !== options.tenancyId) {
-      throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(rowData)} does not match URL tenancyId ${options.tenancyId}`);
-    }
-    return {
-      rowIdentifier: readStringField(rowData, idField),
-      rowData,
-      newRowData: rowData,
-    };
-  });
-}
-
-async function tryDecreaseItemQuantities(options: {
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-  body: unknown,
-}): Promise<{ insufficientItemId: string | null }> {
-  const rows = readStoredRowsFromBodies({
-    tenancyId: options.tenancyId,
-    tableId: schema.manualItemQuantityChanges,
-    body: options.body,
-  });
-  const itemIds = new Set<string>();
-  for (const row of rows) {
-    const rowData = row.rowData;
-    if (
-      rowData.customerType !== options.customerType
-      || rowData.customerId !== options.customerId
-    ) {
-      throw new StatusError(StatusError.BadRequest, "Manual item quantity change row does not match URL customer");
-    }
-    const quantity = rowData.quantity;
-    if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity >= 0) {
-      throw new StatusError(StatusError.BadRequest, "Conditional item quantity changes must be negative safe integers");
-    }
-    itemIds.add(readStringField(rowData, "itemId"));
-  }
-
-  let insufficientItemId: string | null = null;
-  await bulldozerDb.withSnapshot(async snapshot => {
-    const mutation = await snapshot.setOrDeleteRows({
-      tableId: schema.manualItemQuantityChanges,
-      rows,
-    });
-    const quantities = await latestItemQuantitiesRowAsOfSnapshot<{ itemQuantities: Record<string, number> }>(
-      mutation.newSnapshot,
-      {
-        tableId: schema.itemQuantities,
-        tenancyId: options.tenancyId,
-        customerType: options.customerType,
-        customerId: options.customerId,
-      },
-      Date.now(),
-    );
-    for (const itemId of itemIds) {
-      if ((quantities?.itemQuantities[itemId] ?? 0) < 0) {
-        insufficientItemId = itemId;
-        return snapshot;
-      }
-    }
-    return mutation;
-  });
-  return { insufficientItemId };
-}
-
-async function deleteStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown }): Promise<void> {
-  const rows = readStoredRowsFromBodies(options).map((row) => ({
-    rowIdentifier: row.rowIdentifier,
-    newRowData: undefined,
-  }));
-  await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({
-    tableId: options.tableId,
-    rows,
-  }));
 }
 
 async function getOwnedProductsForCustomer(options: { tenancyId: string, customerType: CustomerType, customerId: string }) {
@@ -710,6 +604,10 @@ function parseSourceId(row: TransactionRow): string {
   if (row.type === "refund") return row.txnId;
   if (row.type === "subscription-renewal") return row.txnId.replace(/^sub-renewal:/, "");
   return row.txnId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type InlineProduct = Extract<TransactionEntry, { type: "product_grant" }>["product"];
@@ -942,6 +840,7 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
         type: mapLedgerTransactionTypeToApiType(listedRow.type as LedgerTransactionType),
         customer_type: listedRow.customerType,
         customer_id: listedRow.customerId,
+        renewal_target_subscription_id: listedRow.renewalTargetSubscriptionId ?? null,
         entries: listedRow.entries.flatMap(entry => {
           const mapped = mapLedgerEntry(entry);
           return mapped === null ? [] : [mapped];
@@ -1170,22 +1069,6 @@ const app = new Elysia({ adapter: node() })
     const rowData = readRowData(body);
     if (rowData.customerType !== params.customerType || rowData.customerId !== params.customerId) throw new StatusError(StatusError.BadRequest, "Manual item quantity change row does not match URL customer");
     await setStoredRow({ tenancyId: params.tenancyId, tableId: schema.manualItemQuantityChanges, rowId: readStringField(rowData, "id"), rowData });
-    return ok();
-  }))
-  .post("/v1/:tenancyId/customers/:customerType/:customerId/manual-item-quantity-changes/try-decrease-batch", ({ params, body }) => handler("try-decrease-manual-item-quantity-changes", async () => {
-    return await tryDecreaseItemQuantities({
-      tenancyId: params.tenancyId,
-      customerType: parseCustomerType(params.customerType),
-      customerId: params.customerId,
-      body,
-    });
-  }))
-  .post("/v1/:tenancyId/manual-item-quantity-changes/delete-batch", ({ params, body }) => handler("delete-manual-item-quantity-changes-batch", async () => {
-    await deleteStoredRowsFromBodies({
-      tenancyId: params.tenancyId,
-      tableId: schema.manualItemQuantityChanges,
-      body,
-    });
     return ok();
   }))
   .post("/v1/:tenancyId/stripe/subscription-invoices/changed", ({ params, body }) => handler("set-subscription-invoice", async () => {

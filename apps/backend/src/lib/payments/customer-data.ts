@@ -27,7 +27,7 @@ export async function getOwnedProductsForCustomer(options: {
       tenancyId: options.tenancyId,
       customerType: options.customerType,
       customerId: options.customerId,
-      suffixSegments: ["owned-products"],
+      suffix: "owned-products",
     }),
   });
   return response.ownedProducts;
@@ -50,7 +50,7 @@ export async function getItemQuantitiesForCustomer(options: {
       tenancyId: options.tenancyId,
       customerType: options.customerType,
       customerId: options.customerId,
-      suffixSegments: ["item-quantities"],
+      suffix: "item-quantities",
     }),
   });
   return response.itemQuantities;
@@ -95,7 +95,7 @@ export async function getSubscriptionMapForCustomer(options: {
       tenancyId: options.tenancyId,
       customerType: options.customerType,
       customerId: options.customerId,
-      suffixSegments: ["subscriptions"],
+      suffix: "subscriptions",
     }),
   });
   return response.subscriptions;

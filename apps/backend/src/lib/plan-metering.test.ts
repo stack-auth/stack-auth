@@ -2,8 +2,8 @@ import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  bulldozerDeleteItemQuantityChanges: vi.fn(),
-  bulldozerTryDecreaseItemQuantityChanges: vi.fn(),
+  bulldozerWriteItemQuantityChanges: vi.fn(),
+  getItemQuantitiesForCustomer: vi.fn(),
   createMany: vi.fn(),
   deleteMany: vi.fn(),
   findMany: vi.fn(),
@@ -18,12 +18,11 @@ vi.mock("@/lib/payments", () => ({
 }));
 
 vi.mock("@/lib/payments/bulldozer-dual-write", () => ({
-  bulldozerDeleteItemQuantityChanges: mocks.bulldozerDeleteItemQuantityChanges,
-  bulldozerTryDecreaseItemQuantityChanges: mocks.bulldozerTryDecreaseItemQuantityChanges,
+  bulldozerWriteItemQuantityChanges: mocks.bulldozerWriteItemQuantityChanges,
 }));
 
 vi.mock("@/lib/payments/customer-data", () => ({
-  getItemQuantitiesForCustomer: vi.fn(),
+  getItemQuantitiesForCustomer: mocks.getItemQuantitiesForCustomer,
 }));
 
 vi.mock("@/prisma-client", () => ({
@@ -54,8 +53,12 @@ describe("plan metering persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getPrismaClientForTenancy.mockResolvedValue({});
-    mocks.bulldozerDeleteItemQuantityChanges.mockResolvedValue(undefined);
-    mocks.bulldozerTryDecreaseItemQuantityChanges.mockResolvedValue({ insufficientItemId: null });
+    mocks.bulldozerWriteItemQuantityChanges.mockResolvedValue(undefined);
+    mocks.getItemQuantitiesForCustomer.mockResolvedValue({
+      [ITEM_IDS.analyticsEvents]: 1_000_000,
+      [ITEM_IDS.analyticsSpans]: 1_000_000,
+      [ITEM_IDS.sessionReplays]: 1_000_000,
+    });
     mocks.createMany.mockResolvedValue({ count: 1 });
     mocks.deleteMany.mockResolvedValue({ count: 1 });
     mocks.findMany.mockResolvedValue([]);
@@ -77,19 +80,21 @@ describe("plan metering persistence", () => {
       idempotency: { key: "analytics-events:tenancy:batch", createdAt: new Date("2026-08-04T12:00:00.123Z") },
     };
     const debitResult = await tryDecreasePlanItemQuantities("billing-team", [debit]);
-    const originalChange = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.calls[0][0][0];
+    const originalChange = mocks.bulldozerWriteItemQuantityChanges.mock.calls[0][0][0];
 
     await rollbackPlanItemDebits("billing-team", [debit], new Set(debitResult.createdChangeIds));
 
-    expect(mocks.bulldozerDeleteItemQuantityChanges).toHaveBeenCalledOnce();
-    expect(mocks.bulldozerDeleteItemQuantityChanges).toHaveBeenCalledWith([originalChange]);
+    expect(mocks.bulldozerWriteItemQuantityChanges).toHaveBeenNthCalledWith(2, [{
+      ...originalChange,
+      quantity: 0,
+    }]);
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: { tenancyId: "internal-tenancy", id: { in: [originalChange.id] } },
     });
     expect(mocks.executeRaw).toHaveBeenCalledTimes(2);
   });
 
-  it("holds the customer lock while compensating a failed debit persistence", async () => {
+  it("holds the customer lock while persisting a debit and does not write if Postgres fails", async () => {
     const persistenceError = new Error("Postgres unavailable");
     mocks.createMany.mockRejectedValueOnce(persistenceError);
 
@@ -100,11 +105,12 @@ describe("plan metering persistence", () => {
     }])).rejects.toBe(persistenceError);
 
     const lockOrder = mocks.executeRaw.mock.invocationCallOrder.at(0);
-    const debitOrder = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.invocationCallOrder.at(0);
-    if (lockOrder === undefined || debitOrder === undefined) throw new Error("Expected lock and debit calls");
-    expect(lockOrder).toBeLessThan(debitOrder);
-    expect(mocks.bulldozerDeleteItemQuantityChanges).toHaveBeenCalledOnce();
+    const createOrder = mocks.createMany.mock.invocationCallOrder.at(0);
+    if (lockOrder === undefined || createOrder === undefined) throw new Error("Expected lock and persist calls");
+    expect(lockOrder).toBeLessThan(createOrder);
+    expect(mocks.bulldozerWriteItemQuantityChanges).not.toHaveBeenCalled();
   });
+
   it("uses the same valid UUID row and timestamp for an idempotent telemetry debit retry", async () => {
     const createdAt = new Date("2026-08-04T12:00:00.123Z");
     const idempotency = {
@@ -113,10 +119,11 @@ describe("plan metering persistence", () => {
     };
 
     await tryDecreasePlanItemQuantities("billing-team", [{ itemId: ITEM_IDS.analyticsSpans, quantity: 1, idempotency }]);
+    const firstChange = mocks.bulldozerWriteItemQuantityChanges.mock.calls[0][0][0];
+    mocks.findMany.mockResolvedValueOnce([firstChange]);
     await tryDecreasePlanItemQuantities("billing-team", [{ itemId: ITEM_IDS.analyticsSpans, quantity: 1, idempotency }]);
 
-    const firstChange = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.calls[0][0][0];
-    const retryChange = mocks.bulldozerTryDecreaseItemQuantityChanges.mock.calls[1][0][0];
+    const retryChange = mocks.bulldozerWriteItemQuantityChanges.mock.calls[1][0][0];
     expect(firstChange.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(retryChange).toEqual(firstChange);
     expect(firstChange.createdAt).toEqual(createdAt);
@@ -135,10 +142,24 @@ describe("plan metering persistence", () => {
     mocks.findMany.mockResolvedValueOnce([{ id: createdChangeId }]);
     const retry = await tryDecreasePlanItemQuantities("billing-team", [debit]);
     expect(retry.createdChangeIds).toEqual([]);
-    expect(mocks.bulldozerTryDecreaseItemQuantityChanges).toHaveBeenCalledOnce();
+    expect(mocks.bulldozerWriteItemQuantityChanges).toHaveBeenCalledTimes(2);
 
     await rollbackPlanItemDebits("billing-team", [debit], new Set(retry.createdChangeIds));
-    expect(mocks.bulldozerDeleteItemQuantityChanges).not.toHaveBeenCalled();
     expect(mocks.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses a debit that would take a plan item below zero", async () => {
+    mocks.getItemQuantitiesForCustomer.mockResolvedValueOnce({
+      [ITEM_IDS.analyticsEvents]: 1,
+    });
+
+    const result = await tryDecreasePlanItemQuantities("billing-team", [{
+      itemId: ITEM_IDS.analyticsEvents,
+      quantity: 2,
+    }]);
+
+    expect(result).toEqual({ insufficientItemId: ITEM_IDS.analyticsEvents, createdChangeIds: [] });
+    expect(mocks.createMany).not.toHaveBeenCalled();
+    expect(mocks.bulldozerWriteItemQuantityChanges).not.toHaveBeenCalled();
   });
 });

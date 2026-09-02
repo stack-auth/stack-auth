@@ -265,15 +265,6 @@ async function postBulldozerRowsBatch(path: string, rowsData: Record<string, unk
   });
 }
 
-async function deleteBulldozerRowsBatch(path: string, rowsData: Record<string, unknown>[]) {
-  if (rowsData.length === 0) return;
-  await fetchBulldozerServerJson<{ success: true }>({
-    method: "POST",
-    path,
-    body: { rows: rowsData.map((rowData) => ({ rowData })) },
-  });
-}
-
 /**
  * Batch ingress is tenancy-scoped (the URL carries the tenancy), but a backfill
  * page is ordered by (tenancyId, id) and can straddle tenancies. Group first so
@@ -336,47 +327,9 @@ export async function bulldozerWriteItemQuantityChange(
       tenancyId: change.tenancyId,
       customerType: lowerCustomerType(change.customerType),
       customerId: change.customerId,
-      suffixSegments: ["manual-item-quantity-changes"],
+      suffix: "manual-item-quantity-changes",
     }),
     itemQuantityChangeToStoredRow(change),
-  );
-}
-
-export async function bulldozerTryDecreaseItemQuantityChanges(
-  changes: Parameters<typeof itemQuantityChangeToStoredRow>[0][],
-): Promise<{ insufficientItemId: string | null }> {
-  if (changes.length === 0) return { insufficientItemId: null };
-  const first = changes[0];
-  const customerType = lowerCustomerType(first.customerType);
-  for (const change of changes) {
-    if (
-      change.tenancyId !== first.tenancyId
-      || change.customerId !== first.customerId
-      || lowerCustomerType(change.customerType) !== customerType
-    ) {
-      throw new Error("Conditional item quantity changes must belong to one customer");
-    }
-  }
-  return await fetchBulldozerServerJson<{ insufficientItemId: string | null }>({
-    method: "POST",
-    path: bulldozerCustomerPath({
-      tenancyId: first.tenancyId,
-      customerType,
-      customerId: first.customerId,
-      suffixSegments: ["manual-item-quantity-changes", "try-decrease-batch"],
-    }),
-    body: { rows: changes.map((change) => ({ rowData: itemQuantityChangeToStoredRow(change) })) },
-  });
-}
-
-export async function bulldozerDeleteItemQuantityChanges(
-  changes: Parameters<typeof itemQuantityChangeToStoredRow>[0][],
-): Promise<void> {
-  if (changes.length === 0) return;
-  const first = changes[0];
-  await deleteBulldozerRowsBatch(
-    `/v1/${encodeURIComponent(first.tenancyId)}/manual-item-quantity-changes/delete-batch`,
-    changes.map(itemQuantityChangeToStoredRow),
   );
 }
 
@@ -393,17 +346,38 @@ export async function bulldozerWriteManualTransaction(
 /**
  * Prisma-then-Bulldozer dual-write for a refund manual transaction. Shared by
  * the subscription and OTP refund handlers so field updates stay in sync.
+ *
+ * Upsert is the retry path for a *reused* `txnId` (see `makeRefundTxnId`):
+ * same-payload retries after Prisma-ok / Bulldozer-fail converge on one row.
+ * A freshly minted random id would create a second Prisma row instead.
+ *
+ * On conflict the first persisted row is immutable — `update: {}` keeps
+ * effectiveAt / entries / createdAt from the original attempt. We then
+ * dual-write *that* persisted row to Bulldozer (not the newly computed
+ * retry payload), so a late retry cannot shift ledger timestamps or
+ * recompute revocation/expiry entries under the same txnId.
  */
 export async function persistRefundManualTransaction(
   prisma: { manualTransaction: { upsert: (args: {
     where: { tenancyId_txnId: { tenancyId: string, txnId: string } },
     create: ReturnType<typeof manualTransactionToPrismaRow>,
-    update: Omit<ReturnType<typeof manualTransactionToPrismaRow>, "tenancyId" | "txnId" | "createdAt">,
-  }) => Promise<unknown> } },
+    // Empty on purpose: conflict = keep the canonical first row.
+    update: Record<string, never>,
+  }) => Promise<{
+    tenancyId: string,
+    txnId: string,
+    type: string,
+    customerId: string,
+    customerType: string,
+    paymentProvider: string | null,
+    effectiveAt: Date,
+    createdAt: Date,
+    entries: unknown,
+  }> } },
   refundRow: ManualTransactionRow,
 ): Promise<void> {
   const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
-  await prisma.manualTransaction.upsert({
+  const persisted = await prisma.manualTransaction.upsert({
     where: {
       tenancyId_txnId: {
         tenancyId: refundPrismaRow.tenancyId,
@@ -411,17 +385,12 @@ export async function persistRefundManualTransaction(
       },
     },
     create: refundPrismaRow,
-    update: {
-      type: refundPrismaRow.type,
-      customerId: refundPrismaRow.customerId,
-      customerType: refundPrismaRow.customerType,
-      paymentProvider: refundPrismaRow.paymentProvider,
-      effectiveAt: refundPrismaRow.effectiveAt,
-      // Preserve original create time on conflict (idempotent re-refund / retry).
-      entries: refundPrismaRow.entries,
-    },
+    update: {},
   });
-  await bulldozerWriteManualTransaction(refundRow.txnId, refundRow);
+  await bulldozerWriteManualTransaction(
+    persisted.txnId,
+    prismaManualTransactionToBulldozerRow(persisted),
+  );
 }
 
 // ── Batch dual-write executors (backfill only) ────────────────────────

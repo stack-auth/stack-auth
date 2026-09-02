@@ -60,10 +60,9 @@ export function bulldozerCustomerPath(options: {
   tenancyId: string,
   customerType: "user" | "team" | "custom",
   customerId: string,
-  suffixSegments: readonly [string, ...string[]],
+  suffix: string,
 }): string {
-  const customerPath = urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}`;
-  return `${customerPath}/${options.suffixSegments.map(encodeURIComponent).join("/")}`;
+  return urlString`/v1/${options.tenancyId}/customers/${options.customerType}/${options.customerId}/${options.suffix}`;
 }
 
 export async function fetchBulldozerServerJson<T>(options: {

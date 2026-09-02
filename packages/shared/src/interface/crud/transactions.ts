@@ -11,8 +11,8 @@ import {
   yupUnion,
 } from "../../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../../utils/currency-constants";
-import { typedFromEntries } from "../../utils/objects";
 import { throwErr } from "../../utils/errors";
+import { typedFromEntries } from "../../utils/objects";
 
 
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
@@ -118,6 +118,7 @@ export const transactionSchema = yupObject({
   // entries (`product_revocation`, or none at all) carry no customer fields.
   customer_type: customerTypeSchema.defined(),
   customer_id: yupString().defined(),
+  renewal_target_subscription_id: yupString().nullable().optional(),
   entries: yupArray(transactionEntrySchema).defined(),
   adjusted_by: yupArray(
     yupObject({
