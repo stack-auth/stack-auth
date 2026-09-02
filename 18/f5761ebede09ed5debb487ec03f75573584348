@@ -1,0 +1,57 @@
+apps/backend/scripts/bulldozer-payments-init.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 200
+apps/bulldozer-js/src/payments/schema/item-quantities.test.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 559
+packages/shared/src/interface/crud/transactions.ts
+  s_796032e6e1a22d::t_af83c507149d98 121
+apps/backend/src/lib/bulldozer-server-client.test.ts
+  s_796032e6e1a22d::t_20b7e435c2f59f 218
+apps/backend/src/lib/plan-metering.test.ts
+  s_796032e6e1a22d::t_e71a3cd239e397 5-6,21,25,56-61,83,87-90,97,108-111,113,122-123,126,145,150-163
+  s_796032e6e1a22d::t_3c9e9889d1c3e7 164
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_796032e6e1a22d::t_42af185eee1c24 349-358,364-376,380,388,390-393
+  s_796032e6e1a22d::t_b486a9e085fec1 330
+apps/backend/src/lib/bulldozer-server-client.ts
+  s_796032e6e1a22d::t_1cd6f50ac4db10 63,65
+apps/backend/src/lib/payments/customer-data.ts
+  s_796032e6e1a22d::t_fa2273b8b0b0cf 30
+  s_796032e6e1a22d::t_a0147795a3cfbb 53
+  s_796032e6e1a22d::t_a5ddef9b24bcee 98
+apps/bulldozer-js/src/payments/schema/performance.test.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 321
+apps/bulldozer-js/src/payments/schema/index.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 895,906,921,941,951,959,968,972
+apps/backend/src/lib/plan-metering.ts
+  s_796032e6e1a22d::t_ddbf5cbc287d8a 2
+  s_796032e6e1a22d::t_3024bda3cb3747 180-185,187-197,199,206-207,210-211
+  s_796032e6e1a22d::t_b1448603f94816 256-262
+apps/bulldozer-js/src/index.ts
+  s_796032e6e1a22d::t_4eb5581e34701c 396,399-400,451,460,511-518,609-612,843
+apps/bulldozer-js/package.json
+  s_796032e6e1a22d::t_90674ffc7463d7 3
+apps/bulldozer-js/src/payments/schema/index.test.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 64,113,121-123,638,677
+apps/bulldozer-js/src/payments/schema/types.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 146-150
+apps/backend/src/lib/payments/schema/types.ts
+  s_796032e6e1a22d::t_b0532806d714a8 291-295
+apps/backend/src/lib/payments/bulldozer-dual-write.persist-refund.test.ts
+  s_796032e6e1a22d::t_90674ffc7463d7 1-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "18f5761ebede09ed5debb487ec03f75573584348",
+  "prompts": {},
+  "sessions": {
+    "s_796032e6e1a22d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8f82a761-55f1-4daa-a093-9b0ea110640b",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
