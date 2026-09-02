@@ -1,0 +1,21 @@
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_e3e3e4827afb1c::t_97701725333bcc 3
+docs-mintlify/guides/getting-started/setup.mdx
+  s_e3e3e4827afb1c::t_97701725333bcc 9,1172,1194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "79331ac8f30cc64f428936cf0e1323449615d2bd",
+  "prompts": {},
+  "sessions": {
+    "s_e3e3e4827afb1c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3d5188cd-0a2c-4f46-a3c7-73c5d024eecf",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
