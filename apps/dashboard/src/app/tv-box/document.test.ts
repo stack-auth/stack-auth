@@ -50,30 +50,24 @@ describe("TV Box HTML document", () => {
 });
 
 describe("TV Box API origin selection", () => {
-  it("uses the configured browser API outside Quick Tunnel development", () => {
+  it("prefers the configured browser API", () => {
     expect(resolveTvBoxApiConfiguration({
       configuredApiUrl: "https://api.hexclave.com",
       configuredBrowserApiUrl: "https://browser-api.hexclave.com",
-      nodeEnvironment: "production",
-      quickTunnelEnabled: false,
     })).toEqual({ mode: "configured", apiBaseUrl: "https://browser-api.hexclave.com" });
   });
 
-  it("uses the browser origin only for the explicit development transport", () => {
+  it("uses the configured API when no browser-specific API is set", () => {
     expect(resolveTvBoxApiConfiguration({
       configuredApiUrl: "http://localhost:8102",
       configuredBrowserApiUrl: undefined,
-      nodeEnvironment: "development",
-      quickTunnelEnabled: true,
-    })).toEqual({ mode: "browser-origin" });
+    })).toEqual({ mode: "configured", apiBaseUrl: "http://localhost:8102" });
   });
 
-  it("rejects the Quick Tunnel transport outside development", () => {
+  it("rejects a missing API configuration", () => {
     expect(() => resolveTvBoxApiConfiguration({
-      configuredApiUrl: "https://api.hexclave.com",
+      configuredApiUrl: undefined,
       configuredBrowserApiUrl: undefined,
-      nodeEnvironment: "production",
-      quickTunnelEnabled: true,
-    })).toThrowError(/cannot be used outside development/);
+    })).toThrowError(/not configured/);
   });
 });
