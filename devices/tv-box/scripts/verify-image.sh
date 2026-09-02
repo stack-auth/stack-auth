@@ -27,12 +27,19 @@ if find "$rootfs/var/lib/hexclave-tv-box" -mindepth 1 -type f -print -quit | gre
   printf '%s\n' 'Image contains initialized TV Box state.' >&2
   exit 1
 fi
+if find "$state/network-connections" -mindepth 1 -print -quit | grep -q .; then
+  printf '%s\n' 'Image contains a saved customer network.' >&2
+  exit 1
+fi
 if find "$state" -mindepth 1 ! -type d -print -quit | grep -q .; then
   printf '%s\n' 'Image state partition contains initialized device data.' >&2
   exit 1
 fi
 state_directories=$(find "$state" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort)
-expected_state_directories=$(printf '%s\n' journal network-connections | LC_ALL=C sort)
+# mke2fs creates lost+found for every ext filesystem; it is filesystem
+# scaffolding, not initialized device state. Keep the allowlist exact so image
+# verification still rejects credentials, browser data, and saved networks.
+expected_state_directories=$(printf '%s\n' journal lost+found network-connections | LC_ALL=C sort)
 if [ "$state_directories" != "$expected_state_directories" ]; then
   printf '%s\n' 'Image state partition has an unexpected directory layout.' >&2
   exit 1
@@ -41,10 +48,6 @@ test "$(readlink "$rootfs/etc/NetworkManager/system-connections")" = /var/lib/he
   printf '%s\n' 'NetworkManager profiles are not rooted in TV Box persistent state.' >&2
   exit 1
 }
-if find "$rootfs/var/lib/hexclave-tv-box/network-connections" -mindepth 1 -type f -print -quit | grep -q .; then
-  printf '%s\n' 'Image contains a saved customer network.' >&2
-  exit 1
-fi
 if [ -s "$rootfs/etc/machine-id" ]; then
   printf '%s\n' 'Image contains a pre-generated machine ID.' >&2
   exit 1

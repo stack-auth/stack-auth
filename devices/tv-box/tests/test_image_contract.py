@@ -37,7 +37,16 @@ class ImageContractTests(unittest.TestCase):
         metadata = layer.split("# METAEND", maxsplit=1)[0]
         self.assertNotIn("network-manager", metadata)
         self.assertIn("# X-Env-Layer-Provides: network-activator", metadata)
+        self.assertIn("  suite: trixie", layer)
+        self.assertIn("    - fake-hwclock", layer)
+        self.assertNotIn("systemd-timesyncd,fake-hwclock", layer)
+        self.assertIn('date -d "@${SOURCE_DATE_EPOCH}" > "$1/etc/fake-hwclock.data"', layer)
         self.assertIn("    - network-manager", layer)
+        self.assertNotIn("libraspberrypi-bin", layer)
+        self.assertNotIn("${DIRECTORY}", layer)
+        self.assertIn('cp -a "${SRCROOT}/rootfs/." "$1/"', layer)
+        self.assertIn('cp -a "${SRCROOT}/../src/hexclave_tv_box"', layer)
+        self.assertIn('cp -a "${SRCROOT}/../setup-ui/."', layer)
         self.assertIn(': > "$1/etc/machine-id"', layer)
         self.assertIn(': > "$1/etc/hostname"', layer)
         self.assertIn("bluetooth.service hciuart.service", layer)
@@ -49,14 +58,22 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("status --porcelain --untracked-files=all", build)
 
     def test_pi_zero_image_prebuilds_bounded_state_and_swap_without_runtime_repartitioning(self) -> None:
+        device = (ROOT / "image/layer/hexclave-rpizero2w-armhf.yaml").read_text(encoding="utf-8")
+        self.assertIn("X-Env-Layer-Requires: linux-base,rpi-device-base,rpi-linux-v7", device)
         config = (ROOT / "image/config/hexclave-tv-box-pilot.yaml").read_text(encoding="utf-8")
+        image_layer = (ROOT / "image/image/hexclave-tv-box-image/image.yaml").read_text(encoding="utf-8")
         self.assertIn("layer: hexclave-tv-box-image", config)
+        self.assertIn("# X-Env-Var-assetdir: ${DIRECTORY}", image_layer)
         self.assertIn("state_part_size: 1G", config)
         self.assertIn("swap_part_size: 2G", config)
         image = (ROOT / "image/image/hexclave-tv-box-image/genimage.cfg.in.ext4").read_text(encoding="utf-8")
         self.assertIn('partition-table-type = "mbr"', image)
         self.assertIn("partition tvbox-state", image)
         self.assertIn("partition tvbox-swap", image)
+        self.assertIn("image state.ext4.sparse", image)
+        self.assertIn("image tvbox.swap.sparse", image)
+        self.assertIn("image tvbox.swap {", image)
+        self.assertIn('name = "tvbox.swap"', image)
         setup = (ROOT / "image/image/hexclave-tv-box-image/setup.sh").read_text(encoding="utf-8")
         self.assertIn("/var/lib/hexclave-tv-box/journal /var/log/journal", setup)
         self.assertFalse((ROOTFS / "etc/systemd/system/hexclave-tv-box-storage.service").exists())
@@ -177,12 +194,20 @@ class ImageContractTests(unittest.TestCase):
                 target_is_directory=True,
             )
             (state / "journal").mkdir(parents=True)
+            (state / "lost+found").mkdir()
             (state / "network-connections").mkdir()
 
             command = [str(ROOT / "scripts/verify-image.sh"), str(image), str(rootfs), str(state), str(output)]
             subprocess.run(command, check=True)
             self.assertIn("tv-box.img", (output / "disk-image-sha256.txt").read_text(encoding="utf-8"))
             self.assertTrue((output / "state-sha256.txt").exists())
+
+            saved_network = state / "network-connections/customer.nmconnection"
+            saved_network.write_text("[connection]\n", encoding="utf-8")
+            rejected_network = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.assertNotEqual(rejected_network.returncode, 0)
+            self.assertIn("saved customer network", rejected_network.stdout)
+            saved_network.unlink()
 
             (state / "identity").mkdir()
             (state / "identity/device-id").write_text("cloned", encoding="utf-8")

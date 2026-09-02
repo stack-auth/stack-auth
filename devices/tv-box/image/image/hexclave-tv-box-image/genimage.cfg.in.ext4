@@ -16,6 +16,18 @@ image root.ext4.sparse {
   }
 }
 
+image state.ext4.sparse {
+  android-sparse {
+    image = state.ext4
+  }
+}
+
+image tvbox.swap.sparse {
+  android-sparse {
+    image = tvbox.swap
+  }
+}
+
 image <IMAGE_NAME>.<IMAGE_SUFFIX> {
   hdimage {
     align = 8M
@@ -80,4 +92,10 @@ image state.ext4 {
   }
   size = <STATE_SIZE>
   mountpoint = "/var/lib/hexclave-tv-box"
+}
+
+image tvbox.swap {
+  file {
+    name = "tvbox.swap"
+  }
 }

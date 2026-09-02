@@ -16,6 +16,12 @@
 # X-Env-Var-rootfs_type-Triggers:
 #  set IGconf_fs_ext4_mkfs_args="-F -b ${IGconf_linux_page_size}" policy=lazy
 #
+# X-Env-Var-assetdir: ${DIRECTORY}
+# X-Env-Var-assetdir-Desc: TV Box image layout scripts and genimage template
+# X-Env-Var-assetdir-Required: n
+# X-Env-Var-assetdir-Valid: string
+# X-Env-Var-assetdir-Set: y
+#
 # X-Env-Var-boot_part_size: 256M
 # X-Env-Var-boot_part_size-Desc: Boot partition size
 # X-Env-Var-boot_part_size-Required: n

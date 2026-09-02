@@ -3,7 +3,7 @@
 # X-Env-Layer-Category: device
 # X-Env-Layer-Desc: Raspberry Pi Zero 2 W with the qualified 32-bit v7 kernel.
 # X-Env-Layer-Version: 1.0.0
-# X-Env-Layer-Requires: rpi-device-base,rpi-linux-v7
+# X-Env-Layer-Requires: linux-base,rpi-device-base,rpi-linux-v7
 # X-Env-Layer-Provides: rpi-device
 #
 # X-Env-VarPrefix: device

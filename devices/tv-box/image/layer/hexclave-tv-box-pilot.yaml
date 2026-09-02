@@ -5,7 +5,7 @@
 # X-Env-Layer-Version: 0.1.0
 # X-Env-Layer-Requires: raspbian-trixie-armhf,rpi-debian-trixie,
 #  rpi-misc-utils,rpi-essential-base,rpi-misc-skel,systemd-min,
-#  systemd-timesyncd,fake-hwclock,wireless-regulatory
+#  systemd-timesyncd,wireless-regulatory
 # X-Env-Layer-Provides: network-activator
 #
 # X-Env-VarPrefix: tvbox
@@ -30,14 +30,17 @@
 # METAEND
 ---
 mmdebstrap:
+  # The pinned Raspbian armhf layer supplies repositories and architecture but
+  # does not select a suite, so bind this appliance to the intended release.
+  suite: trixie
   packages:
     - ca-certificates
     - cage
     - cog
     - dnsmasq-base
+    - fake-hwclock
     - fonts-inter
     - iw
-    - libraspberrypi-bin
     - libwpewebkit-2.0-1
     - network-manager
     - nftables
@@ -48,13 +51,17 @@ mmdebstrap:
     - wpasupplicant
     - zram-tools
   customize-hooks:
+    # Trixie's fake-hwclock package enables its split load/save/timer units in
+    # postinst. The pinned builder's layer still enables the removed umbrella
+    # unit, so seed the bootstrap clock here without using that obsolete hook.
+    - date -d "@${SOURCE_DATE_EPOCH}" > "$1/etc/fake-hwclock.data"
     - |-
       set -eu
-      cp -a "${DIRECTORY}/../rootfs/." "$1/"
+      cp -a "${SRCROOT}/rootfs/." "$1/"
       install -d -m 0755 "$1/usr/lib/python3/dist-packages"
-      cp -a "${DIRECTORY}/../../src/hexclave_tv_box" "$1/usr/lib/python3/dist-packages/"
+      cp -a "${SRCROOT}/../src/hexclave_tv_box" "$1/usr/lib/python3/dist-packages/"
       install -d -m 0755 "$1/usr/share/hexclave-tv-box/setup-ui"
-      cp -a "${DIRECTORY}/../../setup-ui/." "$1/usr/share/hexclave-tv-box/setup-ui/"
+      cp -a "${SRCROOT}/../setup-ui/." "$1/usr/share/hexclave-tv-box/setup-ui/"
       install -m 0644 "${IGconf_tvbox_support_ca_key}" "$1/etc/ssh/hexclave-support-ca.pub"
       printf '%s\n' "${IGconf_tvbox_wifi_country}" > "$1/etc/hexclave-tv-box-country"
       sed -i "s/BUILD_SOURCE_COMMIT/${IGconf_tvbox_source_commit}/; s/BUILD_WIFI_REGION/${IGconf_tvbox_wifi_country}/" "$1/etc/hexclave-tv-box-release"
