@@ -1,0 +1,70 @@
+docs-mintlify/images/app-icons/observability.svg
+  s_f0de2cb44e5372::t_452cc01801414b 1
+docs-mintlify/guides/apps/warehouse/overview.mdx
+  s_f0de2cb44e5372::t_d40be61231a274 51
+  s_f0de2cb44e5372::t_b43be588bfb481 14,73,88,288-289
+  s_f0de2cb44e5372::t_8dc8706013bf11 2-4,7
+docs-mintlify/guides/apps/observability/issues.mdx
+  s_f0de2cb44e5372::t_19833d8aa4215d 28,109
+docs-mintlify/guides/apps/observability/overview.mdx
+  s_f0de2cb44e5372::t_452cc01801414b 2-4,7,9,11-16,18,20,22,24-26,28-31,33-36,39,41,43,45,47-51,53
+docs-mintlify/images/app-icons/warehouse.svg
+  s_f0de2cb44e5372::t_452cc01801414b 1
+docs-mintlify/guides/apps/observability/cross-tier-tracing.mdx
+  s_f0de2cb44e5372::t_8dc8706013bf11 2
+  s_f0de2cb44e5372::t_19833d8aa4215d 10,19,151,156,180
+  s_f0de2cb44e5372::t_8f1139c06ddf3a 216
+docs-mintlify/guides/apps/observability/querying-errors.mdx
+  s_f0de2cb44e5372::t_b43be588bfb481 7
+  s_f0de2cb44e5372::t_19833d8aa4215d 185,215
+docs-mintlify/docs.json
+  s_f0de2cb44e5372::t_a6d8f1a14d4e8e 155-166,168,170,174,179-185,321-341
+docs-mintlify/guides/apps/observability/webhooks.mdx
+  s_f0de2cb44e5372::t_19833d8aa4215d 127
+docs-mintlify/guides/apps/analytics/replays-and-clickmaps.mdx
+  s_f0de2cb44e5372::t_b43be588bfb481 129,137
+docs-mintlify/guides/apps/observability/ai-tracing.mdx
+  s_f0de2cb44e5372::t_19833d8aa4215d 43,85
+  s_f0de2cb44e5372::t_8dc8706013bf11 1-42,44-84,86-115
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_f0de2cb44e5372::t_19833d8aa4215d 37
+  s_f0de2cb44e5372::t_b43be588bfb481 3,7,17,19,25
+docs-mintlify/guides/apps/observability/grouping.mdx
+  s_f0de2cb44e5372::t_19833d8aa4215d 154
+docs-mintlify/guides/apps/observability/errors-and-logs.mdx
+  s_f0de2cb44e5372::t_8dc8706013bf11 2
+  s_f0de2cb44e5372::t_19833d8aa4215d 13,17,100,131,161,163
+  s_f0de2cb44e5372::t_b43be588bfb481 111
+docs-mintlify/guides/apps/observability/error-tracking.mdx
+  s_f0de2cb44e5372::t_8f1139c06ddf3a 48,50
+  s_f0de2cb44e5372::t_8dc8706013bf11 1-36,38-39,41-47,49,51-59,61-109
+  s_f0de2cb44e5372::t_19833d8aa4215d 37,40,60,110
+docs-mintlify/guides/apps/observability/framework-adapters.mdx
+  s_f0de2cb44e5372::t_8dc8706013bf11 2
+  s_f0de2cb44e5372::t_19833d8aa4215d 6,83
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_f0de2cb44e5372::t_b43be588bfb481 14,16,248,317-319
+  s_f0de2cb44e5372::t_19833d8aa4215d 109,210,314-316
+docs-mintlify/guides/getting-started/setup.mdx
+  s_f0de2cb44e5372::t_92a0445cd6a1cf 9,1172,1194
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_f0de2cb44e5372::t_f39362b05b0d7a 3
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/docs-json.generated.ts
+  s_f0de2cb44e5372::t_d141ac4b6f4d2a 157-168,170,172,176,181-187,323-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b041bae8e2ead7d85ad674b860d396b1c851dd93",
+  "prompts": {},
+  "sessions": {
+    "s_f0de2cb44e5372": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06308-b384-7dd2-8a22-c26fa2809913",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
