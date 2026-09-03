@@ -38,13 +38,14 @@ function featureFlagsConfig(options?: {
   trafficAllocationBasisPoints?: number,
   startsAt?: string,
   endsAt?: string,
-  onlyControlVariant?: boolean,
+  // Published treatment value and weights, used to change the branch definition
+  // while a run is active and prove the overlay serves the frozen snapshot.
+  treatmentValue?: boolean,
+  variantWeights?: { control: number, treatment: number },
   funnelSteps?: Record<string, string>,
 }) {
-  const variantWeights = options?.onlyControlVariant === true ? { control: 10000 } : { control: 5000, treatment: 5000 };
-  const variants = options?.onlyControlVariant === true
-    ? { control: { value: false } }
-    : { control: { value: false }, treatment: { value: true } };
+  const variantWeights = options?.variantWeights ?? { control: 5000, treatment: 5000 };
+  const variants = { control: { value: false }, treatment: { value: options?.treatmentValue ?? true } };
   const primaryMetric = options?.funnelSteps === undefined ? {
     id: "signup",
     type: "custom_event",
@@ -87,10 +88,24 @@ function featureFlagsConfig(options?: {
   };
 }
 
-async function updateFeatureFlagConfig(options?: Parameters<typeof featureFlagsConfig>[0], analyticsEnabled = true, featureFlagsEnabled = true) {
-  await Project.updateConfig({
+function featureFlagConfigOverride(options?: Parameters<typeof featureFlagsConfig>[0], analyticsEnabled = true, featureFlagsEnabled = true) {
+  return {
     apps: { installed: { analytics: { enabled: analyticsEnabled }, "feature-flags": { enabled: featureFlagsEnabled } } },
     featureFlags: featureFlagsConfig(options),
+  };
+}
+
+async function updateFeatureFlagConfig(options?: Parameters<typeof featureFlagsConfig>[0], analyticsEnabled = true, featureFlagsEnabled = true) {
+  await Project.updateConfig(featureFlagConfigOverride(options, analyticsEnabled, featureFlagsEnabled));
+}
+
+// Same PATCH as Project.updateConfig, but without asserting success so tests can
+// check that invalid feature-flag definitions are rejected before publishing.
+async function tryUpdateFeatureFlagConfig(options?: Parameters<typeof featureFlagsConfig>[0]) {
+  return await niceBackendFetch("/api/latest/internal/config/override/environment", {
+    method: "PATCH",
+    accessType: "admin",
+    body: { config_override_string: JSON.stringify(featureFlagConfigOverride(options)) },
   });
 }
 
@@ -245,10 +260,11 @@ describe("experiment run creation", () => {
     expect(createRes.status).toBe(201);
     expect(createRes.body.config_snapshot.primary_metric.steps).toEqual(["checkout-started", "purchase-completed"]);
 
-    await updateFeatureFlagConfig({ funnelSteps: { opened: "checkout-started", purchased: "purchase-completed" } });
-    const invalidStepIdsRes = await createRun(funnelConfig);
+    // Non-canonical step ids never reach a run: the branch config is rejected
+    // before it is published, so the funnel order cannot become ambiguous.
+    const invalidStepIdsRes = await tryUpdateFeatureFlagConfig({ funnelSteps: { opened: "checkout-started", purchased: "purchase-completed" } });
     expect(invalidStepIdsRes.status).toBe(400);
-    expect(invalidStepIdsRes.body).toContain("must use step_1, step_2, ... notation");
+    expect(JSON.stringify(invalidStepIdsRes.body)).toContain("funnel steps must be consecutively named step_1, step_2");
   });
 
   it("lists created runs", async ({ expect }) => {
@@ -414,7 +430,10 @@ describe("experiment run lifecycle transitions", () => {
     expect(createRes.status).toBe(201);
     expect((await transitionRun(createRes.body.id, "start")).status).toBe(200);
 
-    await updateFeatureFlagConfig({ onlyControlVariant: true });
+    // Republish with a different treatment value, weights, and allocation. The
+    // published variants change, but the overlay rule keeps the values, weights,
+    // and rollout frozen at start (see active-experiment-overlay.ts).
+    await updateFeatureFlagConfig({ treatmentValue: false, variantWeights: { control: 7000, treatment: 3000 }, trafficAllocationBasisPoints: 5000 });
     const bootstrapRes = await niceBackendFetch("/api/v1/feature-flags/bootstrap", {
       method: "GET",
       accessType: "server",
@@ -422,11 +441,12 @@ describe("experiment run lifecycle transitions", () => {
     expect(bootstrapRes.status).toBe(200);
     expect(bootstrapRes.body.config.flags["my-flag"].variants).toMatchObject({
       control: { value: false },
-      treatment: { value: true },
+      treatment: { value: false },
     });
-    expect(bootstrapRes.body.config.flags["my-flag"].rules[`experiment_${createRes.body.id}`].variantWeights).toEqual({
-      control: 5000,
-      treatment: 5000,
+    expect(bootstrapRes.body.config.flags["my-flag"].rules[`experiment_${createRes.body.id}`]).toMatchObject({
+      rolloutBasisPoints: 10000,
+      variantWeights: { control: 5000, treatment: 5000 },
+      variantValues: { control: false, treatment: true },
     });
   });
 });
@@ -610,29 +630,34 @@ describe("experiment schedule processor", () => {
   });
 
   it("leaves scheduled runs in draft while a required app is disabled", async ({ expect }) => {
-    const scheduledStartMillis = Date.now() - 60_000;
-    const configOptions = { startsAt: new Date(scheduledStartMillis).toISOString() };
-    await createProjectWithAnalytics(configOptions);
+    // The e2e environment runs the schedule processor as a background cron, so a
+    // past start time is only ever published together with a disabled app; with
+    // both apps enabled the schedule is kept in the future. Otherwise the cron
+    // could start the run in the gap between two config updates.
+    const futureStart = { startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() };
+    const pastStart = { startsAt: new Date(Date.now() - 60_000).toISOString() };
+    await createProjectWithAnalytics(futureStart);
     const createRes = await createRun({
       ...validExperimentConfig(),
-      schedule: { start_at_millis: scheduledStartMillis },
+      schedule: { start_at_millis: new Date(futureStart.startsAt).getTime() },
     });
     expect(createRes.status).toBe(201);
+    expect(createRes.body.state).toBe("draft");
 
-    await updateFeatureFlagConfig(configOptions, false, true);
+    await updateFeatureFlagConfig(pastStart, false, true);
     expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
       method: "GET",
       headers: cronHeaders,
     })).status).toBe(200);
-    await updateFeatureFlagConfig(configOptions, true, true);
+    await updateFeatureFlagConfig(futureStart, true, true);
     expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
 
-    await updateFeatureFlagConfig(configOptions, true, false);
+    await updateFeatureFlagConfig(pastStart, true, false);
     expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
       method: "GET",
       headers: cronHeaders,
     })).status).toBe(200);
-    await updateFeatureFlagConfig(configOptions, true, true);
+    await updateFeatureFlagConfig(futureStart, true, true);
     expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
   });
 
