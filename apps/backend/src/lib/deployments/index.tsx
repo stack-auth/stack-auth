@@ -871,6 +871,7 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
  * - the Hexclave credentials are injected first, so a service can reach its own
  *   project with no configuration — and any explicitly declared var of the same
  *   name overrides them,
+ * - the deploy's `CI_*` variables are injected next, on the same terms,
  * - plain vars pass through as literal `{ value }`s,
  * - secret vars are filled from the project's stored secrets (dashboard →
  *   Project Settings → Secrets), falling back to `secretDefaults` — the deploy
@@ -903,11 +904,15 @@ export async function resolveEnvVars(options: {
   // Deploy-request-only fallbacks for `secret()` env vars, keyed by ENV VAR
   // key (see deploymentSecretDefaultsSchema). Never read from the database.
   secretDefaults: Record<string, string>,
+  // The GitLab-style CI variables this deploy was invoked with (see
+  // deploymentCiEnvSchema). Also request-scoped, and the same for every service
+  // in the deploy — they describe the commit, not the service.
+  ciEnv?: Record<string, string>,
 }): Promise<{
   resolvedEnv: Record<string, MarshalEnvValue>,
   redactionSecrets: string[],
 }> {
-  const { tenancy, prisma, serviceId, definition, secretDefaults } = options;
+  const { tenancy, prisma, serviceId, definition, secretDefaults, ciEnv = {} } = options;
   const env = definition.env;
   const existingServices = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
@@ -932,6 +937,16 @@ export async function resolveEnvVars(options: {
   }))) {
     resolvedEnv.set(envVarKey, { value: injected.value });
     if (injected.secret) redactionSecrets.add(injected.value);
+  }
+
+  // The deploy's CI provenance, injected after the credentials and before the
+  // declared vars: the CI namespace cannot collide with the injected
+  // HEXCLAVE_* names (deploymentCiEnvSchema is what guarantees that), and a
+  // service that declares a CI_* var of its own still wins. Never redacted —
+  // a commit sha is the opposite of a secret, and redacting one would black out
+  // every place the build log legitimately prints it.
+  for (const [envVarKey, value] of Object.entries(ciEnv)) {
+    resolvedEnv.set(envVarKey, { value });
   }
 
   // Cache per-secret reads so N env vars filled from the same secret don't

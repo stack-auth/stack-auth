@@ -28,9 +28,9 @@ export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // never has to name a source: two sources declaring the same service id is a
 // conflict, refused at sync.
 //
-// Dots are allowed because deployments declared in hexclave.config.ts belong to
-// a source whose id IS the file name (see CONFIG_FILE_DEPLOYMENT_SOURCE_ID) —
-// they appear in no reference, so nothing has to parse them.
+// Dots are allowed: a source id appears in no reference, so nothing has to
+// parse one, and projects deployed before services moved out of
+// hexclave.config.ts still have a stored source id named after that file.
 export const DEPLOYMENT_SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/;
 export const MAX_DEPLOYMENT_SOURCE_ID_LENGTH = 63;
 
@@ -175,11 +175,6 @@ export function sourceManifestEntriesForService(
   // cap dropped files, no subtree can claim to be complete.
   return { entries, truncated: manifest.file_count > manifest.entries.length, prefix };
 }
-
-// The source id of deployments declared in hexclave.config.ts, which has no
-// `deploymentGroupId` export of its own. Named after the file so the dashboard
-// can show where those services came from without a special case.
-export const CONFIG_FILE_DEPLOYMENT_SOURCE_ID = "hexclave.config.ts";
 
 // A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
 // service's output — or `hexclave.<outputKey>` for the managed service. The
@@ -879,6 +874,20 @@ export const deploymentEnvVarSchema = yupObject({
 // that any of this exists.
 export const deploymentSecretDefaultsSchema = yupRecord(
   yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment secret default keys must be env var keys"),
+  yupString().defined(),
+);
+
+// The GitLab-style CI variables describing the commit a deploy ships (see
+// collectCiEnv in the CLI). Sent with a DEPLOY request and never stored: they
+// describe one deploy, so persisting them on the definition would leave a stale
+// commit sha on every service the next deploy doesn't ship.
+//
+// Restricted to the CI namespace, so this channel can only ever add CI metadata:
+// a deploy must not be able to reach the injected Hexclave credentials (or any
+// other env var the definition owns) through a field meant for provenance.
+export const DEPLOYMENT_CI_ENV_VAR_KEY_REGEX = /^CI(_[A-Z0-9_]+)?$/;
+export const deploymentCiEnvSchema = yupRecord(
+  yupString().matches(DEPLOYMENT_CI_ENV_VAR_KEY_REGEX, 'ci_env keys must be CI variable names (CI, or CI_ followed by upper-case letters, digits and underscores)'),
   yupString().defined(),
 );
 
@@ -1640,6 +1649,21 @@ import.meta.vitest?.test("deploymentSecretDefaultsSchema accepts env-var-keyed d
   await expect(deploymentSecretDefaultsSchema.validate({
     "1BAD": "x",
   }, { abortEarly: false })).rejects.toThrow(/env var keys/);
+});
+
+import.meta.vitest?.test("deploymentCiEnvSchema only accepts CI variable names", async ({ expect }) => {
+  await expect(deploymentCiEnvSchema.validate({
+    CI_COMMIT_SHA: "abc123",
+    CI_COMMIT_SHORT_SHA: "abc123de",
+  }, { abortEarly: false })).resolves.toEqual({ CI_COMMIT_SHA: "abc123", CI_COMMIT_SHORT_SHA: "abc123de" });
+  // The whole point of the namespace: a deploy cannot reach the injected
+  // credentials (or anything else the definition owns) through this field.
+  await expect(deploymentCiEnvSchema.validate({
+    HEXCLAVE_SECRET_SERVER_KEY: "ssk_evil",
+  }, { abortEarly: false })).rejects.toThrow(/CI variable names/);
+  await expect(deploymentCiEnvSchema.validate({
+    CI_lowercase: "x",
+  }, { abortEarly: false })).rejects.toThrow(/CI variable names/);
 });
 
 // Type-level check that the yup schema stays assignable to the hand-written

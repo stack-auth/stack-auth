@@ -160,7 +160,15 @@ describe("buildTimeEnv", () => {
       PLAIN: { value: "keep-me" },
       SECRET: { value: "sk-also-keep-me" },
       CONNECTION: { ref: "api.internal_url" },
-    })).toEqual({ PLAIN: "keep-me", SECRET: "sk-also-keep-me" });
+    })).toEqual({ CI: "true", PLAIN: "keep-me", SECRET: "sk-also-keep-me" });
+  });
+
+  it("sets CI=true, and lets a declared CI win", () => {
+    // Every build is a non-interactive one, so the tools that read CI should see
+    // it whether or not the deploy file says so — but a service that sets its
+    // own value has said what it means and must keep it.
+    expect(buildTimeEnv({})).toEqual({ CI: "true" });
+    expect(buildTimeEnv({ CI: { value: "false" } })).toEqual({ CI: "false" });
   });
 
   it("measures keys and values in utf-8 bytes", () => {

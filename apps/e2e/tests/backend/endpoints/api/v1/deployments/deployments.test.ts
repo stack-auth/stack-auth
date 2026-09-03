@@ -1013,6 +1013,54 @@ describe("deploys against the Marshal runtime", () => {
     for (const line of replayed.lines) expect(line.at_millis).toBeGreaterThanOrEqual(oldestAtMillis);
   });
 
+  it("injects the deploy request's CI variables, and refuses keys outside the CI namespace", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await InternalApiKey.createAndSetProjectKeys();
+    const serviceId = uniqueServiceId("ci-env");
+    const { uploadId, definitionSyncId, sourceId } = await syncServiceAndUpload(serviceId, {
+      // A service that declares one of these names has said what it means, so
+      // its own value must survive the injection.
+      env: { CI_COMMIT_REF_NAME: { value: "declared-in-the-deploy-file" } },
+    });
+
+    // `ci_env` is request-scoped: it describes the commit this deploy ships, so
+    // it reaches the running service without ever being stored on the definition.
+    const deploymentId = await startDeploy({
+      sourceId,
+      uploadId,
+      definitionSyncId,
+      levels: [[serviceId]],
+      extraBody: { ci_env: { CI_COMMIT_SHA: "0123456789abcdef", CI_COMMIT_REF_NAME: "from-the-deploy-request" } },
+    });
+    await pollDeploymentToStatus(deploymentId, "deployed");
+    const { service: cloudRun } = await findMockCloudRun(serviceId);
+    expect(cloudRunEnv(cloudRun)).toMatchObject({
+      CI_COMMIT_SHA: "0123456789abcdef",
+      CI_COMMIT_REF_NAME: "declared-in-the-deploy-file",
+    });
+
+    // Not stored: the next deploy of this source must not inherit this deploy's
+    // commit sha, so the definition still names only what the deploy file wrote.
+    const serviceResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect((serviceResponse.body as any).env.map((entry: any) => entry.key)).toEqual(["CI_COMMIT_REF_NAME"]);
+
+    // The namespace is the guard: without it this field could overwrite the
+    // injected Hexclave credentials, which are not the caller's to set.
+    const badResponse = await niceBackendFetch("/api/v1/deployments/deployments", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        source_id: sourceId,
+        upload_id: (await createUpload()).uploadId,
+        definition_sync_id: definitionSyncId,
+        levels: [[serviceId]],
+        ci_env: { HEXCLAVE_SECRET_SERVER_KEY: "ssk_not_yours" },
+      },
+    });
+    expect(badResponse.status).toBe(400);
+    expect(JSON.stringify(badResponse.body)).toContain("CI variable names");
+  });
+
   it("refuses runtime logs for a service that was never deployed, and for one that does not exist", async ({ expect }) => {
     await Project.createAndSwitch();
     await InternalApiKey.createAndSetProjectKeys();
