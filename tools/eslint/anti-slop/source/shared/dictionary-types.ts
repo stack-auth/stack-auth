@@ -346,9 +346,7 @@ export function classifyWideningTarget(
 	if (unwrapped.type === "TSTypeLiteral") {
 		return unwrapped.members.some((member) => member.type === "TSIndexSignature")
 			? { kind: "open dictionary" }
-			: unwrapped.members.length > 0
-				? { kind: "anonymous object" }
-				: null;
+			: null;
 	}
 	if (unwrapped.type === "TSMappedType") return { kind: "open dictionary" };
 	if (unwrapped.type !== "TSTypeReference") return null;

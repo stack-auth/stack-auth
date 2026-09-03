@@ -7,6 +7,7 @@ import {
 	type TypeEnvironment,
 	type WideningTarget,
 } from "../shared/dictionary-types.ts";
+import { isGeneratedSdkSource, isTestFilename } from "../shared/file-scope.ts";
 
 import type { ESTree, Scope, SourceCode, Variable } from "../eslint-compat.ts";
 
@@ -80,9 +81,18 @@ function annotationTarget(
 	annotation: ESTree.TSTypeAnnotation | null | undefined,
 	environment: TypeEnvironment,
 ): WideningTarget | null {
-	return annotation === null || annotation === undefined
-		? null
-		: classifyWideningTarget(annotation.typeAnnotation, environment);
+	if (annotation === null || annotation === undefined) return null;
+	const type = annotation.typeAnnotation;
+	// A named alias is the owner contract for its callers. The dictionary rule
+	// separately checks whether that contract is unsafe; this rule only guards
+	// anonymous widening at the point where evidence is discarded.
+	if (
+		type.type === "TSTypeReference" &&
+		type.typeName.type === "Identifier" &&
+		type.typeName.name !== "Record" &&
+		environment.aliases.has(type.typeName.name)
+	) return null;
+	return classifyWideningTarget(type, environment);
 }
 
 function enclosingFunction(node: ESTree.Node): FunctionExpression | null {
@@ -98,6 +108,19 @@ function enclosingFunction(node: ESTree.Node): FunctionExpression | null {
 		current = current.parent ?? null;
 	}
 	return null;
+}
+
+function isInsideFunction(node: ESTree.Node): boolean {
+	return enclosingFunction(node) !== null;
+}
+
+function isPublicCallable(node: FunctionExpression): boolean {
+	if (node.type === "FunctionDeclaration") {
+		return node.parent.type === "ExportNamedDeclaration" || node.parent.type === "ExportDefaultDeclaration";
+	}
+	if (node.parent.type !== "VariableDeclarator") return false;
+	const declaration = node.parent.parent;
+	return declaration.type === "VariableDeclaration" && declaration.parent.type === "ExportNamedDeclaration";
 }
 
 function sourceKeyName(sourceCode: SourceCode, key: ESTree.PropertyName): string {
@@ -119,6 +142,16 @@ function functionName(sourceCode: SourceCode, owner: FunctionExpression | null):
 function isEmptyObjectExpression(expression: ESTree.Expression): boolean {
 	const unwrapped = unwrapExpression(expression);
 	return unwrapped.type === "ObjectExpression" && unwrapped.properties.length === 0;
+}
+
+function isExplicitObjectExpression(expression: ESTree.Expression): boolean {
+	const unwrapped = unwrapExpression(expression);
+	return (
+		unwrapped.type === "ObjectExpression" &&
+		unwrapped.properties.every(
+			(property) => property.type === "Property" && !property.computed,
+		)
+	);
 }
 
 function isDictionaryAccumulatorTarget(destination: WideningTarget): boolean {
@@ -143,6 +176,7 @@ export const noKnownValueWideningRule = defineRule({
 		},
 	},
 	createOnce(context) {
+		if (isTestFilename(context.getFilename()) || isGeneratedSdkSource(context.sourceCode.text)) return {};
 		let environment: TypeEnvironment | null = null;
 
 		const reportFlow = (
@@ -153,7 +187,8 @@ export const noKnownValueWideningRule = defineRule({
 			if (destination === null) return;
 			if (
 				isDictionaryAccumulatorTarget(destination) &&
-				isEmptyObjectExpression(expression)
+				(isEmptyObjectExpression(expression) ||
+					(destination.kind === "open dictionary" && isExplicitObjectExpression(expression)))
 			) {
 				return;
 			}
@@ -173,7 +208,11 @@ export const noKnownValueWideningRule = defineRule({
 				environment = createTypeEnvironment(node);
 			},
 			VariableDeclarator(node) {
-				if (node.init === null || node.id.type !== "Identifier") return;
+				if (
+					node.init === null ||
+					node.id.type !== "Identifier" ||
+					isInsideFunction(node)
+				) return;
 				reportFlow(
 					node.init,
 					targetFromAnnotation(node.id.typeAnnotation),
@@ -197,7 +236,11 @@ export const noKnownValueWideningRule = defineRule({
 				);
 			},
 			AssignmentExpression(node) {
-				if (node.operator !== "=" || node.left.type !== "Identifier") return;
+				if (
+					node.operator !== "=" ||
+					node.left.type !== "Identifier" ||
+					isInsideFunction(node)
+				) return;
 				const variable = resolveVariable(context.sourceCode, node.left);
 				if (variable === null) return;
 				const declarator = variableDeclarator(variable);
@@ -211,6 +254,7 @@ export const noKnownValueWideningRule = defineRule({
 			ReturnStatement(node) {
 				if (node.argument === null) return;
 				const owner = enclosingFunction(node);
+				if (owner !== null && !isPublicCallable(owner)) return;
 				reportFlow(
 					node.argument,
 					targetFromAnnotation(owner?.returnType),
@@ -219,6 +263,7 @@ export const noKnownValueWideningRule = defineRule({
 			},
 			ArrowFunctionExpression(node) {
 				if (node.body.type === "BlockStatement") return;
+				if (!isPublicCallable(node)) return;
 				reportFlow(
 					node.body,
 					targetFromAnnotation(node.returnType),
@@ -226,7 +271,11 @@ export const noKnownValueWideningRule = defineRule({
 				);
 			},
 			TSAsExpression(node) {
-				if (environment === null || hasParentAssertion(node)) return;
+				if (
+					environment === null ||
+					hasParentAssertion(node) ||
+					isInsideFunction(node)
+				) return;
 				reportFlow(
 					node.expression,
 					classifyWideningTarget(node.typeAnnotation, environment),
@@ -234,7 +283,11 @@ export const noKnownValueWideningRule = defineRule({
 				);
 			},
 			TSTypeAssertion(node) {
-				if (environment === null || hasParentAssertion(node)) return;
+				if (
+					environment === null ||
+					hasParentAssertion(node) ||
+					isInsideFunction(node)
+				) return;
 				reportFlow(
 					node.expression,
 					classifyWideningTarget(node.typeAnnotation, environment),

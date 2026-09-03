@@ -12,16 +12,16 @@ const fixtures = new Map<RuleName, Fixture>([
   ["no-chained-type-assertions", { valid: "const value = 1 as const;", invalid: "const value = (input as unknown) as string;" }],
   ["no-conditional-empty-object-spread", { valid: "const value = { ...input };", invalid: "const value = { ...(enabled ? input : {}) };" }],
   ["no-known-value-widening", { valid: "const value = { id: 1 };", invalid: "const value: unknown = { id: 1 };" }],
-  ["no-module-mocking", { valid: "vi.fn();", invalid: "import { vi as testing } from 'vitest'; testing.mock('dependency');" }],
-  ["no-object-parameters", { valid: "function read(value: User) {}", invalid: "function read(value: object) {}" }],
+  ["no-module-mocking", { valid: "vi.fn(); vi.mock('dependency', () => ({}));", invalid: "import { vi as testing } from 'vitest'; testing.mock('dependency');" }],
+  ["no-object-parameters", { valid: "function read(value: User) {}", invalid: "function read(value: object) { return value; }" }],
   ["no-reflect-apply", { valid: "fn(...args);", invalid: "Reflect.apply(fn, null, args);" }],
   ["no-reflect-get", { valid: "value.id;", invalid: "Reflect.get(value, 'id');" }],
   ["no-runtime-typeof", { valid: "type Value = typeof value;", invalid: "typeof value === 'string';" }],
-  ["no-shape-in-symbol-names", { valid: "type User = { id: string };", invalid: "type UserShape = { id: string };" }],
-  ["no-unknown-parameters", { valid: "function fail(cause: unknown) {}", invalid: "function read(value: unknown) {}" }],
-  ["no-unknown-returns", { valid: "function read(): User { return user; }", invalid: "function read(): unknown { return user; }" }],
+  ["no-shape-in-symbol-names", { valid: "type UserShape = { id: string };", invalid: "const shape = { id: string };" }],
+  ["no-unknown-parameters", { valid: "function fail(cause: unknown) {}", invalid: "type Reader = (value: unknown) => string;" }],
+  ["no-unknown-returns", { valid: "function read(): User { return user; }", invalid: "function expose(): unknown { return user; }" }],
   ["no-unknown-type-aliases", { valid: "type User = { id: string };", invalid: "type User = unknown;" }],
-  ["no-unsafe-dictionary-type", { valid: "type Users = Record<string, User>;", invalid: "type Users = Record<string, unknown>;" }],
+  ["no-unsafe-dictionary-type", { valid: "export type Users = Record<string, User>;", invalid: "export type Users = Record<string, unknown>;" }],
   ["no-widen-then-assert", { valid: "const value = { id: 1 }; value.id;", invalid: "const value: unknown = { id: 1 }; const user = value as { id: number };" }],
   ["require-safety-comment-for-type-assertion", { valid: "// SAFETY: The boundary parser checked this value.\nconst user = input as User;", invalid: "const user = input as User;" }],
 ]);
@@ -88,7 +88,12 @@ test("the shared repository config enables all rules and ignores installed agent
   const eslint = new LegacyESLint({ cwd });
   const config = await eslint.calculateConfigForFile("src/index.ts");
   for (const name of Object.keys(plugin.rules)) {
-    assert.deepEqual(config.rules?.[`anti-slop/${name}`], ["error"]);
+    const configuredRule = config.rules?.[`anti-slop/${name}`];
+    if (name === "no-runtime-typeof") {
+      assert.deepEqual(configuredRule, ["error", { allowInTypeGuards: true, allowInValidationFunctions: true }]);
+    } else {
+      assert.deepEqual(configuredRule, ["error"]);
+    }
   }
   assert.equal(await eslint.isPathIgnored("src/.agents/installed.ts"), true);
   assert.equal(await eslint.isPathIgnored("src/.codex/installed.ts"), true);

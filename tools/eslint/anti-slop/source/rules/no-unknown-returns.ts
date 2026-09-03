@@ -3,6 +3,7 @@ import { defineRule } from "../eslint-compat.ts";
 import type { ESTree } from "../eslint-compat.ts";
 
 import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+import { isGeneratedSdkSource, isTestFilename } from "../shared/file-scope.ts";
 
 type FunctionWithReturnType =
   | ESTree.ArrowFunctionExpression
@@ -15,6 +16,48 @@ type FunctionWithReturnType =
   | ESTree.TSConstructorType
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
+
+type RuntimeFunction = ESTree.ArrowFunctionExpression | ESTree.FunctionDeclaration | ESTree.FunctionExpression;
+
+function isRuntimeFunction(node: FunctionWithReturnType): node is RuntimeFunction {
+  return node.type === "ArrowFunctionExpression" || node.type === "FunctionDeclaration" || node.type === "FunctionExpression";
+}
+
+function functionName(node: RuntimeFunction, sourceText: string): string | null {
+  if (node.id !== null) return node.id.name;
+  return node.parent.type === "VariableDeclarator" && node.parent.id.type === "Identifier"
+    ? node.parent.id.name
+    : sourceText.match(/^(?:async\s+)?function\*?\s*([A-Za-z_$][\w$]*)/u)?.[1] ?? null;
+}
+
+function isBoundaryFunction(node: FunctionWithReturnType, sourceText: string): boolean {
+  if (!isRuntimeFunction(node)) return false;
+  const name = functionName(node, sourceText);
+  return name !== null && /^(?:is|has|assert|parse|read|validate|normalize|decode|deserialize|coerce|sanitize|scrub|strip|unwrap|extract|yup)(?:[A-Z0-9_]|$)/u.test(name);
+}
+
+/** Keep the rule focused on callable contracts; nested implementation helpers
+ * inherit the domain type from the public function that owns them. */
+function isPublicCallable(node: FunctionWithReturnType): boolean {
+  if (
+    node.type === "TSCallSignatureDeclaration" ||
+    node.type === "TSConstructSignatureDeclaration" ||
+    node.type === "TSConstructorType" ||
+    node.type === "TSDeclareFunction" ||
+    node.type === "TSEmptyBodyFunctionExpression" ||
+    node.type === "TSFunctionType" ||
+    node.type === "TSMethodSignature"
+  ) return true;
+
+  if (node.type === "FunctionDeclaration") {
+    return node.parent.type === "Program" || node.parent.type === "ExportNamedDeclaration" || node.parent.type === "ExportDefaultDeclaration";
+  }
+
+  if (node.parent.type !== "VariableDeclarator") return false;
+  const declaration = node.parent.parent;
+  if (declaration.type !== "VariableDeclaration") return false;
+  return declaration.parent.type === "Program" || declaration.parent.type === "ExportNamedDeclaration";
+}
 
 function referencedAliasName(type: ESTree.TypeNode): string | null {
 
@@ -40,6 +83,7 @@ export const noUnknownReturnsRule = defineRule({
     },
   },
   createOnce(context) {
+    if (isTestFilename(context.getFilename()) || isGeneratedSdkSource(context.sourceCode.text)) return {};
     const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
     const resolvesToUnknown = (
@@ -79,6 +123,8 @@ export const noUnknownReturnsRule = defineRule({
     const checkReturnType = (node: FunctionWithReturnType) => {
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
+      if (!isPublicCallable(node)) return;
+      if (isBoundaryFunction(node, context.sourceCode.getText(node))) return;
       if (
         !resolvesToUnknown(
           annotation.typeAnnotation,

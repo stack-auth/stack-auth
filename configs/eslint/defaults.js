@@ -15,6 +15,21 @@ module.exports = {
     "**/.roo/**",
     "**/.windsurf/**",
     "../../tools/eslint/anti-slop/**",
+    // The template is the source of truth for these generated SDK mirrors.
+    // Linting every copy multiplies the same diagnostic and invites edits to
+    // files that the generator will overwrite.
+    "../../packages/js/src/**",
+    "../../packages/next/src/**",
+    "../../packages/react/src/**",
+    "../../packages/tanstack-start/src/**",
+    "../js/src/**",
+    "../next/src/**",
+    "../react/src/**",
+    "../tanstack-start/src/**",
+    "../packages/js/src/**",
+    "../packages/next/src/**",
+    "../packages/react/src/**",
+    "../packages/tanstack-start/src/**",
   ],
   parserOptions: {
     // use the package folder as the root for the TS ESLint plugin
@@ -29,7 +44,7 @@ module.exports = {
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true, allowInValidationFunctions: true }],
     "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-returns": "error",

@@ -58,6 +58,10 @@ function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): bool
   return method !== null && moduleMockMethods.has(method);
 }
 
+function hasExplicitFactory(node: ESTree.CallExpression): boolean {
+	return node.arguments.length >= 2;
+}
+
 /** Ban test framework module mocking in favor of real dependency seams. */
 export const noModuleMockingRule = defineRule({
   meta: {
@@ -75,7 +79,7 @@ export const noModuleMockingRule = defineRule({
     return {
       CallExpression(node) {
         if (node.callee.type === "Super") return;
-        if (moduleMockCall(context.sourceCode, node.callee)) {
+        if (moduleMockCall(context.sourceCode, node.callee) && !hasExplicitFactory(node)) {
           context.report({ node, messageId: "moduleMock" });
         }
       },

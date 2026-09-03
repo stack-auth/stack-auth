@@ -17,6 +17,44 @@ type ParameterOwner =
 	| ESTree.TSFunctionType
 	| ESTree.TSMethodSignature;
 
+type RuntimeFunction =
+	| ESTree.ArrowFunctionExpression
+	| ESTree.FunctionDeclaration
+	| ESTree.FunctionExpression;
+
+function isRuntimeFunction(node: ParameterOwner): node is RuntimeFunction {
+	return (
+		node.type === "ArrowFunctionExpression" ||
+		node.type === "FunctionDeclaration" ||
+		node.type === "FunctionExpression"
+	);
+}
+
+function isValidationFunction(node: ParameterOwner): boolean {
+	if (isRuntimeFunction(node) && node.returnType?.typeAnnotation.type === "TSTypePredicate") return true;
+	if (!isRuntimeFunction(node)) return false;
+	const name =
+		node.id?.name ??
+		(node.parent.type === "VariableDeclarator" && node.parent.id.type === "Identifier"
+			? node.parent.id.name
+			: null);
+	return name !== null && /^(?:is|has|assert|parse|read|validate|normalize|decode|deserialize|coerce|sanitize|scrub|strip|unwrap|extract)[A-Z0-9_]/u.test(name);
+}
+
+function parameterIsUnused(parameter: Parameter, sourceCode: SourceCode): boolean {
+	const identifier =
+		parameter.type === "Identifier"
+			? parameter
+			: parameter.type === "AssignmentPattern" && parameter.left.type === "Identifier"
+				? parameter.left
+				: parameter.type === "RestElement" && parameter.argument.type === "Identifier"
+					? parameter.argument
+					: null;
+	if (identifier === null) return false;
+	const variable = sourceCode.getScope(identifier).set.get(identifier.name);
+	return variable !== undefined && variable.references.length === 0;
+}
+
 function parameterAnnotation(parameter: Parameter): ESTree.TSTypeAnnotation | null | undefined {
 	if (parameter.type === "TSParameterProperty") {
 		return parameterAnnotation(parameter.parameter);
@@ -84,11 +122,13 @@ export const noObjectParametersRule = defineRule({
 		};
 
 		const checkParameters = (node: ParameterOwner) => {
+			if (isValidationFunction(node)) return;
 			const shadowedAliases = lexicalTypeParameterNames(
 				node,
 				context.sourceCode.visitorKeys,
 			);
 			for (const parameter of node.params) {
+				if (parameterIsUnused(parameter, context.sourceCode)) continue;
 				const annotation = parameterAnnotation(parameter);
 				if (annotation === null || annotation === undefined) continue;
 				if (!resolvesToObject(annotation.typeAnnotation, shadowedAliases)) continue;

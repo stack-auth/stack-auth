@@ -6,6 +6,7 @@ import { isGlobalReflectMethodCall } from "../shared/reflect-method.ts";
 export const noReflectGetRule = defineRule({
   meta: {
     type: "problem",
+    fixable: "code",
     docs: {
       description:
         "Disallow Reflect.get; use typed property access or parse dynamic input into a domain type.",
@@ -20,7 +21,22 @@ export const noReflectGetRule = defineRule({
       CallExpression(node) {
         if (node.callee.type === "Super") return;
         if (isGlobalReflectMethodCall(context.sourceCode, node.callee, "get")) {
-          context.report({ node, messageId: "reflectGet" });
+          // A receiver argument is part of Proxy's get trap contract and cannot be
+          // represented by ordinary bracket access without changing semantics.
+          if (node.arguments.length === 3) return;
+          context.report({
+            node,
+            messageId: "reflectGet",
+            fix(fixer) {
+              if (node.arguments.length !== 2) return null;
+              const [target, property] = node.arguments;
+              if (target === undefined || property === undefined) return null;
+              return fixer.replaceText(
+                node,
+                `${context.sourceCode.getText(target)}[${context.sourceCode.getText(property)}]`,
+              );
+            },
+          });
         }
       },
     };
