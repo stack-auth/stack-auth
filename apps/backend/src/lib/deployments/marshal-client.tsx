@@ -90,6 +90,11 @@ export type MarshalServiceSpec = {
     // Persistent disks keyed by volume id; absent = ephemeral filesystem.
     // Marshal requires type "server" when one is set.
     persistent_volumes?: Record<string, { path: string, size_gb: number }>,
+    // A single command line the runtime starts the container with, instead of
+    // whatever the image would have started. Absent = the image decides. It is
+    // machine configuration rather than image content, so it takes effect on a
+    // roll and never causes a build.
+    start_command?: string,
   },
   // A spec always names an already-built image: images are produced by the
   // deployment's single build, which builds every service of the deployment
@@ -102,16 +107,23 @@ export type MarshalServiceSpec = {
 //
 // `dockerfile_path` is relative to the root of the uploaded source (the whole
 // deployment source is uploaded once, so a monorepo service can COPY from above its own
-// directory); absent = the builder auto-detects the build with Railpack.
-// `root_directory` only scopes where that detection starts.
+// directory); absent = the builder auto-detects the build with Railpack, or
+// generates a Dockerfile when a `build_command` says what to run instead.
+// `root_directory` scopes where detection starts, and is the directory a
+// `build_command` runs in.
 export type MarshalDeploymentTarget = {
   service_key: string,
   root_directory?: string,
   dockerfile_path?: string,
-  // An already-built image to run, instead of building one from the upload.
-  // Mutually exclusive with the two fields above. The runtime resolves the
-  // reference to a digest and applies it — this target enters no build.
+  // An image. On its own it is the image to RUN: the runtime resolves the
+  // reference to a digest and applies it, and this target enters no build. With
+  // a `build_command` it is the BASE of a generated Dockerfile instead, and the
+  // target is built like any other. Mutually exclusive with `dockerfile_path`.
   image?: string,
+  // A single command line run while the image is built. Its base is `image`, or
+  // `dockerfile_path`'s Dockerfile (where the runtime appends it as a final
+  // RUN), or the runtime's own base image.
+  build_command?: string,
   // The spec to apply once this target's image exists. Its `source` is filled in
   // by the runtime with the image the build produced (or with the digest the
   // reference above resolved to).

@@ -215,9 +215,6 @@ importers:
       jose:
         specifier: ^6.1.3
         version: 6.1.3
-      mdast-util-mdx-jsx:
-        specifier: ^3.2.0
-        version: 3.2.0
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(@types/node@20.17.6)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -245,15 +242,6 @@ importers:
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1
-      remark-mdx:
-        specifier: ^3.1.1
-        version: 3.1.1
-      remark-parse:
-        specifier: ^11.0.0
-        version: 11.0.0
       resend:
         specifier: ^6.0.1
         version: 6.0.1
@@ -272,9 +260,6 @@ importers:
       svix:
         specifier: ^1.89.0
         version: 1.89.0
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
       vite:
         specifier: ^6.1.0
         version: 6.1.0(@types/node@20.17.6)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.15.5)(yaml@2.4.5)
@@ -288,9 +273,6 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 20.17.6
         version: 20.17.6
@@ -724,34 +706,6 @@ importers:
         specifier: ^8.16.3
         version: 8.16.3
 
-  apps/growth-agent:
-    dependencies:
-      '@agent-browser/sandbox':
-        specifier: 0.32.4
-        version: 0.32.4(@vercel/sandbox@2.8.0)
-      '@vercel/sandbox':
-        specifier: 2.8.0
-        version: 2.8.0
-      ai:
-        specifier: 7.0.38
-        version: 7.0.38(zod@4.4.3)
-      eve:
-        specifier: 0.30.8
-        version: 0.30.8(@electric-sql/pglite@0.3.2)(@opentelemetry/api@1.9.1)(@vercel/functions@3.9.0(@aws-sdk/credential-provider-web-identity@3.972.65)(ws@8.18.3))(ai@7.0.38(zod@4.4.3))(chokidar@4.0.3)(dotenv@17.4.2)(giget@2.0.0)(jiti@2.6.1)(mysql2@3.15.3)(vite@7.3.1(@types/node@24.13.3)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.9.0))(xml2js@0.6.2)
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      dotenv-cli:
-        specifier: ^7.3.0
-        version: 7.4.1
-      typescript:
-        specifier: 6.0.3
-        version: 6.0.3
-
   apps/hosted-components:
     dependencies:
       '@hexclave/react':
@@ -917,18 +871,30 @@ importers:
 
   apps/internal-tool:
     dependencies:
+      '@ai-sdk/mcp':
+        specifier: ^1.0.21
+        version: 1.0.21(zod@3.25.76)
       '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/next
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@openrouter/ai-sdk-provider':
+        specifier: 2.2.3
+        version: 2.2.3(ai@6.0.81(zod@3.25.76))(zod@3.25.76)
+      ai:
+        specifier: ^6.0.0
+        version: 6.0.81(zod@3.25.76)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
+      jose:
+        specifier: ^6.1.3
+        version: 6.1.3
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(@types/node@20.17.6)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -947,6 +913,9 @@ importers:
       spacetimedb:
         specifier: ^2.1.0
         version: 2.1.0(@tanstack/react-query@5.90.7(react@19.2.3))(react@19.2.3)(undici@6.19.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@tailwindcss/typography':
         specifier: ^0.5.16

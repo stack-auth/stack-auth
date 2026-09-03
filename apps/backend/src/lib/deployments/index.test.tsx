@@ -12,6 +12,9 @@ const baseRow = {
   dockerfilePath: null,
   // Null = built from source, which is what every row here is.
   image: null as string | null,
+  // Null = the base decides the build, and the image decides what starts.
+  buildCommand: null as string | null,
+  startCommand: null as string | null,
   env: [] as [string, { value: string }][],
 };
 

@@ -197,6 +197,7 @@ function buildBackfilledRefundManualTransaction(options: {
       customerId: options.row.customerId,
       paymentProvider: options.row.creationSource === "TEST_MODE" ? "test_mode" : "stripe",
       createdAtMillis: refundedAtMillis,
+      renewalTargetSubscriptionId: null,
     },
   };
 }

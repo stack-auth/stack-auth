@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
-import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_BUILD_ENV_BYTES, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
+import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
 import { applyErrorMessage } from "./apply-error.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
@@ -14,7 +14,7 @@ import { reconcilePublicIps } from "./public-networking.js";
 import { createDeployment, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listDomainClaimsForService, listSpecKeys, readDeployment, readDeploymentVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceDeployment, statUpload, writeDeploymentLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
 import { isImageDigest, pinToDigest, validateImageRef } from "./image-ref.js";
-import { portEntries, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
+import { portEntries, targetIsBuilt, targetUsesGeneratedDockerfile, type Deployment, type DeploymentServiceState, type DeploymentTarget, type DnsRecord, type EnvValue, type PortEntry, type PortsConfig, type ServiceDomainState, type ServiceSpec, type ServiceState, type StoredDeployment, type StoredSpec, type VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -231,6 +231,21 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     if (validatedVolumes.size > 0) persistentVolumes = Object.fromEntries(validatedVolumes);
   }
 
+  // What the container is started with, instead of the image's own entrypoint and
+  // command. Validated to the same rule as the rest of the pipeline states it: a
+  // single non-empty line with no control characters. It becomes an argv entry in
+  // a machine config, where a newline is not something that could be escaped into
+  // meaning — so it is refused here rather than sanitized.
+  let startCommand: string | undefined;
+  if (config.start_command !== undefined && config.start_command !== null) {
+    const value = config.start_command;
+    // eslint-disable-next-line no-control-regex
+    if (typeof value !== "string" || value.trim() === "" || value.length > MAX_COMMAND_LENGTH || /[\x00-\x1f\x7f]/.test(value)) {
+      throw badRequest(`config.start_command must be a single non-empty command line of at most ${MAX_COMMAND_LENGTH} characters, with no control characters`);
+    }
+    startCommand = value;
+  }
+
   // A spec always names an already-built image. Building belongs to a DEPLOYMENT
   // (see startSourceDeployment), which builds every service of a deployment
   // source from one uploaded tree in one builder machine — so by the time a spec
@@ -266,7 +281,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   return {
     // Key order is canonical here too (see the source note below). `persistent_volumes` is
     // only present when set; computeRevision mirrors that same conditional spread.
-    config: { type: serviceKind, public: isPublic, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}) },
+    config: { type: serviceKind, public: isPublic, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}), ...(startCommand !== undefined ? { start_command: startCommand } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: { image },
@@ -433,6 +448,9 @@ function pinnedMachineCount(spec: ServiceSpec): number {
 export type MachineConfig = {
   image: string,
   env: Record<string, string>,
+  // Present only when the spec names a start command. `exec` replaces the
+  // image's ENTRYPOINT and CMD both — see ContainerConfig.start_command.
+  init?: { exec: string[] },
   mounts?: { volume: string, path: string }[],
   metadata: Record<string, string>,
   services: {
@@ -463,6 +481,15 @@ export function machineConfigForSlot(options: {
     image: options.imageRef,
     guest: MACHINE_GUEST,
     env: options.env,
+    // A start command replaces what the image starts, entrypoint included: `exec`
+    // is the only one of Fly's three init fields that does. (`cmd` alone is
+    // passed TO the image's entrypoint as arguments — verified against real Fly
+    // with nginx, whose docker-entrypoint.sh then ran the command as if it were
+    // its own arguments.) Absent when there is none, so a spec without one hashes
+    // and behaves exactly as before this existed.
+    ...(options.spec.config.start_command !== undefined
+      ? { init: { exec: ["/bin/sh", "-c", options.spec.config.start_command] } }
+      : {}),
     // Only slot 0 can carry the volume, and a volume-backed spec is single-slot anyway
     // (type "server", enforced in validateServiceSpec). The volume id is part of the
     // hashed config on purpose: if the volume were ever replaced, the machine must roll onto
@@ -1050,14 +1077,26 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string | n
     // field is refused rather than escaped.
     const rootDirectory = validateOptionalRelativePath(target.root_directory, `target ${serviceKey} root_directory`);
     const dockerfilePath = validateOptionalRelativePath(target.dockerfile_path, `target ${serviceKey} dockerfile_path`);
-    // A target either takes part in the build or names an image to run. Parsed
-    // (not merely pattern-checked) so the reference is stored fully qualified and
-    // the resolver below knows which registry to ask.
+    // The image a target runs, or — with a build command — the base it is built
+    // on. Parsed (not merely pattern-checked) so the reference is stored fully
+    // qualified and the resolver below knows which registry to ask.
     const image = target.image === undefined || target.image === null
       ? undefined
       : validateImageRef(target.image, `target ${serviceKey} image`).canonical;
-    if (image !== undefined && (rootDirectory !== undefined || dockerfilePath !== undefined)) {
-      throw badRequest(`target ${serviceKey} names an image and a source build (root_directory/dockerfile_path); a target is one or the other`);
+    if (image !== undefined && dockerfilePath !== undefined) {
+      throw badRequest(`target ${serviceKey} names an image and a dockerfile_path; each of them says what the build starts from, so a target has at most one`);
+    }
+    // Becomes a `RUN` line of a Dockerfile the builder generates or appends to,
+    // so a newline (a second instruction) or any other control character is
+    // refused rather than escaped — the same rule the start command is held to.
+    let buildCommand: string | undefined;
+    if (target.build_command !== undefined && target.build_command !== null) {
+      const value = target.build_command;
+      // eslint-disable-next-line no-control-regex
+      if (typeof value !== "string" || value.trim() === "" || value.length > MAX_COMMAND_LENGTH || /[\x00-\x1f\x7f]/.test(value)) {
+        throw badRequest(`target ${serviceKey} build_command must be a single non-empty command line of at most ${MAX_COMMAND_LENGTH} characters, with no control characters`);
+      }
+      buildCommand = value;
     }
     // The spec arrives without a source: the image does not exist yet. It is
     // validated in full anyway (ports, bounds, env, volumes) so a bad spec is a
@@ -1065,11 +1104,22 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string | n
     const specRecord = asRecord(target.spec);
     if (specRecord === null) throw badRequest(`target ${serviceKey} must have a spec`);
     const spec = validateServiceSpec({ ...specRecord, source: { image: PLACEHOLDER_IMAGE } });
+    // A target built on the runtime's own base image has nothing to start: that
+    // base runs a REPL, so without a start command the service would deploy, boot
+    // and exit. Refused here as well as upstream, since this is the boundary that
+    // turns a request into a build.
+    if (image === undefined && dockerfilePath === undefined && buildCommand !== undefined && spec.config.start_command === undefined) {
+      throw badRequest(`target ${serviceKey} has a build_command but neither an image nor a dockerfile_path, so it is built on the base image — which has no command of its own. Its spec must name a start_command`);
+    }
+    if (image !== undefined && buildCommand === undefined && rootDirectory !== undefined) {
+      throw badRequest(`target ${serviceKey} names an image with no build_command, so it is not built from the upload and a root_directory within it means nothing`);
+    }
     return {
       service_key: serviceKey,
       ...(rootDirectory !== undefined ? { root_directory: rootDirectory } : {}),
       ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}),
       ...(image !== undefined ? { image } : {}),
+      ...(buildCommand !== undefined ? { build_command: buildCommand } : {}),
       spec: { config: spec.config, env: spec.env },
     };
   });
@@ -1089,7 +1139,7 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string | n
   // when nothing is: an upload nothing can build from would be consumed (and its
   // bytes copied) for no reason, and it means the caller and the targets disagree
   // about what this deployment is.
-  const buildsFromSource = targets.some((target) => target.image === undefined);
+  const buildsFromSource = targets.some(targetIsBuilt);
   if (buildsFromSource && uploadId === null) throw badRequest("upload_id is required: at least one target is built from source");
   if (!buildsFromSource && uploadId !== null) throw badRequest("upload_id must be omitted: every target names an already-built image, so there is nothing to build");
   return { uploadId, targets, order };
@@ -1127,8 +1177,8 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
   // Everything below branches on THIS rather than on "does the target have an
   // image", so that a future source of prebuilt images (one Marshal has to mirror
   // before it can run, say) changes only what fills these two lists.
-  const buildTargets = targets.filter((target) => target.image === undefined);
-  const prebuiltTargets = targets.filter((target) => target.image !== undefined);
+  const buildTargets = targets.filter(targetIsBuilt);
+  const prebuiltTargets = targets.filter((target) => !targetIsBuilt(target));
   return await withReconciliationLease(ns, sourceLeaseKey(sourceId), async (lease) => {
     const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
 
@@ -1202,7 +1252,7 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
         // waits in "pending" like any service whose turn in the dependency order
         // has not come — including while a SIBLING builds, since the applies of a
         // mixed deployment all start once the build lands.
-        status: target.image === undefined ? "building" as const : "pending" as const,
+        status: targetIsBuilt(target) ? "building" as const : "pending" as const,
         revision: null,
         url: null,
         // Filled in by the apply. A prebuilt target's image is already known
@@ -1261,6 +1311,11 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
           pushTarget: `${config.fly.registryHost}/${appNameForService(config.envId, ns, target.service_key)}:${deploymentId.toLowerCase()}`,
           dockerfilePath: target.dockerfile_path ?? null,
           rootDirectory: target.root_directory ?? null,
+          // Null unless the target builds from a GENERATED Dockerfile, which is
+          // also the only case where `image` is a base rather than the thing to
+          // run — so the builder never has to re-derive which of the two it is.
+          baseImage: targetUsesGeneratedDockerfile(target) ? target.image ?? BASE_IMAGE : null,
+          buildCommand: target.build_command ?? null,
           buildEnv: buildTimeEnv(target.spec.env),
         })),
       }, lease);
@@ -1388,7 +1443,7 @@ export async function completeBuild(options: {
     // target was resolved when the deployment was created and is already in
     // `images`; asking the build for one would fail every mixed deployment.
     const missing = current.value.targets
-      .filter((target) => target.image === undefined && lookup(images, target.service_key) === undefined)
+      .filter((target) => targetIsBuilt(target) && lookup(images, target.service_key) === undefined)
       .map((target) => target.service_key);
     if (missing.length > 0) {
       // The harness reports a digest per target; a missing one means the build
@@ -1433,9 +1488,11 @@ function parseBuildImages(metadataJson: string | null, deployment: StoredDeploym
   const targets = asRecord(asRecord(parsed)?.targets ?? null);
   if (targets === null) return images;
   for (const target of deployment.targets) {
-    // A prebuilt target never entered the build, so a digest reported for it
-    // would not be one this build pushed.
-    if (target.image !== undefined) continue;
+    // A target that was not built never entered the build, so a digest reported
+    // for it would not be one this build pushed. (An `image` with a build command
+    // WAS built — it is a base, not the thing to run — so this asks the shared
+    // predicate rather than looking at `image`.)
+    if (!targetIsBuilt(target)) continue;
     const digest = targets[target.service_key];
     if (typeof digest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(digest)) continue;
     images[target.service_key] = `${config.fly.registryHost}/${appNameForService(config.envId, deployment.ns, target.service_key)}@${digest}`;
@@ -1621,7 +1678,7 @@ async function persistDeploymentLog(fly: FlyClient, deployment: StoredDeployment
       // Only the targets that were actually BUILT. A prebuilt target never
       // entered the builder, so claiming a build env for it would let an e2e
       // assertion pass for a channel production never gives it.
-      ...deployment.targets.filter((target) => target.image === undefined).flatMap((target, index) => {
+      ...deployment.targets.filter(targetIsBuilt).flatMap((target, index) => {
         const buildEnv = buildTimeEnv(target.spec.env);
         return [
           { at_millis: deployment.started_at_millis + index * 2 + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_TARGET_START ${target.service_key}` },

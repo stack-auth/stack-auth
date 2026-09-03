@@ -16,9 +16,6 @@ import { createWorkflow, listRuns, pollWithTicks, randomSlug, retireWorkflow, se
 // Dynamic ids/emails make inline snapshots impractical here, so these tests
 // use toMatchObject assertions instead (deliberate deviation from the
 // usual snapshot preference).
-//
-// The engine drivers (tickWorkflowEngine, pollWithTicks) and workflow CRUD helpers live in
-// workflows-helpers.ts so the growth e2e suites can share them.
 
 /**
  * Creates a project with the Workflows app installed and switches the backend

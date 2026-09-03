@@ -346,11 +346,12 @@ export type DeploymentServiceDefinition = {
   // suspend switch: 1 (the default) stays up, 0 suspends when idle.
   min_instances?: number | undefined,
   max_instances?: number | undefined,
-  // Relative to the directory containing hexclave.deploy.ts. Only used
-  // client-side (it decides what `hexclave deploy` packages), but stored so
-  // the dashboard can display it.
+  // Relative to the directory containing hexclave.deploy.ts. Decides what
+  // `hexclave deploy` packages, and — on the generated-Dockerfile path below —
+  // the working directory `build_command` runs in.
   //
-  // Mutually exclusive with `image`: a prebuilt image is not built from the
+  // Meaningful alongside `image` only when a `build_command` makes the image a
+  // BASE: a service that merely runs a prebuilt image is not built from the
   // uploaded source, so it has no directory within it.
   root_directory?: string | undefined,
   // The Dockerfile to build from, as a path within the uploaded tree — i.e.
@@ -359,14 +360,20 @@ export type DeploymentServiceDefinition = {
   // `rootDirectory` and the CLI joins the two before sending it, so that the
   // pre-flight, this schema and the remote builder all resolve it against one
   // base. When absent the service is NOT built from a Dockerfile — the remote
-  // builder auto-detects the build with Railpack (https://railpack.com) instead.
+  // builder auto-detects the build with Railpack (https://railpack.com) instead
+  // — unless a `build_command` is set, which selects the generated-Dockerfile
+  // path below rather than auto-detection.
   //
   // Mutually exclusive with `image`.
   dockerfile_path?: string | undefined,
-  // An ALREADY-BUILT image to run, instead of building one from the uploaded
-  // source: `postgres:16`, `ghcr.io/org/app:1.2.3`, or a digest. Mutually
-  // exclusive with `root_directory` and `dockerfile_path` — those say where the
-  // code is, this says what to run, and a service has exactly one of the two.
+  // An already-built image: `postgres:16`, `ghcr.io/org/app:1.2.3`, or a digest.
+  //
+  // On its own it is the image to RUN, and the service is not built at all —
+  // nothing is uploaded for it and its deploy takes seconds. With a
+  // `build_command` it is instead the BASE the service is built from, and the
+  // uploaded source is copied in on top of it (see `build_command`).
+  //
+  // Mutually exclusive with `dockerfile_path`: both name a base.
   //
   // Stored as the author wrote it (normalized to a canonical, fully-qualified
   // ref by parseDeploymentImageRef, so `postgres:16` is stored as
@@ -386,8 +393,68 @@ export type DeploymentServiceDefinition = {
   // never hold one id at a time. See MAX_PERSISTENT_VOLUMES_PER_SERVICE for the
   // current one-per-service cap.
   persistent_volumes?: Record<string, DeploymentVolumeDefinition> | undefined,
+  // A single command line, run through `/bin/sh -c` while the image is BUILT.
+  //
+  // It selects a GENERATED DOCKERFILE, whose base is `image` if one is named and
+  // the Hexclave base image otherwise. The whole uploaded source is copied into
+  // `/app`, the command runs in `/app/<root_directory>`, and every build-visible
+  // env var is available to it. That is what makes `image` + `build_command`
+  // mean "start from this image, add my code" rather than "run this image".
+  //
+  // The one exception is `dockerfile_path`, which already describes a complete
+  // build: there the command is APPENDED to the author's Dockerfile as a final
+  // `RUN`, and nothing is copied in that the Dockerfile did not copy itself.
+  //
+  // Absent = the base decides the build entirely (Railpack auto-detection, the
+  // author's Dockerfile, or — for a bare `image` — no build at all).
+  build_command?: string | undefined,
+  // A single command line, run through `/bin/sh -c` as the container's process,
+  // INSTEAD of whatever the image would have started.
+  //
+  // Applied at RUN time (the machine's init, which replaces both the image's
+  // entrypoint and its command — verified against real Fly), not baked into the
+  // image. So it costs no build: naming one on a prebuilt `image` service keeps
+  // that service's deploy build-less, and changing only this rolls the machines
+  // without rebuilding anything.
+  //
+  // It never changes HOW the service is built, which is what makes it usable on
+  // every shape: a Railpack-built service keeps its auto-detected build and just
+  // starts differently.
+  //
+  // REQUIRED when the service builds on the Hexclave base image (no `image`, no
+  // `dockerfile_path`, but a command): that base starts nothing on its own, so a
+  // service without one would deploy and then immediately exit.
+  start_command?: string | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
+
+// Whether a definition is BUILT from the deployment's uploaded source.
+//
+// True for everything except a service that merely runs an already-built
+// `image`: naming a `build_command` alongside one turns it into a base, which
+// means an upload, a builder machine and a build log. Shared because the answer
+// decides several unrelated things — whether the CLI packages the source at all,
+// whether the runtime demands an upload, and whether a deploy has logs to show —
+// and those must not be able to disagree.
+export function deploymentServiceIsBuilt(definition: Pick<DeploymentServiceDefinition, "image" | "build_command">): boolean {
+  return definition.image === undefined || definition.build_command !== undefined;
+}
+
+// Whether a definition builds from a GENERATED Dockerfile — the path that copies
+// the uploaded source onto a base image, rather than Railpack auto-detection or
+// the author's own Dockerfile.
+//
+// Only a `build_command` selects it. A `start_command` deliberately does NOT:
+// it is applied by the runtime and works on whatever image the service ends up
+// with, so letting it switch the BUILD would mean that adding "run it this way"
+// to a working Railpack service silently threw away the install and compile
+// steps that made it work — an image that builds fine and then has no
+// node_modules. Overriding a wrongly-detected start command is exactly what a
+// start command is for, and it must stay possible without rebuilding anything.
+export function deploymentServiceUsesGeneratedDockerfile(definition: Pick<DeploymentServiceDefinition, "image" | "dockerfile_path" | "build_command">): boolean {
+  if (definition.build_command === undefined) return false;
+  return definition.dockerfile_path === undefined;
+}
 
 // How one port the container listens on is exposed.
 //
@@ -580,15 +647,42 @@ export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
 export const DEPLOYMENT_VOLUME_ID_REGEX = /^[a-z][a-z0-9_]*$/;
 export const MAX_VOLUME_ID_LENGTH = 26;
 
+// ---------------------------------------------------------------------------
+// Build and start commands.
+//
+// A command is a single command LINE, run through `/bin/sh -c` — the same shape
+// as the deploy file's `devCommand`, and the same shape every other platform's
+// build/start command has. Not a script: a newline in a Dockerfile `RUN` is a
+// new instruction, and a newline in the machine's start command would have to be
+// re-quoted at every hop. `sh -c` means `&&`, pipes and redirections all work,
+// so a command that wants two steps writes them with `&&` (or, past a certain
+// size, moves into a script the command invokes).
+export const MAX_DEPLOYMENT_COMMAND_LENGTH = 2048;
+
+/**
+ * Whether `value` is usable as a build or start command.
+ *
+ * Control characters are refused rather than escaped. A build command becomes a
+ * line of a generated Dockerfile and a start command becomes an argv entry in a
+ * machine config, and in both places a newline or a NUL is a structural
+ * character of the thing being generated rather than data — so the rule is
+ * stated here, once, and the generators may then assume it.
+ */
+export function isValidDeploymentCommand(value: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return value.trim() !== "" && value.length <= MAX_DEPLOYMENT_COMMAND_LENGTH && !/[\x00-\x1f\x7f]/.test(value);
+}
+
 
 // ---------------------------------------------------------------------------
 // Prebuilt images.
 //
 // A service either builds from the uploaded source (`root_directory` /
-// `dockerfile_path`) or names an ALREADY-BUILT image (`image`). The two are
-// mutually exclusive: those fields describe where the code is, `image`
-// describes what to run, and a definition carrying both would leave the
-// deployment with two answers to "what does this service run".
+// `dockerfile_path`) or names an ALREADY-BUILT image (`image`) — unless it also
+// carries a `build_command`, which turns the image into the BASE of a build
+// rather than the thing to run. `image` and `dockerfile_path` stay mutually
+// exclusive: each of them names a base, and a definition carrying both would
+// leave the deployment with two answers to "what is this built from".
 
 export const MAX_DEPLOYMENT_IMAGE_REF_LENGTH = 512;
 
@@ -952,10 +1046,42 @@ export const deploymentServiceDefinitionSchema = yupObject({
       // author to guess which of a dozen rules they broke.
       return parsed.ok || this.createError({ message: parsed.message });
     })
-    .test("image-excludes-source-build", "a service either names an `image` to run or is built from your source with `root_directory`/`dockerfile_path` — it cannot do both", function (value) {
+    // `image` and `dockerfile_path` each name a BASE, so a service has at most
+    // one of them. `root_directory` is deliberately not in this rule any more:
+    // with a `build_command` the image is a base, the source is copied onto it,
+    // and the root directory is where that command runs.
+    .test("image-excludes-dockerfile-path", "a service is built from an `image` or from a `dockerfile_path`, not both — each of them says what the build starts from", function (value) {
       if (value === undefined) return true;
-      const parent = this.parent as { root_directory?: string, dockerfile_path?: string };
-      return parent.root_directory === undefined && parent.dockerfile_path === undefined;
+      return (this.parent as { dockerfile_path?: string }).dockerfile_path === undefined;
+    })
+    .test("image-without-build-excludes-root-directory", "a service that only runs an `image` is not built from your source, so it has no `root_directory` within it — add a `build_command` to build on top of the image, or drop `root_directory`", function (value) {
+      if (value === undefined) return true;
+      const parent = this.parent as { root_directory?: string, build_command?: string };
+      return parent.build_command !== undefined || parent.root_directory === undefined;
+    }),
+  // A single command line run through `/bin/sh -c` while the image is built.
+  // Selects the generated-Dockerfile path unless a `dockerfile_path` is set, in
+  // which case it is appended to the author's Dockerfile as a final `RUN`.
+  //
+  // The rules here must be AT LEAST as strict as Marshal's, which generates a
+  // Dockerfile line from this: a command that the runtime would refuse has to
+  // fail at sync time rather than after an upload has been consumed.
+  build_command: yupString().optional().max(MAX_DEPLOYMENT_COMMAND_LENGTH)
+    .test("valid-command", `build_command must be a single non-empty command line of at most ${MAX_DEPLOYMENT_COMMAND_LENGTH} characters, with no control characters (it becomes one \`RUN\` line of the built image — chain steps with \`&&\`)`, (value) =>
+      value === undefined || isValidDeploymentCommand(value)),
+  // A single command line run through `/bin/sh -c` as the container's process,
+  // instead of whatever the image would have started. Applied at run time, so it
+  // never causes a build.
+  start_command: yupString().optional().max(MAX_DEPLOYMENT_COMMAND_LENGTH)
+    .test("valid-command", `start_command must be a single non-empty command line of at most ${MAX_DEPLOYMENT_COMMAND_LENGTH} characters, with no control characters`, (value) =>
+      value === undefined || isValidDeploymentCommand(value))
+    // The Hexclave base image runs nothing on its own: a service built on it
+    // without a start command would deploy, start, and immediately exit. Caught
+    // here rather than at deploy time, where the upload has already been spent.
+    .test("base-image-build-needs-start-command", "a service with a `build_command` but no `image` or `dockerfile_path` is built on the Hexclave base image, which has no command of its own — add a `startCommand` saying how to run it", function (value) {
+      if (value !== undefined) return true;
+      const parent = this.parent as { image?: string, dockerfile_path?: string, build_command?: string };
+      return parent.build_command === undefined || parent.image !== undefined || parent.dockerfile_path !== undefined;
     }),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
   // reads it straight out of the local deploy file, and the backend never acts
@@ -1082,13 +1208,101 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts an image ser
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: {}, image: "postgres", env: {},
   }, { abortEarly: false })).rejects.toThrow(/no tag or digest/);
-  // Either the image says what to run, or the source fields say what to build.
+  // An image with nothing built on top of it is not built from the source, so it
+  // has no directory within it.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: {}, image: "postgres:16", root_directory: "./database", env: {},
-  }, { abortEarly: false })).rejects.toThrow(/cannot do both/);
+  }, { abortEarly: false })).rejects.toThrow(/has no `root_directory`/);
+  // `image` and `dockerfile_path` each name a base.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: {}, image: "postgres:16", dockerfile_path: "Dockerfile", env: {},
-  }, { abortEarly: false })).rejects.toThrow(/cannot do both/);
+  }, { abortEarly: false })).rejects.toThrow(/not both/);
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts build and start commands, including on an image base", async ({ expect }) => {
+  // The generated-Dockerfile path: no base named, so the Hexclave base image is
+  // used and a start command is what makes it runnable.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } }, root_directory: "./web",
+    build_command: "pnpm install --frozen-lockfile && pnpm build",
+    start_command: "pnpm start",
+    env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ build_command: "pnpm install --frozen-lockfile && pnpm build", start_command: "pnpm start" });
+  // An image as a BASE: `root_directory` is meaningful again, because the source
+  // is copied onto it and the command runs there.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } },
+    image: "python:3.12-slim", root_directory: "./api", build_command: "pip install -r requirements.txt",
+    start_command: "python -m uvicorn main:app --host 0.0.0.0 --port 3000",
+    env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ image: "docker.io/library/python:3.12-slim", root_directory: "./api" });
+  // A start command alone never causes a build, so it is legal on a bare image.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: { "6379": { protocol: "tcp" } }, image: "redis:7-alpine",
+    start_command: "redis-server --appendonly yes", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ start_command: "redis-server --appendonly yes" });
+  // A Dockerfile plus a build command appends to the author's build.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "serverless", ports: { "3000": { protocol: "http" } }, dockerfile_path: "Dockerfile",
+    build_command: "npm run postbuild", env: {},
+  }, { abortEarly: false })).resolves.toMatchObject({ build_command: "npm run postbuild" });
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema refuses commands it could not generate from", async ({ expect }) => {
+  const base = { type: "serverless" as const, ports: { "3000": { protocol: "http" } }, env: {} };
+  // A newline would be a second Dockerfile instruction, and a NUL cannot survive
+  // an argv entry — both are refused rather than escaped.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build\nrm -rf /", start_command: "npm start",
+  }, { abortEarly: false })).rejects.toThrow(/build_command/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    // A TAB is the field separator of the manifest the builder reads, so it
+    // cannot reach the build either.
+    ...base, start_command: "npm\tstart",
+  }, { abortEarly: false })).rejects.toThrow(/start_command/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "   ", start_command: "npm start",
+  }, { abortEarly: false })).rejects.toThrow(/build_command/);
+  // Not `abortEarly: false` here: an over-length command breaks BOTH the max and
+  // the shape rule, and an aggregated ValidationError reports only "2 errors
+  // occurred" rather than either message.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, start_command: "x".repeat(MAX_DEPLOYMENT_COMMAND_LENGTH + 1),
+  })).rejects.toThrow(/start_command/);
+  // The Hexclave base image has no command of its own.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build",
+  }, { abortEarly: false })).rejects.toThrow(/no command of its own/);
+  // ...but a base that DOES (the author's image or Dockerfile) needs none.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build", image: "node:22-bookworm",
+  }, { abortEarly: false })).resolves.toBeDefined();
+  await expect(deploymentServiceDefinitionSchema.validate({
+    ...base, build_command: "npm run build", dockerfile_path: "Dockerfile",
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceIsBuilt and deploymentServiceUsesGeneratedDockerfile agree on what each shape means", ({ expect }) => {
+  const built = (definition: Partial<DeploymentServiceDefinition>) => deploymentServiceIsBuilt(definition);
+  const generated = (definition: Partial<DeploymentServiceDefinition>) => deploymentServiceUsesGeneratedDockerfile(definition);
+  // Railpack auto-detection: built, but not from a generated Dockerfile.
+  expect([built({}), generated({})]).toEqual([true, false]);
+  // The author's Dockerfile owns the build, with or without an appended command.
+  expect([built({ dockerfile_path: "Dockerfile" }), generated({ dockerfile_path: "Dockerfile" })]).toEqual([true, false]);
+  expect(generated({ dockerfile_path: "Dockerfile", build_command: "make" })).toBe(false);
+  // A bare image is the one shape that is not built at all.
+  expect([built({ image: "postgres:16" }), generated({ image: "postgres:16" })]).toEqual([false, false]);
+  // ...and a start command does not change that: it is applied at run time.
+  expect(built({ image: "postgres:16", start_command: "postgres -c fsync=off" })).toBe(false);
+  // A build command turns the image into a base.
+  expect([built({ image: "node:22", build_command: "npm ci" }), generated({ image: "node:22", build_command: "npm ci" })]).toEqual([true, true]);
+  // With no base at all, a BUILD command selects the Hexclave base image...
+  expect(generated({ build_command: "npm ci" })).toBe(true);
+  // ...but a start command alone never changes how a service is built. Adding
+  // "run it this way" to a Railpack service must not silently throw away the
+  // install and compile that Railpack was doing for it.
+  expect(generated({ start_command: "node server.js" })).toBe(false);
+  expect(built({ start_command: "node server.js" })).toBe(true);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema requires explicit port protocols and defaults a service to private", async ({ expect }) => {

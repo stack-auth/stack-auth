@@ -59,6 +59,7 @@ import {
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
   DEPLOYMENT_SOURCE_ID_REGEX,
+  MAX_DEPLOYMENT_COMMAND_LENGTH,
   MAX_DEPLOYMENT_SOURCE_ID_LENGTH,
   MAX_INSTANCES_PER_SERVICE,
   MAX_PERSISTENT_VOLUMES_PER_SERVICE,
@@ -68,7 +69,9 @@ import {
   MIN_VOLUME_SIZE_GB,
   SERVICE_OUTPUT_KEYS,
   connectionRequiresTargetDeployed,
+  deploymentServiceIsBuilt,
   formatConnectionValue,
+  isValidDeploymentCommand,
   parseConnectionValue,
   parseDeploymentImageRef,
   DEPLOYMENT_PORT_KEY_REGEX,
@@ -330,7 +333,7 @@ export type EvaluatedServices = {
 
 const KNOWN_SERVICE_FIELDS = new Set([
   "type", "public", "ports", "minInstances", "maxInstances",
-  "rootDirectory", "dockerfilePath", "image", "devCommand", "persistentVolumes", "env",
+  "rootDirectory", "dockerfilePath", "image", "devCommand", "buildCommand", "startCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
 
@@ -714,17 +717,27 @@ export function evaluateDeploymentConfig(options: {
     const isPublic = record.public === true;
     const ports = evaluatePorts(serviceId, isPublic, record.ports);
 
-    // A service either names an already-built `image` or is built from the
-    // uploaded source. Checked on the RAW record rather than on the resolved
-    // values below, because `rootDirectory` resolves to a default and would
-    // otherwise look present on every service.
+    // `image` and `dockerfilePath` each say what the build starts FROM, so a
+    // service has at most one of them. Checked on the RAW record rather than on
+    // the resolved values below, because `rootDirectory` resolves to a default
+    // and would otherwise look present on every service.
     const imageRaw = readOptionalStringField(record, serviceId, "image");
+    const buildCommand = readOptionalStringField(record, serviceId, "buildCommand");
+    const startCommand = readOptionalStringField(record, serviceId, "startCommand");
+    for (const [field, value] of [["buildCommand", buildCommand], ["startCommand", startCommand]] as const) {
+      // Stated here as well as in the wire schema so the author sees it before
+      // anything is packaged, and phrased for the deploy file they are editing.
+      if (value !== undefined && !isValidDeploymentCommand(value)) {
+        throw new CliError(`deploy.services.${serviceId}.${field} must be a single non-empty command line of at most ${MAX_DEPLOYMENT_COMMAND_LENGTH} characters, with no newlines or other control characters. Chain steps with \`&&\`, or move them into a script the command runs.`);
+      }
+    }
     let image: string | undefined;
     if (imageRaw !== undefined) {
-      for (const conflicting of ["rootDirectory", "dockerfilePath"] as const) {
-        if (record[conflicting] !== undefined) {
-          throw new CliError(`deploy.services.${serviceId} sets both \`image\` and \`${conflicting}\`. A service either runs an already-built image or is built from your source — remove \`${conflicting}\` to run ${JSON.stringify(imageRaw)}, or remove \`image\` to build it.`);
-        }
+      if (record.dockerfilePath !== undefined) {
+        throw new CliError(`deploy.services.${serviceId} sets both \`image\` and \`dockerfilePath\`. Each of them says what the build starts from — remove \`dockerfilePath\` to build on ${JSON.stringify(imageRaw)}, or remove \`image\` to build from the Dockerfile.`);
+      }
+      if (buildCommand === undefined && record.rootDirectory !== undefined) {
+        throw new CliError(`deploy.services.${serviceId} sets both \`image\` and \`rootDirectory\`, but without a \`buildCommand\` it only runs ${JSON.stringify(imageRaw)} and is never built from your source, so a directory within it means nothing. Add a \`buildCommand\` to build on top of the image, or remove \`rootDirectory\`.`);
       }
       const parsed = parseDeploymentImageRef(imageRaw);
       if (!parsed.ok) {
@@ -801,6 +814,13 @@ export function evaluateDeploymentConfig(options: {
       throw new CliError(`deploy.services.${serviceId} declares persistentVolumes but is a "serverless" service. A volume is a disk on one machine — it cannot be shared between instances, so each one would get its own separate copy. Change it to \`type: "server"\`, or drop the volume and keep state in a database or object storage instead.`);
     }
 
+    // The Hexclave base image (see `buildCommand`) starts nothing on its own, so
+    // a service built on it without a start command would deploy, boot and
+    // immediately exit. Refused here, before anything is packaged or uploaded.
+    if (buildCommand !== undefined && startCommand === undefined && image === undefined && dockerfilePath === undefined) {
+      throw new CliError(`deploy.services.${serviceId} has a \`buildCommand\` but no \`image\` or \`dockerfilePath\`, so it is built on the Hexclave base image — which has no command of its own. Add a \`startCommand\` saying how to run it (e.g. startCommand: "npm start").`);
+    }
+
     const env = evaluateEnvRecord(serviceId, record.env);
     // Read (and type-checked) but deliberately NOT part of `definition`: the
     // dev command is only ever run locally by `hexclave dev --service-id`, so
@@ -823,18 +843,24 @@ export function evaluateDeploymentConfig(options: {
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
         //
-        // Both source fields are omitted entirely for an image service: it is
-        // not built from the upload, so a root directory within it would be a
-        // path to nothing. (`absoluteRootDirectory` below is still the deploy
+        // Omitted for a service that is not built from the upload at all (an
+        // `image` with no `buildCommand`), where a directory within it would be
+        // a path to nothing. (`absoluteRootDirectory` below is still the deploy
         // file's own directory, because `hexclave dev` runs `devCommand` there
         // — that is a local concern and never leaves this machine.)
-        root_directory: image === undefined ? (relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/")) : undefined,
+        root_directory: deploymentServiceIsBuilt({ image, build_command: buildCommand })
+          ? (relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"))
+          : undefined,
         // Posix path within the uploaded tree — `rootDirectory` already joined
-        // on. Absent = Railpack auto-detection.
+        // on. Absent = Railpack auto-detection, or the generated Dockerfile if a
+        // command selects it.
         dockerfile_path: dockerfilePath,
-        // An already-built image to run instead of building one. Nothing is
-        // built or uploaded for this service.
+        // The image to run, or — with a `buildCommand` — the base to build on.
         image,
+        // Run while the image is built; run instead of the image's own command.
+        // A start command is applied by the runtime, so it causes no build.
+        build_command: buildCommand,
+        start_command: startCommand,
         // Absent = the container filesystem is entirely ephemeral.
         persistent_volumes: persistentVolumes,
         env: serializeEnvForWire(env),
