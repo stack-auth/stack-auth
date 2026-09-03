@@ -59,18 +59,14 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
   ),
 ]);
 
-export function getOpenRouterProxyBaseUrl() {
+export function createOpenRouterProvider() {
   // Development AI calls loop back into this backend's OpenRouter proxy. Use the
   // configured port prefix so non-default prefixes (91/92/93) don't ECONNREFUSED
   // against a hardcoded 8102 that isn't running.
   const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
-  return (getNodeEnvironment() === "development")
+  const baseURL = getNodeEnvironment() === "development"
     ? `http://localhost:${portPrefix}02/api/latest/integrations/ai-proxy/v1`
     : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
-}
-
-export function createOpenRouterProvider() {
-  const baseURL = getOpenRouterProxyBaseUrl();
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,

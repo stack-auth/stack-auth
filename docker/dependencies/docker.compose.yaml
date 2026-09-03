@@ -339,30 +339,7 @@ services:
     pull_policy: always
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}39:3000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     command: start
-
-  spacetimedb-issuer-proxy:
-    image: alpine/socat
-    network_mode: "service:spacetimedb"
-    restart: unless-stopped
-    depends_on:
-      - spacetimedb
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -eu
-        host="$$(getent hosts host.docker.internal 2>/dev/null | awk '{print $$1; exit}')"
-        if [ -z "$$host" ]; then
-          host="$$(ip -4 route show default 0.0.0.0/0 | awk '{print $$3; exit}')"
-        fi
-        if [ -z "$$host" ]; then
-          echo "spacetimedb-issuer-proxy: could not resolve host.docker.internal or a default gateway" >&2
-          exit 1
-        fi
-        echo "spacetimedb-issuer-proxy: forwarding 127.0.0.1:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41 -> $$host:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41" >&2
-        exec socat TCP-LISTEN:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41,fork,reuseaddr,bind=127.0.0.1 TCP:$$host:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41
 
   # ================= Drizzle Gateway =================
 

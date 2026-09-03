@@ -244,10 +244,7 @@ describe("AI Query Endpoint - Validation", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
-      code: "TOO_MANY_IMAGE_ATTACHMENTS",
-      error: expect.stringContaining(`Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`),
-    });
+    expect(response.body).toEqual(expect.stringContaining(`Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`));
   });
 
   it("rejects user messages with oversized image attachments", async ({ expect }) => {
@@ -275,10 +272,7 @@ describe("AI Query Endpoint - Validation", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
-      code: "IMAGE_ATTACHMENT_TOO_LARGE",
-      error: expect.stringContaining("Image exceeds"),
-    });
+    expect(response.body).toEqual(expect.stringContaining("Image exceeds"));
   });
 
 });

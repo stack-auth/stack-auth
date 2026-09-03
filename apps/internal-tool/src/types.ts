@@ -1,7 +1,1 @@
-export type {
-  AiQueryLog as AiQueryLogRow,
-  FeedbackLog as FeedbackLogRow,
-  McpCallLog as McpCallLogRow,
-  PublishedQaRow,
-  QaEntries as QaEntriesRow,
-} from "./module_bindings/types";
+export type { McpCallLog as McpCallLogRow } from "./module_bindings/types";

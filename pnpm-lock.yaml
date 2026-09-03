@@ -871,30 +871,18 @@ importers:
 
   apps/internal-tool:
     dependencies:
-      '@ai-sdk/mcp':
-        specifier: ^1.0.21
-        version: 1.0.21(zod@3.25.76)
       '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/next
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@openrouter/ai-sdk-provider':
-        specifier: 2.2.3
-        version: 2.2.3(ai@6.0.81(zod@3.25.76))(zod@3.25.76)
-      ai:
-        specifier: ^6.0.0
-        version: 6.0.81(zod@3.25.76)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
-      jose:
-        specifier: ^6.1.3
-        version: 6.1.3
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(@types/node@20.17.6)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -913,9 +901,6 @@ importers:
       spacetimedb:
         specifier: ^2.1.0
         version: 2.1.0(@tanstack/react-query@5.90.7(react@19.2.3))(react@19.2.3)(undici@6.19.8)
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
     devDependencies:
       '@tailwindcss/typography':
         specifier: ^0.5.16
