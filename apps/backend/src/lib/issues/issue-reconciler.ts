@@ -132,10 +132,7 @@ export function buildIssueRebuildQuery(timeFilter: string): string {
     `;
 }
 
-async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[]> {
-  const client = getSharedClickhouseAdminClient();
-  const result = await client.query({
-    query: `
+export const ISSUE_RECONCILER_CANDIDATE_BATCHES_SQL = `
       SELECT project_id, branch_id, batch_id
       FROM analytics_internal.events
       PREWHERE event_type = '$error'
@@ -144,8 +141,14 @@ async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[
       WHERE issue_hash != ''
         AND batch_id != ''
       GROUP BY project_id, branch_id, batch_id
+      ORDER BY min(event_at) ASC
       LIMIT {cap:UInt64}
-    `,
+    `;
+
+async function findCandidateBatches(from: Date, to: Date): Promise<CandidateRow[]> {
+  const client = getSharedClickhouseAdminClient();
+  const result = await client.query({
+    query: ISSUE_RECONCILER_CANDIDATE_BATCHES_SQL,
     query_params: {
       from: from.getTime() / 1000,
       to: to.getTime() / 1000,

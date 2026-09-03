@@ -132,10 +132,12 @@ function asTokenCount(value: string | number | boolean | null): string | null {
     if (!Number.isSafeInteger(value) || value < 0) return null;
     return String(value);
   }
-  if (typeof value !== "string" || !/^\d{1,20}$/.test(value)) return null;
-  if (BigInt(value) > UINT64_MAX) return null;
-  // Canonicalize "007" → "7" so equal counts always compare equal downstream.
-  return BigInt(value).toString();
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+  // Canonicalize before applying UInt64's 20-digit bound. OTLP integer text
+  // may contain leading zeros, which do not contribute to the value's range.
+  const canonical = value.replace(/^0+(?=\d)/, "");
+  if (canonical.length > 20 || BigInt(canonical) > UINT64_MAX) return null;
+  return canonical;
 }
 
 function readTokenCount(getAttribute: GenAiAttributeReader, keys: readonly string[]): string | null {

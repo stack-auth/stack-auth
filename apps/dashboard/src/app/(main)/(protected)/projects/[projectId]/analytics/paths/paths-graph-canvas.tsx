@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ArrowCounterClockwiseIcon, ArrowsOutIcon, GitDiffIcon, PlusIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "./force-layout";
+import { normalizeUrlPath } from "./normalize-url";
 
 const CARD_HEIGHT = 54;
 const VIEW_PADDING = 56;
@@ -251,7 +252,8 @@ export function PathsGraphCanvas({
   const checkedPaths = useMemo(() => new Set(
     compareInputs
       .map((input) => input.path.trim())
-      .filter((path) => path !== ""),
+      .filter((path) => path !== "")
+      .map(normalizeUrlPath),
   ), [compareInputs]);
 
   useEffect(() => {

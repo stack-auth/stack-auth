@@ -1,8 +1,12 @@
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { describe, expect, it } from "vitest";
-import { buildIssueRebuildQuery, completeBatchRebuildOptions, groupingProvenanceForReconciliation } from "./issue-reconciler";
+import { buildIssueRebuildQuery, completeBatchRebuildOptions, groupingProvenanceForReconciliation, ISSUE_RECONCILER_CANDIDATE_BATCHES_SQL } from "./issue-reconciler";
 
 describe("issue reconciliation boundaries", () => {
+  it("selects the oldest unapplied batches first when the candidate cap is hit", () => {
+    expect(ISSUE_RECONCILER_CANDIDATE_BATCHES_SQL).toContain("ORDER BY min(event_at) ASC");
+  });
+
   it("uses the discovery window only to select batches, then rebuilds the complete batch", () => {
     const options = completeBatchRebuildOptions({
       projectId: "project-1",

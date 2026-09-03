@@ -494,7 +494,6 @@ export class EventTracker {
     return preCaught(this._deps.forceFlushOtel?.() ?? Promise.resolve());
   }
 
-  /** Starts a custom span through the active OTel Tracer. */
   startSpan(spanType: string, options?: StartSpanOptions): Span {
     assertValidSpanStartInput(spanType, options);
     const resolved = resolveSpanParent({

@@ -68,10 +68,11 @@ describe("resolveActiveGroupingConfigId", () => {
 });
 
 describe("resolveGroupingConfig", () => {
-  it("defaults to the newest config while reading hashes from its predecessor", () => {
+  it("defaults to the rendered-config id and keeps the newer algorithm readable", () => {
+    expect(DEFAULT_GROUPING_CONFIG_ID).toBe("hexclave-js:2026-08-01");
     expect(resolveGroupingConfig(undefined)).toEqual({
-      activeConfigId: DEFAULT_GROUPING_CONFIG_ID,
-      readableConfigIds: ["hexclave-js:2026-08-01"],
+      activeConfigId: "hexclave-js:2026-08-01",
+      readableConfigIds: ["hexclave-js:2026-08-20"],
       provenance: { active: "default", readable: "default" },
     });
   });

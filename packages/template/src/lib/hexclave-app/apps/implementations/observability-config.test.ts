@@ -39,6 +39,13 @@ describe("OpenTelemetry provider mode", () => {
     expect(resolveClientOpenTelemetryProvider("existing-provider", true)).toBe("existing-provider");
     expect(resolveClientOpenTelemetryProvider("managed", false)).toBe("disabled");
   });
+
+  it("keeps a managed delivery provider when analytics is on and observability is off", () => {
+    expect(resolveClientOpenTelemetryProvider("managed", false, true)).toBe("managed");
+    expect(resolveClientOpenTelemetryProvider("existing-provider", false, true)).toBe("managed");
+    expect(resolveClientOpenTelemetryProvider("auto", false, true)).toBe("managed");
+    expect(resolveClientOpenTelemetryProvider("managed", false, false)).toBe("disabled");
+  });
 });
 
 describe("observabilityOptionsToJson", () => {

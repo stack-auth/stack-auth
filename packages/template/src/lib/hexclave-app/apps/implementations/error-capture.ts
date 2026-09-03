@@ -350,7 +350,6 @@ export function buildErrorEventDataFromNormalized(normalized: NormalizedError, o
   };
 }
 
-/** The scope-derived slice of the `$error` event payload (see CapturedErrorEvent). */
 type ErrorScopeEventData = Pick<CapturedErrorEvent, "user" | "tags" | "contexts" | "extra" | "breadcrumbs" | "level" | "fingerprint_override">;
 
 function errorScopeToEventData(scope: ErrorScopeData | undefined): ErrorScopeEventData {

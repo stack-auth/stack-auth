@@ -174,6 +174,9 @@ describe("analytics trace row parsing", () => {
     // Provider, response model, subset token counts, and conversation id are
     // detail-pane-only; the waterfall chip never shows them.
     expect(spanQuery.query).not.toContain("s.gen_ai_provider_name");
+    expect(spanQuery.query).not.toContain("s.gen_ai_response_model");
+    expect(spanQuery.query).not.toContain("s.gen_ai_cache_read_input_tokens");
+    expect(spanQuery.query).not.toContain("s.gen_ai_reasoning_output_tokens");
     expect(spanQuery.query).not.toContain("s.gen_ai_conversation_id");
   });
 

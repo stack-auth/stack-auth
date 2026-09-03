@@ -1,5 +1,5 @@
-import type { NetworkOptions } from "./network-capture";
 import type { ErrorAttachmentTransport, ErrorBeforeSend, ErrorEventProcessor, PendingErrorAttachment } from "../interfaces/error-capture";
+import type { NetworkOptions } from "./network-capture";
 
 export { type NetworkOptions } from "./network-capture";
 
@@ -87,22 +87,25 @@ export function shouldInstallManagedOtel(provider: OpenTelemetryProviderMode): b
 export function resolveClientOpenTelemetryProvider(
   provider: OpenTelemetryProviderMode | undefined,
   observabilityEnabled: boolean,
+  analyticsEnabled = false,
 ): "managed" | "existing-provider" | "disabled" {
-  if (!observabilityEnabled) return "disabled";
-  const mode = resolveOpenTelemetryProviderMode(provider);
-  switch (mode) {
-    case "existing-provider": {
-      return "existing-provider";
-    }
-    case "managed":
-    case "auto": {
-      return "managed";
-    }
-    default: {
-      const unexpected: never = mode;
-      throw new Error(`Unexpected OpenTelemetry provider: ${JSON.stringify(unexpected)}`);
+  if (observabilityEnabled) {
+    const mode = resolveOpenTelemetryProviderMode(provider);
+    switch (mode) {
+      case "existing-provider": {
+        return "existing-provider";
+      }
+      case "managed":
+      case "auto": {
+        return "managed";
+      }
+      default: {
+        const unexpected: never = mode;
+        throw new Error(`Unexpected OpenTelemetry provider: ${JSON.stringify(unexpected)}`);
+      }
     }
   }
+  return analyticsEnabled ? "managed" : "disabled";
 }
 
 export function existingProviderConflictFor(provider: OpenTelemetryProviderMode): "throw" | "adopt" {

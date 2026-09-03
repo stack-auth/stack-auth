@@ -26,22 +26,26 @@ export type AiSpanSummary = {
   toolName: string | null,
   agentName: string | null,
   conversationId: string | null,
-  inputTokens: number | null,
-  outputTokens: number | null,
-  cacheReadInputTokens: number | null,
-  reasoningOutputTokens: number | null,
+  inputTokens: string | null,
+  outputTokens: string | null,
+  cacheReadInputTokens: string | null,
+  reasoningOutputTokens: string | null,
 };
 
 function stringColumn(value: Json | undefined): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-function tokenCountColumn(column: string, value: Json | undefined): number | null {
+const UINT64_MAX = BigInt("18446744073709551615");
+
+function tokenCountColumn(column: string, value: Json | undefined): string | null {
   if (value == null) return null;
   // ClickHouse serializes UInt64 as a JSON string by default
   // (output_format_json_quote_64bit_integers), so both forms are expected.
-  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
-  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return String(value);
+  if (typeof value === "string" && /^\d{1,20}$/.test(value) && BigInt(value) <= UINT64_MAX) {
+    return BigInt(value).toString();
+  }
   throw new Error(`AI token column ${column} must be a non-negative integer, received ${JSON.stringify(value)}`);
 }
 
@@ -65,7 +69,7 @@ export function aiSpanSummaryFromRaw(raw: RowData): AiSpanSummary | null {
 
 export function aiSpanTokenLabel(summary: AiSpanSummary): string | null {
   if (summary.inputTokens == null && summary.outputTokens == null) return null;
-  const format = (count: number | null) => (count == null ? "?" : String(count));
+  const format = (count: string | null) => count ?? "?";
   return `${format(summary.inputTokens)}→${format(summary.outputTokens)} tok`;
 }
 
@@ -346,13 +350,14 @@ export function aiSpanDetailFields(summary: AiSpanSummary): { label: string, val
   if (summary.agentName != null) fields.push({ label: "agent", value: summary.agentName });
   if (summary.toolName != null) fields.push({ label: "tool", value: summary.toolName });
   if (summary.conversationId != null) fields.push({ label: "conversation", value: summary.conversationId });
+  const formattedTokenCount = (count: string) => BigInt(count).toLocaleString();
   const tokenParts = [
-    ...summary.inputTokens == null ? [] : [`${summary.inputTokens.toLocaleString()} in`],
-    ...summary.outputTokens == null ? [] : [`${summary.outputTokens.toLocaleString()} out`],
+    ...summary.inputTokens == null ? [] : [`${formattedTokenCount(summary.inputTokens)} in`],
+    ...summary.outputTokens == null ? [] : [`${formattedTokenCount(summary.outputTokens)} out`],
     // cache-read is a subset of input and reasoning a subset of output, so
     // they are annotations on the totals, never additional amounts.
-    ...summary.cacheReadInputTokens == null ? [] : [`${summary.cacheReadInputTokens.toLocaleString()} cached`],
-    ...summary.reasoningOutputTokens == null ? [] : [`${summary.reasoningOutputTokens.toLocaleString()} reasoning`],
+    ...summary.cacheReadInputTokens == null ? [] : [`${formattedTokenCount(summary.cacheReadInputTokens)} cached`],
+    ...summary.reasoningOutputTokens == null ? [] : [`${formattedTokenCount(summary.reasoningOutputTokens)} reasoning`],
   ];
   if (tokenParts.length > 0) fields.push({ label: "tokens", value: tokenParts.join(" · ") });
   return fields;

@@ -60,6 +60,12 @@ export type ClientAnalyticsDeps = {
   sdkVersion: string,
   analyticsBaseUrl: string,
   openTelemetryProvider: "managed" | "existing-provider" | "disabled",
+  /**
+   * Error, console, and fetch hooks. Delivery (`openTelemetryProvider`) can
+   * stay managed when Analytics is on and Observability is off; this flag
+   * is what keeps those hooks off in that case.
+   */
+  instrumentationEnabled?: boolean,
   /** When false, automatic hooks/load are deferred until an explicit call. */
   automaticSideEffects?: boolean,
   /** Existing console instrumentation configuration, bridged into breadcrumbs. */
@@ -108,7 +114,9 @@ export class ClientAnalytics {
           this._resolvedSessionRoot = sessionRootResult.data;
           this._preTrackerAmbient = null;
         }
-        this._browserOtelRegistration?.enableHttpInstrumentation();
+        if (this._isInstrumentationEnabled()) {
+          this._browserOtelRegistration?.enableHttpInstrumentation();
+        }
       }, { noErrorLogging: true }));
     }
 
@@ -123,10 +131,14 @@ export class ClientAnalytics {
       }
     }
 
-    if (deps.automaticSideEffects !== false) {
+    if (deps.automaticSideEffects !== false && this._isInstrumentationEnabled()) {
       this._installClientErrorCapture();
       this._installErrorIntegrations();
     }
+  }
+
+  private _isInstrumentationEnabled(): boolean {
+    return this._deps.instrumentationEnabled ?? this._deps.openTelemetryProvider !== "disabled";
   }
 
   private _errorCapturePolicy: ClientErrorCapturePolicy | null = null;
@@ -141,7 +153,7 @@ export class ClientAnalytics {
 
   private _installClientErrorCapture(): void {
     if (this._errorCapture !== null) return;
-    if (this._deps.openTelemetryProvider === "disabled" || !this._deps.errorCapture.enabled) return;
+    if (!this._isInstrumentationEnabled() || !this._deps.errorCapture.enabled) return;
     this._errorCapture = installClientErrorCapture({
       emit: (data, scope) => this.trackErrorEvent(data, scope),
       ignoreErrors: this._deps.errorCapture.ignoreErrors,
@@ -156,7 +168,7 @@ export class ClientAnalytics {
   private _createErrorIntegrationRuntime(): ErrorIntegrationRuntime | null {
     const levels = this._deps.consoleCaptureLevels;
     const emitLog = this._deps.emitLog;
-    if (this._deps.openTelemetryProvider === "disabled") {
+    if (!this._isInstrumentationEnabled()) {
       return null;
     }
     const errorCaptureEnabled = this._deps.errorCapture.enabled;
@@ -243,7 +255,7 @@ export class ClientAnalytics {
         const policy = deps.getPropagationPolicy();
         return { allowedOrigins: policy.allowedOrigins, allowLocalhost: policy.allowLocalhost, correlationBaggage: policy.correlationBaggage };
       },
-      installHttpInstrumentationImmediately: this._resolvedSessionRoot !== null,
+      installHttpInstrumentationImmediately: this._isInstrumentationEnabled() && this._resolvedSessionRoot !== null,
       getAmbientOtelContext: () => this._tracker !== null
         ? this._tracker.getAmbientOtelContext()
         : this._preTrackerAmbientContext(),
@@ -529,7 +541,7 @@ export class ClientAnalytics {
   }
 
   private assertErrorCaptureAvailable(): void {
-    if (this._deps.openTelemetryProvider === "disabled") {
+    if (!this._isInstrumentationEnabled()) {
       throw new Error("Hexclave error capture is unavailable because observability is disabled");
     }
   }

@@ -2,10 +2,6 @@
 
 A: Preserve the return state on the OAuth `redirect_uri` itself. When hosted sign-in starts a nested cross-domain handoff, copy `after_auth_return_to` and the `hexclave_cross_domain_*` params onto the nested OAuth redirect URI, while stripping nested-only `stack_nested_cross_domain_auth_*` params from URLs that continue after the handoff. The nested OAuth request must still generate its own fresh OAuth `state`/PKCE pair on the target domain; do not reuse `hexclave_cross_domain_state`, because that verifier belongs to the initiating app domain.
 
-## Q: Why does the RDE standalone dashboard copy `@swc/helpers` after Next's file trace?
-
-A: `next@16.3.1` + pnpm + Node >= 22.10 traces only CJS `@swc/helpers`, but Node's `module-sync` condition resolves to `esm/_interop_require_default.js`. The dashboard process then exits before `hexclave dev` can spawn the app server. Include the package in `outputFileTracingIncludes` and copy the complete helper from the repo `.pnpm` store when the ESM file is missing.
-
 ## Q: How should the demo development server run through the CLI without racing package dev watchers?
 
 A: Do not run `pnpm -w run cli` from `examples/demo` dev. That root script invokes Turbo builds, and package builds remove `dist/` before writing, which can race with the root dev package watchers. The demo should run the CLI from TypeScript source with auto-update disabled and set `HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND` to `pnpm --dir apps/dashboard run dev:rde-production`, which builds and starts an isolated standalone dashboard closer to the packaged RDE runtime. It must also set `STACK_API_URL`/`STACK_DASHBOARD_URL` to the local dev ports; otherwise the CLI intentionally falls back to production. The CLI still owns the development-environment env vars, including `HEXCLAVE_DASHBOARD_NEXT_DIST_DIR`, so the dashboard build uses an isolated `.next` output directory without duplicating env setup in demo scripts.

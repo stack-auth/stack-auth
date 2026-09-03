@@ -125,6 +125,13 @@ describe("extractGenAiSpanInfo", () => {
     }))).toMatchObject({ inputTokens: "7", outputTokens: null });
   });
 
+  it("canonicalizes leading zeros before enforcing the UInt64 digit limit", () => {
+    expect(extractGenAiSpanInfo("chat m", reader({
+      "gen_ai.operation.name": "chat",
+      "gen_ai.usage.input_tokens": "00000000000000000000001",
+    }))).toMatchObject({ inputTokens: "1" });
+  });
+
   it("caps extracted dimension strings without rejecting the span", () => {
     const info = extractGenAiSpanInfo("chat m", reader({
       "gen_ai.operation.name": "chat",

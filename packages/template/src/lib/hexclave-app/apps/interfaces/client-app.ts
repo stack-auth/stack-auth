@@ -57,9 +57,7 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * set `{ replays: { enabled: false } }` to opt out.
    */
   analytics?: AnalyticsOptions,
-  /** Code observability options for errors, logs, spans, and propagation. */
   observability?: ObservabilityOptions,
-  /** Shared telemetry delivery lifecycle options. */
   telemetry?: TelemetryOptions,
 } & (
   { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }

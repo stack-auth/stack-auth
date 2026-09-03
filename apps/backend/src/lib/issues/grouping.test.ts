@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_GROUPING_CONFIG_ID, type GroupingConfigId } from "./grouping-config";
+import { type GroupingConfigId } from "./grouping-config";
 import { computeGrouping, computeGroupingWithReadableConfigs } from "./grouping";
 import * as groupingFingerprint from "./grouping-fingerprint";
 import type { GroupingInput, GroupingResult } from "./types";
 
-const CONFIG = DEFAULT_GROUPING_CONFIG_ID;
+const CONFIG: GroupingConfigId = "hexclave-js:2026-08-20";
 
 function group(overrides: Partial<GroupingInput> & Pick<GroupingInput, "type" | "message">): GroupingResult {
   return computeGrouping({ platform: "javascript", stack: null, ...overrides }, CONFIG);

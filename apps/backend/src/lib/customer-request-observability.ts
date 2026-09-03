@@ -20,6 +20,7 @@ type CustomerRequestTenancy = {
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
   pageViewSpanId: string | null,
+  observabilityEnabled: boolean,
 };
 
 type CustomerRequestObservabilityHolder = {
@@ -80,6 +81,7 @@ export function resolveCustomerRequestObservability(options: {
   branchId: string,
   userId: string | null,
   refreshTokenId: string | null,
+  observabilityEnabled?: boolean,
   headers?: { get: (name: string) => string | null },
 }): void {
   const holder = customerRequestStorage.getStore();
@@ -106,6 +108,7 @@ export function resolveCustomerRequestObservability(options: {
     sessionReplayId: current?.sessionReplayId ?? labels?.sessionReplayId ?? null,
     sessionReplaySegmentId: current?.sessionReplaySegmentId ?? labels?.sessionReplaySegmentId ?? null,
     pageViewSpanId: current?.pageViewSpanId ?? labels?.pageViewSpanId ?? null,
+    observabilityEnabled: current?.observabilityEnabled === true || options.observabilityEnabled === true,
   };
 }
 
@@ -204,7 +207,7 @@ export async function runWithCustomerRequestObservability(
   return await customerRequestStorage.run(holder, async () => {
     const response = await fn();
     const tenancy = holder.tenancy;
-    if (tenancy !== null && tenancy.projectId !== "internal") {
+    if (tenancy !== null && tenancy.projectId !== "internal" && tenancy.observabilityEnabled) {
       const row = buildCustomerRequestSpan(holder, tenancy, response, new Date());
       runAsynchronously(writer(row));
     }

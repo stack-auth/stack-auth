@@ -69,7 +69,7 @@ Each Issue also has a **short id** — a small integer rendered as `#42`, alloca
 <Warning>
 Short ids are allocated per **tenancy**, which is the pair (project, branch). The same logical error therefore carries different short ids on `main` and on a preview branch. Use the issue's UUID when you need an id that is unambiguous across branches.
 
-Short ids are also allocated in blocks per ingest batch, so a failed batch permanently burns its range: gaps in the numbering are expected and are not a sign of deleted issues.
+Short IDs are allocated in blocks per ingest batch. Concurrent first sightings can allocate competing candidate IDs for the same issue; after the hash conflict is resolved, the losing candidate is removed. Gaps are therefore expected and are not a sign of deleted issues.
 </Warning>
 
 ## Where the Data Lives

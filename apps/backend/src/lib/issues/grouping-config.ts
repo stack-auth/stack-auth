@@ -1,4 +1,3 @@
-
 export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01", "hexclave-js:2026-08-20"] as const;
 
 export type GroupingConfigId = typeof GROUPING_CONFIG_IDS[number];
@@ -28,7 +27,7 @@ export const GROUPING_CONFIGS: ReadonlyMap<GroupingConfigId, GroupingConfig> = n
   ],
 ]);
 
-export const DEFAULT_GROUPING_CONFIG_ID: GroupingConfigId = "hexclave-js:2026-08-20";
+export const DEFAULT_GROUPING_CONFIG_ID: GroupingConfigId = "hexclave-js:2026-08-01";
 
 export type GroupingRuntimeConfig = {
   activeConfigId?: string,

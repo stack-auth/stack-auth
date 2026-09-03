@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PathsGraphCanvas } from "./paths-graph-canvas";
 
@@ -109,6 +109,22 @@ describe("PathsGraphCanvas", () => {
     fireEvent.change(screen.getByLabelText("Exact path 1"), { target: { value: "/another-path" } });
     expect(node.getAttribute("aria-pressed")).toBe("false");
     expect(node.className).not.toContain("opacity-70");
+  });
+
+  it("marks a normalized graph node without changing the exact comparison path", async () => {
+    const comparePaths = vi.fn(async (paths: string[]) => paths.map((path) => ({ path, uniqueVisitors: 1 })));
+    renderCanvas(true, comparePaths);
+    const node = screen.getByRole("button", { name: "example.com/projects/:id/releases, 12 page views" });
+    const concretePath = "/projects/550e8400-e29b-41d4-a716-446655440000/releases";
+
+    fireEvent.change(screen.getByLabelText("Exact path 1"), {
+      target: { value: concretePath },
+    });
+    fireEvent.change(screen.getByLabelText("Exact path 2"), { target: { value: "/checkout" } });
+
+    expect(node.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    await waitFor(() => expect(comparePaths).toHaveBeenCalledWith([concretePath, "/checkout"]));
   });
 
   it("renders ordered comparison results as a horizontal conversion funnel", async () => {

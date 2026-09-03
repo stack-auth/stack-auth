@@ -7,6 +7,7 @@
 import * as yup from "yup";
 import { ALL_APPS, getParentAppId } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
+import { ITEM_IDS } from "../plans";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
@@ -383,7 +384,10 @@ const environmentWarehouseSchema = yupObject({
 });
 
 
-const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
+export const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01", "hexclave-js:2026-08-20"] as const;
+import.meta.vitest?.test("GROUPING_CONFIG_IDS lists both published JS configs", ({ expect }) => {
+  expect([...GROUPING_CONFIG_IDS]).toEqual(["hexclave-js:2026-08-01", "hexclave-js:2026-08-20"]);
+});
 
 const environmentObservabilitySchema = yupObject({
   errorIngest: errorIngestPolicySchema.optional(),
@@ -732,6 +736,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-09-02: existing billing configs that already meter analytics_events
+  // must grow analytics_spans the same way, or span ingest throws ItemNotFound.
+  if (isBranchOrHigher) {
+    res = ensureAnalyticsSpansPaymentConfig(res);
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -911,6 +922,40 @@ import.meta.vitest?.test("migrateConfigOverride renames deployments-alpha app in
   });
 });
 
+import.meta.vitest?.test("migrateConfigOverride adds analytics_spans to existing analytics billing configs", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    payments: {
+      items: {
+        analytics_events: { displayName: "Analytics Events", customerType: "team" },
+      },
+      products: {
+        free: {
+          includedItems: {
+            analytics_events: { quantity: 100_000, repeat: "month", expires: "when-repeated" },
+          },
+        },
+      },
+    },
+  })).toMatchObject({
+    "payments.items.analytics_spans": { displayName: "Analytics Spans", customerType: "team" },
+    "payments.products.free.includedItems.analytics_spans": { quantity: 100_000, repeat: "month", expires: "when-repeated" },
+  });
+
+  expect(migrateConfigOverride("environment", {
+    "payments.items.analytics_events": { displayName: "Analytics Events", customerType: "team" },
+    "payments.items.analytics_spans": { displayName: "Custom", customerType: "team" },
+  })).toEqual({
+    "payments.items.analytics_events": { displayName: "Analytics Events", customerType: "team" },
+    "payments.items.analytics_spans": { displayName: "Custom", customerType: "team" },
+  });
+
+  expect(migrateConfigOverride("project", {
+    payments: { items: { analytics_events: { displayName: "Analytics Events", customerType: "team" } } },
+  })).toEqual({
+    payments: { items: { analytics_events: { displayName: "Analytics Events", customerType: "team" } } },
+  });
+});
+
 import.meta.vitest?.test("migrateConfigOverride removes Growth app installations", ({ expect }) => {
   expect(migrateConfigOverride("branch", {
     apps: {
@@ -962,6 +1007,64 @@ function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boo
   }
   return res;
 }
+
+function configOverrideHasPath(obj: unknown, prefix: string[], path: string[] = []): boolean {
+  if (!isObjectLike(obj)) return false;
+  return Object.entries(obj).some(([key, value]) => {
+    const newPath = [...path, ...key.split(".")];
+    if (newPath.length >= prefix.length && prefix.every((segment, i) => newPath[i] === segment)) return true;
+    return newPath.every((segment, i) => prefix[i] === segment) && configOverrideHasPath(value, prefix, newPath);
+  });
+}
+
+function collectAnalyticsEventsIncludedItems(obj: unknown, path: string[] = []): { spanKey: string, value: unknown }[] {
+  if (!isObjectLike(obj)) return [];
+  const found: { spanKey: string, value: unknown }[] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    const newPath = [...path, ...key.split(".")];
+    const includedIdx = newPath.indexOf("includedItems");
+    if (
+      newPath[0] === "payments"
+      && newPath[1] === "products"
+      && includedIdx >= 2
+      && newPath[includedIdx + 1] === ITEM_IDS.analyticsEvents
+      && newPath.length === includedIdx + 2
+    ) {
+      found.push({
+        spanKey: [...newPath.slice(0, includedIdx + 1), ITEM_IDS.analyticsSpans].join("."),
+        value,
+      });
+    }
+    found.push(...collectAnalyticsEventsIncludedItems(value, newPath));
+  }
+  return found;
+}
+
+function ensureAnalyticsSpansPaymentConfig(res: Record<string, any>): Record<string, any> {
+  if (!configOverrideHasPath(res, ["payments", "items", ITEM_IDS.analyticsEvents])) {
+    return res;
+  }
+
+  let next = res;
+  if (!configOverrideHasPath(res, ["payments", "items", ITEM_IDS.analyticsSpans])) {
+    next = {
+      ...next,
+      [`payments.items.${ITEM_IDS.analyticsSpans}`]: {
+        displayName: "Analytics Spans",
+        customerType: "team",
+      },
+    };
+  }
+
+  const additions: Record<string, unknown> = {};
+  for (const { spanKey, value } of collectAnalyticsEventsIncludedItems(next)) {
+    if (!configOverrideHasPath(next, spanKey.split(".")) && isObjectLike(value)) {
+      additions[spanKey] = value;
+    }
+  }
+  return Object.keys(additions).length === 0 ? next : { ...next, ...additions };
+}
+
 import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) => {
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.join(".") === "a.b.d", (value) => value + 1)).toEqual({ a: { b: { c: 1 } } });

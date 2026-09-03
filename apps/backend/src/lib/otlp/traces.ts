@@ -79,7 +79,6 @@ function spanLink(value: unknown, path: string): CanonicalOtlpSpanLink {
   };
 }
 
-/** Normalizes an OTLP/HTTP JSON ExportTraceServiceRequest without dropping OTel fields. */
 export function normalizeOtlpJsonTraceRequest(value: unknown): CanonicalOtlpSpan[] {
   const request = record(value, "body");
   const result: CanonicalOtlpSpan[] = [];

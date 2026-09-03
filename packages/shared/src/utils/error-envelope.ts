@@ -874,7 +874,6 @@ function normalizeToEnvelope(input: FlatErrorEventInput, limits: typeof ERROR_EN
   return fitEnvelope(envelope, limits, state);
 }
 
-/** Normalize a flat `$error` payload into the typed v1 contract. */
 export function normalizeErrorEnvelope(input: unknown, options?: ErrorEnvelopeNormalizationOptions): ErrorEnvelopeV1 {
   const raw = normalizeInputRecord(input);
   const limits = mergeLimits(options);

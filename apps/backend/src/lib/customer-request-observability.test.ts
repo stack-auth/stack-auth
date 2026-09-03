@@ -49,6 +49,7 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: null,
           refreshTokenId: null,
           headers: request({ correlation: { sessionReplaySegmentId: "33333333-3333-4333-8333-333333333333" } }).headers,
@@ -62,6 +63,7 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: "user",
           refreshTokenId: "refresh",
         });
@@ -108,6 +110,7 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: null,
           refreshTokenId: null,
           headers: incoming.headers,
@@ -130,12 +133,14 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: "user-a",
           refreshTokenId: null,
         });
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: "user-b",
           refreshTokenId: "refresh-b",
         });
@@ -158,12 +163,14 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: "user-a",
           refreshTokenId: null,
         });
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: null,
           refreshTokenId: "refresh-b",
         });
@@ -193,6 +200,7 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: null,
           refreshTokenId: null,
           headers: incoming.headers,
@@ -241,6 +249,27 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
+          userId: "user",
+          refreshTokenId: "refresh",
+        });
+        return new Response(null, { status: 200 });
+      },
+      writer,
+    );
+
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("does not write a customer request span when observability is off", async () => {
+    const writer = vi.fn(async (_row: SpanInsertRow) => {});
+
+    await runWithCustomerRequestObservability(
+      request(),
+      async () => {
+        resolveCustomerRequestObservability({
+          projectId: "project",
+          branchId: "main",
           userId: "user",
           refreshTokenId: "refresh",
         });
@@ -265,6 +294,7 @@ describe("customer request observability", () => {
         resolveCustomerRequestObservability({
           projectId: "project",
           branchId: "main",
+          observabilityEnabled: true,
           userId: "user",
           refreshTokenId: "refresh",
         });

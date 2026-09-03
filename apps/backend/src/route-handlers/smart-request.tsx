@@ -8,6 +8,7 @@ import { decodeAccessToken } from "@/lib/tokens";
 import { authenticateWorkflowRunTokenRequestOrThrow, getWorkflowRunTokenForRequest } from "@/lib/workflows/run-token";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { resolveCustomerRequestObservability } from "@/lib/customer-request-observability";
+import { isObservabilityAppEnabled } from "@/lib/issues/observability-gate";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
@@ -414,6 +415,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: Request):
     branchId,
     userId: userId ?? null,
     refreshTokenId: refreshTokenId ?? null,
+    observabilityEnabled: isObservabilityAppEnabled(tenancy),
     headers: req.headers,
   });
 

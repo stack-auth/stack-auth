@@ -5,12 +5,6 @@ import { generateOtelTraceId } from "./otel-context";
 import { runtimeGlobals } from "./runtime-globals";
 
 /**
- * Environment-independent core of the custom telemetry API: the public types
- * (Span & friends), input validation, parent resolution, and the shared
- * withSpan() driver.
- */
-
-/**
  * A span's W3C identity: the trace it belongs to plus its own span id. This is
  * the ONE currency of span identity across every tier and boundary — it survives
  * JSON (page props, headers), and unlike a bare span id it is globally
@@ -56,7 +50,6 @@ export type StartSpanOptions = TrackOptions & {
   startedAtMs?: number,
 };
 
-/** A thin ergonomic handle over a real OpenTelemetry span. */
 export type Span = {
   /** The trace this span belongs to; shared with every ancestor and descendant. */
   readonly traceId: string,
@@ -247,7 +240,6 @@ function getSpanContextError(context: SpanContext, role: string): string | null 
   return null;
 }
 
-/** Where a new span or event sits in the trace graph. */
 export type ResolvedSpanParent = {
   traceId: string,
   /** null means the item starts a NEW trace (it is the root activity). */

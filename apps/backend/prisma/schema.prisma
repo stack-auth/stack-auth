@@ -1122,15 +1122,14 @@ enum DraftThemeMode {
   CUSTOM
 }
 
-// The application no longer reads or writes these tables — raw system events
-// moved to ClickHouse's canonical telemetry table, and the tables were
-// deliberately kept in place (no migration drops them) as the only rollback
+// These legacy tables are deliberately kept in place (no migration drops them)
+// as the only rollback
 // copy of historical data. They stay declared here with
 // @@ignore (no Prisma Client API) because `db:migration-gen` diffs the LIVE
 // database against this schema: without these models, the next generated
 // migration for any unrelated change would silently include
 // DROP TABLE "Event"/"EventIpInfo" and destroy that rollback copy. Remove
-// these models only together with the deliberate, separately reviewed
+// these models only together with the deliberate
 // retention migration that drops the tables.
 
 model Event {

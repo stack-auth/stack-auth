@@ -14,6 +14,7 @@ import { shouldIgnoreTelemetryDeliveryUrl } from "./client-app-impl";
 import { EventTracker } from "./event-tracker";
 import { normalizeNetworkCaptureOptions } from "./network-capture";
 import { SessionRecorder } from "./session-replay";
+import * as otelLogFacade from "./otel-log-facade";
 import type { SpanContext } from "./telemetry-core";
 
 const TEST_TELEMETRY = { resource: { service: { name: "test-client" } } } as const;
@@ -85,6 +86,8 @@ describe("browser analytics startup", () => {
     expect(Reflect.get(sharedFacade, "_deps")).toMatchObject({ productAnalyticsEnabled: false });
     await expect(analyticsDisabled.trackEvent("product-event")).rejects.toThrow("telemetry is unavailable");
 
+    await resetManagedBrowserOtelForTesting();
+
     const observabilityDisabled = new StackClientApp({
       projectId: "00000000-0000-4000-8000-000000000002",
       publishableClientKey: "pck_test",
@@ -97,9 +100,39 @@ describe("browser analytics startup", () => {
       telemetry: TEST_TELEMETRY,
     });
     const observabilityFacade = Reflect.get(observabilityDisabled, "_clientAnalytics");
+    expect(Reflect.get(observabilityFacade, "_deps")).toMatchObject({
+      productAnalyticsEnabled: true,
+      openTelemetryProvider: "managed",
+      instrumentationEnabled: false,
+    });
+    expect(observabilityFacade.getErrorCapture()).toBeNull();
     const startSpan = vi.spyOn(observabilityFacade, "startSpan");
     observabilityDisabled.startSpan("db.query");
     expect(startSpan).not.toHaveBeenCalled();
+  });
+
+  it("emits product events when analytics is on and observability is off", async () => {
+    const emit = vi.spyOn(otelLogFacade, "emitHexclaveOtelEvent");
+
+    const app = new StackClientApp({
+      projectId: "00000000-0000-4000-8000-000000000007",
+      publishableClientKey: "pck_test",
+      baseUrl: "https://api.example.test",
+      tokenStore: null,
+      noAutomaticPrefetch: true,
+      automaticSideEffects: false,
+      devTool: false,
+      analytics: { enabled: true, replays: { enabled: false } },
+      observability: { enabled: false },
+      telemetry: TEST_TELEMETRY,
+    });
+
+    await app.trackEvent("product-event", { n: 1 });
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "product-event",
+      data: { n: 1 },
+    }));
+    expect(Reflect.get(app, "_clientAnalytics").getErrorCapture()).toBeNull();
   });
 
   it("spanPropagation.enabled=false strips correlation baggage from manual propagation headers", () => {

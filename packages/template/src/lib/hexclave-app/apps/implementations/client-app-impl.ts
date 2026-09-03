@@ -989,7 +989,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         openTelemetryProvider: resolveClientOpenTelemetryProvider(
           this._observabilityOptions?.openTelemetry?.provider,
           observabilityEnabled,
+          analyticsEnabled,
         ),
+        instrumentationEnabled: observabilityEnabled,
         automaticSideEffects,
         consoleCaptureLevels: this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS,
         emitLog: (item) => this._emitLog(item),

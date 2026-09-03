@@ -51,11 +51,11 @@ describe("aiSpanSummaryFromRaw", () => {
         "agentName": null,
         "cacheReadInputTokens": null,
         "conversationId": "conv-1",
-        "inputTokens": 811,
+        "inputTokens": "811",
         "operationName": "chat",
-        "outputTokens": 92,
+        "outputTokens": "92",
         "providerName": "anthropic",
-        "reasoningOutputTokens": 12,
+        "reasoningOutputTokens": "12",
         "requestModel": "claude-sonnet-4-5",
         "responseModel": "claude-sonnet-4-5-20250929",
         "toolName": null,
@@ -68,6 +68,20 @@ describe("aiSpanSummaryFromRaw", () => {
       gen_ai_operation_name: "chat",
       gen_ai_input_tokens: "not-a-number",
     })).toThrowError("AI token column gen_ai_input_tokens must be a non-negative integer");
+    expect(() => aiSpanSummaryFromRaw({
+      gen_ai_operation_name: "chat",
+      gen_ai_input_tokens: Number.MAX_SAFE_INTEGER + 1,
+    })).toThrowError("AI token column gen_ai_input_tokens must be a non-negative integer");
+  });
+
+  it("preserves the full UInt64 range without converting through a JavaScript number", () => {
+    const parsed = aiSpanSummaryFromRaw({
+      gen_ai_operation_name: "chat",
+      gen_ai_input_tokens: "18446744073709551615",
+    });
+    expect(parsed?.inputTokens).toBe("18446744073709551615");
+    if (parsed == null) throw new Error("Expected an AI span summary");
+    expect(aiSpanTokenLabel(parsed)).toBe("18446744073709551615→? tok");
   });
 });
 
@@ -75,8 +89,8 @@ describe("aiSpanChipLabel", () => {
   it("prefers the request model and appends compact token usage", () => {
     expect(aiSpanChipLabel(summary({
       requestModel: "gpt-4o-mini",
-      inputTokens: 811,
-      outputTokens: 92,
+      inputTokens: "811",
+      outputTokens: "92",
     }))).toBe("gpt-4o-mini · 811→92 tok");
   });
 
@@ -89,8 +103,8 @@ describe("aiSpanChipLabel", () => {
   });
 
   it("marks a one-sided token count instead of hiding it", () => {
-    expect(aiSpanTokenLabel(summary({ inputTokens: 811 }))).toBe("811→? tok");
-    expect(aiSpanTokenLabel(summary({ outputTokens: 92 }))).toBe("?→92 tok");
+    expect(aiSpanTokenLabel(summary({ inputTokens: "811" }))).toBe("811→? tok");
+    expect(aiSpanTokenLabel(summary({ outputTokens: "92" }))).toBe("?→92 tok");
     expect(aiSpanTokenLabel(summary())).toBeNull();
   });
 });
@@ -105,11 +119,17 @@ describe("aiSpanDetailFields", () => {
 
   it("joins only the non-null token counts into one row", () => {
     expect(aiSpanDetailFields(summary({
-      inputTokens: 811,
-      outputTokens: 92,
-      cacheReadInputTokens: 640,
+      inputTokens: "811",
+      outputTokens: "92",
+      cacheReadInputTokens: "640",
     })).at(-1)).toEqual({ label: "tokens", value: "811 in · 92 out · 640 cached" });
     expect(aiSpanDetailFields(summary()).map((field) => field.label)).toEqual(["operation"]);
+  });
+
+  it("groups exact UInt64 token counts without rounding them", () => {
+    expect(aiSpanDetailFields(summary({
+      inputTokens: "18446744073709551615",
+    })).at(-1)).toEqual({ label: "tokens", value: "18,446,744,073,709,551,615 in" });
   });
 });
 

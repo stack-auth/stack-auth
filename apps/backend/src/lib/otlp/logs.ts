@@ -76,7 +76,6 @@ function unixNanoOrZero(value: unknown, path: string): string {
   return otlpCanonicalUint64String(value, path);
 }
 
-/** Normalizes an OTLP/HTTP JSON ExportLogsServiceRequest without flattening its OTel model. */
 export function normalizeOtlpJsonLogsRequest(value: unknown): CanonicalOtlpLogRecord[] {
   const request = otlpRecord(value, "body");
   const result: CanonicalOtlpLogRecord[] = [];

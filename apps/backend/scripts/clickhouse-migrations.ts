@@ -1080,9 +1080,6 @@ WHERE event_type = '$error';
 // Builders take the database name so the migration test can exercise the real
 // table and materialized view against a throwaway database.
 //
-// Three details below look like oversights and are not. Each one has been
-// "fixed" back at least once in review; leave them alone.
-//
 // 1. THE TTL IS KEYED ON `bucket_start`, AND THERE IS DELIBERATELY NO
 //    `created_at` COLUMN. Every other table here expires on ingestion time,
 //    which is right for rows that are written once. These rows are not: an
