@@ -18,32 +18,32 @@ const MODEL_SELECTION_MATRIX: Record<
 > = {
   dumb: {
     slow: {
-      authenticated: { modelId: "z-ai/glm-5.3-flash" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash:floor" },
+      authenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
     fast: {
       authenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
   },
   smart: {
     slow: {
-      authenticated: { modelId: "openai/gpt-5.6-sol" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash" },
+      authenticated: { modelId: "openai/gpt-5.6-sol:nitro" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.6-sol:nitro" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
   },
   smartest: {
     slow: {
-      authenticated: { modelId: "openai/gpt-5.6-sol" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash" },
+      authenticated: { modelId: "openai/gpt-5.6-sol:nitro" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.6-sol:nitro" },
-      unauthenticated: { modelId: "z-ai/glm-5.3-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.3-flash:nitro" },
     },
   },
 };
