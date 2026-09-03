@@ -24,41 +24,64 @@ function read(relPath: string): string {
   return readFileSync(resolve(REPO_ROOT, relPath), "utf8");
 }
 
-/**
- * Extracts ordered field names from a `t.someThing(...)` block in the server
- * schema source. Given `tableName: 'qa_entries'` (or a reducer call like
- * `add_manual_qa = spacetimedb.reducer({...}, ...)`), we slice from the
- * matching anchor through the next matching `}` and collect every line of
- * shape `<indent>fieldName: ...,?`.
- */
-function extractServerFields(source: string, anchor: RegExp): string[] {
-  const match = anchor.exec(source);
-  if (match == null) throw new Error(`anchor ${anchor} not found in server schema`);
-  const startIdx = match.index + match[0].length;
-  // Find the matching closing brace by tracking depth from the opening `{`
-  // that immediately follows the anchor.
-  const openIdx = source.indexOf("{", startIdx);
-  if (openIdx === -1) throw new Error(`opening brace not found after anchor ${anchor}`);
+/** Index of the `}` that closes the `{` at `openIdx`. */
+function matchingBraceEnd(source: string, openIdx: number, what: string): number {
   let depth = 0;
-  let endIdx = -1;
   for (let i = openIdx; i < source.length; i++) {
     const ch = source[i];
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) {
-        endIdx = i;
-        break;
-      }
+      if (depth === 0) return i;
     }
   }
-  if (endIdx === -1) throw new Error(`closing brace not found for anchor ${anchor}`);
-  const block = source.slice(openIdx + 1, endIdx);
+  throw new Error(`closing brace not found for ${what}`);
+}
+
+/** Ordered `fieldName:` keys of an object-literal body, in source order. */
+function fieldNamesIn(block: string): string[] {
   const fieldRe = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/gm;
   const out: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = fieldRe.exec(block)) != null) out.push(m[1]);
   return out;
+}
+
+/** Ordered keys of the first object literal at or after `searchFromIdx`. */
+function objectFieldsAt(source: string, searchFromIdx: number, what: string): string[] {
+  const openIdx = source.indexOf("{", searchFromIdx);
+  if (openIdx === -1) throw new Error(`opening brace not found after ${what}`);
+  return fieldNamesIn(source.slice(openIdx + 1, matchingBraceEnd(source, openIdx, what)));
+}
+
+/**
+ * Ordered column names of a `table({ ...options }, { ...columns })` declaration
+ * in the server schema.
+ *
+ * We locate the options object by its `name:` key and brace-match past it,
+ * rather than spelling its contents out in the anchor. Options accumulate keys
+ * over time (`indexes` arrived with keyset pagination), and an anchor that
+ * pinned the whole object would break on every such change even though the
+ * column order it actually guards was untouched — a false alarm that teaches
+ * people to regenerate bindings they did not need to regenerate.
+ */
+function extractServerTableFields(source: string, tableName: string): string[] {
+  const match = new RegExp(`name:\\s*'${tableName}'`).exec(source);
+  if (match == null) throw new Error(`table '${tableName}' not found in server schema`);
+  const optionsOpenIdx = source.lastIndexOf("{", match.index);
+  if (optionsOpenIdx === -1) throw new Error(`table options object not found for '${tableName}'`);
+  const optionsEndIdx = matchingBraceEnd(source, optionsOpenIdx, `table '${tableName}' options`);
+  return objectFieldsAt(source, optionsEndIdx + 1, `table '${tableName}' columns`);
+}
+
+/**
+ * Ordered arg names of a `spacetimedb.reducer({ ...args }, handler)` call,
+ * sliced from the `{` that follows `anchor`.
+ */
+function extractServerFields(source: string, anchor: RegExp): string[] {
+  const match = anchor.exec(source);
+  if (match == null) throw new Error(`anchor ${anchor} not found in server schema`);
+  return objectFieldsAt(source, match.index + match[0].length, `anchor ${anchor}`);
 }
 
 /**
@@ -69,28 +92,7 @@ function extractServerFields(source: string, anchor: RegExp): string[] {
 function extractClientFields(source: string, blockStartRe: RegExp): string[] {
   const match = blockStartRe.exec(source);
   if (match == null) throw new Error(`anchor ${blockStartRe} not found in binding`);
-  const openIdx = source.indexOf("{", match.index);
-  if (openIdx === -1) throw new Error(`opening brace not found after anchor ${blockStartRe}`);
-  let depth = 0;
-  let endIdx = -1;
-  for (let i = openIdx; i < source.length; i++) {
-    const ch = source[i];
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        endIdx = i;
-        break;
-      }
-    }
-  }
-  if (endIdx === -1) throw new Error(`closing brace not found for anchor ${blockStartRe}`);
-  const block = source.slice(openIdx + 1, endIdx);
-  const fieldRe = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/gm;
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = fieldRe.exec(block)) != null) out.push(m[1]);
-  return out;
+  return objectFieldsAt(source, match.index, `anchor ${blockStartRe}`);
 }
 
 describe("SpacetimeDB bindings stay in sync with server schema", () => {
@@ -130,14 +132,14 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
   });
 
   it("qa_entries server columns match my_visible_qa_entries client row binding", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'qa_entries',\s*public:\s*false\s*\},\s*/);
+    const serverFields = extractServerTableFields(serverSchema, "qa_entries");
     const clientSource = read("apps/internal-tool/src/module_bindings/my_visible_qa_entries_table.ts");
     const clientFields = extractClientFields(clientSource, /__t\.row\(/);
     expect(clientFields).toEqual(serverFields);
   });
 
   it("qa_entries server columns match QaEntries algebraic type in types.ts", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'qa_entries',\s*public:\s*false\s*\},\s*/);
+    const serverFields = extractServerTableFields(serverSchema, "qa_entries");
     const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
     const clientFields = extractClientFields(typesSource, /export const QaEntries = __t\.object\("QaEntries",\s*/);
     expect(clientFields).toEqual(serverFields);
@@ -151,17 +153,44 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
   });
 
   it("feedback_log server columns match my_visible_feedback_log client row binding", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'feedback_log',\s*public:\s*false\s*\},\s*/);
+    const serverFields = extractServerTableFields(serverSchema, "feedback_log");
     const clientSource = read("apps/internal-tool/src/module_bindings/my_visible_feedback_log_table.ts");
     const clientFields = extractClientFields(clientSource, /__t\.row\(/);
     expect(clientFields).toEqual(serverFields);
   });
 
   it("feedback_log server columns match FeedbackLog algebraic type in types.ts", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'feedback_log',\s*public:\s*false\s*\},\s*/);
+    const serverFields = extractServerTableFields(serverSchema, "feedback_log");
     const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
     const clientFields = extractClientFields(typesSource, /export const FeedbackLog = __t\.object\("FeedbackLog",\s*/);
     expect(clientFields).toEqual(serverFields);
+  });
+
+  // mcp_call_log and ai_query_log carry the most columns in the schema and are
+  // read positionally by the paging procedures, so drift here is both the most
+  // likely and the most damaging.
+  it("mcp_call_log server columns match my_visible_mcp_call_log client row binding", () => {
+    const serverFields = extractServerTableFields(serverSchema, "mcp_call_log");
+    const clientSource = read("apps/internal-tool/src/module_bindings/my_visible_mcp_call_log_table.ts");
+    expect(extractClientFields(clientSource, /__t\.row\(/)).toEqual(serverFields);
+  });
+
+  it("mcp_call_log server columns match McpCallLog algebraic type in types.ts", () => {
+    const serverFields = extractServerTableFields(serverSchema, "mcp_call_log");
+    const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
+    expect(extractClientFields(typesSource, /export const McpCallLog = __t\.object\("McpCallLog",\s*/)).toEqual(serverFields);
+  });
+
+  it("ai_query_log server columns match my_visible_ai_query_log client row binding", () => {
+    const serverFields = extractServerTableFields(serverSchema, "ai_query_log");
+    const clientSource = read("apps/internal-tool/src/module_bindings/my_visible_ai_query_log_table.ts");
+    expect(extractClientFields(clientSource, /__t\.row\(/)).toEqual(serverFields);
+  });
+
+  it("ai_query_log server columns match AiQueryLog algebraic type in types.ts", () => {
+    const serverFields = extractServerTableFields(serverSchema, "ai_query_log");
+    const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
+    expect(extractClientFields(typesSource, /export const AiQueryLog = __t\.object\("AiQueryLog",\s*/)).toEqual(serverFields);
   });
 
   it("log_feedback server reducer args match client reducer binding", () => {
