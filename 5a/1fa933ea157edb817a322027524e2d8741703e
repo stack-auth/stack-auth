@@ -1,0 +1,19 @@
+apps/backend/src/lib/ai/models.ts
+  s_bc32f1b0dbd2eb::t_3f9f6747200ab8 21-22,26,31-32,36,41-42,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5a1fa933ea157edb817a322027524e2d8741703e",
+  "prompts": {},
+  "sessions": {
+    "s_bc32f1b0dbd2eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06813-b872-7cd1-9e77-c805341fa2f9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
