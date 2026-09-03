@@ -35,6 +35,13 @@ export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig()
       // the change. The id is part of it because it names the Fly volume: changing it means
       // mounting a different disk.
       ...(spec.config.persistent_volumes !== undefined ? { persistent_volumes: spec.config.persistent_volumes } : {}),
+      // It MUST be included, for the same reason as the volumes above: it is
+      // machine configuration rather than image content, so a spec that only
+      // changes the start command produces no new image — and if it hashed
+      // identically, applyServiceSpec would take the unchanged path, keep the
+      // previous spec, and silently drop it. Conditional so a spec without one
+      // hashes exactly as it did before this field existed.
+      ...(spec.config.start_command !== undefined ? { start_command: spec.config.start_command } : {}),
     },
     source: spec.source,
     env: Object.fromEntries(Object.entries(spec.env).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)),

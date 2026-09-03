@@ -165,21 +165,109 @@ type HexclaveServiceBase = {
    * "serverless" with `minInstances` above zero) or it will never run.
    */
   ports: Record<number, HexclavePort>,
-  /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
-  rootDirectory?: string,
-  /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
-  dockerfilePath?: string,
   /** Run locally by `hexclave dev --service-id`. Never sent to the server. */
   devCommand?: string,
+  /**
+   * A single command line, run through `sh -c` while your image is BUILT — e.g.
+   * `"pnpm install --frozen-lockfile && pnpm build"`. Chain steps with `&&`; it
+   * is one command, not a script.
+   *
+   * What it builds ON depends on the rest of the service:
+   * - no `image` and no `dockerfilePath`: the Hexclave base image (Debian-based,
+   *   with node, npm, pnpm, yarn, git and a C toolchain preinstalled). Your whole uploaded source is
+   *   copied to `/app`, and the command runs in your `rootDirectory`. This
+   *   REPLACES Railpack auto-detection, so nothing is inferred for you — and
+   *   `startCommand` becomes required, since that base starts nothing by itself.
+   * - `image`: the same, but built on that image instead. Naming a build command
+   *   is what turns an image from "the thing to run" into "the thing to build
+   *   on", so the service is built and uploaded like any other. Your source is
+   *   copied in as root and the command inherits the image's own `USER`, so a
+   *   base that defaults to a non-root user needs to be able to write under
+   *   `/app` — if it cannot, use a Dockerfile, where you control both.
+   * - `dockerfilePath`: appended to your Dockerfile as a final `RUN`. Nothing is
+   *   copied in that your Dockerfile did not copy itself.
+   *
+   * Every env var is available to it, exactly as in a Railpack build.
+   */
+  buildCommand?: string,
+  /**
+   * A single command line, run through `sh -c` as the container's process,
+   * INSTEAD of whatever the image would have started — e.g. `"node server.js"`.
+   *
+   * It is applied when the container starts, not baked into the image, so it
+   * causes no build: naming one on an `image` service keeps that service's
+   * deploy build-less, and changing only this restarts the service without
+   * rebuilding it. It replaces the image's entrypoint as well as its command,
+   * so it must be the whole way to start the process.
+   *
+   * On its own it changes nothing about the build: a service with no `image`,
+   * `dockerfilePath` or `buildCommand` is still auto-detected by Railpack and
+   * simply starts with your command instead of the detected one.
+   *
+   * Required when a `buildCommand` is used with no `image` and no
+   * `dockerfilePath`. Unrelated to `devCommand`, which only ever runs locally.
+   */
+  startCommand?: string,
   /** Environment variables. Values may be literals, `null` to omit, or references from the context object. */
   env?: Record<string, HexclaveEnvVarValue>,
 };
 
 /**
+ * What a service's container is BUILT FROM: your own Dockerfile, an image, or
+ * neither (Railpack auto-detection, or the Hexclave base image once you write a
+ * `buildCommand`).
+ *
+ * A union rather than independent optional fields, so that naming an image AND a
+ * Dockerfile does not compile: each of them says what the build starts from, and
+ * a service that gave both would leave the deploy with two answers to one
+ * question. (Same reasoning as `public` living on the service rather than the
+ * port: make the invalid state unrepresentable instead of validating it after
+ * the fact.)
+ *
+ * `rootDirectory` belongs to neither branch and is legal alongside an image,
+ * because a `buildCommand` copies your source onto that image and runs there.
+ */
+export type HexclaveServiceSource =
+  | {
+    image?: undefined,
+    /** Source directory, relative to the deploy file. Defaults to the deploy file's own directory. */
+    rootDirectory?: string,
+    /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */
+    dockerfilePath?: string,
+  }
+  | {
+    /**
+     * An image: `"postgres:16"`, `"ghcr.io/org/app:1.2.3"`, or a digest.
+     *
+     * On its own it is the image to RUN. Nothing is built and nothing is
+     * uploaded for the service, so a deploy of it takes seconds — and env vars
+     * reach the container at RUNTIME only, so a framework that inlines values
+     * while it compiles (`NEXT_PUBLIC_*`) needs a source build instead.
+     *
+     * With a `buildCommand` it is instead the BASE your service is built on:
+     * your source is copied to `/app` and the command runs in your
+     * `rootDirectory`. That service is built and uploaded like any other.
+     *
+     * A tag is resolved when the image is PULLED, by the platform rather than
+     * at deploy time. So a tag can name different bytes on machines started at
+     * different moments, and a redeploy of an unchanged tag rolls nothing at
+     * all — name a digest if a deploy must always run the same bytes. An
+     * explicit tag or digest is required either way: a bare `"postgres"` means
+     * `:latest`, which can change under you between deploys.
+     *
+     * Only public registries are supported today.
+     */
+    image: string,
+    /** Where `buildCommand` runs, relative to the deploy file. Only meaningful with one. */
+    rootDirectory?: string,
+    dockerfilePath?: never,
+  };
+
+/**
  * A single always-one-instance service, and the only kind that may hold a
  * persistent volume.
  */
-export type HexclaveServerService = HexclaveServiceBase & {
+export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource & {
   type: "server",
   /**
    * Persistent disks keyed by volume id. At most one is supported today.
@@ -208,7 +296,7 @@ export type HexclaveServerService = HexclaveServiceBase & {
  * scale-down, so every start is a cold start. It cannot hold a persistent
  * volume: each instance would get its own separate disk.
  */
-export type HexclaveServerlessService = HexclaveServiceBase & {
+export type HexclaveServerlessService = HexclaveServiceBase & HexclaveServiceSource & {
   type: "serverless",
   /** Lower scaling bound, 0–10. Defaults to 0 (scales to zero). Above 0 needs a paid plan. */
   minInstances?: number,
@@ -229,9 +317,9 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * // hexclave.deploy.ts
  * import type { HexclaveDeploymentConfig } from "@hexclave/js";
  *
- * // Identifies this file as a deployment source. Required here, and unique
+ * // Identifies this file as a deployment group. Required here, and unique
  * // across every deploy file that deploys into the same project.
- * export const id = "backend";
+ * export const deploymentGroupId = "backend";
  *
  * export const deploy: HexclaveDeploymentConfig = ({ secret, service, hexclave }) => ({
  *   services: {
@@ -250,7 +338,7 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  * be deployed from several repositories, each shipping the services it owns and
  * each deploying on its own schedule. The same export is accepted in
  * hexclave.config.ts for a project that has only one; those services belong to a
- * deployment source named after that file.
+ * deployment group named after that file.
  */
 export type HexclaveDeploymentConfig = (context: HexclaveDeploymentContext) => {
   services: Record<string, HexclaveService>,

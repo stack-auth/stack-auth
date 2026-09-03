@@ -1,13 +1,13 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription, persistRefundManualTransaction } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
-import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
+import { makeRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/transaction-entry-indexes";
 import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
-import { getStripeForAccount, getStripeSubscriptionPeriod, isStripeSubscriptionAlreadyTerminalError } from "@/lib/stripe";
+import { getStripeForAccount } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -63,10 +63,6 @@ function getTotalUsdStripeUnits(options: {
 
 // ── Refund row construction ────────────────────────────────────────────────
 
-function makeRefundTxnId(sourceTxnId: string): string {
-  return `${REFUND_TXN_PREFIX}${sourceTxnId}:${randomUUID()}`;
-}
-
 /**
  * Derive a deterministic Stripe idempotency key from the tenancy, source
  * transaction, refund amount, and the cumulative amount already refunded
@@ -74,6 +70,10 @@ function makeRefundTxnId(sourceTxnId: string): string {
  * three identical inputs and dedupes at Stripe. Two intentional partials of
  * the same amount get distinct keys because `priorRefundedStripeUnits`
  * advances after the first one commits.
+ *
+ * Deliberately does NOT include `endAction` — changing this fingerprint would
+ * break in-flight Stripe retries. Refund-row idempotency across Prisma /
+ * Bulldozer dual-write retries is handled by `makeRefundTxnId` instead.
  */
 function makeStripeIdempotencyKey(args: {
   tenancyId: string,
@@ -290,6 +290,37 @@ async function resolveInvoicePaymentIntentId(stripe: Stripe, stripeInvoiceId: st
   return paymentIntentId;
 }
 
+/**
+ * True when an error from a Stripe subscription lifecycle write
+ * (`subscriptions.cancel` / `subscriptions.update`) means the subscription is
+ * already terminal, so our write is a moot no-op and can be swallowed.
+ *
+ * Error shapes determined empirically against Stripe API `2025-06-30.basil`
+ * (stripe-node 18.3.0):
+ *   - `cancel()` on an already-canceled or never-existed sub
+ *       → 404, `code: "resource_missing"`.
+ *   - `update()` on a canceled sub (e.g. `cancel_at_period_end`)
+ *       → 400, `rawType: "invalid_request_error"`, message "A canceled
+ *         subscription can only update its cancellation_details and
+ *         metadata.", and crucially **no `code`** — so it can only be matched
+ *         on the message.
+ *
+ * Note `subscription_already_canceled` is intentionally absent: re-cancelling
+ * a canceled sub returns `resource_missing`, not that code — it is never
+ * actually emitted on this path.
+ */
+function isStripeSubscriptionAlreadyTerminalError(e: unknown): boolean {
+  const code = (e as { code?: unknown }).code;
+  if (code === "resource_missing") {
+    return true;
+  }
+  const rawType = (e as { rawType?: unknown }).rawType;
+  const message = (e as { message?: unknown }).message;
+  return rawType === "invalid_request_error"
+    && typeof message === "string"
+    && /canceled subscription can only update/i.test(message);
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────
 
 export const POST = createSmartRouteHandler({
@@ -398,13 +429,18 @@ export const POST = createSmartRouteHandler({
 //    row. The Stripe idempotency key is derived from
 //    `(tenancyId, sourceTxnId, amountStripeUnits, priorRefundedStripeUnits)`
 //    — *not* from `refundTxnId` — so:
-//      - Stripe-success → DB-fail → caller retries: `prior` is unchanged
-//        (no row committed), the key matches, Stripe dedupes, and the
-//        second attempt's bulldozer write recovers the state. Self-heals.
-//      - DB-success → response lost → caller retries: `prior` now includes
-//        the just-committed amount, so a fresh key is generated and Stripe
-//        issues a second real refund. This is the open hole — no
-//        out-of-band reconciliation today. Tracked alongside (1).
+//      - Stripe-success → both-stores-fail → caller retries: `prior` is
+//        unchanged (no Bulldozer row), the Stripe key matches, Stripe
+//        dedupes, and the second attempt's dual-write recovers. Self-heals.
+//      - Stripe-success → Prisma-ok / Bulldozer-fail → caller retries with
+//        the same payload: `makeRefundTxnId` reuses the same `txnId`
+//        (fingerprint includes Bulldozer prior, which did not advance), so
+//        Prisma upserts and Bulldozer setRows converge. Self-heals.
+//      - Both stores succeed → response lost → caller retries: `prior` now
+//        includes the just-committed amount, so a fresh Stripe key and a
+//        fresh refund txn id are generated and Stripe issues a second real
+//        refund. This is the open hole — no out-of-band reconciliation
+//        today. Tracked alongside (1).
 async function handleSubscriptionRefund(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancy: Tenancy,
@@ -581,7 +617,17 @@ async function handleSubscriptionRefund(options: {
     throw new KnownErrors.SchemaError("This subscription's product has already been revoked.");
   }
 
-  const refundTxnId = makeRefundTxnId(sourceTxnId);
+  // amountStripeUnits / prior.refundedStripeUnits are already integer cents:
+  // the handler entrypoint ran moneyAmountToStripeUnits, and prior is summed
+  // the same way in bulldozer. makeRefundTxnId asserts that invariant
+  // (HexclaveAssertionError → sanitized 500 if violated).
+  const refundTxnId = makeRefundTxnId(
+    tenancy.id,
+    sourceTxnId,
+    options.amountStripeUnits,
+    prior.refundedStripeUnits,
+    options.endAction ?? "none",
+  );
 
   // ── Stripe side ───────────────────────────────────────────────────────
   if (options.amountStripeUnits > 0 && !isTestMode) {
@@ -655,7 +701,6 @@ async function handleSubscriptionRefund(options: {
   } else if (endAtPeriodEnd) {
     // End at period end. Items follow natural lifecycle when sub-end fires
     // at period boundary.
-    let stripePeriod: { start: Date, end: Date } | null = null;
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent guard, mirroring the endNow branch. The end-at-period-end
@@ -667,12 +712,9 @@ async function handleSubscriptionRefund(options: {
       // Bulldozer dual-write commits the ledger row, leaving the
       // customer refunded with no record.
       try {
-        const updated = await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
           cancel_at_period_end: true,
         });
-        // Same as the cancel route: Stripe's response is the authority on
-        // the boundary; the local row can be stale around a renewal
-        stripePeriod = getStripeSubscriptionPeriod(updated, { tenancyId: tenancy.id });
       } catch (e: unknown) {
         if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
@@ -684,14 +726,7 @@ async function handleSubscriptionRefund(options: {
       data: {
         cancelAtPeriodEnd: true,
         canceledAt: subscription.canceledAt ?? now,
-        endedAt: subscription.endedAt ?? stripePeriod?.end ?? subscription.currentPeriodEnd,
-        // Mirror the cancel route: the displayed period must track the
-        // entitlement boundary, otherwise "Ends on" keeps showing a stale
-        // local period after a missed renewal sync.
-        ...(stripePeriod ? {
-          currentPeriodStart: stripePeriod.start,
-          currentPeriodEnd: stripePeriod.end,
-        } : {}),
+        endedAt: subscription.endedAt ?? subscription.currentPeriodEnd,
       },
     });
   }
@@ -788,6 +823,7 @@ async function handleSubscriptionRefund(options: {
     // payment provider (the listing route derives `test_mode: false` from it).
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
   await persistRefundManualTransaction(prisma, refundRow);
@@ -859,7 +895,17 @@ async function handleOneTimePurchaseRefund(options: {
     throw new KnownErrors.SchemaError("This purchase's product has already been revoked.");
   }
 
-  const refundTxnId = makeRefundTxnId(sourceTxnId);
+  // amountStripeUnits / prior.refundedStripeUnits are already integer cents:
+  // the handler entrypoint ran moneyAmountToStripeUnits, and prior is summed
+  // the same way in bulldozer. makeRefundTxnId asserts that invariant
+  // (HexclaveAssertionError → sanitized 500 if violated).
+  const refundTxnId = makeRefundTxnId(
+    tenancy.id,
+    sourceTxnId,
+    options.amountStripeUnits,
+    prior.refundedStripeUnits,
+    options.endNow ? "now" : "none",
+  );
 
   // ── Stripe side ───────────────────────────────────────────────────────
   if (options.amountStripeUnits > 0 && !isTestMode) {
@@ -947,6 +993,7 @@ async function handleOneTimePurchaseRefund(options: {
     customerId: purchase.customerId,
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
   await persistRefundManualTransaction(prisma, refundRow);

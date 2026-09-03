@@ -1,5 +1,4 @@
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
-import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
@@ -57,8 +56,6 @@ export type ManagedEmailProviderListItem = {
   nameServerRecords: string[],
 };
 
-import type { AdminSessionReplay, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 export type { AdminWorkflow, AdminWorkflowDivergenceDiagnostic, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowRunsFilter, AdminWorkflowRunState, AdminWorkflowStep, AdminWorkflowStepAttempt, AdminWorkflowSyncResult, AdminWorkflowTrigger, AdminWorkflowUpgradeResult, AdminWorkflowVersion } from "../../workflows";
 
 
@@ -193,12 +190,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createFeatureFlagExperimentRevision(experimentId: string, runId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun>,
     getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults>,
     listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse>,
-
-    listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
-    getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,
-    listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult>,
-    getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse>,
-    getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
