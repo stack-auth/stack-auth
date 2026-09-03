@@ -278,7 +278,7 @@ describe.skipIf(!canRun)("internal tool ingest validation", () => {
         "error": "Invalid request body.",
         "issues": [
           {
-            "message": "Too big: expected string to have <=10000 characters",
+            "message": "String must contain at most 10000 character(s)",
             "path": "message",
           },
         ],

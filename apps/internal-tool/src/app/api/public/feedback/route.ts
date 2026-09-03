@@ -4,11 +4,11 @@ import { callReducerStrict, opt } from "@/lib/server/spacetimedb-client";
 import { getServiceSpacetimeToken } from "@/lib/server/spacetimedb-token";
 import { z } from "zod";
 
-const CATEGORY_MAX_LENGTH = 50;
+const FEEDBACK_CATEGORIES = ["bug", "docs-gap", "suggestion", "praise", "other"] as const;
 const MESSAGE_MAX_LENGTH = 10_000;
 
 const bodySchema = z.object({
-  category: z.string().min(1).max(CATEGORY_MAX_LENGTH),
+  category: z.enum(FEEDBACK_CATEGORIES),
   message: z.string().min(1).max(MESSAGE_MAX_LENGTH),
   conversationId: z.string().max(100).nullish(),
   requestMetadata: z.object({
