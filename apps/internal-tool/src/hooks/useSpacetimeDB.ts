@@ -1,6 +1,6 @@
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPendingCallRegistry } from "../lib/pending-call-registry";
 import { spacetimeDbName } from "../lib/spacetimedb-constants";
 import { DbConnection, type ErrorContext, type EventContext } from "../module_bindings";
@@ -89,7 +89,26 @@ type TableBinding<Row extends { id: bigint }> = {
   onInsert: (conn: DbConnection, cb: () => void) => void,
   onDelete: (conn: DbConnection, cb: () => void) => void,
   onUpdate?: (conn: DbConnection, cb: () => void) => void,
+
+  pageOlder?: (conn: DbConnection, cursor: PageCursor | null, limit: number) => Promise<PagedRows<Row>>,
+
+  cursorFromRow?: (row: Row) => PageCursor,
 };
+
+export type PageCursor = { beforeCreatedAtMicros: bigint, beforeId: bigint | undefined };
+type PagedRows<Row> = {
+  rows: Row[],
+  nextBeforeCreatedAtMicros: bigint | undefined,
+  nextBeforeId: bigint | undefined,
+};
+
+const HISTORY_PAGE_SIZE = 50;
+
+// Shared by every log binding: history resumes just below a row, keyed on
+// (createdAt, id) so rows sharing a timestamp are not skipped or repeated.
+function cursorFromLogRow(row: { id: bigint, createdAt: { microsSinceUnixEpoch: bigint } }): PageCursor {
+  return { beforeCreatedAtMicros: row.createdAt.microsSinceUnixEpoch, beforeId: row.id };
+}
 
 function useTableSubscription<Row extends { id: bigint }>(
   binding: TableBinding<Row>,
@@ -101,9 +120,11 @@ function useTableSubscription<Row extends { id: bigint }>(
   const [connectionErrorMessage, setConnectionErrorMessage] = useState<string | null>(null);
   const [conn, setConn] = useState<DbConnection | null>(null);
   const connRef = useRef<DbConnection | null>(null);
-  // One registry per hook instance, shared across connection generations:
-  // every teardown force-rejects whatever is still in flight on the old
-  // connection (see callReducer below for why the SDK can't do this itself).
+  const [olderRows, setOlderRows] = useState<Row[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<PageCursor | null>(null);
+  const [hasMoreHistory, setHasMoreHistory] = useState(binding.pageOlder != null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
   const [pendingCalls] = useState(createPendingCallRegistry);
 
   useEffect(() => {
@@ -113,6 +134,12 @@ function useTableSubscription<Row extends { id: bigint }>(
       setConnectionState("connecting");
       return;
     }
+
+    setOlderRows([]);
+    setHistoryCursor(null);
+    setHasMoreHistory(binding.pageOlder != null);
+    loadingOlderRef.current = false;
+    setIsLoadingOlder(false);
 
     let cancelled = false;
     let retryCount = 0;
@@ -336,7 +363,48 @@ function useTableSubscription<Row extends { id: bigint }>(
     return await pendingCalls.track(call(conn));
   };
 
-  return { rows, connectionState, connectionErrorMessage, callReducer };
+  const loadOlder = async (): Promise<void> => {
+    const pageOlder = binding.pageOlder;
+    if (pageOlder == null || conn == null || loadingOlderRef.current || !hasMoreHistory) return;
+
+    const oldestShown = olderRows.at(-1) ?? rows.at(-1);
+    const cursor = historyCursor
+      ?? (oldestShown == null || binding.cursorFromRow == null ? null : binding.cursorFromRow(oldestShown));
+
+    loadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+    try {
+      const page = await pendingCalls.track(pageOlder(conn, cursor, HISTORY_PAGE_SIZE));
+      setOlderRows((existing) => {
+        const seen = new Set([...rows, ...existing].map((r) => r.id));
+        return [...existing, ...page.rows.filter((r) => !seen.has(r.id))];
+      });
+      if (page.nextBeforeCreatedAtMicros == null) {
+        setHasMoreHistory(false);
+        setHistoryCursor(null);
+      } else {
+        setHistoryCursor({
+          beforeCreatedAtMicros: page.nextBeforeCreatedAtMicros,
+          beforeId: page.nextBeforeId,
+        });
+      }
+    } finally {
+      loadingOlderRef.current = false;
+      setIsLoadingOlder(false);
+    }
+  };
+
+  return {
+    rows,
+    olderRows,
+    hasMoreHistory,
+    isLoadingOlder,
+    loadOlder,
+    canPageHistory: binding.pageOlder != null,
+    connectionState,
+    connectionErrorMessage,
+    callReducer,
+  };
 }
 
 const mcpBinding: TableBinding<McpCallLogRow> = {
@@ -351,6 +419,12 @@ const mcpBinding: TableBinding<McpCallLogRow> = {
   onUpdate: (conn, cb) => {
     conn.db.myVisibleMcpCallLog.onUpdate((_ctx: EventContext, _old: McpCallLogRow, _row: McpCallLogRow) => cb());
   },
+  cursorFromRow: cursorFromLogRow,
+  pageOlder: async (conn, cursor, limit) => await conn.procedures.pageMcpCallLog({
+    beforeCreatedAtMicros: cursor?.beforeCreatedAtMicros,
+    beforeId: cursor?.beforeId,
+    limit,
+  }),
 };
 
 const aiQueryBinding: TableBinding<AiQueryLogRow> = {
@@ -365,6 +439,12 @@ const aiQueryBinding: TableBinding<AiQueryLogRow> = {
   onUpdate: (conn, cb) => {
     conn.db.myVisibleAiQueryLog.onUpdate((_ctx: EventContext, _old: AiQueryLogRow, _row: AiQueryLogRow) => cb());
   },
+  cursorFromRow: cursorFromLogRow,
+  pageOlder: async (conn, cursor, limit) => await conn.procedures.pageAiQueryLog({
+    beforeCreatedAtMicros: cursor?.beforeCreatedAtMicros,
+    beforeId: cursor?.beforeId,
+    limit,
+  }),
 };
 
 const publishedQaBinding: TableBinding<PublishedQaRow> = {
@@ -404,6 +484,12 @@ const feedbackBinding: TableBinding<FeedbackLogRow> = {
   onUpdate: (conn, cb) => {
     conn.db.myVisibleFeedbackLog.onUpdate((_ctx: EventContext, _old: FeedbackLogRow, _row: FeedbackLogRow) => cb());
   },
+  cursorFromRow: cursorFromLogRow,
+  pageOlder: async (conn, cursor, limit) => await conn.procedures.pageFeedbackLog({
+    beforeCreatedAtMicros: cursor?.beforeCreatedAtMicros,
+    beforeId: cursor?.beforeId,
+    limit,
+  }),
 };
 
 export function useMcpCallLogs(getToken?: GetSpacetimeToken) {

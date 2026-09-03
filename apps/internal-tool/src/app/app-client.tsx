@@ -1,6 +1,6 @@
 import { useUser } from "@hexclave/next";
 import { clsx } from "clsx";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
@@ -60,12 +60,27 @@ export default function App() {
     return token;
   }, []);
 
-  const { rows, connectionState, connectionErrorMessage, callReducer: callMcpReducer } = useMcpCallLogs(getSpacetimeToken);
   const {
-    rows: usageRows,
+    rows: liveRows,
+    olderRows,
+    hasMoreHistory,
+    isLoadingOlder,
+    loadOlder,
+    connectionState,
+    connectionErrorMessage,
+    callReducer: callMcpReducer,
+  } = useMcpCallLogs(getSpacetimeToken);
+  const rows = useMemo(() => [...liveRows, ...olderRows], [liveRows, olderRows]);
+  const {
+    rows: liveUsageRows,
+    olderRows: olderUsageRows,
+    hasMoreHistory: usageHasMoreHistory,
+    isLoadingOlder: usageIsLoadingOlder,
+    loadOlder: loadOlderUsage,
     connectionState: usageConnectionState,
     connectionErrorMessage: usageConnectionErrorMessage,
   } = useAiQueryLogs(getSpacetimeToken);
+  const usageRows = useMemo(() => [...liveUsageRows, ...olderUsageRows], [liveUsageRows, olderUsageRows]);
   const {
     rows: qaRows,
     connectionState: qaConnectionState,
@@ -74,10 +89,15 @@ export default function App() {
   } = useQaEntries(getSpacetimeToken);
 
   const {
-    rows: feedbackRows,
+    rows: liveFeedbackRows,
+    olderRows: olderFeedbackRows,
+    hasMoreHistory: feedbackHasMoreHistory,
+    isLoadingOlder: feedbackIsLoadingOlder,
+    loadOlder: loadOlderFeedback,
     connectionState: feedbackConnectionState,
     connectionErrorMessage: feedbackConnectionErrorMessage,
   } = useFeedbackLog(getSpacetimeToken);
+  const feedbackRows = useMemo(() => [...liveFeedbackRows, ...olderFeedbackRows], [liveFeedbackRows, olderFeedbackRows]);
 
   const currentSelectedRow = selectedRow
     ? rows.find(r => r.id === selectedRow.id) ?? selectedRow
@@ -188,6 +208,9 @@ export default function App() {
                 connectionErrorMessage={connectionErrorMessage}
                 onSelect={setSelectedRow}
                 selectedId={selectedRow?.id}
+                hasMoreHistory={hasMoreHistory}
+                isLoadingOlder={isLoadingOlder}
+                onLoadOlder={loadOlder}
               />
             </main>
             {currentSelectedRow && (
@@ -254,6 +277,9 @@ export default function App() {
                   connectionErrorMessage={usageConnectionErrorMessage}
                   onSelect={setSelectedUsageRow}
                   selectedId={selectedUsageRow?.id}
+                  hasMoreHistory={usageHasMoreHistory}
+                  isLoadingOlder={usageIsLoadingOlder}
+                  onLoadOlder={loadOlderUsage}
                 />
               </div>
             </main>
@@ -278,6 +304,9 @@ export default function App() {
                   connectionErrorMessage={feedbackConnectionErrorMessage}
                   onSelect={setSelectedFeedbackRow}
                   selectedId={currentSelectedFeedbackRow?.id}
+                  hasMoreHistory={feedbackHasMoreHistory}
+                  isLoadingOlder={feedbackIsLoadingOlder}
+                  onLoadOlder={loadOlderFeedback}
                 />
               </div>
             </main>

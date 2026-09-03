@@ -1,5 +1,15 @@
-import { schema, t, table, SenderError } from 'spacetimedb/server';
+import { schema, t, table, SenderError, Range } from 'spacetimedb/server';
 import { ScheduleAt, Timestamp, type Identity } from 'spacetimedb';
+import {
+  clampPageLimit,
+  pageByCreatedAt,
+  toPage,
+  validatePageLimit,
+  type OlderRowProbe,
+  type PageCursor,
+  type PageableRow,
+  type SliceScanner,
+} from './paging';
 
 // Injected at publish time by scripts/spacetime-auth-config.mjs (non-secret).
 // SpacetimeDB validates the JWT signature via OIDC discovery on the token's
@@ -113,7 +123,11 @@ function newestById<Row extends { id: bigint }>(rows: Iterable<Row>): Row[] {
 }
 
 const mcpCallLog = table(
-  { name: 'mcp_call_log', public: false },
+  {
+    name: 'mcp_call_log',
+    public: false,
+    indexes: [{ accessor: 'shardCreatedAt', algorithm: 'btree', columns: ['shard', 'createdAt', 'id'] }],
+  },
   {
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
@@ -158,7 +172,11 @@ const mcpCallLog = table(
 );
 
 const aiQueryLog = table(
-  { name: 'ai_query_log', public: false },
+  {
+    name: 'ai_query_log',
+    public: false,
+    indexes: [{ accessor: 'shardCreatedAt', algorithm: 'btree', columns: ['shard', 'createdAt', 'id'] }],
+  },
   {
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
@@ -191,7 +209,11 @@ const aiQueryLog = table(
 );
 
 const feedbackLog = table(
-  { name: 'feedback_log', public: false },
+  {
+    name: 'feedback_log',
+    public: false,
+    indexes: [{ accessor: 'shardCreatedAt', algorithm: 'btree', columns: ['shard', 'createdAt', 'id'] }],
+  },
   {
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
@@ -387,6 +409,114 @@ export const publishedQa = spacetimedb.anonymousView(
     }
     return out;
   },
+);
+
+const LIVE_SHARD = 0;
+
+function sliceScannerFor<Row extends PageableRow>(
+  index: { filter: (range: readonly [number, Range<Timestamp>]) => Iterable<Row> },
+): SliceScanner<Row> {
+  return (loMicrosInclusive, hiMicros, hiInclusive) => index.filter([
+    LIVE_SHARD,
+    new Range(
+      { tag: 'included', value: new Timestamp(loMicrosInclusive) },
+      { tag: hiInclusive ? 'included' : 'excluded', value: new Timestamp(hiMicros) },
+    ),
+  ]);
+}
+
+// Stops at the first row rather than materializing the range, so "is there
+// anything older at all?" costs an index seek instead of a scan.
+function olderRowProbeFor<Row extends PageableRow>(
+  index: { filter: (range: readonly [number, Range<Timestamp>]) => Iterable<Row> },
+): OlderRowProbe {
+  return (hiMicros) => {
+    const older = index.filter([
+      LIVE_SHARD,
+      new Range({ tag: 'unbounded' }, { tag: 'excluded', value: new Timestamp(hiMicros) }),
+    ]);
+    for (const _row of older) return true;
+    return false;
+  };
+}
+
+function requireMemberSession(ctx: {
+  sender: Identity,
+  db: { sessions: { identity: { find: (identity: Identity) => { identity: Identity } | null } } },
+}): void {
+  if (!hasMemberSession(ctx)) {
+    throw new SenderError('Unauthorized: no active session for this identity. Call touch_session first.');
+  }
+}
+
+type PageArgs = { beforeCreatedAtMicros: bigint | undefined, beforeId: bigint | undefined, limit: number };
+
+function cursorOf(now: Timestamp, args: PageArgs): PageCursor {
+  // No cursor means "newest page": everything ever written is at or before now.
+  return {
+    beforeCreatedAtMicros: args.beforeCreatedAtMicros ?? now.microsSinceUnixEpoch,
+    beforeId: args.beforeId,
+  };
+}
+
+function requireValidLimit(limit: number): number {
+  const invalid = validatePageLimit(limit);
+  if (invalid != null) throw new SenderError(invalid);
+  return clampPageLimit(limit);
+}
+
+const pageParams = {
+  beforeCreatedAtMicros: t.u64().optional(),
+  beforeId: t.u64().optional(),
+  limit: t.u32(),
+};
+
+const mcpCallLogPage = t.object('McpCallLogPage', {
+  rows: t.array(mcpCallLog.rowType),
+  nextBeforeCreatedAtMicros: t.u64().optional(),
+  nextBeforeId: t.u64().optional(),
+});
+
+const aiQueryLogPage = t.object('AiQueryLogPage', {
+  rows: t.array(aiQueryLog.rowType),
+  nextBeforeCreatedAtMicros: t.u64().optional(),
+  nextBeforeId: t.u64().optional(),
+});
+
+const feedbackLogPage = t.object('FeedbackLogPage', {
+  rows: t.array(feedbackLog.rowType),
+  nextBeforeCreatedAtMicros: t.u64().optional(),
+  nextBeforeId: t.u64().optional(),
+});
+
+export const page_mcp_call_log = spacetimedb.procedure(
+  pageParams,
+  mcpCallLogPage,
+  (ctx, args) => ctx.withTx((tx) => {
+    requireMemberSession({ sender: ctx.sender, db: tx.db });
+    const limit = requireValidLimit(args.limit);
+    return toPage(pageByCreatedAt(sliceScannerFor(tx.db.mcpCallLog.shardCreatedAt), olderRowProbeFor(tx.db.mcpCallLog.shardCreatedAt), cursorOf(ctx.timestamp, args), limit), limit);
+  }),
+);
+
+export const page_ai_query_log = spacetimedb.procedure(
+  pageParams,
+  aiQueryLogPage,
+  (ctx, args) => ctx.withTx((tx) => {
+    requireMemberSession({ sender: ctx.sender, db: tx.db });
+    const limit = requireValidLimit(args.limit);
+    return toPage(pageByCreatedAt(sliceScannerFor(tx.db.aiQueryLog.shardCreatedAt), olderRowProbeFor(tx.db.aiQueryLog.shardCreatedAt), cursorOf(ctx.timestamp, args), limit), limit);
+  }),
+);
+
+export const page_feedback_log = spacetimedb.procedure(
+  pageParams,
+  feedbackLogPage,
+  (ctx, args) => ctx.withTx((tx) => {
+    requireMemberSession({ sender: ctx.sender, db: tx.db });
+    const limit = requireValidLimit(args.limit);
+    return toPage(pageByCreatedAt(sliceScannerFor(tx.db.feedbackLog.shardCreatedAt), olderRowProbeFor(tx.db.feedbackLog.shardCreatedAt), cursorOf(ctx.timestamp, args), limit), limit);
+  }),
 );
 
 export const log_mcp_call = spacetimedb.reducer(

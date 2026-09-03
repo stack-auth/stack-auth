@@ -6,6 +6,7 @@ import { reviewVisible } from "../lib/mcp-review-api";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { clsx } from "clsx";
+import { LoadOlderButton, type HistoryPagingProps } from "./LoadOlderButton";
 
 // Matches MAX_BACKFILL_ITEMS in the backfill-visible route — one click enqueues
 // at most this many reviews.
@@ -45,13 +46,16 @@ export function CallLogList({
   connectionErrorMessage,
   onSelect,
   selectedId,
+  hasMoreHistory,
+  isLoadingOlder,
+  onLoadOlder,
 }: {
   rows: McpCallLogRow[];
   connectionState: string;
   connectionErrorMessage: string | null;
   onSelect: (row: McpCallLogRow) => void;
   selectedId?: bigint;
-}) {
+} & HistoryPagingProps) {
   const [textFilter, setTextFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [qaFilter, setQaFilter] = useState<QaFilter>("all");
@@ -441,6 +445,12 @@ export function CallLogList({
               >
                 Next
               </button>
+              <LoadOlderButton
+                hasMore={hasMoreHistory}
+                isLoading={isLoadingOlder}
+                onLoadOlder={onLoadOlder}
+                hasRows={rows.length > 0}
+              />
             </div>
           </div>
         </div>

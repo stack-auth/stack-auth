@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { clsx } from "clsx";
 import type { FeedbackLogRow } from "../types";
 import { toDate } from "../utils";
+import { LoadOlderButton, type HistoryPagingProps } from "./LoadOlderButton";
 
 const CATEGORY_STYLES: Record<string, string> = {
   "bug": "bg-red-50 text-red-700 border-red-200",
@@ -28,20 +29,19 @@ export function FeedbackList({
   connectionErrorMessage,
   onSelect,
   selectedId,
+  hasMoreHistory,
+  isLoadingOlder,
+  onLoadOlder,
 }: {
   rows: FeedbackLogRow[],
   connectionState: string,
   connectionErrorMessage: string | null,
   onSelect: (row: FeedbackLogRow) => void,
   selectedId?: bigint,
-}) {
+} & HistoryPagingProps) {
   const [textFilter, setTextFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
 
-  // Derived from the rows rather than a hardcoded list, the same way
-  // CallLogList builds its tool-name filter. The vocabulary lives in the MCP
-  // tool; this way the filter can never be missing a category that exists in
-  // the data, and never offers one that has never been used.
   const categories = useMemo(() => {
     return Array.from(new Set(rows.map(row => row.category))).sort();
   }, [rows]);
@@ -51,9 +51,6 @@ export function FeedbackList({
     return rows
       .filter(row => categoryFilter === ALL_CATEGORIES || row.category === categoryFilter)
       .filter(row => needle === "" || row.message.toLowerCase().includes(needle))
-      // Newest first. Sorting by id rather than createdAt because id is a
-      // monotonic autoInc — two rows written in the same microsecond still get
-      // a stable, insertion-ordered position.
       .slice()
       .sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
   }, [rows, textFilter, categoryFilter]);
@@ -135,6 +132,14 @@ export function FeedbackList({
           ))}
         </div>
       )}
+      <div className="flex items-center justify-end gap-2 pt-2 text-xs">
+        <LoadOlderButton
+          hasMore={hasMoreHistory}
+          isLoading={isLoadingOlder}
+          onLoadOlder={onLoadOlder}
+          hasRows={rows.length > 0}
+        />
+      </div>
     </div>
   );
 }

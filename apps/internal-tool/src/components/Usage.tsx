@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { AiQueryLogRow } from "../types";
 import { toDate } from "../utils";
+import { LoadOlderButton, type HistoryPagingProps } from "./LoadOlderButton";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 type AuthFilter = "all" | "authed" | "anon";
@@ -18,7 +19,7 @@ type Props = {
   connectionErrorMessage: string | null,
   onSelect: (row: AiQueryLogRow) => void,
   selectedId?: bigint,
-};
+} & HistoryPagingProps;
 
 const ALL_SYSTEM_PROMPTS = [
   "command-center-ask-ai",
@@ -33,7 +34,7 @@ const ALL_SYSTEM_PROMPTS = [
   "rewrite-template-source",
 ];
 
-export function Usage({ rows, connectionState, connectionErrorMessage, onSelect, selectedId }: Props) {
+export function Usage({ rows, connectionState, connectionErrorMessage, onSelect, selectedId, hasMoreHistory, isLoadingOlder, onLoadOlder }: Props) {
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [systemPromptFilter, setSystemPromptFilter] = useState<Set<string>>(new Set());
   const [modelFilter, setModelFilter] = useState<Set<string>>(new Set());
@@ -746,6 +747,12 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
               >
                 Next
               </button>
+              <LoadOlderButton
+                hasMore={hasMoreHistory}
+                isLoading={isLoadingOlder}
+                onLoadOlder={onLoadOlder}
+                hasRows={rows.length > 0}
+              />
             </div>
           </div>
         </div>

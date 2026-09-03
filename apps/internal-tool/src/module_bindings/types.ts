@@ -41,6 +41,15 @@ export const AiQueryLog = __t.object("AiQueryLog", {
 });
 export type AiQueryLog = __Infer<typeof AiQueryLog>;
 
+export const AiQueryLogPage = __t.object("AiQueryLogPage", {
+  get rows() {
+    return __t.array(AiQueryLog);
+  },
+  nextBeforeCreatedAtMicros: __t.option(__t.u64()),
+  nextBeforeId: __t.option(__t.u64()),
+});
+export type AiQueryLogPage = __Infer<typeof AiQueryLogPage>;
+
 export const FeedbackLog = __t.object("FeedbackLog", {
   id: __t.u64(),
   shard: __t.u8(),
@@ -57,6 +66,15 @@ export const FeedbackLog = __t.object("FeedbackLog", {
   mcpProtocolVersion: __t.option(__t.string()),
 });
 export type FeedbackLog = __Infer<typeof FeedbackLog>;
+
+export const FeedbackLogPage = __t.object("FeedbackLogPage", {
+  get rows() {
+    return __t.array(FeedbackLog);
+  },
+  nextBeforeCreatedAtMicros: __t.option(__t.u64()),
+  nextBeforeId: __t.option(__t.u64()),
+});
+export type FeedbackLogPage = __Infer<typeof FeedbackLogPage>;
 
 export const McpCallLog = __t.object("McpCallLog", {
   id: __t.u64(),
@@ -93,6 +111,15 @@ export const McpCallLog = __t.object("McpCallLog", {
   qaReviewRequestedAt: __t.timestamp(),
 });
 export type McpCallLog = __Infer<typeof McpCallLog>;
+
+export const McpCallLogPage = __t.object("McpCallLogPage", {
+  get rows() {
+    return __t.array(McpCallLog);
+  },
+  nextBeforeCreatedAtMicros: __t.option(__t.u64()),
+  nextBeforeId: __t.option(__t.u64()),
+});
+export type McpCallLogPage = __Infer<typeof McpCallLogPage>;
 
 export const MyVisibleAiQueryLog = __t.object("MyVisibleAiQueryLog", {});
 export type MyVisibleAiQueryLog = __Infer<typeof MyVisibleAiQueryLog>;
