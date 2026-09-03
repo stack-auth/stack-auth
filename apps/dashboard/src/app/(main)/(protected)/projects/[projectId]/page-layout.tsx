@@ -10,6 +10,8 @@ export function PageLayout(props: {
   noPadding?: boolean,
   allowContentOverflow?: boolean,
   containedHeight?: boolean,
+  scrollMain?: boolean,
+  spacing?: "default" | "compact",
   fullBleed?: boolean,
   wrapHeaderInCard?: boolean,
 } & ({
@@ -19,8 +21,15 @@ export function PageLayout(props: {
 })) {
   return (
     <div
-      className={cn("flex flex-1 min-h-0 flex-col", !props.noPadding && "py-4 px-4 sm:py-6 sm:px-6")}
+      className={cn(
+        "flex min-h-0 flex-1 flex-col",
+        props.spacing === "compact"
+          ? "[--page-content-gap:0.75rem] [--page-header-extra-gap:0rem]"
+          : "[--page-content-gap:1rem] [--page-header-extra-gap:0.5rem]",
+        !props.noPadding && (props.spacing === "compact" ? "p-3" : "px-4 py-4 sm:px-6 sm:py-6"),
+      )}
       data-contained-height={props.containedHeight ? "true" : undefined}
+      data-scroll-main={props.scrollMain ? "true" : undefined}
       data-full-bleed={props.fullBleed ? "true" : undefined}
     >
       <div
@@ -65,7 +74,7 @@ export function PageLayout(props: {
           </div>
         )}
         <div className={cn(
-          "flex flex-col gap-4",
+          "flex flex-col gap-[var(--page-content-gap)]",
           !props.allowContentOverflow && "flex-1 min-h-0",
         )}>
           {props.children}

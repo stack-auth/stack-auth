@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DUMMY_ORIGIN, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
+import { getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getItemPath, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
 
 const PROJECT_ID = "demo-project";
 
@@ -72,5 +73,31 @@ describe("testItemPath", () => {
     const app = appWith([overview, external]);
 
     expect(testItemPath(PROJECT_ID, app, external, urlFor("/projects/demo-project/demo-app"))).toBe(false);
+  });
+});
+
+describe("Analytics, Warehouse, and Observability navigation", () => {
+  it("keeps product analytics, warehouse exploration, and observability in distinct apps", () => {
+    const analyticsItems = ALL_APPS_FRONTEND.analytics.navigationItems.map((item) => item.displayName);
+    expect(analyticsItems).toEqual(["Paths", "Replays", "Clickmaps"]);
+
+    const warehouse = ALL_APPS_FRONTEND.warehouse;
+    const tables = warehouse.navigationItems.find((item) => item.displayName === "Tables");
+    const queries = warehouse.navigationItems.find((item) => item.displayName === "Queries");
+    if (tables == null || queries == null) throw new Error("Warehouse must define Tables and Queries navigation.");
+    expect(getItemPath(PROJECT_ID, warehouse, tables)).toBe("/projects/demo-project/warehouse/tables");
+    expect(getItemPath(PROJECT_ID, warehouse, queries)).toBe("/projects/demo-project/warehouse/queries");
+
+    expect(getParentAppId("observability")).toBeNull();
+
+    const observability = ALL_APPS_FRONTEND.observability;
+    expect(observability.navigationItems.map((item) => item.displayName)).not.toContain("Alert rules");
+    const logs = observability.navigationItems.find((item) => item.displayName === "Logs");
+    const traces = observability.navigationItems.find((item) => item.displayName === "Traces");
+    const registry = observability.navigationItems.find((item) => item.displayName === "Registry");
+    if (logs == null || traces == null || registry == null) throw new Error("Observability must define Logs, Traces, and Registry navigation.");
+    expect(getItemPath(PROJECT_ID, observability, logs)).toBe("/projects/demo-project/observability/logs");
+    expect(getItemPath(PROJECT_ID, observability, traces)).toBe("/projects/demo-project/observability/traces");
+    expect(getItemPath(PROJECT_ID, observability, registry)).toBe("/projects/demo-project/observability/registry");
   });
 });

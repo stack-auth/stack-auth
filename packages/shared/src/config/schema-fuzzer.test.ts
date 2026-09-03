@@ -253,7 +253,7 @@ const environmentSchemaFuzzerConfig = [{
       }],
     }],
   }],
-  analytics: [{
+  warehouse: [{
     queryFolders: [{
       "some-folder-id": [{
         displayName: ["Some Folder", "Some Other Folder"],
@@ -265,6 +265,20 @@ const environmentSchemaFuzzerConfig = [{
             description: ["", "A query description", "Another description"],
           }],
         }],
+      }],
+    }],
+  }],
+  observability: [{
+    errorIngest: [undefined, {
+      finalScrub: [undefined, {
+        dropKeys: [undefined, { dropEmail: [undefined, "user.email", "tags.customer-id"] }],
+        urlKeys: [undefined, { pathOnlyUrl: [undefined, "url", "request.url"] }],
+      }],
+    }],
+    errorGrouping: [{
+      activeConfigId: [undefined, "hexclave-js:2026-08-01"] as const,
+      readableConfigIds: [{
+        "hexclave-js:2026-08-01": [{ enabled: [true, false] }],
       }],
     }],
   }],

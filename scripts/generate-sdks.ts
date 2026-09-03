@@ -135,6 +135,13 @@ withGeneratorLock(async () => {
     "src/tanstack-start-server-context.combined.ts",
     "src/tanstack-start-server-context.default.ts",
     "src/tanstack-start-server-context.server.ts",
+    "src/integrations/tanstack-start.ts",
+    "src/integrations/tanstack-start.test.ts",
+  ]);
+  const nextOnlyTemplateFiles = new Set([
+    "src/integrations/next.ts",
+    "src/integrations/next.test.ts",
+    "next.d.ts",
   ]);
   const templateOnlyFiles = new Set([
     "src/tanstack-start-server-context.d.ts",
@@ -183,7 +190,7 @@ withGeneratorLock(async () => {
         "src/providers/",
       ];
 
-      if (tanstackStartOnlyTemplateFiles.has(relativePath) || templateOnlyFiles.has(relativePath)) {
+      if (tanstackStartOnlyTemplateFiles.has(relativePath) || nextOnlyTemplateFiles.has(relativePath) || templateOnlyFiles.has(relativePath)) {
         return false;
       } else if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
         return false;
@@ -208,7 +215,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
     },
-    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath),
+    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath) && !nextOnlyTemplateFiles.has(relativePath),
   });
 
   generateFromTemplate({
@@ -217,7 +224,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["tanstack-start"] });
     },
-    filterFn: (relativePath) => !templateOnlyFiles.has(relativePath),
+    filterFn: (relativePath) => !templateOnlyFiles.has(relativePath) && !nextOnlyTemplateFiles.has(relativePath),
   });
 }).catch((error) => {
   console.error(error);

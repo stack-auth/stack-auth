@@ -1,5 +1,6 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
+import { isRecord } from "@hexclave/shared/dist/utils/objects";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
@@ -34,6 +35,9 @@ const corsAllowedRequestHeaders = [
   "x-stack-allow-anonymous-user",
   "baggage",
   "sentry-trace",
+  "traceparent",
+  "tracestate",
+  "x-hexclave-span-context",
   "x-vercel-protection-bypass",
   "ngrok-skip-browser-warning",
 ];
@@ -65,6 +69,12 @@ export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
     "Vary": corsAllowedRequestHeadersWithAliases.join(", "),
   } : undefined;
 }
+
+import.meta.vitest?.test("CORS preflights allow W3C trace-context propagation headers", ({ expect }) => {
+  const headers = new Headers(getCorsHeadersInit(new Request("http://localhost/api/v1/projects/current")));
+  const allowedRequestHeaders = headers.get("Access-Control-Allow-Headers")?.split(", ") ?? [];
+  expect(allowedRequestHeaders).toEqual(expect.arrayContaining(["baggage", "traceparent", "tracestate", "x-hexclave-span-context"]));
+});
 
 export type PipelineResult = {
   corsHeadersInit?: HeadersInit,
@@ -202,10 +212,6 @@ function ensureForwardedForHeader(headers: Headers, request: Request) {
     return;
   }
   headers.set("x-forwarded-for", normalizeClientIp(socketIp));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function readClientSocketIp(request: Request): string | undefined {

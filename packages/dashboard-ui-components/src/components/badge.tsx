@@ -2,10 +2,11 @@
 
 import { cn } from "@hexclave/ui";
 
-export type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
+export type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red" | "zinc";
 export type DesignBadgeSize = "sm" | "md";
 
 const badgeStyles = new Map<DesignBadgeColor, string>([
+  ["zinc", "text-zinc-600 dark:text-zinc-400 bg-zinc-500/20 dark:bg-zinc-500/10 ring-1 ring-zinc-500/30 dark:ring-zinc-500/20"],
   ["blue", "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20"],
   ["cyan", "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20"],
   ["purple", "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20"],
@@ -60,22 +61,6 @@ function getShowLabelShowIcon(
   }
 }
 
-/**
- * Small pill used for status tags, roles, categories, and other short
- * labels. Not a variant-based component — pick a semantic `color` and
- * optionally pass an `icon` (as a component type, not a rendered node).
- *
- * ```tsx
- * <DesignBadge label="Verified" color="green" icon={CheckIcon} />
- * <DesignBadge label="Beta" color="purple" />
- * <DesignBadge label="Error" color="red" size="sm" />
- * ```
- *
- * Notes:
- * - Props are `label` + `color`, NOT `variant` + children.
- * - `color` is one of: `"blue" | "cyan" | "purple" | "green" | "orange" | "red"`.
- * - `icon` is optional but, if set via `contentMode: "icon"`, is required.
- */
 export function DesignBadge({
   label,
   color,
