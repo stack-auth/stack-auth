@@ -664,6 +664,14 @@ describe("experiment schedule processor", () => {
   it("reconciles cancellation and postponement from current branch config", async ({ expect }) => {
     const originalStartMillis = Date.now() - 60_000;
     await createProjectWithAnalytics({ startsAt: new Date(originalStartMillis).toISOString() });
+    // The drafts below are due immediately, and the e2e environment runs the
+    // schedule processor as a background cron. A manually started run keeps
+    // the processor from starting them (one active run per experiment), so the
+    // test only observes the schedule reconciliation.
+    const blockingRun = await createRun();
+    expect(blockingRun.status).toBe(201);
+    expect((await transitionRun(blockingRun.body.id, "start")).status).toBe(200);
+
     const cancelledRun = await createRun({
       ...validExperimentConfig(),
       schedule: { start_at_millis: originalStartMillis },
