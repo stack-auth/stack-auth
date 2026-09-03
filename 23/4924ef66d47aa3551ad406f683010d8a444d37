@@ -1,0 +1,123 @@
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.ts
+  s_45afda9a92f28a::t_8c13ce9c2ff955 90,92-105,108
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.analytics.test.ts
+  s_45afda9a92f28a::t_d6f32e7599bacd 89-90
+  s_45afda9a92f28a::t_dd1e40e3a612b5 17
+  s_45afda9a92f28a::t_3790ec824a5512 103-108,114,116-134
+  s_45afda9a92f28a::t_4d0ac0d7a5cc76 115,135
+  s_45afda9a92f28a::t_48ed1d4293d94a 136-137
+apps/backend/src/lib/issues/grouping-config.test.ts
+  s_45afda9a92f28a::t_0396cd431dc806 71-72,74-75
+packages/shared/src/utils/gen-ai.test.ts
+  s_bc32f1b0dbd2eb::t_42080ae1e46865 128-134
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/ai-span.test.ts
+  s_bc32f1b0dbd2eb::t_bac8dec674f0c2 54,56,58,76-77,79-80,92-93,106-107,122-124,128-132
+  s_bc32f1b0dbd2eb::t_aeb2f0ef3a1b72 71-74
+  s_bc32f1b0dbd2eb::t_a4fa84735e9550 78,81-84
+  s_bc32f1b0dbd2eb::t_30657a7e33bff5 75
+  s_bc32f1b0dbd2eb::t_728064ebbb373b 133
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.test.ts
+  s_bc32f1b0dbd2eb::t_ac8f44da24823a 177-179
+docs-mintlify/guides/apps/observability/error-tracking.mdx
+  s_bc32f1b0dbd2eb::t_0cd3e34460f42e 72
+apps/backend/prisma/schema.prisma
+  s_3afaba0039552c::t_e2b4631973e03d 1125-1126
+  s_3afaba0039552c::t_b40426a794cc5e 1132
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/ai-span.tsx
+  s_bc32f1b0dbd2eb::t_2235685056c0f9 39
+  s_bc32f1b0dbd2eb::t_284f841474b2bb 29-32,40-41,45-48,72,353,355-356,359-360
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/paths/paths-graph-canvas.test.tsx
+  s_bc32f1b0dbd2eb::t_90b9342d7bceee 3,114-116,118,121,123,126-127
+  s_bc32f1b0dbd2eb::t_ac8f44da24823a 117,119-120,122,124-125,128-129
+apps/backend/src/lib/issues/issue-reconciler.test.ts
+  s_45afda9a92f28a::t_72f7fad5dfa58d 6-9
+  s_45afda9a92f28a::t_fffc9336fa812a 3
+apps/backend/src/lib/issues/observability-gate.ts
+  s_45afda9a92f28a::t_88447533c5e65c 4-7,9
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_45afda9a92f28a::t_65d5b484a77dbb 992,994
+packages/shared/src/utils/gen-ai.tsx
+  s_bc32f1b0dbd2eb::t_284f841474b2bb 135-140
+apps/backend/src/lib/issues/grouping-config.ts
+  s_45afda9a92f28a::t_109d0e10d988bf 30
+packages/template/src/lib/hexclave-app/apps/implementations/client-analytics.ts
+  s_45afda9a92f28a::t_e1ce635751572f 258
+  s_45afda9a92f28a::t_2cffe7490fd37a 544
+  s_45afda9a92f28a::t_83c08f4f3b1edb 117-119,134,140-141
+  s_45afda9a92f28a::t_24b82f93312de3 63-68
+  s_45afda9a92f28a::t_ac76e7222e33e8 156
+  s_45afda9a92f28a::t_47722b17a85841 171
+  s_45afda9a92f28a::t_97698ee6ed080b 142-143
+packages/template/src/lib/hexclave-app/apps/implementations/observability-config.test.ts
+  s_45afda9a92f28a::t_65abbe7affb0c2 42-48
+apps/backend/src/lib/customer-request-observability.ts
+  s_45afda9a92f28a::t_bf083fa67504f0 84
+  s_45afda9a92f28a::t_9dd08c7568cbe6 23
+  s_45afda9a92f28a::t_b954df1a65012a 210
+  s_45afda9a92f28a::t_f538e9fac11c77 111
+packages/shared/src/config/schema.ts
+  s_45afda9a92f28a::t_e481c5a02beccc 387
+  s_45afda9a92f28a::t_17aba71f3422d6 739-745
+  s_45afda9a92f28a::t_ea99ff369bf94c 925-958
+  s_45afda9a92f28a::t_6b365a00ee9792 10
+  s_45afda9a92f28a::t_46d34ece095ee6 1010-1067
+  s_45afda9a92f28a::t_bbc8e762f8bc38 388
+  s_45afda9a92f28a::t_5de79f2bb9154a 389-390
+apps/backend/src/route-handlers/smart-request.tsx
+  s_45afda9a92f28a::t_57476ed9ad42e4 418
+  s_45afda9a92f28a::t_e4b111bab4ec7c 11
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_bc32f1b0dbd2eb::t_e450b3bdd18264 54,185,187
+apps/backend/src/lib/events-clickhouse.test.ts
+  s_45afda9a92f28a::t_bc4a2c385a0695 1-18
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/paths/paths-graph-canvas.tsx
+  s_bc32f1b0dbd2eb::t_284f841474b2bb 9,256
+  s_bc32f1b0dbd2eb::t_410821520909d5 255
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_45afda9a92f28a::t_800d83bdfcf962 135,144,146-151
+apps/backend/src/lib/customer-request-observability.test.ts
+  s_45afda9a92f28a::t_6ff730d897d28a 264-268
+  s_45afda9a92f28a::t_9c0362867991a0 52,66,113,136,143,166,173,203,248-252,297
+  s_45afda9a92f28a::t_1addbbc7b40047 253-255,261-263
+apps/backend/src/lib/events.tsx
+  s_45afda9a92f28a::t_272c68e183bce6 232-243
+  s_45afda9a92f28a::t_a1e940ff69c4a3 366-380,384
+  s_45afda9a92f28a::t_d1cd81feab20db 381-382
+  s_45afda9a92f28a::t_d24c045125df8d 386-392
+  s_45afda9a92f28a::t_1fabf996790c1a 14
+  s_45afda9a92f28a::t_353db22c98cfa6 383
+  s_45afda9a92f28a::t_87bb2ea88d3350 385
+  s_45afda9a92f28a::t_024df21e6a06b7 393
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "234924ef66d47aa3551ad406f683010d8a444d37",
+  "prompts": {},
+  "sessions": {
+    "s_3afaba0039552c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06473-dae8-7072-a398-994e98efa260",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_45afda9a92f28a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2e7b0716-1b21-4b9c-bd3b-881b82db4df0",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bc32f1b0dbd2eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a06813-b872-7cd1-9e77-c805341fa2f9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
