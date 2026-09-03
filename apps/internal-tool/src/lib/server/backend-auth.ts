@@ -1,16 +1,9 @@
 import "server-only";
 
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import * as jose from "jose";
 import { envOrDevDefault, hexclaveApiUrl } from "../env";
 
-// Authenticates the Hexclave backend to this app's /api/backend/* ingest
-// routes with a short-lived JWT assertion — no shared secret. The backend
-// signs it with the Hexclave project keys it inherently holds (derived from
-// HEXCLAVE_SERVER_SECRET); we verify against the project's public JWKS endpoint.
-// A stolen ordinary user access token cannot be replayed here: `sub` must be
-// the reserved `__internal_tool_backend__` (real users always get UUID
-// subjects) and the `token_use` claim must match.
 
 export const BACKEND_ASSERTION_SUBJECT = "__internal_tool_backend__";
 export const BACKEND_ASSERTION_TOKEN_USE = "internal-tool-backend";
@@ -46,11 +39,19 @@ export async function requireBackendAssertion(req: Request): Promise<void> {
       issuer: `${apiUrl()}/api/v1/projects/${projectId()}`,
       audience: projectId(),
     }));
-  } catch {
+  } catch (err) {
+    captureError("backend-assertion-verify", new Error(
+      `Backend assertion verification failed (expected issuer ${apiUrl()}/api/v1/projects/${projectId()}).`,
+      { cause: err },
+    ));
     throw new StatusError(StatusError.Unauthorized, "Invalid backend assertion.");
   }
 
   if (payload.sub !== BACKEND_ASSERTION_SUBJECT || payload.token_use !== BACKEND_ASSERTION_TOKEN_USE) {
+    captureError("backend-assertion-claims", new Error(
+      `Backend assertion rejected on claims (sub ${payload.sub === BACKEND_ASSERTION_SUBJECT ? "ok" : "mismatched"}, `
+      + `token_use ${payload.token_use === BACKEND_ASSERTION_TOKEN_USE ? "ok" : "mismatched"}).`,
+    ));
     throw new StatusError(StatusError.Unauthorized, "Invalid backend assertion.");
   }
 }

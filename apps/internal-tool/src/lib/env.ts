@@ -1,19 +1,32 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
-const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";
 
-export function envOrDevDefault(value: string | undefined, devDefault: string, name: string): string {
-  if (!value || value === PLACEHOLDER) {
-    if (IS_DEV) return devDefault;
-    throw new HexclaveAssertionError(`${name} is not configured. Set the NEXT_PUBLIC_HEXCLAVE_* vars in .env.local or the hosting platform env.`);
-  }
-  return value;
+function isDev() {
+  return process.env.NODE_ENV === "development";
 }
 
-const DEFAULT_API_URL = "https://api.hexclave.com";
+function definedEnvValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (trimmed == null || trimmed === "" || trimmed === PLACEHOLDER) return undefined;
+  return trimmed;
+}
+
+export function envOrDevDefault(value: string | undefined, devDefault: string, name: string): string {
+  const defined = definedEnvValue(value);
+  if (defined == null) {
+    if (isDev()) return devDefault;
+    throw new HexclaveAssertionError(`${name} is not configured. Set the NEXT_PUBLIC_HEXCLAVE_* vars in .env.local or the hosting platform env.`);
+  }
+  return defined;
+}
+
 export function hexclaveApiUrl(): string {
-  const value = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL;
-  if (!value || value === PLACEHOLDER) return DEFAULT_API_URL;
-  return value;
+  const hexclaveValue = definedEnvValue(process.env.NEXT_PUBLIC_HEXCLAVE_API_URL);
+  const stackValue = definedEnvValue(process.env.NEXT_PUBLIC_STACK_API_URL);
+  if (hexclaveValue != null && stackValue != null && hexclaveValue !== stackValue) {
+    throw new HexclaveAssertionError("Environment variables NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_STACK_API_URL are both set to different values. Remove one of them or set them to the same value.");
+  }
+  const devDefault = `http://localhost:${definedEnvValue(process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX) ?? "81"}02`;
+  return envOrDevDefault(hexclaveValue ?? stackValue, devDefault, "NEXT_PUBLIC_HEXCLAVE_API_URL");
 }
