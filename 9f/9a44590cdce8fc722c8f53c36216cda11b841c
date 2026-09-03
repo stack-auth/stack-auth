@@ -1,0 +1,625 @@
+apps/bulldozer-js/src/databases/piledriver/implementations/base.ts
+  s_e4ce6f9451f0c6::t_6cc930014429ab 338,340-341,344-345,847-849,857-859
+  s_55e17d67cca976::t_7d8f5cc75c8cb7 168-169
+apps/backend/src/lib/product-versions.tsx
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 4,33
+  s_e4ce6f9451f0c6::t_f12b887b259ec1 47,62,78
+apps/backend/scripts/regen-internal-subscriptions-to-latest.ts
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 37
+tools/eslint/anti-slop/source/shared/dictionary-types.ts
+  s_e4ce6f9451f0c6::t_226282ad2d4bda 349
+packages/dashboard-ui-components/src/components/analytics-chart/state.ts
+  s_e4ce6f9451f0c6::t_8191b56deb074c 126
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/ask-hexclave-history/page-client.tsx
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 24,167,176,209,251
+apps/backend/src/s3.tsx
+  s_e4ce6f9451f0c6::t_8f94179d1f84b4 176
+packages/cli/src/lib/app.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 43-46
+apps/backend/src/prisma-client.tsx
+  s_e4ce6f9451f0c6::t_583c81fee4d268 360-362
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_e4ce6f9451f0c6::t_dfe4743291c402 47-50,1414-1415,1422-1423,1564-1565,1572-1573
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 1033
+apps/backend/scripts/verify-data-integrity/api.ts
+  s_e4ce6f9451f0c6::t_6b53a10dfcd924 20-27,55-58
+tools/eslint/anti-slop/source/rules/no-unknown-returns.ts
+  s_e4ce6f9451f0c6::t_93d9ea2c7cb381 36
+  s_e4ce6f9451f0c6::t_466fd57e5fd0db 39-61,126
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 6,86
+  s_e4ce6f9451f0c6::t_3ae183cd88c8ca 20-35,37-38,127
+packages/shared/src/utils/globals.tsx
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 12-13,21-22,36-38
+  s_e4ce6f9451f0c6::t_e69c63cf90f267 27-28,48-49
+packages/dashboard-ui-components/src/components/data-grid/data-grid-export-dialog.tsx
+  s_e4ce6f9451f0c6::t_5bb334ecfbfbc8 374
+  s_e4ce6f9451f0c6::t_c3e81101f1630b 375
+  s_e4ce6f9451f0c6::t_9e42682f769575 11,377
+packages/shared/src/interface/crud/analytics.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 1-2,5,11
+apps/backend/src/lib/deployments/index.test.tsx
+  s_e4ce6f9451f0c6::t_b3f80b9790f3ca 175-177,180,193-194
+apps/mcp/src/feedback-client.ts
+  s_e4ce6f9451f0c6::t_aa73e85980087f 1,23,81-83,86
+tools/eslint/anti-slop/README.md
+  s_e4ce6f9451f0c6::t_335ab938d4f53a 10-11
+apps/backend/src/lib/openapi.tsx
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 449
+apps/backend/src/lib/turnstile.tsx
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 259
+  s_55e17d67cca976::t_e77c34e9cfded6 361-364,405-407
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.next-server-session.test.ts
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 5
+  s_55e17d67cca976::t_2b8a7937cc3472 31-32,44
+packages/shared/src/interface/server-interface.ts
+  s_e4ce6f9451f0c6::t_4cb081697b01dc 8,970
+  s_e4ce6f9451f0c6::t_0c7e1283fe1908 232,254,289,308,393,407,491,767,781
+  s_e4ce6f9451f0c6::t_4be4b99888d0ee 7
+apps/bulldozer-js/src/databases/piledriver/implementations/breezy/codec.ts
+  s_e4ce6f9451f0c6::t_e5d8eb8a62648f 10,52,68,72-73,100,113
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_e4ce6f9451f0c6::t_7ee53fb6bf9448 517-519
+apps/dashboard/src/lib/conversations.ts
+  s_e4ce6f9451f0c6::t_ae09e1965f022f 10,56,66,80,120
+examples/demo/src/app/payments-demo/page.tsx
+  s_e4ce6f9451f0c6::t_5fc61b3d955230 18-23,53-54,57
+apps/internal-tool/src/lib/server/route-utils.ts
+  s_e4ce6f9451f0c6::t_8191b56deb074c 4,48
+apps/backend/src/lib/config/index.tsx
+  s_e4ce6f9451f0c6::t_161baa1076156d 510,516
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 403-404
+  s_e4ce6f9451f0c6::t_386e14039ac773 3
+  s_e4ce6f9451f0c6::t_404754eefa00c2 509
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_e4ce6f9451f0c6::t_f67dd524fcd217 4,51-59,94,99,140-146
+apps/dashboard/src/lib/ai-dashboard/shared-prompt.ts
+  s_e4ce6f9451f0c6::t_210c130daf2eed 4-5,82,96-103,107
+examples/e-commerce/src/app/page.tsx
+  s_e4ce6f9451f0c6::t_17807b0d4094ae 7-13
+apps/backend/src/server/shutdown.ts
+  s_e4ce6f9451f0c6::t_b48075f41480fb 2-5,33
+apps/backend/src/lib/oauth.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 37
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_e4ce6f9451f0c6::t_22afce4a0c5498 13,18,28-34,59,67,93,121,129,149,163
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 203-204
+apps/dashboard/src/app/api/remote-development-environment/sessions/route.ts
+  s_e4ce6f9451f0c6::t_7ee53fb6bf9448 4,15-18
+tools/eslint/anti-slop/source/rules/no-unknown-parameters.ts
+  s_e4ce6f9451f0c6::t_fc2587b8147ade 2,79,90
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 3,190
+  s_e4ce6f9451f0c6::t_5439aefd10e425 32,46-49,201
+  s_e4ce6f9451f0c6::t_65073aa08229f1 18-23
+  s_e4ce6f9451f0c6::t_93d9ea2c7cb381 43,138
+  s_e4ce6f9451f0c6::t_ca5c59c95d9c35 128-136
+  s_e4ce6f9451f0c6::t_01ef946f52d32d 94-127,137,139-145,197
+  s_e4ce6f9451f0c6::t_8514a6f5a95941 199-200,202-203
+  s_e4ce6f9451f0c6::t_20be4d41d12fd5 35,38-42,44-45,192
+  s_e4ce6f9451f0c6::t_6c7f9ed29596d8 50-76,196
+  s_e4ce6f9451f0c6::t_aeaf6a98aecf3e 24-31,33-34,77-78,80-89,91-93,189,191,193
+  s_e4ce6f9451f0c6::t_983bec85854827 36-37
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/dashboards/[dashboardId]/page-client.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 65-67
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/shared.tsx
+  s_e4ce6f9451f0c6::t_5bb334ecfbfbc8 22,33
+apps/backend/prisma/seed.ts
+  s_e4ce6f9451f0c6::t_e717cbee0fa15c 333-334
+apps/backend/src/oauth/providers/x.tsx
+  s_e4ce6f9451f0c6::t_471290ad10e16a 52
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 45,95
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/replay-user-overview.tsx
+  s_e4ce6f9451f0c6::t_68ab97d1f242f8 139,226
+apps/hosted-components/src/hosted-components/account-settings/teams/team-profile-image-section.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 20
+apps/dashboard/src/lib/browser-actions.ts
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 2,16,37
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_e4ce6f9451f0c6::t_8f94179d1f84b4 69,73
+apps/backend/src/lib/deployments/index.tsx
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 87-88,756,762
+apps/dashboard/src/components/design-components/analytics-card.tsx
+  s_e4ce6f9451f0c6::t_86807c756d0f8e 222
+packages/shared/src/config/migrate-catalogs-to-product-lines.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 2,42
+tools/eslint/anti-slop/source/rules/no-unsafe-dictionary-type.ts
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 9,190
+  s_e4ce6f9451f0c6::t_777f08074a897b 134,144
+  s_e4ce6f9451f0c6::t_93d9ea2c7cb381 94
+  s_e4ce6f9451f0c6::t_07a8213215ac0f 149,213-214
+  s_e4ce6f9451f0c6::t_f6de8d43289648 13
+  s_e4ce6f9451f0c6::t_c8260610359654 101-109,111-114,129-133,140,142
+  s_e4ce6f9451f0c6::t_a070d8a417cf94 122
+  s_e4ce6f9451f0c6::t_1bce32ec788698 128,135
+  s_e4ce6f9451f0c6::t_257613d0bbea3c 14,110
+  s_e4ce6f9451f0c6::t_b9cf023543da77 115-121,123-127,136-139,141,143,145-148,150-155,163
+  s_e4ce6f9451f0c6::t_56988bd6e4b25d 72-93,95-100,164
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/page-client.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 90-92
+tools/eslint/anti-slop/source/rules/no-chained-type-assertions.ts
+  s_e4ce6f9451f0c6::t_807a52ecc2e359 4,26-32,43-48,63-68
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 3
+apps/dashboard/src/components/assistant-ui/tool-fallback.tsx
+  s_e4ce6f9451f0c6::t_8027d3d648fe32 8-40,59,65,73
+apps/marshal/src/fly/client.ts
+  s_e4ce6f9451f0c6::t_f67dd524fcd217 54-60,177,183,212,482
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 48-50
+apps/mcp/src/instrumentation.ts
+  s_e4ce6f9451f0c6::t_aa73e85980087f 3,7
+apps/dashboard/src/lib/github-api.ts
+  s_e4ce6f9451f0c6::t_b48075f41480fb 46
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 11,15-16,19
+apps/backend/src/lib/ai/types.ts
+  s_e4ce6f9451f0c6::t_404754eefa00c2 3,31,98
+packages/dashboard-ui-components/src/components/data-grid/state.ts
+  s_e4ce6f9451f0c6::t_5541a6c9b5d18a 49,131,178-179,182
+  s_e4ce6f9451f0c6::t_c3e81101f1630b 50,52,54-55
+  s_e4ce6f9451f0c6::t_9e42682f769575 5
+apps/dashboard/src/lib/remote-development-environment/route-json.ts
+  s_e4ce6f9451f0c6::t_7ee53fb6bf9448 3-6
+packages/cli/src/lib/progress.ts
+  s_e4ce6f9451f0c6::t_b48075f41480fb 6
+apps/dashboard/src/components/vibe-coding/chat-adapters.ts
+  s_e4ce6f9451f0c6::t_ef2a1219bb3a12 13,276
+tools/eslint/anti-slop/source/rules/require-safety-comment-for-type-assertion.ts
+  s_e4ce6f9451f0c6::t_98d52f3ebadd86 37-38
+  s_e4ce6f9451f0c6::t_53addb8c8d2da8 101
+  s_e4ce6f9451f0c6::t_c04441edf81da2 71-84,99-100,102-109,144-147
+  s_e4ce6f9451f0c6::t_93d9ea2c7cb381 45
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 7,138
+  s_e4ce6f9451f0c6::t_75381495a1a80c 48-57,148-149,153
+  s_e4ce6f9451f0c6::t_f91a74c7e4b4b3 2-6,137,139,156-158
+  s_e4ce6f9451f0c6::t_b023f540b5bf7d 12-15,33-36,39-44,46-47,58-70,85-97,140-143,150-152,154-155
+apps/bulldozer-js/src/otel.ts
+  s_e4ce6f9451f0c6::t_e5d8eb8a62648f 7
+apps/backend/src/lib/stripe.tsx
+  s_e4ce6f9451f0c6::t_7a76c38ccd228d 108
+  s_e4ce6f9451f0c6::t_959f81d21fe6cf 7,90-99,105
+apps/backend/src/app/api/latest/internal/external-db-sync/status/route.ts
+  s_e4ce6f9451f0c6::t_eb77e6ec7a546c 535-538,546-548,1194-1195
+  s_e4ce6f9451f0c6::t_86807c756d0f8e 208
+apps/backend/src/lib/end-users.tsx
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 162,167
+apps/backend/src/oauth/providers/base.tsx
+  s_e4ce6f9451f0c6::t_4977615b80fd44 51,55,59-60,67
+  s_e4ce6f9451f0c6::t_64220f6d4009df 3
+packages/ui/src/components/data-table/faceted-filter.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 36-37
+apps/backend/src/server/registry.ts
+  s_e4ce6f9451f0c6::t_68ab97d1f242f8 8-9
+packages/shared/src/utils/strings.tsx
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 678,708,718,721
+packages/shared/src/utils/caches.tsx
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 13-14
+tools/eslint/anti-slop/source/rules/no-module-mocking.ts
+  s_e4ce6f9451f0c6::t_ca28e735f29e82 61-64,82
+packages/dashboard-ui-components/src/components/data-grid/index.ts
+  s_e4ce6f9451f0c6::t_005c9bdb2d996d 42
+packages/shared/src/payments/payment-methods.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 23-24,153-154
+apps/backend/src/lib/bulldozer-server-client.ts
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 3,134
+packages/shared/src/utils/json.tsx
+  s_e4ce6f9451f0c6::t_404754eefa00c2 3,10
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/providers.tsx
+  s_e4ce6f9451f0c6::t_10d98aba43ddef 429-432,437-440,446-450,452-453
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_e4ce6f9451f0c6::t_86807c756d0f8e 54
+  s_e4ce6f9451f0c6::t_eb77e6ec7a546c 541-544,557,569-570,579,583-585,601,604-605,607,611,621,652-654,663
+apps/backend/src/oauth/providers/github.tsx
+  s_e4ce6f9451f0c6::t_471290ad10e16a 110
+apps/bulldozer-js/src/databases/bulldozer/index.ts
+  s_e4ce6f9451f0c6::t_8191b56deb074c 829
+apps/backend/src/lib/plan-entitlements.ts
+  s_e4ce6f9451f0c6::t_b48075f41480fb 3,49,51
+tools/eslint/anti-slop/plugin.test.ts
+  s_e4ce6f9451f0c6::t_ca28e735f29e82 15
+  s_e4ce6f9451f0c6::t_1e03ed073ba17e 20
+  s_e4ce6f9451f0c6::t_425ef7fa93bc0f 93
+  s_e4ce6f9451f0c6::t_77c3fec2059790 16
+  s_e4ce6f9451f0c6::t_ce41cbe1fdc01d 21
+  s_e4ce6f9451f0c6::t_3ae183cd88c8ca 22
+  s_e4ce6f9451f0c6::t_a070d8a417cf94 24
+  s_e4ce6f9451f0c6::t_edd055f0d39b79 91-92,94-96
+apps/backend/src/lib/deployments/marshal-client.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 282-283
+apps/backend/src/lib/config/repo-agent.ts
+  s_e4ce6f9451f0c6::t_13ccc2d9ef1f02 283
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 29,607
+  s_e4ce6f9451f0c6::t_161baa1076156d 26,475
+  s_e4ce6f9451f0c6::t_2a95a78bacfe11 558-569,585,597,610,631,634-637,640-646,705,719,735-736,739,744-745,753,758-759,770
+examples/demo/src/app/cli-auth-demo/page.tsx
+  s_e4ce6f9451f0c6::t_e1a4ec09376f3d 23,38-39,88-94
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_e4ce6f9451f0c6::t_f67dd524fcd217 1258
+  s_e4ce6f9451f0c6::t_b070d4fa9ff645 13,1006,1011
+  s_e4ce6f9451f0c6::t_0a02f136b1a6d1 7,1116,1129,1132-1133,1137-1140,1145,1147,1162-1167,1259,1328-1329
+packages/cli/src/lib/deployment-config.ts
+  s_e4ce6f9451f0c6::t_4f5fc08445d11a 659-661
+  s_e4ce6f9451f0c6::t_cecd643d1c2950 191,1170-1177,1181-1183,1196,1209
+  s_e4ce6f9451f0c6::t_1b285c1452232d 138-141,215-217,223,238,267-268,291
+  s_e4ce6f9451f0c6::t_625fe13a18ffc7 711
+  s_e4ce6f9451f0c6::t_e52a88e3566752 716-719
+examples/demo/src/app/tokens-demo/page.tsx
+  s_e4ce6f9451f0c6::t_3ae1fdcef9491d 5,104-137
+  s_e4ce6f9451f0c6::t_aa5ac8935558d1 10,14-16,23-24,29,79-82,154-158,162-166,229-231,237-239
+  s_e4ce6f9451f0c6::t_abd5acd58549d1 138
+tools/eslint/anti-slop/source/rules/no-runtime-typeof.ts
+  s_e4ce6f9451f0c6::t_983bec85854827 13-21,53
+  s_e4ce6f9451f0c6::t_136760429505d0 92-104,116-124
+  s_e4ce6f9451f0c6::t_4865ebdf092031 2-6,154,170,175-177
+  s_e4ce6f9451f0c6::t_93d9ea2c7cb381 59
+  s_e4ce6f9451f0c6::t_20be4d41d12fd5 41-52,54-58,60-61
+  s_e4ce6f9451f0c6::t_17559cd4c2156d 72,81-83,86-91
+  s_e4ce6f9451f0c6::t_425ef7fa93bc0f 143-145,164-169,172,174
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 7,153
+  s_e4ce6f9451f0c6::t_008e9be8fb56e6 62-71,73-80,84-85,105-115,125-127,173
+packages/shared/src/utils/http.tsx
+  s_e4ce6f9451f0c6::t_f622fc2d054c0d 44-46
+  s_e4ce6f9451f0c6::t_4085b2b20eb281 43,47-48
+apps/dashboard/src/components/form-dialog.tsx
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 21,24,29,80,83,88
+apps/hosted-components/src/components/ui/data-table/faceted-filter.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 35-36
+apps/marshal/src/services.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 464-465
+apps/hosted-components/src/hosted-components/account-settings/profile-page/profile-page.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 48
+packages/sc/src/index.react-server.ts
+  s_e4ce6f9451f0c6::t_9c637e41dde3fe 9-10
+apps/backend/src/app/api/latest/internal/payments/transactions/transaction-builder.ts
+  s_e4ce6f9451f0c6::t_d0b311786ac5b5 33
+  s_e4ce6f9451f0c6::t_e717cbee0fa15c 34-36
+apps/backend/src/lib/workflows/engine.tsx
+  s_e4ce6f9451f0c6::t_471290ad10e16a 70-76,897,1282
+apps/bulldozer-js/src/index.ts
+  s_e4ce6f9451f0c6::t_e5d8eb8a62648f 95,293
+  s_e4ce6f9451f0c6::t_205bf0b7168cef 563-564
+apps/backend/src/lib/email-rendering.tsx
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 12,124,253
+apps/dashboard/src/components/email-preview.tsx
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 581
+tools/eslint/anti-slop/source/shared/file-scope.ts
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 5-9
+  s_e4ce6f9451f0c6::t_d3970fe918af80 3
+  s_e4ce6f9451f0c6::t_9218cc9c935bc0 1-2,4
+apps/backend/src/app/api/latest/emails/outbox/crud.tsx
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 200
+packages/dashboard-ui-components/src/components/data-grid/types.ts
+  s_e4ce6f9451f0c6::t_c3e81101f1630b 44,71,74,112,115,122,128,130,237
+  s_e4ce6f9451f0c6::t_5bb334ecfbfbc8 40,62,233
+  s_e4ce6f9451f0c6::t_9e42682f769575 2-5,266
+packages/template/src/lib/hexclave-app/apps/interfaces/admin-app.ts
+  s_e4ce6f9451f0c6::t_b070d4fa9ff645 5,80
+  s_e4ce6f9451f0c6::t_8efbbf961ba59b 157
+apps/backend/src/lib/ai/ai-proxy-handlers.ts
+  s_e4ce6f9451f0c6::t_404754eefa00c2 5,12-13,17,22-25,28,30,36-39
+apps/dashboard/src/app/(main)/integrations/oauth-confirm-card.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 22
+apps/skills/src/ask-route.test.ts
+  s_e4ce6f9451f0c6::t_335ab938d4f53a 55
+packages/sc/src/index.react-server.test.ts
+  s_e4ce6f9451f0c6::t_fe0bc4f9e1a6e4 1-10
+apps/backend/src/route-handlers/crud-handler.tsx
+  s_e4ce6f9451f0c6::t_d0b311786ac5b5 124-126
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 111
+apps/backend/src/lib/ai/ai-query-handlers.ts
+  s_e4ce6f9451f0c6::t_5cbf8e825667e0 8
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 166
+apps/backend/src/lib/emailable.tsx
+  s_e4ce6f9451f0c6::t_afdb773b2c1a25 3,14-20,35-38,40,43,45,55-58,60-61,67
+  s_e4ce6f9451f0c6::t_e4a1f8bb7d230c 49-50,53,94,143
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/query-analytics/monaco-clickhouse.ts
+  s_e4ce6f9451f0c6::t_d1780c845f3080 1376
+packages/template/src/lib/hexclave-app/email/index.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 47,49,161
+apps/bulldozer-js/src/databases/piledriver/implementations/in-memory.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 2,19
+apps/backend/src/route-handlers/cud-handler.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 169
+  s_e4ce6f9451f0c6::t_d0b311786ac5b5 160-161
+apps/backend/src/oauth/providers/gitlab.tsx
+  s_e4ce6f9451f0c6::t_471290ad10e16a 38
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sign-up-rules/page-client.tsx
+  s_e4ce6f9451f0c6::t_7ee53fb6bf9448 2154-2155
+packages/shared/src/config/schema.ts
+  s_e4ce6f9451f0c6::t_e69c63cf90f267 1241-1242,1259-1260
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 1127
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 1237-1239,1255-1257
+  s_e4ce6f9451f0c6::t_4977615b80fd44 1114-1116,1141-1143
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/newly-created-projects/page-client.tsx
+  s_e4ce6f9451f0c6::t_2e94cdd329cece 26,206,217-219,255-256,259,295,302
+packages/shared/src/interface/admin-interface.ts
+  s_e4ce6f9451f0c6::t_4be4b99888d0ee 8
+  s_e4ce6f9451f0c6::t_4cb081697b01dc 9,952
+  s_e4ce6f9451f0c6::t_0c7e1283fe1908 305,331,339,392,468,513,521,533,580,678,729,756,771,782,1321
+packages/shared/src/utils/react.tsx
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 26-27
+apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx
+  s_e4ce6f9451f0c6::t_e717cbee0fa15c 65-67
+apps/dashboard/src/components/dashboard-account-settings/profile-page/profile-page.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 49
+apps/dashboard/src/lib/hexclave-app-internals.ts
+  s_e4ce6f9451f0c6::t_b48075f41480fb 9,149
+  s_e4ce6f9451f0c6::t_02949fc5b83837 10,14-15,70-71,85,98,102,162,170,175,184
+configs/eslint/defaults.js
+  s_e4ce6f9451f0c6::t_1430186f95512a 18-24
+  s_e4ce6f9451f0c6::t_574fa2ae0d604b 29-32
+  s_e4ce6f9451f0c6::t_de232e3084afd3 25-28
+  s_e4ce6f9451f0c6::t_425ef7fa93bc0f 47
+apps/backend/src/lib/ai/proxy-preprocessing.ts
+  s_e4ce6f9451f0c6::t_404754eefa00c2 1-2,9-10
+apps/mcp/src/feedback-client.test.ts
+  s_e4ce6f9451f0c6::t_aa73e85980087f 1-3,7-21,30-32,34-39
+  s_e4ce6f9451f0c6::t_e87c133e0ecfc4 4-6,22-29,33
+apps/dashboard/src/components/dashboard-account-settings/teams/team-profile-image-section.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 21
+tools/eslint/anti-slop/source/rules/no-conditional-empty-object-spread.ts
+  s_e4ce6f9451f0c6::t_46a00989d18146 8-10,55
+  s_e4ce6f9451f0c6::t_07b1feef96945c 19-26,45-54
+apps/backend/src/lib/analytics-clickmap-query.ts
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 4,47
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 324
+tools/eslint/anti-slop/source/shared/type-information.ts
+  s_e4ce6f9451f0c6::t_225b1d6c30b65a 24-27
+  s_e4ce6f9451f0c6::t_a4a16a00a37faf 1-23,28-55
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 3026
+  s_e4ce6f9451f0c6::t_8efbbf961ba59b 693,938,986
+  s_e4ce6f9451f0c6::t_e56e890949f038 307-308,354,358,362
+packages/shared/src/deployments.ts
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 1647-1653
+apps/backend/src/lib/permissions.tsx
+  s_e4ce6f9451f0c6::t_d0b311786ac5b5 77,80
+  s_e4ce6f9451f0c6::t_233cb9fb2a33cd 7,9,53,59,70,72-76,78-79
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/external-db-sync/page-client.tsx
+  s_e4ce6f9451f0c6::t_a749b3e41f4abb 23,409-410,434,463,495
+  s_e4ce6f9451f0c6::t_e998ce5e9ee96b 459,489,529,545,564
+apps/dashboard/src/app/api/remote-development-environment/config/apply-update/route.ts
+  s_e4ce6f9451f0c6::t_7ee53fb6bf9448 3,17-20
+apps/backend/src/sentry-scrubbing.ts
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 279-282
+apps/backend/src/app/api/migrations/v2beta5/payments/purchases/offers-compat.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 1,3,5
+apps/backend/src/lib/ai/internal-tool-client.ts
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 4,86
+tools/eslint/anti-slop/source/rules/no-reflect-apply.ts
+  s_e4ce6f9451f0c6::t_e975fab5cbc9e4 29
+  s_e4ce6f9451f0c6::t_f1daeae7292273 45-69
+  s_e4ce6f9451f0c6::t_348381591398bf 2
+  s_e4ce6f9451f0c6::t_2972da3314f9aa 6-24,44
+packages/shared/src/utils/promises.tsx
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 37-39
+  s_e4ce6f9451f0c6::t_e69c63cf90f267 41-42
+  s_e4ce6f9451f0c6::t_4977615b80fd44 360-361
+tools/eslint/anti-slop/source/rules/no-object-parameters.ts
+  s_e4ce6f9451f0c6::t_cf1c75fda1fbc4 20-40,42-57,125,131
+  s_e4ce6f9451f0c6::t_5d8379b3866979 41
+apps/dashboard/src/lib/classify-query.ts
+  s_e4ce6f9451f0c6::t_68ab97d1f242f8 10
+apps/backend/src/app/api/latest/emails/unsubscribe-link/route.tsx
+  s_e4ce6f9451f0c6::t_e717cbee0fa15c 6-11,35-38
+apps/backend/src/lib/workflows/api.tsx
+  s_e4ce6f9451f0c6::t_86ebceea944ca9 470-474,488,580
+  s_e4ce6f9451f0c6::t_910ec36c861c11 425,436-442,444-447,588
+  s_e4ce6f9451f0c6::t_27788cbff1acea 457-469,579
+tools/eslint/anti-slop/source/rules/no-known-value-widening.ts
+  s_e4ce6f9451f0c6::t_c3634eee83ad46 113-116,211-215,239-243,274-278,286-290
+  s_e4ce6f9451f0c6::t_5c73cc41fbdf28 117-125,257,266
+  s_e4ce6f9451f0c6::t_18dcb3ae3d11d2 10,179
+  s_e4ce6f9451f0c6::t_07a8213215ac0f 84-95
+  s_e4ce6f9451f0c6::t_311cdb67f71779 147-156,190-191
+apps/backend/src/auto-migrations/index.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 9-13,233
+packages/shared/src/utils/objects.tsx
+  s_e4ce6f9451f0c6::t_11a9f466d58fb9 181-182
+apps/backend/src/app/api/latest/connected-accounts/access-token-helpers.tsx
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 7,14,102
+tools/eslint/anti-slop/summarize-lint.mjs
+  s_e4ce6f9451f0c6::t_fe0bc4f9e1a6e4 1-21
+apps/dashboard/src/components/smart-form.tsx
+  s_e4ce6f9451f0c6::t_c632afe83ae8e9 95
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 18
+apps/hosted-components/src/hosted-components/auth/supporting/utils.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 3-5,10
+apps/dashboard/src/lib/internal-project-headers.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 4-5,9
+apps/backend/src/lib/stripe-proxy.tsx
+  s_e4ce6f9451f0c6::t_404754eefa00c2 3-4
+apps/backend/src/lib/dev-perf-stats.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 267-268
+apps/backend/src/lib/workflows/invoke.tsx
+  s_e4ce6f9451f0c6::t_d0b311786ac5b5 10-17
+  s_e4ce6f9451f0c6::t_fc264581dfe89c 18
+  s_e4ce6f9451f0c6::t_471290ad10e16a 7-9,19-21,124-125
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_e4ce6f9451f0c6::t_e717cbee0fa15c 70-73,1100-1107
+apps/dashboard/src/app/remote-development-environment-auth-gate.tsx
+  s_e4ce6f9451f0c6::t_86807c756d0f8e 35,40,104
+packages/template/src/components-page/cli-auth-confirm.tsx
+  s_e4ce6f9451f0c6::t_8efbbf961ba59b 4,52-54
+  s_e4ce6f9451f0c6::t_86807c756d0f8e 51,58-59,165
+  s_e4ce6f9451f0c6::t_583c81fee4d268 175-176
+apps/bulldozer-js/src/databases/bulldozer/studio.ts
+  s_e4ce6f9451f0c6::t_e5d8eb8a62648f 4,11
+packages/shared-backend/src/config-agent.ts
+  s_e4ce6f9451f0c6::t_161baa1076156d 2,45,91
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 140
+  s_e4ce6f9451f0c6::t_8efbbf961ba59b 1,31
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/utils.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 154
+examples/demo/src/app/turnstile-signup/page-client.tsx
+  s_e4ce6f9451f0c6::t_9fb468bd17adf8 47,52-53,68-81,150,168-172,174-175,205,223-224,226-227,284-286,289,291-292
+  s_e4ce6f9451f0c6::t_3be93cc8392ba4 319
+apps/internal-tool/src/lib/server/spacetimedb-client.ts
+  s_e4ce6f9451f0c6::t_8191b56deb074c 4-5,7,61-68,80,85,87-91
+apps/skills/src/instrumentation.ts
+  s_e4ce6f9451f0c6::t_aa73e85980087f 3,7
+packages/template/src/in-page-ui/issue-card.ts
+  s_e4ce6f9451f0c6::t_8efbbf961ba59b 303,345-346
+  s_e4ce6f9451f0c6::t_a1597625d6ff9a 265,267
+packages/cli/src/commands/dev.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 335-338,344,354,406
+apps/hosted-components/src/hosted-components/account-settings/payments/payments-page.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 66
+examples/middleware/src/hexclave.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 8
+apps/bulldozer-js/src/databases/low-level/implementations/lmdb.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 9,333-334
+apps/bulldozer-js/src/databases/piledriver/data-structures/augmented-tree-map.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 672-674
+examples/demo/src/app/anonymous-test/page.tsx
+  s_e4ce6f9451f0c6::t_aa5ac8935558d1 8-17,22
+tools/eslint/anti-slop/source/rules/no-reflect-get.ts
+  s_e4ce6f9451f0c6::t_2972da3314f9aa 24-26
+  s_e4ce6f9451f0c6::t_84520851dcab88 27-39
+  s_e4ce6f9451f0c6::t_e975fab5cbc9e4 9
+packages/shared/src/interface/client-interface.ts
+  s_e4ce6f9451f0c6::t_4be4b99888d0ee 10
+  s_e4ce6f9451f0c6::t_d2a5e023915fb4 36-41,43-44,201-240
+  s_e4ce6f9451f0c6::t_0c7e1283fe1908 1705,1721,1733,1775,1882,1897,1907,1917,1941,2153,2352,2590
+  s_e4ce6f9451f0c6::t_b9f238e2e2851e 42
+  s_e4ce6f9451f0c6::t_e2e2b523d513e6 2228-2229,2251-2252,2278-2279,2302-2303,2324-2325,2468-2469,2488-2489,2577-2578
+  s_e4ce6f9451f0c6::t_c81cfd8e176915 241
+examples/demo/src/app/token-staleness/page.tsx
+  s_e4ce6f9451f0c6::t_3962340f590d87 8-17,76
+apps/dashboard/src/components/vibe-coding/vibe-code-layout.tsx
+  s_e4ce6f9451f0c6::t_289e4a3890cc78 20,29
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 27,92
+apps/dashboard/src/components/dashboard-account-settings/payments/payments-page.tsx
+  s_e4ce6f9451f0c6::t_d1780c845f3080 67
+packages/dashboard-ui-components/src/components/data-grid/data-grid.tsx
+  s_e4ce6f9451f0c6::t_5541a6c9b5d18a 47,362
+apps/bulldozer-js/src/databases/low-level/implementations/instant-availability.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 4,48,67
+apps/backend/src/lib/cache.tsx
+  s_e4ce6f9451f0c6::t_69b6eb2f9e7ebe 38-39
+apps/backend/src/lib/ai/loggers/ai-query-logger.ts
+  s_e4ce6f9451f0c6::t_bfab30ef2c6a56 5,11
+apps/bulldozer-js/src/databases/piledriver/implementations/buffered.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 4,27,80
+packages/dashboard-ui-components/src/components/analytics-chart/palette.ts
+  s_e4ce6f9451f0c6::t_4844a061c47fd4 7-8,60-62
+apps/bulldozer-js/src/databases/low-level/implementations/in-memory.ts
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 4,228
+apps/dashboard/src/components/ui/data-table/faceted-filter.tsx
+  s_e4ce6f9451f0c6::t_ebf9578ad10161 28-29
+tools/eslint/anti-slop/source/rules/no-shape-in-symbol-names.ts
+  s_e4ce6f9451f0c6::t_13c61e91017ca9 27
+  s_e4ce6f9451f0c6::t_1e03ed073ba17e 5-7,10,16
+  s_e4ce6f9451f0c6::t_fe98bc2c2f3816 26,28-35
+packages/template/src/in-page-ui/dom.ts
+  s_e4ce6f9451f0c6::t_8191b56deb074c 5-13,16
+  s_e4ce6f9451f0c6::t_a68051d90d4d39 46,56,69,74
+packages/template/src/lib/hexclave-app/projects/index.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 5,136,142
+packages/shared/src/config-eval.ts
+  s_e4ce6f9451f0c6::t_6aeedee5055fa7 5,55,86
+apps/backend/scripts/bulldozer-payments-init.ts
+  s_e4ce6f9451f0c6::t_a9edaa78029d1d 137
+apps/backend/scripts/copy-specified-tenancy-subscriptions.ts
+  s_e4ce6f9451f0c6::t_97fd984fb7d09c 126
+apps/backend/scripts/wait-for-external-db-sync-idle.ts
+  s_e4ce6f9451f0c6::t_ee5e4b1332f565 151
+apps/backend/src/app/api/latest/auth/passkey/initiate-passkey-registration/route.tsx
+  s_e4ce6f9451f0c6::t_e5bd0701f692cd 59
+apps/backend/src/app/api/latest/internal/payments/transactions/refund/route.tsx
+  s_e4ce6f9451f0c6::t_ff3f444a9ca7dc 44,222,224,229-230,234-235
+apps/backend/src/lib/redirect-urls.test.tsx
+  s_e4ce6f9451f0c6::t_87aa6bb3d98c97 14,27
+apps/backend/src/lib/users.tsx
+  s_e4ce6f9451f0c6::t_b6b25ea4bfa3ee 118-119
+apps/backend/src/route-handlers/prisma-handler.tsx
+  s_e4ce6f9451f0c6::t_2815ca121cffd5 146,150,156
+apps/backend/src/server/middleware.ts
+  s_e4ce6f9451f0c6::t_3a65046828b7aa 216,220
+apps/backend/src/utils/background-tasks.tsx
+  s_e4ce6f9451f0c6::t_53c3b3340efaa6 27,29,33,235
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/cloud-project-onboarding.tsx
+  s_e4ce6f9451f0c6::t_0bbefa3d771e22 126-134,155-158
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/components.tsx
+  s_e4ce6f9451f0c6::t_2164c83d2ac8b6 1268
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/shared.ts
+  s_e4ce6f9451f0c6::t_52a79fdaec8023 66,70,74,81,85,148
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/page-client.tsx
+  s_e4ce6f9451f0c6::t_0e3147b2467c58 50
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/preview-project-redirect.tsx
+  s_e4ce6f9451f0c6::t_d6dd3da60ee06b 17
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/use-ai-table-filter-chat.ts
+  s_e4ce6f9451f0c6::t_62306b64b4c8c5 36
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/cli-auth/page-client.tsx
+  s_e4ce6f9451f0c6::t_b2c06f16c7167f 74
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/compliance/page-client.tsx
+  s_e4ce6f9451f0c6::t_fb2cb2d1364076 118
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/platform-analytics/page-client.tsx
+  s_e4ce6f9451f0c6::t_fddb3e2f192850 101
+apps/dashboard/src/components/config-update/shared.tsx
+  s_e4ce6f9451f0c6::t_b2bf446478960a 33
+apps/dashboard/src/lib/remote-development-environment/manager.ts
+  s_e4ce6f9451f0c6::t_dfc95612e51854 216,353
+apps/e2e/tests/js/auth-like.test.ts
+  s_e4ce6f9451f0c6::t_23e7f624c6d5d7 45-46
+apps/internal-tool/src/hooks/useSpacetimeDB.ts
+  s_55e17d67cca976::t_72b00266a3582b 50,58
+packages/shared/src/utils/errors.tsx
+  s_e4ce6f9451f0c6::t_6f84c7b15e0c1d 140-141
+packages/shared/src/utils/turnstile-browser.ts
+  s_e4ce6f9451f0c6::t_4471351e73cc0d 45
+packages/template/src/clickmap/clickmap-core.ts
+  s_e4ce6f9451f0c6::t_8c8e7d4ca64ad4 274,1945
+packages/template/src/components-page/cli-auth-confirm.test.tsx
+  s_e4ce6f9451f0c6::t_d49c3ace13acdb 12
+packages/template/src/components-page/oauth-callback.test.tsx
+  s_e4ce6f9451f0c6::t_c7b5999c10e3c5 35
+packages/template/src/components-page/onboarding.test.tsx
+  s_e4ce6f9451f0c6::t_3b988c22f40bcd 38
+packages/template/src/components-page/sign-out.test.tsx
+  s_e4ce6f9451f0c6::t_7cf0da579c1e04 74
+packages/template/src/dev-tool/dev-tool-core.ts
+  s_e4ce6f9451f0c6::t_9ffb32857ba1e7 352,357,371-372,2337
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.automatic-side-effects.test.ts
+  s_e4ce6f9451f0c6::t_b81a1824da3aa5 16-17,60,80,126
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_e4ce6f9451f0c6::t_fe6b062e6c5db5 72,180,217,246,289-291,297-298,306,319,330,431,450-451,510-511,521,536,546,590,975-976,994,998,1156-1157,1165
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.oauth-prefetch.test.ts
+  s_e4ce6f9451f0c6::t_70c8f55c57f1aa 7
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.sign-in-cache-warmup.test.ts
+  s_e4ce6f9451f0c6::t_ef814cc565adf3 23-24,26
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.sign-out.test.ts
+  s_e4ce6f9451f0c6::t_053a4e5ff395d7 43,50,56-58,76
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.untrusted-redirect-card.test.ts
+  s_e4ce6f9451f0c6::t_bab14f97f1c6e6 58,69,120
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-back-state.test.ts
+  s_e4ce6f9451f0c6::t_6de37c1e5b98df 17
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-loop-breaker.test.ts
+  s_e4ce6f9451f0c6::t_334cd4f7835e62 17
+packages/template/src/pushed-config-error-overlay/index.test.ts
+  s_e4ce6f9451f0c6::t_20ea68c1f2b48b 39
+packages/template/src/utils/url.test.ts
+  s_e4ce6f9451f0c6::t_49a9028b6ab7cc 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9f9a44590cdce8fc722c8f53c36216cda11b841c",
+  "prompts": {},
+  "sessions": {
+    "s_55e17d67cca976": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4031179e-3430-4427-9dd7-1c4d2f270c11",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_e4ce6f9451f0c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0684c-b075-76c2-81ca-09022279078a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
