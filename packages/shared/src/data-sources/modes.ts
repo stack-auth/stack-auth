@@ -5,9 +5,18 @@
  * same verdicts while the customer is choosing modes, and the two must never
  * disagree — an option the dashboard offers but the backend rejects is the worst
  * possible outcome of this screen.
+ *
+ * Everything here is generic across source types. The rules that decide what a
+ * *particular* kind of server can do live next door in `postgres.ts` and
+ * `convex.ts`, and are reached only through the dispatch at the bottom of this
+ * file. Adding a source type should not require editing anything above it.
  */
 
-export type DataSourceSyncMode = "cursor" | "cdc";
+import { getConvexModeAvailability } from "./convex";
+import { getPostgresModeAvailability } from "./postgres";
+import type { DataSourceCapabilities, DataSourceSyncMode, DataSourceTableInfo, ModeAvailability } from "./types";
+
+export * from "./types";
 
 export const DATA_SOURCE_SYNC_MODES = ["cdc", "cursor"] as const satisfies readonly DataSourceSyncMode[];
 
@@ -27,99 +36,24 @@ export function isTemporalCursorType(dataType: string): boolean {
   return TEMPORAL_CURSOR_TYPE.test(dataType.trim().replace(/\(\d+(,\s*\d+)?\)/, ""));
 }
 
-/** What the capability probe learned about the source server. */
-export type DataSourceCapabilities = {
-  version: string,
-  /** `logical` is the only value that permits logical decoding. */
-  walLevel: string,
-  /** Whether the role we were given has REPLICATION (or is a superuser). */
-  hasReplication: boolean,
-  /** Slots cannot be created on a hot standby, whatever wal_level says. */
-  inRecovery: boolean,
-  slotsUsed: number,
-  /** Null when the provider does not allow the slot budget to be inspected. */
-  slotsMax: number | null,
-  probedAtMillis: number,
-};
-
-export type DataSourceCursorCandidate = {
-  column: string,
-  dataType: string,
-  /** An unindexed cursor still works, but every sync sequentially scans the table. */
-  indexed: boolean,
-};
-
-export type DataSourceTableInfo = {
-  schemaName: string,
-  tableName: string,
-  /** Null when the source has never been analyzed, which is not the same as empty. */
-  approxRows: number | null,
-  primaryKeyColumns: string[],
-  cursorCandidates: DataSourceCursorCandidate[],
-  /** `pg_class.relreplident`: 'd' default, 'n' nothing, 'f' full, 'i' using index. */
-  replicaIdentity: string,
-  /** Unlogged tables cannot be added to a publication at all. */
-  isLogged: boolean,
-  isPartitioned: boolean,
-};
-
-export type ModeAvailability = {
-  available: boolean,
-  /** Short, user-facing, and specific enough to act on. Null when available. */
-  reason: string | null,
-};
-
-export function getCdcAvailability(
-  capabilities: DataSourceCapabilities,
-  table?: Pick<DataSourceTableInfo, "primaryKeyColumns" | "replicaIdentity" | "isLogged" | "isPartitioned">,
-): ModeAvailability {
-  if (capabilities.walLevel !== "logical") {
-    return { available: false, reason: "needs wal_level=logical" };
-  }
-  if (!capabilities.hasReplication) {
-    return { available: false, reason: "needs REPLICATION grant" };
-  }
-  if (capabilities.inRecovery) {
-    return { available: false, reason: "not on a read replica" };
-  }
-  if (capabilities.slotsMax != null && capabilities.slotsUsed >= capabilities.slotsMax) {
-    return { available: false, reason: "no replication slots free" };
-  }
-  if (table != null) {
-    // Without a key, an UPDATE or DELETE in the WAL carries nothing we can match
-    // a destination row on, so CDC would be no better than an append-only log.
-    if (table.primaryKeyColumns.length === 0) {
-      return { available: false, reason: "needs a primary key" };
-    }
-    // Adding a REPLICA IDENTITY NOTHING table to a publication makes the
-    // customer's own UPDATEs and DELETEs start failing. Never worth it.
-    if (table.replicaIdentity === "n") {
-      return { available: false, reason: "needs a replica identity" };
-    }
-    // Postgres refuses to add these to a publication, and one of them would fail
-    // the whole publication statement, taking every other CDC stream with it.
-    if (!table.isLogged) {
-      return { available: false, reason: "table is unlogged" };
-    }
-    // Changes are published under the leaf partition, not the parent we would be
-    // subscribed to, so every change would be silently dropped.
-    if (table.isPartitioned) {
-      return { available: false, reason: "table is partitioned" };
-    }
-  }
-  return { available: true, reason: null };
-}
-
+/**
+ * Dispatches to the rules for whatever kind of server this is. A source type
+ * that offered a mode here which its driver cannot actually run would put the
+ * customer in front of a choice that fails at the first sync, so the two are
+ * deliberately written to be read side by side.
+ */
 export function getModeAvailability(
   table: DataSourceTableInfo,
   capabilities: DataSourceCapabilities,
 ): Record<DataSourceSyncMode, ModeAvailability> {
-  return {
-    cdc: getCdcAvailability(capabilities, table),
-    cursor: table.cursorCandidates.length > 0
-      ? { available: true, reason: null }
-      : { available: false, reason: "no usable column" },
-  };
+  switch (capabilities.type) {
+    case "postgres": {
+      return getPostgresModeAvailability(table, capabilities);
+    }
+    case "convex": {
+      return getConvexModeAvailability();
+    }
+  }
 }
 
 /**

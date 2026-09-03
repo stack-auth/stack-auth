@@ -1,15 +1,11 @@
-import type { ClickHouseClient } from "@clickhouse/client";
 import type { Client } from "pg";
-import {
-  DELETED_COLUMN,
-  ensureDestinationTable,
-  insertRows,
-  quoteClickhouseIdentifier,
-} from "./clickhouse-destination";
-import { decodePgoutputMessage, formatLsn, parseLsn, type PgoutputRelation, type PgoutputTuple } from "./pgoutput";
-import { quotePgIdentifier, quotePgQualifiedName, withDataSourceClient, type DataSourceCredentials } from "./postgres";
-import type { DataSourceColumn, ProbedTable } from "./probe";
-import { buildDestinationRow, buildSourceRow, coerceTextValue, versionFromCursorValue } from "./rows";
+import { DELETED_COLUMN, insertRows } from "../clickhouse-destination";
+import { prepareDestination, tableKey } from "../destination";
+import { buildDestinationRow, buildSourceRow, versionFromCursorValue } from "../rows";
+import type { ProbedTable, StreamSyncPlan, StreamSyncResult, SyncContext, SyncOutcome } from "../types";
+import { quotePgIdentifier, quotePgQualifiedName, toCredentials, withDataSourceClient } from "./client";
+import { coerceTextValue } from "./column-types";
+import { decodePgoutputMessage, formatLsn, type PgoutputRelation, type PgoutputTuple } from "./pgoutput";
 
 /** Rows per round trip. Large enough to amortise latency, small enough to bound memory. */
 const READ_BATCH_SIZE = 10_000;
@@ -29,54 +25,15 @@ const CURSOR_SAFETY_LAG_SECONDS = 10;
 /** Alias the cursor's exact text is read back under; never written to the destination. */
 const CURSOR_TEXT_COLUMN = "_hexclave_cursor_text";
 
-export type StreamSyncPlan = {
-  streamId: string,
-  schemaName: string,
-  tableName: string,
-  mode: "cursor" | "cdc",
-  cursorColumn: string | null,
-  primaryKeyColumns: string[],
-  destinationTable: string,
-  syncCursor: SyncCursorState | null,
-  /**
-   * True until the stream has synced once in its current configuration. A mode or
-   * cursor change resets it, because the destination's existing rows were versioned
-   * on a scale the new mode cannot beat — full-refresh versions are epoch
-   * microseconds, CDC versions are LSNs, and no real LSN ever reaches 1.7e15 — so
-   * carrying them over would freeze the table forever.
-   */
-  isPending: boolean,
-};
-
-export type SyncCursorState = {
-  mode: string,
-  value: string,
-  /** JSON-encoded primary key of the last row read, for total-order resumption. */
-  key?: string,
-};
-
-export type StreamSyncResult = {
-  streamId: string,
-  rowsSynced: number,
-  syncCursor: SyncCursorState | null,
-  error: string | null,
-  /** The source truncated this table; only a fresh snapshot can represent that. */
-  needsResnapshot?: boolean,
-};
-
-export type SyncContext = {
-  credentials: DataSourceCredentials,
-  clickhouse: ClickHouseClient,
-  databaseName: string,
-  /** Fresh catalog, keyed `schema.table`, so column lists match what we are about to read. */
-  tablesByName: Map<string, ProbedTable>,
-  slotName: string,
-  publicationName: string,
-  startedAt: Date,
-};
-
-function tableKey(schemaName: string, tableName: string): string {
-  return `${schemaName}.${tableName}`;
+/**
+ * The publication and replication slot this source owns on the customer's server.
+ *
+ * Derived from the source id rather than stored, so cleanup never depends on
+ * having recorded the name — a sync that created the slot and then timed out
+ * would otherwise leave one behind that nothing knows to drop.
+ */
+export function getReplicationSlotName(dataSourceId: string): string {
+  return `hexclave_${dataSourceId.replace(/-/g, "")}`;
 }
 
 /**
@@ -89,21 +46,6 @@ function tableKey(schemaName: string, tableName: string): string {
  */
 export function getCursorSyncBatchLimit(primaryKeyColumns: readonly string[]): number | null {
   return primaryKeyColumns.length > 0 ? MAX_BATCHES_PER_CURSOR_SYNC : null;
-}
-
-async function prepareDestination(context: SyncContext, plan: StreamSyncPlan, table: ProbedTable): Promise<void> {
-  if (plan.isPending) {
-    // Rebuilt from scratch rather than merged into: see StreamSyncPlan.isPending.
-    await context.clickhouse.command({
-      query: `DROP TABLE IF EXISTS ${quoteClickhouseIdentifier(context.databaseName)}.${quoteClickhouseIdentifier(plan.destinationTable)}`,
-    });
-  }
-  await ensureDestinationTable(context.clickhouse, {
-    databaseName: context.databaseName,
-    tableName: plan.destinationTable,
-    columns: table.columns,
-    primaryKeyColumns: plan.primaryKeyColumns,
-  });
 }
 
 /** Streams a SELECT through a server-side cursor so memory stays bounded whatever the table size. */
@@ -252,21 +194,22 @@ async function ensureCdcInfrastructure(
   context: SyncContext,
   plans: StreamSyncPlan[],
 ): Promise<{ slotWasCreated: boolean }> {
+  const objectName = getReplicationSlotName(context.dataSourceId);
   const tableList = plans
     .map(plan => quotePgQualifiedName(plan.schemaName, plan.tableName))
     .join(", ");
 
   const existingPublication = await client.query<{ exists: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = $1) AS exists`,
-    [context.publicationName],
+    [objectName],
   );
   try {
     if (existingPublication.rows[0].exists) {
       // SET rather than ADD: a table the customer removed from the sync must stop
       // pinning WAL for changes nobody will read.
-      await client.query(`ALTER PUBLICATION ${quotePgIdentifier(context.publicationName)} SET TABLE ${tableList}`);
+      await client.query(`ALTER PUBLICATION ${quotePgIdentifier(objectName)} SET TABLE ${tableList}`);
     } else {
-      await client.query(`CREATE PUBLICATION ${quotePgIdentifier(context.publicationName)} FOR TABLE ${tableList}`);
+      await client.query(`CREATE PUBLICATION ${quotePgIdentifier(objectName)} FOR TABLE ${tableList}`);
     }
   } catch (error) {
     // Publication DDL needs ownership of the tables. Rather than fail opaquely,
@@ -274,18 +217,18 @@ async function ensureCdcInfrastructure(
     throw new Error(
       `Could not manage the publication for change data capture (${error instanceof Error ? error.message : String(error)}). ` +
       `Run this on your database as a user that owns the tables, then sync again: ` +
-      `CREATE PUBLICATION ${quotePgIdentifier(context.publicationName)} FOR TABLE ${tableList};`,
+      `CREATE PUBLICATION ${quotePgIdentifier(objectName)} FOR TABLE ${tableList};`,
     );
   }
 
   const existingSlot = await client.query<{ exists: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1) AS exists`,
-    [context.slotName],
+    [objectName],
   );
   if (existingSlot.rows[0].exists) {
     return { slotWasCreated: false };
   }
-  await client.query(`SELECT pg_create_logical_replication_slot($1, 'pgoutput')`, [context.slotName]);
+  await client.query(`SELECT pg_create_logical_replication_slot($1, 'pgoutput')`, [objectName]);
   return { slotWasCreated: true };
 }
 
@@ -384,11 +327,12 @@ async function consumeWal(
   plans: StreamSyncPlan[],
   client: Client,
 ): Promise<{ rowsByStream: Map<string, number>, lastCommitLsn: bigint | null, truncatedStreams: Set<string> }> {
+  const objectName = getReplicationSlotName(context.dataSourceId);
   const planByTable = new Map(plans.map(plan => [tableKey(plan.schemaName, plan.tableName), plan]));
   const changes = await client.query<{ lsn: string, data: Buffer }>(
     `SELECT lsn::text AS lsn, data
      FROM pg_logical_slot_peek_binary_changes($1, NULL, $2, 'proto_version', '1', 'publication_names', $3)`,
-    [context.slotName, MAX_WAL_CHANGES_PER_SYNC, context.publicationName],
+    [objectName, MAX_WAL_CHANGES_PER_SYNC, objectName],
   );
 
   const relations = new Map<number, PgoutputRelation>();
@@ -504,6 +448,7 @@ async function syncCdcStreams(
   plans: StreamSyncPlan[],
   client: Client,
 ): Promise<StreamSyncResult[]> {
+  const objectName = getReplicationSlotName(context.dataSourceId);
   const { slotWasCreated } = await ensureCdcInfrastructure(client, context, plans);
 
   // Every sync, not just the snapshot: the WAL carries no DDL, so a column the
@@ -543,7 +488,7 @@ async function syncCdcStreams(
   const { rowsByStream, lastCommitLsn, truncatedStreams } = await consumeWal(context, plans, client);
   if (lastCommitLsn != null) {
     const lsnText = formatLsn(lastCommitLsn);
-    await client.query(`SELECT pg_replication_slot_advance($1, $2::pg_lsn)`, [context.slotName, lsnText]);
+    await client.query(`SELECT pg_replication_slot_advance($1, $2::pg_lsn)`, [objectName, lsnText]);
     for (const plan of plans) {
       const existing = results.get(plan.streamId)!;
       results.set(plan.streamId, {
@@ -561,13 +506,14 @@ async function syncCdcStreams(
  * Runs every configured stream. One stream failing must not stop the others:
  * a permissions change on one table is not a reason to stop syncing the rest.
  */
-export async function runStreamSyncs(context: SyncContext, plans: StreamSyncPlan[]): Promise<StreamSyncResult[]> {
+export async function runPostgresStreamSyncs(context: SyncContext, plans: StreamSyncPlan[]): Promise<SyncOutcome> {
+  const credentials = await toCredentials(context.connection);
   const results: StreamSyncResult[] = [];
   const cdcPlans = plans.filter(plan => plan.mode === "cdc");
   const pullPlans = plans.filter(plan => plan.mode !== "cdc");
 
   if (pullPlans.length > 0) {
-    await withDataSourceClient(context.credentials, async client => {
+    await withDataSourceClient(credentials, async client => {
       for (const plan of pullPlans) {
         const table = context.tablesByName.get(tableKey(plan.schemaName, plan.tableName));
         if (!table) {
@@ -594,7 +540,7 @@ export async function runStreamSyncs(context: SyncContext, plans: StreamSyncPlan
       // connection opts out of it. Everything it runs is still only reads plus
       // the slot calls themselves.
       const cdcResults = await withDataSourceClient(
-        context.credentials,
+        credentials,
         async client => await syncCdcStreams(context, cdcPlans, client),
         { allowWrites: true },
       );
@@ -607,7 +553,8 @@ export async function runStreamSyncs(context: SyncContext, plans: StreamSyncPlan
     }
   }
 
-  return results;
+  // Postgres resumes per stream, so it leaves the source-level cursor alone.
+  return { streams: results };
 }
 
 export { DELETED_COLUMN };

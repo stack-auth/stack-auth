@@ -1,6 +1,10 @@
 import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { yupNumber, yupObject, yupString, yupValidate } from "@hexclave/shared/dist/schema-fields";
 import { Client } from "pg";
+import type { DataSourceConnection } from "../types";
+
+export const DATA_SOURCE_SSL_MODES = ["require", "verify-full", "no-verify", "disable"] as const;
 
 /** What the customer typed into the connect form, plus the decrypted password. */
 export type DataSourceCredentials = {
@@ -12,7 +16,24 @@ export type DataSourceCredentials = {
   sslMode: string,
 };
 
-export const DATA_SOURCE_SSL_MODES = ["require", "verify-full", "no-verify", "disable"] as const;
+const postgresConfigSchema = yupObject({
+  host: yupString().defined(),
+  port: yupNumber().defined(),
+  database: yupString().defined(),
+  username: yupString().defined(),
+  sslMode: yupString().oneOf([...DATA_SOURCE_SSL_MODES]).defined(),
+}).defined();
+
+/**
+ * Reads a stored connection back into the shape this driver works in. Validated
+ * rather than cast: `config` is an opaque JSON column, and a row written by an
+ * older shape of this driver must fail loudly here rather than dial a partly
+ * undefined address.
+ */
+export async function toCredentials(connection: DataSourceConnection): Promise<DataSourceCredentials> {
+  const config = await yupValidate(postgresConfigSchema, connection.config);
+  return { ...config, password: connection.secret };
+}
 
 /**
  * Queries run against a customer's production database, so they are bounded and

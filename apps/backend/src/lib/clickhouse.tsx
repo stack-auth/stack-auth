@@ -108,8 +108,22 @@ export const WAREHOUSE_ANALYTICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = (() =
   return rest;
 })();
 
-export function getClickhouseExternalClient() {
-  return createClickhouseClient(
+/**
+ * The shared read client, built once and reused.
+ *
+ * Every client owns a keep-alive HTTP agent, so building one per request threw
+ * away the connection pool and paid a fresh TCP and TLS handshake for each
+ * query. Callers already treat this as long-lived — none of them close it, and
+ * the surfaces that close a *warehouse* client deliberately leave this one open
+ * — so the singleton makes that assumption true rather than merely harmless.
+ *
+ * Safe to share because its database and settings are fixed at startup: the
+ * per-tenant part of a query is its ClickHouse settings, passed per call.
+ */
+let sharedExternalClient: ClickHouseClient | undefined;
+
+export function getClickhouseExternalClient(): ClickHouseClient {
+  return sharedExternalClient ??= createClickhouseClient(
     "external",
     getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
     EXTERNAL_CLICKHOUSE_SETTINGS,

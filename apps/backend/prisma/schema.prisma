@@ -2749,13 +2749,14 @@ model DataWarehouse {
 // (see DataWarehouse above). The opposite direction from ExternalDbSync, which
 // pushes Hexclave's own tables out to a sink the customer owns.
 //
-// Postgres is the only source type today. The row is shaped so that adding one
-// later is a new `type` plus a new set of `config` keys, not a new table: the
-// per-stream cursor is deliberately an opaque JSON blob so that a REST source's
-// page token fits the same column as a Postgres LSN.
+// Every source type shares this pair of tables. What differs between them lives
+// in three opaque JSON columns — `config`, `encryptedSecret`, and the two
+// `syncCursor`s — so a new type is a new `type` value and a new driver, never a
+// new table. Nothing outside a driver may inspect the shape of those columns.
 
 enum DataSourceType {
   POSTGRES
+  CONVEX
 }
 
 enum DataSourceStatus {
@@ -2777,33 +2778,37 @@ model DataSource {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  type DataSourceType @default(POSTGRES)
+  type DataSourceType
 
-  // Connection, split into fields rather than a single string: the dashboard
-  // collects them separately, and we never want to render a URL that contains
-  // the password back to the client.
-  host     String
-  port     Int
-  database String
-  username String
-  sslMode  String @default("require")
+  // Non-secret connection settings, shaped by `type` and read only by that
+  // type's driver: { host, port, database, username, sslMode } for POSTGRES,
+  // { deploymentUrl } for CONVEX. Deliberately separate from the secret so the
+  // whole row can be returned to the dashboard minus one column.
+  config Json
 
-  // { edkBase64, ciphertextBase64 } from encryptWithKms(), as for DataWarehouse.
-  encryptedPassword Json
+  // The single secret the source needs, as { edkBase64, ciphertextBase64 } from
+  // encryptWithKms(). A Postgres password or a Convex deploy key — one secret
+  // per source, because a source that needed two would be two connections.
+  encryptedSecret Json
 
   status DataSourceStatus @default(PENDING)
   error  String?
 
   syncIntervalSeconds Int @default(300)
 
-  // Snapshot of the last capability probe (wal_level, replication grant, slot
-  // budget, server version). Re-read on every probe: a customer who enables
-  // logical replication later should be offered CDC without re-adding the source.
+  // Snapshot of the last capability probe, discriminated by `type`. Re-read on
+  // every probe: a customer who enables logical replication later should be
+  // offered CDC without re-adding the source.
   capabilities Json?
 
-  // Named after the source id, so two sources on the same server never collide.
-  replicationSlotName String?
-  publicationName     String?
+  // Resume point for sources whose change feed is per-deployment rather than
+  // per-table, so there is only one cursor to hold: Convex returns one opaque
+  // cursor covering every table at once. Postgres leaves this null — its
+  // resume points are per-stream, on DataSourceStream.syncCursor.
+  //
+  // A source cannot have both: whichever the driver uses is where its resume
+  // point lives, and the other stays null for the life of the source.
+  syncCursor Json?
 
   lastSyncStartedAt  DateTime?
   lastSyncFinishedAt DateTime?
@@ -2837,6 +2842,8 @@ model DataSourceStream {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // A namespace within the source and a table inside it. Postgres schema and
+  // table; for Convex, the component (the root app is "app") and the table.
   schemaName String
   tableName  String
 
@@ -2857,9 +2864,9 @@ model DataSourceStream {
   error  String?
 
   // Opaque per-mode resume point: { mode: "cursor", value } for CURSOR,
-  // { mode: "lsn", value } for CDC, null for FULL_REFRESH. The engine never
-  // inspects the shape of another mode's cursor, which is what lets a future
-  // source type store a page token here unchanged.
+  // { mode: "lsn", value } for CDC. Null for a source that resumes at the
+  // deployment level instead (see DataSource.syncCursor). The engine never
+  // inspects the shape of another mode's cursor.
   syncCursor Json?
 
   rowsSynced   BigInt    @default(0)

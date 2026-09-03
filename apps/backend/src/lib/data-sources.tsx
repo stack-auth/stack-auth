@@ -1,9 +1,16 @@
 import { createClickhouseWarehouseClient } from "@/lib/clickhouse";
-import { ensureDataWarehouseEntitlement, getDataWarehouse, getDataWarehouseNames, getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { getDestinationTableName } from "@/lib/data-sources/clickhouse-destination";
-import { DATA_SOURCE_SSL_MODES, quotePgIdentifier, withDataSourceClient, type DataSourceCredentials } from "@/lib/data-sources/postgres";
-import { probeDataSource, type DataSourceProbeResult, type ProbedTable } from "@/lib/data-sources/probe";
-import { runStreamSyncs, type StreamSyncPlan, type SyncCursorState } from "@/lib/data-sources/sync";
+import { tableKey } from "@/lib/data-sources/destination";
+import { MODE_FROM_PRISMA, MODE_TO_PRISMA, TYPE_FROM_PRISMA, TYPE_TO_PRISMA } from "@/lib/data-sources/enums";
+import { getDriver } from "@/lib/data-sources/drivers";
+import type {
+  DataSourceConnection,
+  DataSourceProbeResult,
+  ProbedTable,
+  StreamSyncPlan,
+  SyncCursorState,
+} from "@/lib/data-sources/types";
+import { ensureDataWarehouseEntitlement, getDataWarehouse, getDataWarehouseNames, getDataWarehouseQueryAuth } from "@/lib/data-warehouse";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { Prisma, type DataSource, type DataSourceStream } from "@/generated/prisma/client";
@@ -11,12 +18,13 @@ import {
   getDefaultCursorColumn,
   getModeAvailability,
   type DataSourceSyncMode,
+  type DataSourceType,
 } from "@hexclave/shared/dist/data-sources/modes";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { yupObject, yupString, yupValidate } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-const encryptedPasswordSchema = yupObject({
+const encryptedSecretSchema = yupObject({
   edkBase64: yupString().defined(),
   ciphertextBase64: yupString().defined(),
 }).defined();
@@ -24,30 +32,29 @@ const encryptedPasswordSchema = yupObject({
 /** How long a claimed sync may run before the scheduler assumes it died. */
 const SYNC_CLAIM_LEASE_SECONDS = 900;
 
-const MODE_TO_PRISMA = {
-  cursor: "CURSOR",
-  cdc: "CDC",
-} as const;
-const MODE_FROM_PRISMA = {
-  CURSOR: "cursor",
-  CDC: "cdc",
-} as const;
+/**
+ * How long a driver is actually allowed to run, as a fraction of the lease.
+ *
+ * The margin is what stops a run from finishing after its lease expired, when a
+ * second worker may already have claimed the source. The lease fences the
+ * metadata transaction, but both workers write to the customer's warehouse, and
+ * those writes cannot be rolled back.
+ */
+const SYNC_DEADLINE_FRACTION = 0.8;
 
 export type DataSourceWithStreams = DataSource & { streams: DataSourceStream[] };
 
-async function decryptPassword(encrypted: DataSource["encryptedPassword"]): Promise<string> {
-  const envelope = await yupValidate(encryptedPasswordSchema, encrypted);
-  return await decryptWithKms(envelope);
-}
-
-export async function getCredentials(source: DataSource): Promise<DataSourceCredentials> {
+/**
+ * The connection a driver works from: the stored config plus the one decrypted
+ * secret. Assembled here so no driver has to know how secrets are sealed, and so
+ * a secret is only ever in memory for the length of one operation.
+ */
+export async function getConnection(source: DataSource): Promise<DataSourceConnection> {
+  const envelope = await yupValidate(encryptedSecretSchema, source.encryptedSecret);
   return {
-    host: source.host,
-    port: source.port,
-    database: source.database,
-    username: source.username,
-    password: await decryptPassword(source.encryptedPassword),
-    sslMode: source.sslMode,
+    type: TYPE_FROM_PRISMA[source.type],
+    config: (source.config ?? {}) as Record<string, unknown>,
+    secret: await decryptWithKms(envelope),
   };
 }
 
@@ -87,19 +94,10 @@ export async function getDataSourceOrThrow(tenancy: Tenancy, dataSourceId: strin
 }
 
 export type CreateDataSourceInput = {
-  host: string,
-  port: number,
-  database: string,
-  username: string,
-  password: string,
-  sslMode: string,
+  type: DataSourceType,
+  config: Record<string, unknown>,
+  secret: string,
 };
-
-function assertValidSslMode(sslMode: string): void {
-  if (!(DATA_SOURCE_SSL_MODES as readonly string[]).includes(sslMode)) {
-    throw new StatusError(StatusError.BadRequest, `Unsupported SSL mode: ${sslMode}`);
-  }
-}
 
 /**
  * Probes first, and only stores the source if the probe succeeded. A source row
@@ -112,21 +110,18 @@ export async function createDataSource(
 ): Promise<{ source: DataSourceWithStreams, probe: DataSourceProbeResult }> {
   await ensureDataWarehouseEntitlement(tenancy);
   await getWarehouseDatabaseName(tenancy);
-  assertValidSslMode(input.sslMode);
 
-  const probe = await probeDataSource({ ...input, sslMode: input.sslMode });
-  const encryptedPassword = await encryptWithKms(input.password);
+  const connection: DataSourceConnection = { type: input.type, config: input.config, secret: input.secret };
+  const probe = await getDriver(input.type).probe(connection, { verifyAccess: true });
+  const encryptedSecret = await encryptWithKms(input.secret);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const source = await prisma.dataSource.create({
     data: {
       tenancyId: tenancy.id,
-      host: input.host,
-      port: input.port,
-      database: input.database,
-      username: input.username,
-      sslMode: input.sslMode,
-      encryptedPassword,
-      capabilities: probe.capabilities,
+      type: TYPE_TO_PRISMA[input.type],
+      config: input.config as Prisma.InputJsonValue,
+      encryptedSecret,
+      capabilities: probe.capabilities as unknown as Prisma.InputJsonValue,
       status: "PENDING",
     },
     include: { streams: true },
@@ -135,39 +130,36 @@ export async function createDataSource(
 }
 
 /**
- * A logical slot that nobody consumes retains WAL on the source database. Keep
- * teardown in one idempotent path so configuration changes and source deletion
- * cannot accidentally disagree about which objects Hexclave owns.
+ * Releases whatever the driver created on the customer's system. Kept in one
+ * idempotent path so that configuration changes and source deletion cannot
+ * disagree about which objects Hexclave owns.
  */
-async function dropCdcInfrastructure(source: DataSource): Promise<void> {
-  const credentials = await getCredentials(source);
-  const slotName = getReplicationSlotName(source.id);
-  await withDataSourceClient(credentials, async client => {
-    await client.query(
-      `SELECT pg_drop_replication_slot($1) WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = $1)`,
-      [slotName],
-    );
-    await client.query(`DROP PUBLICATION IF EXISTS ${quotePgIdentifier(slotName)}`);
-  }, { allowWrites: true });
+async function teardownDriverResources(source: DataSource): Promise<void> {
+  const driver = getDriver(TYPE_FROM_PRISMA[source.type]);
+  if (driver.teardown == null) return;
+  await driver.teardown({ connection: await getConnection(source), dataSourceId: source.id });
 }
 
+/**
+ * Deliberately not gated on the data-warehouse entitlement, unlike every other
+ * outbound path. A project that lost the entitlement must still be able to
+ * disconnect: refusing would strand a WAL-retaining replication slot on the
+ * customer's own server with no way to remove it.
+ */
 export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): Promise<void> {
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  // Drop the replication slot before forgetting it exists: a slot nobody reads
-  // retains write-ahead log on the customer's server until their disk fills.
-  //
-  // Attempted unconditionally rather than only when replicationSlotName is set,
-  // because that column is written after a sync completes — a sync that created
-  // the slot and then timed out leaves one behind with no record of it. The name
-  // is derived from the source id, so it is always recoverable.
+  // Attempted before forgetting the source exists: a Postgres replication slot
+  // nobody reads retains write-ahead log on the customer's server until their
+  // disk fills. Attempted unconditionally rather than only when we recorded one,
+  // because a sync that created a slot and then timed out leaves no record.
   try {
-    await dropCdcInfrastructure(source);
+    await teardownDriverResources(source);
   } catch (error) {
-    // The source may be unreachable, which must not make it undeletable. The slot
-    // is then the customer's to drop, and this records why we could not.
-    captureError("data-source-slot-cleanup", error);
+    // The source may be unreachable, which must not make it undeletable. Anything
+    // left behind is then the customer's to drop, and this records why.
+    captureError("data-source-teardown", error);
   }
 
   // Destination tables are deliberately left in place: they are the customer's
@@ -176,24 +168,18 @@ export async function deleteDataSource(tenancy: Tenancy, dataSourceId: string): 
   await prisma.dataSource.delete({ where: { id: source.id } });
 }
 
-/** Deterministic so cleanup never depends on having recorded the name. */
-export function getReplicationSlotName(dataSourceId: string): string {
-  return `hexclave_${dataSourceId.replace(/-/g, "")}`;
-}
-
 /** Re-reads capabilities and catalog, and persists the capability snapshot. */
 export async function refreshDataSourceProbe(tenancy: Tenancy, dataSourceId: string): Promise<DataSourceProbeResult> {
   // Gated like the other outbound paths: this opens a connection to the
-  // customer's database, so a project that has lost the entitlement must not
-  // keep being able to trigger it.
+  // customer's system, so a project that has lost the entitlement must not keep
+  // being able to trigger it.
   await ensureDataWarehouseEntitlement(tenancy);
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
-  const credentials = await getCredentials(source);
-  const probe = await probeDataSource(credentials);
+  const probe = await getDriver(TYPE_FROM_PRISMA[source.type]).probe(await getConnection(source));
   const prisma = await getPrismaClientForTenancy(tenancy);
   await prisma.dataSource.update({
     where: { id: source.id },
-    data: { capabilities: probe.capabilities },
+    data: { capabilities: probe.capabilities as unknown as Prisma.InputJsonValue },
   });
   return probe;
 }
@@ -218,14 +204,15 @@ export async function setDataSourceStreams(
 ): Promise<DataSourceWithStreams> {
   await ensureDataWarehouseEntitlement(tenancy);
   const source = await getDataSourceOrThrow(tenancy, dataSourceId);
-  const credentials = await getCredentials(source);
-  const probe = await probeDataSource(credentials);
+  const driver = getDriver(TYPE_FROM_PRISMA[source.type]);
+  const probe = await driver.probe(await getConnection(source));
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const tablesByName = new Map(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
+  const tablesByName = new Map(probe.tables.map(t => [tableKey(t.schemaName, t.tableName), t]));
   const existingByName = new Map(source.streams.map(s => [`${s.schemaName}.${s.tableName}`, s]));
-  const removesLastCdcStream = source.streams.some(stream => stream.mode === "CDC")
-    && !configs.some(config => config.mode === "cdc");
+  const previousModes = source.streams.map(stream => MODE_FROM_PRISMA[stream.mode]);
+  const nextModes = configs.map(config => config.mode);
+  const shouldTeardown = driver.shouldTeardownOnReconfigure?.({ previousModes, nextModes }) ?? false;
 
   for (const config of configs) {
     const key = `${config.schemaName}.${config.tableName}`;
@@ -266,10 +253,10 @@ export async function setDataSourceStreams(
   }
 
   try {
-    if (removesLastCdcStream) {
+    if (shouldTeardown) {
       // Unlike source deletion, a configuration update must fail loudly here.
       // Otherwise it can succeed while leaving an unconsumed, WAL-retaining slot.
-      await dropCdcInfrastructure(source);
+      await teardownDriverResources(source);
     }
 
     const keep = new Set(configs.map(c => `${c.schemaName}.${c.tableName}`));
@@ -315,8 +302,7 @@ export async function setDataSourceStreams(
         where: { id: source.id },
         data: {
           status: configs.length > 0 ? "ACTIVE" : "PENDING",
-          capabilities: probe.capabilities,
-          ...(removesLastCdcStream ? { replicationSlotName: null, publicationName: null } : {}),
+          capabilities: probe.capabilities as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -351,11 +337,12 @@ async function syncClaimedDataSource(
   }
 
   const databaseName = await getWarehouseDatabaseName(tenancy);
-  const credentials = await getCredentials(source);
+  const driver = getDriver(TYPE_FROM_PRISMA[source.type]);
+  const connection = await getConnection(source);
 
   let probe: DataSourceProbeResult;
   try {
-    probe = await probeDataSource(credentials);
+    probe = await driver.probe(connection);
   } catch (error) {
     // A failure to connect is about the source, not any one stream.
     // Recorded, but the source stays ACTIVE: the scheduler only picks up ACTIVE
@@ -368,7 +355,7 @@ async function syncClaimedDataSource(
     return await getDataSourceOrThrow(tenancy, source.id);
   }
 
-  const tablesByName = new Map<string, ProbedTable>(probe.tables.map(t => [`${t.schemaName}.${t.tableName}`, t]));
+  const tablesByName = new Map<string, ProbedTable>(probe.tables.map(t => [tableKey(t.schemaName, t.tableName), t]));
   const plans: StreamSyncPlan[] = source.streams.map(stream => ({
     streamId: stream.id,
     schemaName: stream.schemaName,
@@ -381,7 +368,6 @@ async function syncClaimedDataSource(
     isPending: stream.status === "PENDING",
   }));
 
-  const slotName = getReplicationSlotName(source.id);
   // Connects as the project's own warehouse user rather than the ClickHouse
   // admin, so the tenancy boundary is enforced by ClickHouse privileges and the
   // per-project quota — not by the correctness of an interpolated database name.
@@ -390,35 +376,40 @@ async function syncClaimedDataSource(
     throw new StatusError(StatusError.BadRequest, "This project's data warehouse is not ready.");
   }
   const clickhouse = createClickhouseWarehouseClient(warehouseAuth, databaseName);
-  let results;
+  let outcome;
   try {
-    results = await runStreamSyncs({
-      credentials,
+    outcome = await driver.runStreamSyncs({
+      connection,
       clickhouse,
       databaseName,
       tablesByName,
-      slotName,
-      publicationName: slotName,
+      sourceCursor: source.syncCursor,
       startedAt,
+      dataSourceId: source.id,
+      deadlineMs: startedAt.getTime() + SYNC_CLAIM_LEASE_SECONDS * 1000 * SYNC_DEADLINE_FRACTION,
     }, plans);
   } finally {
     await clickhouse.close();
   }
 
-  const usesCdc = plans.some(plan => plan.mode === "cdc");
+  const results = outcome.streams;
   await retryTransaction(prisma, async tx => {
     for (const result of results) {
       // A truncated source table cannot be represented incrementally, so the
       // stream goes back to PENDING and the next sync rebuilds it from scratch.
       const resnapshot = result.needsResnapshot === true;
+      // An initial load that ran out of budget stays PENDING: its destination
+      // holds only part of the table, and calling that ACTIVE would tell the
+      // customer a partial table is complete.
+      const incomplete = result.loadIncomplete === true;
       await tx.dataSourceStream.update({
         where: { id: result.streamId },
         data: {
-          status: result.error != null ? "FAILED" : resnapshot ? "PENDING" : "ACTIVE",
+          status: result.error != null ? "FAILED" : resnapshot || incomplete ? "PENDING" : "ACTIVE",
           error: result.error,
           syncCursor: resnapshot ? Prisma.DbNull : result.syncCursor ?? undefined,
           rowsSynced: { increment: BigInt(result.rowsSynced) },
-          lastSyncedAt: result.error == null ? new Date() : undefined,
+          lastSyncedAt: result.error == null && !incomplete ? new Date() : undefined,
         },
       });
     }
@@ -431,7 +422,11 @@ async function syncClaimedDataSource(
         // Surfaced at the source level only when nothing succeeded; a single bad
         // table is already reported on its own stream.
         error: failed.length === results.length ? failed[0]?.error ?? null : null,
-        ...(usesCdc ? { replicationSlotName: slotName, publicationName: slotName } : {}),
+        // A driver that resumes per stream returns no source cursor, and its
+        // stored value is then left exactly as it was.
+        ...(outcome.sourceCursor === undefined
+          ? {}
+          : { syncCursor: (outcome.sourceCursor ?? Prisma.DbNull) as Prisma.InputJsonValue }),
       },
     });
     if (completed.count === 0) {

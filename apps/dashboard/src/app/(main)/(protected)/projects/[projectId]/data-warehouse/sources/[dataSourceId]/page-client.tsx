@@ -9,6 +9,7 @@ import { useState } from "react";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
+import { SOURCE_TYPES, describeSource } from "../source-types";
 import { StreamPicker, formatRowCount } from "../stream-picker";
 
 const MODE_LABEL: Record<string, string> = { cdc: "CDC", cursor: "Cursor" };
@@ -80,7 +81,7 @@ function DataSourcePage() {
 
   if (editing != null) {
     return (
-      <PageLayout title="Edit tables" description={dataSource.host}>
+      <PageLayout title="Edit tables" description={describeSource(dataSource)}>
         <StreamPicker
           catalog={editing}
           existingStreams={dataSource.streams.map(stream => ({
@@ -101,8 +102,8 @@ function DataSourcePage() {
 
   return (
     <PageLayout
-      title={dataSource.host}
-      description={`PostgreSQL · ${dataSource.streams.length} ${dataSource.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
+      title={describeSource(dataSource)}
+      description={`${SOURCE_TYPES[dataSource.type].label} · ${dataSource.streams.length} ${dataSource.streams.length === 1 ? "table" : "tables"}${failing > 0 ? ` · ${failing} failing` : ""}`}
       actions={
         <div className="flex gap-2">
           <DesignButton variant="secondary" onClick={startEditing} loading={loadingCatalog}>Edit tables</DesignButton>

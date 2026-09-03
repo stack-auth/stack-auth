@@ -1,4 +1,4 @@
-import type { DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig, DataWarehouseCredentialsJson, DataWarehouseJson } from "@hexclave/shared/dist/interface/admin-interface";
+import type { CreateDataSourceOptions, DataSourceCatalogJson, DataSourceJson, DataSourceStreamConfig, DataWarehouseCredentialsJson, DataWarehouseJson } from "@hexclave/shared/dist/interface/admin-interface";
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
@@ -166,14 +166,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     // Data Sources. `createDataSource` returns the catalog it read while
     // verifying the credentials, so the table picker needs no second round trip.
-    createDataSource(options: {
-      host: string,
-      port: number,
-      database: string,
-      username: string,
-      password: string,
-      sslMode?: string,
-    }): Promise<{ dataSource: DataSourceJson, catalog: DataSourceCatalogJson }>,
+    createDataSource(options: CreateDataSourceOptions): Promise<{ dataSource: DataSourceJson, catalog: DataSourceCatalogJson }>,
     deleteDataSource(dataSourceId: string): Promise<void>,
     getDataSourceCatalog(dataSourceId: string): Promise<DataSourceCatalogJson>,
     setDataSourceStreams(dataSourceId: string, streams: DataSourceStreamConfig[]): Promise<DataSourceJson>,

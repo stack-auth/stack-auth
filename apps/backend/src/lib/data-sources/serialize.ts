@@ -6,12 +6,8 @@ import {
   getRecommendedMode,
   type DataSourceCapabilities,
 } from "@hexclave/shared/dist/data-sources/modes";
-import type { DataSourceProbeResult } from "./probe";
-
-const MODE_FROM_PRISMA = {
-  CURSOR: "cursor",
-  CDC: "cdc",
-} as const;
+import { MODE_FROM_PRISMA, TYPE_FROM_PRISMA } from "./enums";
+import type { DataSourceProbeResult } from "./types";
 
 const STATUS_FROM_PRISMA = {
   PENDING: "pending",
@@ -45,28 +41,72 @@ export function serializeStream(stream: DataSourceStream) {
   };
 }
 
+/**
+ * Capabilities keep their discriminator on the way out.
+ *
+ * The alternative — flattening `wal_level` and friends onto every source — would
+ * make a Convex source carry seven fields that mean nothing to it, and would
+ * have to be broken later rather than extended.
+ */
+function serializeCapabilities(capabilities: DataSourceCapabilities | null) {
+  if (capabilities == null) return null;
+  switch (capabilities.type) {
+    case "postgres": {
+      return {
+        type: "postgres" as const,
+        version: capabilities.version,
+        wal_level: capabilities.walLevel,
+        has_replication: capabilities.hasReplication,
+        in_recovery: capabilities.inRecovery,
+        slots_used: capabilities.slotsUsed,
+        slots_max: capabilities.slotsMax,
+        probed_at_millis: capabilities.probedAtMillis,
+      };
+    }
+    case "convex": {
+      return {
+        type: "convex" as const,
+        deployment_url: capabilities.deploymentUrl,
+        probed_at_millis: capabilities.probedAtMillis,
+      };
+    }
+  }
+}
+
+/**
+ * The connection settings, minus the secret.
+ *
+ * `config` is an opaque JSON column, so it is rebuilt field by field per type
+ * rather than passed through: a driver that ever stored something sensitive
+ * there must not have it leak out by default.
+ */
+function serializeConfig(source: DataSource) {
+  const config = (source.config ?? {}) as Record<string, unknown>;
+  switch (TYPE_FROM_PRISMA[source.type]) {
+    case "postgres": {
+      return {
+        host: String(config.host ?? ""),
+        port: Number(config.port ?? 0),
+        database: String(config.database ?? ""),
+        username: String(config.username ?? ""),
+        ssl_mode: String(config.sslMode ?? "require"),
+      };
+    }
+    case "convex": {
+      return { deployment_url: String(config.deploymentUrl ?? "") };
+    }
+  }
+}
+
 export function serializeDataSource(source: DataSource & { streams: DataSourceStream[] }) {
-  const capabilities = (source.capabilities ?? null) as DataSourceCapabilities | null;
   return {
     id: source.id,
-    type: "postgres" as const,
-    host: source.host,
-    port: source.port,
-    database: source.database,
-    username: source.username,
-    ssl_mode: source.sslMode,
+    type: TYPE_FROM_PRISMA[source.type],
+    config: serializeConfig(source),
     status: STATUS_FROM_PRISMA[source.status],
     error: source.error,
     sync_interval_seconds: source.syncIntervalSeconds,
-    capabilities: capabilities == null ? null : {
-      version: capabilities.version,
-      wal_level: capabilities.walLevel,
-      has_replication: capabilities.hasReplication,
-      in_recovery: capabilities.inRecovery,
-      slots_used: capabilities.slotsUsed,
-      slots_max: capabilities.slotsMax,
-      probed_at_millis: capabilities.probedAtMillis,
-    },
+    capabilities: serializeCapabilities((source.capabilities ?? null) as DataSourceCapabilities | null),
     last_sync_started_at_millis: source.lastSyncStartedAt?.getTime() ?? null,
     last_sync_finished_at_millis: source.lastSyncFinishedAt?.getTime() ?? null,
     streams: source.streams.map(serializeStream),
@@ -80,23 +120,13 @@ export function serializeDataSource(source: DataSource & { streams: DataSourceSt
  */
 export function serializeCatalog(probe: DataSourceProbeResult) {
   return {
-    capabilities: {
-      version: probe.capabilities.version,
-      wal_level: probe.capabilities.walLevel,
-      has_replication: probe.capabilities.hasReplication,
-      in_recovery: probe.capabilities.inRecovery,
-      slots_used: probe.capabilities.slotsUsed,
-      slots_max: probe.capabilities.slotsMax,
-      probed_at_millis: probe.capabilities.probedAtMillis,
-    },
+    capabilities: serializeCapabilities(probe.capabilities),
     tables: probe.tables.map(table => {
       const availability = getModeAvailability(table, probe.capabilities);
       return {
         schema_name: table.schemaName,
         table_name: table.tableName,
         approx_rows: table.approxRows,
-        replica_identity: table.replicaIdentity,
-        is_partitioned: table.isPartitioned,
         primary_key_columns: table.primaryKeyColumns,
         cursor_candidates: table.cursorCandidates.map(candidate => ({
           column: candidate.column,
@@ -110,6 +140,12 @@ export function serializeCatalog(probe: DataSourceProbeResult) {
         })),
         recommended_mode: getRecommendedMode(table, probe.capabilities),
         default_cursor_column: getDefaultCursorColumn(table),
+        // Postgres-only facts the picker shows next to a table. Absent for every
+        // other source rather than faked.
+        postgres: table.postgres == null ? null : {
+          replica_identity: table.postgres.replicaIdentity,
+          is_partitioned: table.postgres.isPartitioned,
+        },
       };
     }),
   };

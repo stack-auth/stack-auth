@@ -3,35 +3,18 @@ import {
   DELETED_COLUMN,
   EXTRACTED_AT_COLUMN,
   VERSION_COLUMN,
-  mapPostgresTypeToClickhouse,
   normalizeValueForClickhouse,
 } from "./clickhouse-destination";
-import type { DataSourceColumn } from "./probe";
+import type { DataSourceColumn } from "./types";
 
 /**
- * Rows reach us two ways — as native `pg` values from a SELECT, and as text from
- * the WAL — and both have to land in the same typed ClickHouse columns. These
- * helpers are the single place that reconciles them.
+ * Turning whatever a driver read into the row a destination table takes. Every
+ * source lands here, so this is the single place that decides how a value, a
+ * version and a tombstone become one ClickHouse row.
  */
 
-/** Converts a WAL text value to the JS type its destination column expects. */
-export function coerceTextValue(text: string | null, postgresType: string): unknown {
-  if (text === null) return null;
-  const clickhouseType = mapPostgresTypeToClickhouse(postgresType);
-  if (/^Int|^Float|^Decimal/.test(clickhouseType)) {
-    const value = Number(text);
-    // Int64 beyond 2^53 loses precision as a JS number; ClickHouse accepts the
-    // decimal string for those, so keep it as text rather than round it.
-    if (!Number.isSafeInteger(value) && /^Int64|^Decimal/.test(clickhouseType)) return text;
-    if (!Number.isFinite(value)) return null;
-    return value;
-  }
-  if (clickhouseType === "Bool") return text === "t" || text === "true" || text === "1";
-  return text;
-}
-
 /**
- * Rebuilds a pg array-mode result as a prototype-safe object. pg's default row
+ * Rebuilds a positional result as a prototype-safe object. pg's default row
  * parser assigns by property name on `{}`, so a legitimate PostgreSQL column
  * named `__proto__` mutates the object's prototype instead of becoming an own
  * field. Array mode preserves every value; Object.fromEntries defines even
@@ -53,9 +36,10 @@ export function buildDestinationRow(options: {
 }): Record<string, unknown> {
   const row = new Map<string, unknown>();
   for (const column of options.columns) {
-    // `undefined` means the WAL withheld an unchanged TOAST value. Writing null
-    // would erase it, so those columns are simply omitted and ClickHouse's
-    // default applies — the previous version of the row stays queryable.
+    // A column the source did not supply — an unchanged TOAST value Postgres
+    // withheld, or the fields a Convex tombstone omits around its `_id`. Writing
+    // null would erase it, so the column is left out entirely and ClickHouse's
+    // default applies, keeping the previous version of the row queryable.
     if (!Object.hasOwn(options.values, column.name)) continue;
     const value = options.values[column.name];
     if (value === undefined) continue;
