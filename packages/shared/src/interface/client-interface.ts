@@ -578,11 +578,11 @@ export class HexclaveClientInterface {
     session: InternalSession | null,
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
-    try {
+    const result = await Result.fromThrowingAsync(async () => {
       const encoded = await encodeGzipJsonBody(body, { keepalive: options.keepalive });
       // The batch ID makes this POST idempotent at ingestion, so retrying a
       // network failure cannot duplicate analytics rows.
-      const response = await this._networkRetryException(async () => await this.sendClientRequest(
+      return await this._networkRetryException(async () => await this.sendClientRequest(
         "/analytics/events/batch",
         {
           method: "POST",
@@ -595,10 +595,9 @@ export class HexclaveClientInterface {
         this.getAnalyticsApiUrl(),
         { maxAttempts: 1, skipDiagnostics: true },
       ), session, "client", { maxAttempts: options.keepalive ? 1 : 3, skipDiagnostics: true });
-      return Result.ok(response);
-    } catch (e) {
-      return Result.error(e instanceof Error ? e : new Error(String(e)));
-    }
+    });
+    if (result.status === "ok") return Result.ok(result.data);
+    return Result.error(result.error instanceof Error ? result.error : new Error(String(result.error)));
   }
 
   async evaluateFeatureFlags<T extends Json>(

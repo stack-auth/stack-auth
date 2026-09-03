@@ -94,6 +94,14 @@ export function validateCustomEventPayload(options: {
   }
 
   let propertyCount = 0;
+  const countProperty = (): void => {
+    // Count during traversal so a wide object cannot force us to walk every
+    // sibling after the 200-value cap before rejecting.
+    propertyCount++;
+    if (propertyCount > MAX_CUSTOM_EVENT_PROPERTY_COUNT) {
+      throw new StatusError(StatusError.BadRequest, `Event ${JSON.stringify(options.eventName)}: properties must contain at most ${MAX_CUSTOM_EVENT_PROPERTY_COUNT} values`);
+    }
+  };
   const validateNode = (node: unknown, depth: number): void => {
     if (depth > MAX_CUSTOM_EVENT_PROPERTY_DEPTH) {
       throw new StatusError(StatusError.BadRequest, `Event ${JSON.stringify(options.eventName)}: properties must not be nested deeper than ${MAX_CUSTOM_EVENT_PROPERTY_DEPTH} levels`);
@@ -109,7 +117,7 @@ export function validateCustomEventPayload(options: {
     }
     if (Array.isArray(node)) {
       for (const item of node) {
-        propertyCount++;
+        countProperty();
         validateNode(item, depth + 1);
       }
       return;
@@ -125,7 +133,7 @@ export function validateCustomEventPayload(options: {
         if (containsControlChars(key)) {
           throw new StatusError(StatusError.BadRequest, `Event ${JSON.stringify(options.eventName)}: property keys must not contain control characters`);
         }
-        propertyCount++;
+        countProperty();
         validateNode(child, depth + 1);
       }
       return;
@@ -134,10 +142,6 @@ export function validateCustomEventPayload(options: {
     throw new StatusError(StatusError.BadRequest, `Event ${JSON.stringify(options.eventName)}: properties must only contain JSON values`);
   };
   validateNode(properties, 1);
-
-  if (propertyCount > MAX_CUSTOM_EVENT_PROPERTY_COUNT) {
-    throw new StatusError(StatusError.BadRequest, `Event ${JSON.stringify(options.eventName)}: properties must contain at most ${MAX_CUSTOM_EVENT_PROPERTY_COUNT} values`);
-  }
 
   const serialized = JSON.stringify(properties);
   if (Buffer.byteLength(serialized, "utf8") > MAX_CUSTOM_EVENT_PROPERTIES_BYTES) {

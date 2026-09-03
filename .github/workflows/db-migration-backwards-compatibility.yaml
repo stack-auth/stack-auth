@@ -6,6 +6,10 @@ on:
       - dev
   pull_request:
 
+# This workflow only checks out code and runs tests; it never pushes or calls the GitHub API.
+permissions:
+  contents: read
+
 # A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
 # otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
 # so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay

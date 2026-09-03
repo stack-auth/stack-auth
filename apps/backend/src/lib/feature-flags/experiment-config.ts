@@ -207,7 +207,7 @@ async function validateExperimentConfigInner(value: unknown): Promise<Experiment
   if (variantEntries.filter(([, variant]) => variant.weight_basis_points > 0).length < 2) {
     throw new yup.ValidationError("Experiments must define at least two variants with positive weights", value, "variants");
   }
-  if (!(base.control_variant_id in base.variants)) {
+  if (!Object.hasOwn(base.variants, base.control_variant_id)) {
     throw new yup.ValidationError(`control_variant_id ${JSON.stringify(base.control_variant_id)} is not a key of variants`, value, "control_variant_id");
   }
   if (base.variants[base.control_variant_id].weight_basis_points <= 0) {

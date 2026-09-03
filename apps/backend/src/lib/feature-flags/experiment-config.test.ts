@@ -80,6 +80,13 @@ describe("validateExperimentConfig", () => {
     })).rejects.toThrow(StatusError);
   });
 
+  it("rejects a control_variant_id that only exists on Object.prototype", async () => {
+    await expect(validateExperimentConfig({
+      ...validConfig(),
+      control_variant_id: "toString",
+    })).rejects.toThrow(/not a key of variants/);
+  });
+
   it("accepts team assignment units", async () => {
     await expect(validateExperimentConfig({
       ...validConfig(),

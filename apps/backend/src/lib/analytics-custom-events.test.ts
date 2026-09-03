@@ -145,6 +145,13 @@ describe("validateCustomEventPayload", () => {
       expectStatusError(() => validateCustomEventPayload({ eventName: "e", properties, value: null }), 400);
     });
 
+    it("rejects a wide object during traversal instead of after walking every entry", () => {
+      // Far past the cap so a post-walk check would do unbounded work first.
+      const properties = Object.fromEntries(Array.from({ length: 5_000 }, (_, i) => [`key_${i}`, i]));
+      const error = expectStatusError(() => validateCustomEventPayload({ eventName: "e", properties, value: null }), 400);
+      expect(error.message).toMatchInlineSnapshot(`"Event \"e\": properties must contain at most 200 values"`);
+    });
+
     it("counts array items towards the value limit", () => {
       // 1 (the key) + 200 array items = 201 values > 200.
       const properties = { list: Array.from({ length: MAX_CUSTOM_EVENT_PROPERTY_COUNT }, (_, i) => i) };

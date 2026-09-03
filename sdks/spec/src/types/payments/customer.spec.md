@@ -272,15 +272,14 @@ options.idempotencyKey: string? (1-256 characters)
 
 Returns: bool
 
-POST /api/v1/customers/{type}/{id}/items/{itemId}/try-decrease { amount } [server-only]
+POST /api/v1/customers/{type}/{id}/items/{itemId}/try-decrease { amount, idempotency_key } [server-only]
 
 Returns true if quantity was >= amount and was decreased.
 Returns false if quantity would go negative (no change made).
-Retries with the same idempotencyKey and amount return true without applying a second decrease. Reusing the key for a different update fails.
+Retries with the same idempotencyKey and amount return true without applying a second decrease.
+Reusing the key for a different update fails.
 
 Useful for pre-paid credits to prevent overdraft.
-
-Insufficient quantity returns false. Reusing an idempotency key for a different update errors.
 
 
 ---
