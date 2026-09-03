@@ -92,6 +92,7 @@ class PortalAndSupportTests(unittest.TestCase):
             command = runner.call_args.args[0]
             self.assertIn("--lines=200", command)
             self.assertNotIn("NetworkManager.service", command)
+            self.assertIn("--unit=hexclave-tv-box-setup-display.service", command)
             self.assertTrue(all("hexclave-tv-box-" in value for value in command if value.startswith("--unit=")))
 
     def test_diagnostics_exposes_only_the_public_device_identifier(self) -> None:
@@ -140,6 +141,13 @@ class PortalAndSupportTests(unittest.TestCase):
             ):
                 factory_reset(root, ADMIN_CONFIRMATION)
             self.assertEqual(calls[0], ("agent", {"command": "reset-network"}))
+            self.assertIn(("run", [
+                "systemctl", "stop",
+                "hexclave-tv-box-kiosk.service",
+                "hexclave-tv-box-setup-display.service",
+                "hexclave-tv-box-setup.service",
+                "hexclave-tv-box-network.service",
+            ]), calls)
             self.assertIn(("run", ["journalctl", "--rotate"]), calls)
             self.assertIn(("run", ["journalctl", "--vacuum-time=1s"]), calls)
             self.assertEqual(calls[-1], ("run", ["systemctl", "reboot"]))

@@ -16,6 +16,7 @@ ADMIN_CONFIRMATION = "CONFIRM-ADMIN-UNPAIRED"
 SERVICES = (
     "hexclave-tv-box-kiosk.service",
     "hexclave-tv-box-network.service",
+    "hexclave-tv-box-setup-display.service",
     "hexclave-tv-box-setup.service",
 )
 
@@ -90,6 +91,7 @@ def recent_service_logs() -> str:
         "--lines=200",
         "--unit=hexclave-tv-box-firstboot.service",
         "--unit=hexclave-tv-box-network.service",
+        "--unit=hexclave-tv-box-setup-display.service",
         "--unit=hexclave-tv-box-setup.service",
         "--unit=hexclave-tv-box-kiosk.service",
     ])
@@ -114,6 +116,7 @@ def factory_reset(state_root: Path, confirmation: str) -> None:
     run([
         "systemctl", "stop",
         "hexclave-tv-box-kiosk.service",
+        "hexclave-tv-box-setup-display.service",
         "hexclave-tv-box-setup.service",
         "hexclave-tv-box-network.service",
     ])

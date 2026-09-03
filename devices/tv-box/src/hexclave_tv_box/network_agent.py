@@ -19,7 +19,7 @@ from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-from .policy import FRONTEND_RECOVERY_PROBE_SECONDS, NETWORK_POLL_SECONDS, NetworkMode, NetworkPolicy, NetworkState, advance_network_state, initial_network_state
+from .policy import FRONTEND_RECOVERY_PROBE_SECONDS, NETWORK_POLL_SECONDS, SETUP_PORTAL_READY_TIMEOUT_SECONDS, NetworkMode, NetworkPolicy, NetworkState, advance_network_state, initial_network_state
 from .state import RUNTIME_ROOT, STATE_ROOT, atomic_write
 
 LOGGER = logging.getLogger("hexclave-tv-box-network")
@@ -53,6 +53,17 @@ def _frontend_reachable(url: str, timeout: int = 10) -> bool:
             return 200 <= response.status < 400
     except (TimeoutError, OSError, urllib_error.URLError):
         return False
+
+
+def _wait_until_reachable(url: str, timeout: int) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        if _frontend_reachable(url, min(1, timeout)):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.25, remaining))
 
 
 def split_nmcli_line(line: str) -> list[str]:
@@ -316,6 +327,7 @@ class TvBoxNetworkAgent:
         policy: NetworkPolicy = NetworkPolicy(),
         service_runner: Callable[[Sequence[str], int], str] = _run,
         frontend_probe: Callable[[str, int], bool] = _frontend_reachable,
+        setup_portal_waiter: Callable[[str, int], bool] = _wait_until_reachable,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.controller = controller
@@ -323,6 +335,7 @@ class TvBoxNetworkAgent:
         self.policy = policy
         self.service_runner = service_runner
         self.frontend_probe = frontend_probe
+        self.setup_portal_waiter = setup_portal_waiter
         self.monotonic = monotonic
         self.lock = threading.RLock()
         self.portal_submission_active = False
@@ -347,20 +360,29 @@ class TvBoxNetworkAgent:
             if self.state.mode is self.applied_mode:
                 return
             if self.state.mode is NetworkMode.SETUP:
+                # Setup credentials must remain available even when WebKit
+                # cannot start. The console service owns tty1 in this mode;
+                # Cage/Cog is reserved for offline and connected content.
+                self._service("stop", "hexclave-tv-box-kiosk.service")
                 self.controller.start_setup()
+                self._service("start", "hexclave-tv-box-setup-display.service")
                 self._service("start", "hexclave-tv-box-setup.service")
-                self._set_kiosk_url(SETUP_URL)
+                if not self.setup_portal_waiter(SETUP_URL, SETUP_PORTAL_READY_TIMEOUT_SECONDS):
+                    raise TimeoutError("TV Box setup portal did not become ready.")
             elif self.state.mode is NetworkMode.CONNECTED:
+                self._service("stop", "hexclave-tv-box-setup-display.service")
                 self.controller.stop_setup()
                 self._service("stop", "hexclave-tv-box-setup.service")
                 self._set_kiosk_url(PRODUCTION_URL)
+                self._service("restart", "hexclave-tv-box-kiosk.service")
             else:
+                self._service("stop", "hexclave-tv-box-setup-display.service")
                 self.controller.stop_setup()
                 self._service("stop", "hexclave-tv-box-setup.service")
                 self._set_kiosk_url(OFFLINE_URL)
                 self.controller.activate_saved_connections()
+                self._service("restart", "hexclave-tv-box-kiosk.service")
             self.applied_mode = self.state.mode
-            self._service("try-restart", "hexclave-tv-box-kiosk.service")
             LOGGER.info("network-state=%s", self.state.mode.value)
 
     def tick(self) -> None:

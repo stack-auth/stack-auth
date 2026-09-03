@@ -83,7 +83,9 @@ mmdebstrap:
         getty@tty1.service serial-getty@ttyAMA0.service ssh-hostkeys-generate.service \
         bluetooth.service hciuart.service \
         apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service
-      chroot "$1" systemctl enable hexclave-tv-box-firstboot.service hexclave-tv-box-network.service hexclave-tv-box-kiosk.service ssh.service nftables.service zramswap.service systemd-timesyncd.service
+      # The network agent starts exactly one tty1 owner for the active mode;
+      # neither the setup display nor the kiosk starts independently at boot.
+      chroot "$1" systemctl enable hexclave-tv-box-firstboot.service hexclave-tv-box-network.service ssh.service nftables.service zramswap.service systemd-timesyncd.service
     - |-
       set -eu
       printf '%s\n' 'flush ruleset' 'include "/etc/nftables.d/*.nft"' > "$1/etc/nftables.conf"

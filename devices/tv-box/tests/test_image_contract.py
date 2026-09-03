@@ -26,6 +26,13 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("Restart=always", kiosk)
         self.assertIn("StartLimitAction=reboot", kiosk)
         self.assertIn("RuntimeDirectory=hexclave-tv-box-browser-cache", kiosk)
+        self.assertIn("Conflicts=getty@tty1.service hexclave-tv-box-setup-display.service", kiosk)
+        setup_display = (ROOTFS / "etc/systemd/system/hexclave-tv-box-setup-display.service").read_text(encoding="utf-8")
+        self.assertIn("User=hexclave-tv-portal", setup_display)
+        self.assertIn("StandardOutput=tty", setup_display)
+        self.assertIn("StandardError=journal", setup_display)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", setup_display)
+        self.assertIn("Conflicts=getty@tty1.service hexclave-tv-box-kiosk.service", setup_display)
         for service_name in ("hexclave-tv-box-network.service", "hexclave-tv-box-setup.service"):
             service = (ROOTFS / "etc/systemd/system" / service_name).read_text(encoding="utf-8")
             self.assertIn("Restart=", service)
@@ -54,6 +61,9 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("dtoverlay=disable-bt", layer)
         self.assertIn('rm -f "$1/var/lib/dbus/machine-id" "$1/var/lib/systemd/random-seed"', layer)
         self.assertIn("ln -s /var/lib/hexclave-tv-box/network-connections", layer)
+        enable_line = next(line for line in layer.splitlines() if "systemctl enable" in line)
+        self.assertNotIn("hexclave-tv-box-kiosk.service", enable_line)
+        self.assertIn("hexclave-tv-box-network.service", enable_line)
         build = (ROOT / "scripts/build-image.sh").read_text(encoding="utf-8")
         self.assertIn("status --porcelain --untracked-files=all", build)
 
@@ -174,7 +184,9 @@ class ImageContractTests(unittest.TestCase):
             for path in (
                 "usr/lib/hexclave-tv-box/kiosk-launch",
                 "usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py",
+                "usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py",
                 "etc/systemd/system/hexclave-tv-box-kiosk.service",
+                "etc/systemd/system/hexclave-tv-box-setup-display.service",
                 "etc/hexclave-tv-box-release",
             ):
                 target = rootfs / path

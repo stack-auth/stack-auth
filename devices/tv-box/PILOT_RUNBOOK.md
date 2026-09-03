@@ -27,7 +27,7 @@ Apply the organization's approval, custody, and audit process around that comman
 Perform these checks on the exact Raspberry Pi Zero 2 W, power supply, microSD class, and HDMI configuration intended for the pilot.
 
 - Cold boot with no keyboard, mouse, or interactive login. The display must reach local Wi-Fi setup or `/tv-box` automatically.
-- First boot without a saved network must expose a password-protected temporary setup network and show its per-session credentials on HDMI.
+- First boot without a saved network must expose a password-protected temporary setup network and show its per-session credentials directly on HDMI without depending on Cage, Cog, WPE, or internet access.
 - Join open, WPA2 Personal, and WPA3 Personal test networks where available. Confirm the Wi-Fi password never appears in the system journal, process list, diagnostics, or Hexclave requests.
 - Pair the display, reboot it, and confirm pairing persists without administrator action.
 - Unpair it from the dashboard. The display must return to pairing and accept immediate re-pairing without a device reboot or local reset.

@@ -189,6 +189,7 @@ class NetworkAgentTests(unittest.TestCase):
                 policy=NetworkPolicy(initial_retry_seconds=5, setup_window_seconds=10, retry_window_seconds=2),
                 service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
                 frontend_probe=lambda _url, _timeout: True,
+                setup_portal_waiter=lambda _url, _timeout: True,
                 monotonic=lambda: now[0],
             )
             agent.tick()
@@ -198,7 +199,10 @@ class NetworkAgentTests(unittest.TestCase):
             agent.tick()
             self.assertEqual(agent.state.mode, NetworkMode.SETUP)
             self.assertEqual(agent.handle_request({"command": "status"})["setupPassword"], "temporary-password")
-            self.assertTrue((Path(directory) / "kiosk-url").read_text(encoding="utf-8").startswith("http://127.0.0.1"))
+            self.assertIn(("systemctl", "stop", "hexclave-tv-box-kiosk.service"), services)
+            self.assertIn(("systemctl", "start", "hexclave-tv-box-setup-display.service"), services)
+            self.assertIn(("systemctl", "start", "hexclave-tv-box-setup.service"), services)
+            self.assertNotIn("http://127.0.0.1", (Path(directory) / "kiosk-url").read_text(encoding="utf-8"))
 
     def test_connect_switches_state_but_leaves_service_stop_for_next_tick(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -210,6 +214,7 @@ class NetworkAgentTests(unittest.TestCase):
                 runtime_root=Path(directory),
                 service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
                 frontend_probe=lambda _url, _timeout: True,
+                setup_portal_waiter=lambda _url, _timeout: True,
                 monotonic=lambda: now[0],
             )
             agent.tick()
@@ -223,7 +228,9 @@ class NetworkAgentTests(unittest.TestCase):
             self.assertEqual(services, before)
             agent.tick()
             self.assertEqual(agent.state.mode, NetworkMode.CONNECTED)
+            self.assertIn(("systemctl", "stop", "hexclave-tv-box-setup-display.service"), services)
             self.assertIn(("systemctl", "stop", "hexclave-tv-box-setup.service"), services)
+            self.assertIn(("systemctl", "restart", "hexclave-tv-box-kiosk.service"), services)
 
             agent.handle_request({"command": "reset-network"})
             self.assertFalse(agent.has_saved_network)
@@ -239,6 +246,7 @@ class NetworkAgentTests(unittest.TestCase):
                 runtime_root=Path(directory),
                 service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
                 frontend_probe=lambda _url, _timeout: next(probe_results),
+                setup_portal_waiter=lambda _url, _timeout: True,
                 monotonic=lambda: now[0],
             )
             agent.tick()
@@ -247,6 +255,28 @@ class NetworkAgentTests(unittest.TestCase):
             agent.tick()
             self.assertEqual(services, [("systemctl", "try-restart", "hexclave-tv-box-kiosk.service")])
             self.assertEqual(controller.calls, ["stop-setup"])
+
+    def test_setup_credentials_remain_on_console_when_the_portal_is_slow(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            services: list[tuple[str, ...]] = []
+            controller = FakeController(saved=False, connected=False)
+            agent = TvBoxNetworkAgent(
+                controller,
+                runtime_root=Path(directory),
+                service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
+                setup_portal_waiter=lambda _url, _timeout: False,
+            )
+
+            with self.assertRaisesRegex(TimeoutError, "setup portal"):
+                agent.tick()
+
+            self.assertIsNone(agent.applied_mode)
+            self.assertEqual(controller.setup_password, "temporary-password")
+            self.assertLess(
+                services.index(("systemctl", "start", "hexclave-tv-box-setup-display.service")),
+                services.index(("systemctl", "start", "hexclave-tv-box-setup.service")),
+            )
+            self.assertNotIn(("systemctl", "restart", "hexclave-tv-box-kiosk.service"), services)
 
 
 if __name__ == "__main__":
