@@ -359,14 +359,18 @@ async function parseSecretDefaults(raw: unknown): Promise<Record<string, Record<
 /**
  * `ci_env` is a flat record of CI variable names to values — it describes the
  * deploy, not any one service, so unlike `secret_defaults` it is not keyed by
- * service id. Validated here for the same reason: the key rule is a regex the
- * request schema cannot express through yupMixed.
+ * service id. Validated here rather than in the request schema for the same
+ * reason as the secret defaults: yupRecord validates its entries in an ASYNC
+ * test, which the request schema's synchronous path cannot run.
  */
 async function parseCiEnv(raw: unknown): Promise<Record<string, string>> {
   if (raw === undefined || raw === null) return {};
+  // Checked before yup sees it so a wrong SHAPE reads as one, rather than as a
+  // per-key message about a record whose keys the caller never wrote.
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new StatusError(400, "ci_env must be an object keyed by CI variable name.");
+  }
   try {
-    // Awaited rather than validateSync, for the same reason as the secret
-    // defaults above: yupRecord validates its entries in an async test.
     return await deploymentCiEnvSchema.validate(raw, { strict: true }) as Record<string, string>;
   } catch (error) {
     if (!(error instanceof yup.ValidationError)) throw error;

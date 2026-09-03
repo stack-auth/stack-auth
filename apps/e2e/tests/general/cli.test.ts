@@ -520,10 +520,10 @@ describe("Stack CLI", () => {
       expect(occurrencesOf("Waiting for the remote build...")).toBe(1);
       expect(stderr).toContain("[web] deployed");
       expect(stderr).toContain("[db] deployed");
-      // The definitions were synced server-side — but NOT the config file's
+      // The definitions were synced server-side — but NOT the deploy file's
       // `devCommand`, which `hexclave dev` runs locally and the CLI therefore
-      // never sends (the config above sets one, so this also covers that a
-      // devCommand in the config file doesn't trip the sync route).
+      // never sends (web declares one above, so this also covers that a
+      // devCommand doesn't trip the sync route).
       // OPENAI also proves the secret-default path end to end: nothing set a
       // value for OPENAI_KEY, so this deploy only succeeded because the CLI
       // sent `secret("OPENAI_KEY", "sk-default")`'s default with the deploy

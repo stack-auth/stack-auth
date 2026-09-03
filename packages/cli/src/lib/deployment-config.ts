@@ -1132,9 +1132,9 @@ function resolveHexclaveOutputFromSessionEnv(envVarKey: string, outputKey: Hexcl
 }
 
 /**
- * Loads a TypeScript/JavaScript module via jiti. Shared by the deploy-file and
- * config-file loaders below so both fail with the same error on an unloadable
- * file; `description` names which of the two it was.
+ * Loads a TypeScript/JavaScript module via jiti, reporting an unloadable file as
+ * a CliError rather than whatever jiti threw. `description` is how the file is
+ * named in that error.
  */
 async function importModule(filePath: string, description: string): Promise<Record<string, unknown>> {
   const { createJiti } = await import("jiti");
