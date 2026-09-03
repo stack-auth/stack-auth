@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { AiQueryLogRow } from "../types";
 import { toDate } from "../utils";
-import { LoadOlderButton, type HistoryPagingProps } from "./LoadOlderButton";
+import { NextPageButton, type HistoryPagingProps } from "./LoadOlderButton";
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
 type AuthFilter = "all" | "authed" | "anon";
@@ -740,18 +740,14 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
                 Prev
               </button>
               <span className="text-gray-500 font-mono">{currentPage + 1} / {pageCount}</span>
-              <button
-                onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-                disabled={currentPage >= pageCount - 1}
-                className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100"
-              >
-                Next
-              </button>
-              <LoadOlderButton
-                hasMore={hasMoreHistory}
-                isLoading={isLoadingOlder}
+              <NextPageButton
+                currentPage={currentPage}
+                pageCount={pageCount}
+                setPage={setPage}
+                hasMoreHistory={hasMoreHistory}
+                isLoadingOlder={isLoadingOlder}
                 onLoadOlder={onLoadOlder}
-                hasRows={rows.length > 0}
+                className="bg-gray-100 border-0 hover:bg-gray-200 disabled:hover:bg-gray-100"
               />
             </div>
           </div>

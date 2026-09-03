@@ -6,7 +6,7 @@ import { reviewVisible } from "../lib/mcp-review-api";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { clsx } from "clsx";
-import { LoadOlderButton, type HistoryPagingProps } from "./LoadOlderButton";
+import { NextPageButton, type HistoryPagingProps } from "./LoadOlderButton";
 
 // Matches MAX_BACKFILL_ITEMS in the backfill-visible route — one click enqueues
 // at most this many reviews.
@@ -438,18 +438,13 @@ export function CallLogList({
                 Prev
               </button>
               <span className="text-gray-500 font-mono">{currentPage + 1} / {pageCount}</span>
-              <button
-                onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-                disabled={currentPage >= pageCount - 1}
-                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white"
-              >
-                Next
-              </button>
-              <LoadOlderButton
-                hasMore={hasMoreHistory}
-                isLoading={isLoadingOlder}
+              <NextPageButton
+                currentPage={currentPage}
+                pageCount={pageCount}
+                setPage={setPage}
+                hasMoreHistory={hasMoreHistory}
+                isLoadingOlder={isLoadingOlder}
                 onLoadOlder={onLoadOlder}
-                hasRows={rows.length > 0}
               />
             </div>
           </div>

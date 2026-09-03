@@ -134,8 +134,8 @@ export function FeedbackList({
       )}
       <div className="flex items-center justify-end gap-2 pt-2 text-xs">
         <LoadOlderButton
-          hasMore={hasMoreHistory}
-          isLoading={isLoadingOlder}
+          hasMoreHistory={hasMoreHistory}
+          isLoadingOlder={isLoadingOlder}
           onLoadOlder={onLoadOlder}
           hasRows={rows.length > 0}
         />
