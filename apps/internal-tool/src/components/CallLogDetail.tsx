@@ -1,12 +1,18 @@
-import { clsx } from "clsx";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { McpCallLogRow } from "../types";
-import { toDate } from "../utils";
+import type { McpCallLogRow, QaEntriesRow } from "../types";
+import { QA_REVIEW_FAILED_THRESHOLD_MS, qaReviewStartedAt, toDate } from "../utils";
 import { ConversationReplay } from "./ConversationReplay";
+import { Alert, Badge, Button, cn, Input, Textarea } from "./design";
 import { markdownComponents } from "./markdown-components";
+
+/** Panel surface for the detail cards — same translucent treatment as the design Card, tint-able. */
+const panelClasses = "overflow-hidden rounded-2xl bg-panel ring-1 ring-inset ring-transparent";
+const sectionLabelClasses = "text-[10px] font-semibold uppercase tracking-[0.09em] text-faint";
 
 // ─── Shared ────────────────────────────────────────────
 
@@ -14,7 +20,7 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      className="text-xs text-blue-500 hover:text-blue-700 ml-2"
+      className="ml-2 text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
       onClick={() => {
         navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
@@ -31,15 +37,40 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkReviewed }: {
+export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onSetReviewed, onRetryReview }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
+  qaEntries: QaEntriesRow[];
   onClose: () => void;
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
-  onMarkReviewed?: (correlationId: string) => Promise<void> | void;
+  onSetReviewed?: (correlationId: string, reviewed: boolean) => Promise<void> | void;
+  onRetryReview?: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
 }) {
+  const linkedQa = qaEntries.find(q => q.sourceMcpCorrelationId === row.correlationId);
   const [showReplay, setShowReplay] = useState(false);
-  const isReviewed = row.humanReviewedAt != null;
+  // Optimistic override while the reviewed-state roundtrip is in flight. Cleared
+  // once the real subscription update catches up.
+  const [optimisticReviewed, setOptimisticReviewed] = useState<boolean | null>(null);
+  useEffect(() => {
+    const actual = row.humanReviewedAt != null;
+    if (optimisticReviewed != null && optimisticReviewed === actual) {
+      setOptimisticReviewed(null);
+    }
+  }, [row.humanReviewedAt, optimisticReviewed]);
+  const isReviewed = optimisticReviewed ?? (row.humanReviewedAt != null);
+
+  const handleSetReviewed = (reviewed: boolean) => {
+    const previous = optimisticReviewed;
+    setOptimisticReviewed(reviewed);
+    runAsynchronouslyWithAlert(
+      Promise.resolve(onSetReviewed?.(row.correlationId, reviewed)).catch(err => {
+        // Revert the optimistic override so the UI reflects the database's real state.
+        setOptimisticReviewed(previous);
+        captureError("call-log-set-reviewed", err);
+        throw err;
+      })
+    );
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -50,34 +81,26 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Call Detail</h2>
+          <h2 className="text-sm font-semibold text-foreground">Call Detail</h2>
           {isReviewed && (
-            <span
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800"
-              title={`Reviewed ${row.humanReviewedAt ? format(toDate(row.humanReviewedAt), "PPpp") : ""}${row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}`}
-            >
-              &#10003; Reviewed{row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}
-            </span>
+            <Badge color="green" title={row.humanReviewedAt ? format(toDate(row.humanReviewedAt), "PPpp") : undefined}>
+              &#10003; Reviewed
+              {row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}
+              {row.humanReviewedAt
+                ? ` · ${formatDistanceToNow(toDate(row.humanReviewedAt), { addSuffix: true })}`
+                : " · just now"}
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isReviewed && onMarkReviewed && (
-            <button
-              onClick={() => void onMarkReviewed(row.correlationId)}
-              className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 border border-green-200"
-            >
-              Mark as reviewed
-            </button>
+          {!isReviewed && onSetReviewed && (
+            <Button onClick={() => handleSetReviewed(true)}>Mark as reviewed</Button>
           )}
-          <button
-            onClick={() => setShowReplay(true)}
-            className="px-2.5 py-1 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100"
-          >
-            Replay
-          </button>
-          <button className="text-gray-400 hover:text-gray-600 text-sm" onClick={onClose}>
-            close
-          </button>
+          {isReviewed && onSetReviewed && (
+            <Button onClick={() => handleSetReviewed(false)}>Unmark</Button>
+          )}
+          <Button onClick={() => setShowReplay(true)}>Replay</Button>
+          <Button variant="ghost" onClick={onClose}>close</Button>
         </div>
       </div>
 
@@ -85,10 +108,10 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
       <MpcCallCard row={row} />
 
       {/* Card 2: AI QA Review */}
-      <QaReviewCard row={row} />
+      <QaReviewCard row={row} onRetryReview={onRetryReview} />
 
       {/* Card 3: Human Correction */}
-      <HumanCorrectionCard row={row} onSave={onSaveCorrection} />
+      <HumanCorrectionCard row={row} qa={linkedQa} onSave={onSaveCorrection} />
     </div>
   );
 }
@@ -106,59 +129,55 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className={panelClasses}>
       {/* Metadata bar */}
-      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap text-xs text-gray-500">
-        <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-purple-100 text-purple-800">
-          {row.toolName}
-        </span>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
+        <Badge color="purple">{row.toolName}</Badge>
         <span title={format(toDate(row.createdAt), "PPpp")}>
           {formatDistanceToNow(toDate(row.createdAt), { addSuffix: true })}
         </span>
         <span>{Number(row.durationMs).toLocaleString()}ms</span>
         <span>{row.stepCount} step{row.stepCount !== 1 ? "s" : ""}</span>
-        <span className="text-gray-400">{row.modelId}</span>
+        <span className="font-mono">{row.modelId}</span>
       </div>
 
       <div className="p-4 space-y-3">
         {row.errorMessage && (
-          <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            {row.errorMessage}
-          </div>
+          <Alert className="p-2 text-sm">{row.errorMessage}</Alert>
         )}
 
         {/* User Prompt */}
         {row.userPrompt && (
           <div>
-            <h4 className="text-[10px] uppercase text-gray-400 font-medium tracking-wider mb-0.5">User Prompt</h4>
-            <p className="text-sm text-gray-700">{row.userPrompt}</p>
+            <h4 className={cn(sectionLabelClasses, "mb-0.5")}>User Prompt</h4>
+            <p className="text-sm text-foreground">{row.userPrompt}</p>
           </div>
         )}
 
         {/* Reason */}
-        <p className="text-xs text-gray-500 italic">{row.reason}</p>
+        <p className="text-xs italic text-muted-foreground">{row.reason}</p>
 
         {/* Question */}
         <div>
           <div className="flex items-center mb-1">
-            <h4 className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">Question</h4>
+            <h4 className={sectionLabelClasses}>Question</h4>
             <CopyButton text={row.question} />
           </div>
-          <p className="text-sm text-gray-900 whitespace-pre-wrap">{row.question}</p>
+          <p className="whitespace-pre-wrap text-sm text-foreground">{row.question}</p>
         </div>
 
         {/* Response */}
         <div>
           <div className="flex items-center mb-1">
-            <h4 className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">AI Response</h4>
+            <h4 className={sectionLabelClasses}>AI Response</h4>
             <CopyButton text={row.response} />
           </div>
-          <div className="bg-gray-50 p-3 rounded max-h-64 overflow-auto text-sm">
+          <div className="max-h-64 overflow-auto rounded-lg bg-panel-raised p-3 text-sm">
             {row.response ? (
               <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {row.response}
               </Markdown>
-            ) : <span className="text-gray-400">(empty)</span>}
+            ) : <span className="text-muted-foreground">(empty)</span>}
           </div>
         </div>
 
@@ -166,7 +185,7 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
         {toolCalls.length > 0 && (
           <div>
             <button
-              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
               onClick={() => setToolsExpanded(prev => !prev)}
             >
               <span className="text-[10px]">{toolsExpanded ? "▾" : "▸"}</span>
@@ -189,26 +208,26 @@ function MpcCallCard({ row }: { row: McpCallLogRow }) {
 function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string; args: unknown; result: unknown } }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="border border-gray-200 rounded">
+    <div className="rounded-xl bg-panel-raised">
       <button
-        className="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50"
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-[12px] transition-colors hover:transition-none hover:bg-muted"
         onClick={() => setExpanded(prev => !prev)}
       >
         <span className="font-mono text-xs">
-          <span className="text-purple-600">{call.toolName}</span>
-          <span className="text-gray-400 ml-2">#{call.toolCallId.slice(0, 8)}</span>
+          <span className="text-chart-1">{call.toolName}</span>
+          <span className="ml-2 text-muted-foreground">#{call.toolCallId.slice(0, 8)}</span>
         </span>
-        <span className="text-gray-400 text-xs">{expanded ? "collapse" : "expand"}</span>
+        <span className="text-xs text-muted-foreground">{expanded ? "collapse" : "expand"}</span>
       </button>
       {expanded && (
         <div className="px-3 pb-2 space-y-2">
           <div>
-            <p className="text-xs text-gray-500 mb-1">Args:</p>
-            <pre className="text-xs bg-gray-50 p-2 rounded overflow-auto max-h-40">{JSON.stringify(call.args, null, 2)}</pre>
+            <p className="mb-1 text-xs text-muted-foreground">Args:</p>
+            <pre className="max-h-40 overflow-auto rounded-lg bg-panel-raised p-2 text-xs">{JSON.stringify(call.args, null, 2)}</pre>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1">Result:</p>
-            <pre className="text-xs bg-gray-50 p-2 rounded overflow-auto max-h-40">{JSON.stringify(call.result, null, 2)}</pre>
+            <p className="mb-1 text-xs text-muted-foreground">Result:</p>
+            <pre className="max-h-40 overflow-auto rounded-lg bg-panel-raised p-2 text-xs">{JSON.stringify(call.result, null, 2)}</pre>
           </div>
         </div>
       )}
@@ -220,23 +239,85 @@ function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string;
 
 type QaFlag = { type: string; severity: string; explanation: string };
 
-function QaReviewCard({ row }: { row: McpCallLogRow }) {
+function RetryReviewButton({ row, onRetryReview, label = "Retry review", tone = "indigo" }: {
+  row: McpCallLogRow;
+  onRetryReview: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
+  label?: string;
+  tone?: "indigo" | "red";
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const [justTriggered, setJustTriggered] = useState(false);
+
+  return (
+    <Button
+      size="xs"
+      variant={tone === "red" ? "destructive" : "outline"}
+      disabled={retrying}
+      onClick={() => {
+        setRetrying(true);
+        runAsynchronouslyWithAlert(
+          Promise.resolve(onRetryReview(row.correlationId, { question: row.question, reason: row.reason, response: row.response }))
+            .then(() => {
+              setJustTriggered(true);
+              setTimeout(() => setJustTriggered(false), 3000);
+            })
+            .catch(err => {
+              captureError("call-log-retry-review", err);
+              throw err;
+            })
+            .finally(() => setRetrying(false))
+        );
+      }}
+    >
+      {retrying ? "Retrying…" : justTriggered ? "Queued" : label}
+    </Button>
+  );
+}
+
+function QaReviewCard({ row, onRetryReview }: {
+  row: McpCallLogRow;
+  onRetryReview?: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
+}) {
   if (row.qaErrorMessage) {
     return (
-      <div className="bg-red-50/50 border border-red-200 rounded-lg p-4">
-        <h3 className="text-xs font-semibold text-red-800 uppercase tracking-wider mb-2">AI QA Review</h3>
-        <p className="text-sm text-red-700">Error: {row.qaErrorMessage}</p>
-      </div>
+      <Alert className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider">AI QA Review</h3>
+          {onRetryReview && <RetryReviewButton row={row} onRetryReview={onRetryReview} tone="red" />}
+        </div>
+        <p className="whitespace-pre-wrap text-sm">Error: {row.qaErrorMessage}</p>
+      </Alert>
     );
   }
 
   if (row.qaOverallScore == null) {
+    const reviewStartedAt = qaReviewStartedAt(row);
+    const ageMs = Date.now() - reviewStartedAt.getTime();
+    const reviewFailed = ageMs > QA_REVIEW_FAILED_THRESHOLD_MS;
+
+    if (reviewFailed) {
+      return (
+        <Alert variant="warning" className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider">AI QA Review</h3>
+              <Badge color="orange">Review failed</Badge>
+            </div>
+            {onRetryReview && <RetryReviewButton row={row} onRetryReview={onRetryReview} />}
+          </div>
+          <p className="text-xs">
+            No review completed in {formatDistanceToNow(reviewStartedAt)}. The reviewer was likely skipped (missing OpenRouter key) or the background task died — click retry to re-run.
+          </p>
+        </Alert>
+      );
+    }
+
     return (
-      <div className="bg-indigo-50/30 border border-indigo-200 rounded-lg p-4">
+      <div className={cn(panelClasses, "p-4")}>
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold text-indigo-800 uppercase tracking-wider">AI QA Review</h3>
-          <span className="inline-block w-3 h-3 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-indigo-400">Reviewing...</span>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">AI QA Review</h3>
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-chart-2 border-t-transparent" />
+          <span className="text-xs text-muted-foreground">Reviewing...</span>
         </div>
       </div>
     );
@@ -250,29 +331,30 @@ function QaReviewCard({ row }: { row: McpCallLogRow }) {
   }
 
   const scoreColor = row.qaOverallScore >= 80
-    ? "text-green-700 bg-green-100"
+    ? "text-success bg-success/12"
     : row.qaOverallScore >= 50
-      ? "text-yellow-700 bg-yellow-100"
-      : "text-red-700 bg-red-100";
+      ? "text-warning bg-warning/12"
+      : "text-destructive bg-destructive/12";
 
-  const severityColors: Record<string, string> = {
-    critical: "border-red-400 bg-red-50",
-    high: "border-orange-400 bg-orange-50",
-    medium: "border-yellow-400 bg-yellow-50",
-    low: "border-gray-300 bg-gray-50",
-  };
+  const lowSeverityClasses = "border-border bg-panel-raised";
+  const severityClasses = new Map<string, string>([
+    ["critical", "border-destructive bg-destructive/10"],
+    ["high", "border-destructive/60 bg-destructive/[0.07]"],
+    ["medium", "border-warning bg-warning/10"],
+    ["low", lowSeverityClasses],
+  ]);
 
   return (
-    <div className="bg-indigo-50/30 border border-indigo-200 rounded-lg overflow-hidden">
+    <div className={panelClasses}>
       {/* Header */}
-      <div className="px-4 py-2.5 border-b border-indigo-100 flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold text-indigo-800 uppercase tracking-wider">AI QA Review</h3>
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.09em] text-foreground">AI QA Review</h3>
           {row.qaNeedsHumanReview && !row.humanReviewedAt && (
-            <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Needs Review</span>
+            <Badge color="orange">Needs Review</Badge>
           )}
         </div>
-        <span className={`text-lg font-bold px-2 py-0.5 rounded ${scoreColor}`}>
+        <span className={cn("rounded-lg px-2 py-0.5 text-lg font-bold tabular-nums", scoreColor)}>
           {row.qaOverallScore}
         </span>
       </div>
@@ -280,30 +362,24 @@ function QaReviewCard({ row }: { row: McpCallLogRow }) {
       <div className="p-4 space-y-3">
         {/* Badges */}
         <div className="flex gap-2">
-          <span className={clsx(
-            "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
-            row.qaAnswerCorrect ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          )}>
+          <Badge color={row.qaAnswerCorrect ? "green" : "red"}>
             {row.qaAnswerCorrect ? "correct" : "incorrect"}
-          </span>
-          <span className={clsx(
-            "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
-            row.qaAnswerRelevant ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          )}>
+          </Badge>
+          <Badge color={row.qaAnswerRelevant ? "green" : "red"}>
             {row.qaAnswerRelevant ? "relevant" : "off-topic"}
-          </span>
+          </Badge>
         </div>
 
         {/* Flags */}
         {flags.length > 0 && (
           <div className="space-y-1.5">
             {flags.map((flag, i) => (
-              <div key={i} className={`border-l-4 pl-3 py-1.5 rounded-r text-sm ${severityColors[flag.severity] ?? severityColors.low}`}>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="font-mono text-xs text-gray-600">{flag.type}</span>
-                  <span className="text-[10px] uppercase text-gray-400">{flag.severity}</span>
+              <div key={i} className={cn("rounded-r-lg border-l-4 py-1.5 pl-3 text-sm", severityClasses.get(flag.severity) ?? lowSeverityClasses)}>
+                <div className="mb-0.5 flex items-center gap-2">
+                  <span className="font-mono text-xs text-foreground">{flag.type}</span>
+                  <span className="text-[10px] uppercase text-muted-foreground">{flag.severity}</span>
                 </div>
-                <p className="text-gray-700 text-xs">{flag.explanation}</p>
+                <p className="text-xs text-muted-foreground">{flag.explanation}</p>
               </div>
             ))}
           </div>
@@ -312,8 +388,8 @@ function QaReviewCard({ row }: { row: McpCallLogRow }) {
         {/* Suggestions */}
         {row.qaImprovementSuggestions && (
           <div>
-            <h4 className="text-[10px] uppercase text-gray-400 font-medium tracking-wider mb-1">Suggestions</h4>
-            <p className="text-xs text-gray-600 whitespace-pre-wrap">{row.qaImprovementSuggestions}</p>
+            <h4 className={cn(sectionLabelClasses, "mb-1")}>Suggestions</h4>
+            <p className="whitespace-pre-wrap text-xs text-muted-foreground">{row.qaImprovementSuggestions}</p>
           </div>
         )}
 
@@ -324,7 +400,7 @@ function QaReviewCard({ row }: { row: McpCallLogRow }) {
 
         {/* Model */}
         {row.qaReviewModelId && (
-          <p className="text-[10px] text-gray-400">by {row.qaReviewModelId}</p>
+          <p className="text-[10px] text-muted-foreground">by {row.qaReviewModelId}</p>
         )}
       </div>
     </div>
@@ -374,20 +450,26 @@ async function fetchDeepWikiAnswer(questionText: string): Promise<string> {
     .join("\n\n") ?? "(no response)";
 }
 
-function HumanCorrectionCard({ row, onSave }: {
+function HumanCorrectionCard({ row, qa, onSave }: {
   row: McpCallLogRow;
+  qa: QaEntriesRow | undefined;
   onSave?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
 }) {
-  const [question, setQuestion] = useState(row.humanCorrectedQuestion ?? "");
-  const [answer, setAnswer] = useState(row.humanCorrectedAnswer ?? "");
+  const persistedQuestion = qa?.question ?? "";
+  const persistedAnswer = qa?.answer ?? "";
+  const isPublished = qa?.published === true;
+  const hasDraft = qa != null;
+
+  const [question, setQuestion] = useState(persistedQuestion);
+  const [answer, setAnswer] = useState(persistedAnswer);
   const [lastAction, setLastAction] = useState<"published" | "saved" | "deepwiki-error" | "error" | null>(null);
   const [deepWikiLoading, setDeepWikiLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setQuestion(row.humanCorrectedQuestion ?? "");
-    setAnswer(row.humanCorrectedAnswer ?? "");
-  }, [row.humanCorrectedQuestion, row.humanCorrectedAnswer, row.correlationId]);
+    setQuestion(persistedQuestion);
+    setAnswer(persistedAnswer);
+  }, [persistedQuestion, persistedAnswer, row.correlationId]);
 
   const handleSave = async (publish: boolean) => {
     if (isSaving) return;
@@ -405,42 +487,46 @@ function HumanCorrectionCard({ row, onSave }: {
   };
 
   const hasUnsavedChanges =
-    question !== (row.humanCorrectedQuestion ?? "") ||
-    answer !== (row.humanCorrectedAnswer ?? "");
+    question !== persistedQuestion ||
+    answer !== persistedAnswer;
 
-  const cardStyle = row.publishedToQa
-    ? "bg-green-50/50 border-green-200"
-    : row.humanCorrectedAnswer
-      ? "bg-amber-50/50 border-amber-200"
-      : "bg-white border-gray-200";
+  const saveAction = (() => {
+    if (isSaving) return { label: "Saving…", isDraft: !isPublished, disabled: true };
+    if (hasUnsavedChanges) return { label: "Save Draft", isDraft: true, disabled: false };
+    if (!hasDraft) return { label: "Save Draft", isDraft: true, disabled: true };
+    return { label: isPublished ? "Update" : "Publish", isDraft: false, disabled: false };
+  })();
+
+  // Subtle state tint on the card edge: published = green, unpublished draft = amber.
+  const cardTint = isPublished
+    ? "ring-success/25"
+    : hasDraft
+      ? "ring-warning/30"
+      : "";
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${cardStyle}`}>
+    <div className={cn(panelClasses, cardTint)}>
       {/* Header */}
-      <div className="px-4 py-2.5 border-b border-inherit flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Human Correction</h3>
-          {row.publishedToQa ? (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">
-              &#10003; Published
-            </span>
-          ) : row.humanCorrectedAnswer ? (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-800">
-              Draft
-            </span>
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.09em] text-foreground">Human Correction</h3>
+          {isPublished ? (
+            <Badge color="green">&#10003; Published</Badge>
+          ) : hasDraft ? (
+            <Badge color="orange">Draft</Badge>
           ) : null}
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-gray-400">
-          {row.publishedAt && (
-            <span>{format(toDate(row.publishedAt), "MMM d, yyyy")}</span>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          {qa?.lastPublishedAt && (
+            <span>{format(toDate(qa.lastPublishedAt), "MMM d, yyyy")}</span>
           )}
-          {row.humanReviewedBy && (
-            <span>by {row.humanReviewedBy}</span>
+          {qa?.lastEditedBy && (
+            <span>by {qa.lastEditedBy}</span>
           )}
-          {row.publishedToQa && (
+          {isPublished && (
             <button
               onClick={() => void handleSave(false)}
-              className="text-red-500 hover:text-red-700"
+              className="text-destructive transition-colors hover:transition-none hover:text-destructive/80"
             >
               Unpublish
             </button>
@@ -451,11 +537,11 @@ function HumanCorrectionCard({ row, onSave }: {
       <div className="p-4 space-y-3">
         {/* Feedback toast */}
         {lastAction && (
-          <div className={clsx(
-            "px-3 py-1.5 rounded text-xs font-medium",
-            lastAction === "published" ? "bg-green-100 text-green-700" :
-              lastAction === "deepwiki-error" || lastAction === "error" ? "bg-red-100 text-red-700" :
-                "bg-blue-100 text-blue-700"
+          <div className={cn(
+            "rounded-lg px-2.5 py-1 text-[11px] font-medium",
+            lastAction === "published" ? "bg-success/12 text-success" :
+              lastAction === "deepwiki-error" || lastAction === "error" ? "bg-destructive/12 text-destructive" :
+                "bg-chart-1/12 text-chart-1"
           )}>
             {lastAction === "published" ? "Published to /questions" :
               lastAction === "deepwiki-error" ? "Failed to fetch from DeepWiki" :
@@ -466,10 +552,10 @@ function HumanCorrectionCard({ row, onSave }: {
 
         {/* Question */}
         <div>
-          <label className="text-[10px] uppercase text-gray-400 font-medium mb-1 block tracking-wider">Question</label>
-          <input
+          <label className={cn(sectionLabelClasses, "mb-1 block")}>Question</label>
+          <Input
             type="text"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+            className="h-9 px-3 text-sm"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="The question..."
@@ -478,9 +564,9 @@ function HumanCorrectionCard({ row, onSave }: {
 
         {/* Answer */}
         <div>
-          <label className="text-[10px] uppercase text-gray-400 font-medium mb-1 block tracking-wider">Answer</label>
-          <textarea
-            className="w-full h-40 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y bg-white"
+          <label className={cn(sectionLabelClasses, "mb-1 block")}>Answer</label>
+          <Textarea
+            className="h-40 resize-y px-3 py-2 font-mono text-sm"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             placeholder="Write the corrected answer..."
@@ -489,16 +575,15 @@ function HumanCorrectionCard({ row, onSave }: {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          <button
+          <Button
             onClick={() => {
               setQuestion(row.question);
               setAnswer(row.response);
             }}
-            className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded bg-white"
           >
-            Pre-fill from AI
-          </button>
-          <button
+            Pre-fill from call
+          </Button>
+          <Button
             disabled={deepWikiLoading}
             onClick={() => {
               const q = question || row.question;
@@ -513,29 +598,20 @@ function HumanCorrectionCard({ row, onSave }: {
                 .catch(() => setLastAction("deepwiki-error"))
                 .finally(() => setDeepWikiLoading(false));
             }}
-            className={clsx(
-              "px-2 py-1 text-xs border rounded bg-white",
-              deepWikiLoading ? "text-gray-400 border-gray-200" : "text-indigo-500 hover:text-indigo-700 border-indigo-300"
-            )}
           >
             {deepWikiLoading ? "Fetching..." : "Pre-fill from DeepWiki"}
-          </button>
+          </Button>
           {hasUnsavedChanges && (
-            <span className="text-[10px] text-amber-500">unsaved changes</span>
+            <span className="text-[10px] text-warning">unsaved changes</span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => void handleSave(false)}
-              className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            <Button
+              variant={saveAction.isDraft ? "outline" : "default"}
+              onClick={() => void handleSave(!hasUnsavedChanges)}
+              disabled={saveAction.disabled}
             >
-              Save Draft
-            </button>
-            <button
-              onClick={() => void handleSave(true)}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-            >
-              {row.publishedToQa ? "Update & Publish" : "Save & Publish"}
-            </button>
+              {saveAction.label}
+            </Button>
           </div>
         </div>
       </div>
@@ -574,14 +650,14 @@ function QaConversationTimeline({ json }: { json: string }) {
   return (
     <div>
       <button
-        className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1"
+        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
         onClick={() => setExpanded(prev => !prev)}
       >
         <span className="text-[10px]">{expanded ? "▾" : "▸"}</span>
         Reviewer Conversation ({steps.length} step{steps.length !== 1 ? "s" : ""})
       </button>
       {expanded && (
-        <div className="mt-3 relative border-l-2 border-indigo-200 ml-1 space-y-4">
+        <div className="relative ml-1 mt-3 space-y-4 border-l-2 border-border">
           {steps.map((step) => {
             const hasTools = step.toolCalls && step.toolCalls.length > 0;
             return hasTools
@@ -603,8 +679,8 @@ function QaToolStep({ step }: { step: QaStep }) {
 
   return (
     <div className="relative pl-5">
-      <div className="absolute -left-[5px] top-2 w-2 h-2 rounded-full bg-indigo-400" />
-      <p className="text-[10px] uppercase text-gray-400 font-medium mb-1.5">
+      <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-chart-2" />
+      <p className={cn(sectionLabelClasses, "mb-1.5")}>
         Step {step.step} — Verification
       </p>
       <div className="space-y-2">
@@ -613,8 +689,8 @@ function QaToolStep({ step }: { step: QaStep }) {
         ))}
       </div>
       {step.text && (
-        <div className="mt-2 bg-white/50 rounded p-2">
-          <p className="text-xs text-gray-700 whitespace-pre-wrap">{step.text}</p>
+        <div className="mt-2 rounded-lg bg-panel-raised p-2">
+          <p className="whitespace-pre-wrap text-xs text-foreground">{step.text}</p>
         </div>
       )}
     </div>
@@ -628,22 +704,22 @@ function QaToolCard({ pair }: { pair: { toolName: string; args: unknown; result:
     : typeof pair.result === "string" ? pair.result : JSON.stringify(pair.result, null, 2);
 
   return (
-    <div className="border border-indigo-200 rounded-lg overflow-hidden bg-white/50">
-      <div className="px-3 py-1.5 bg-indigo-50">
-        <span className="font-mono text-xs text-indigo-700">{pair.toolName}</span>
+    <div className="overflow-hidden rounded-xl bg-panel">
+      <div className="bg-chart-2/10 px-3 py-1.5">
+        <span className="font-mono text-[11px] text-chart-2">{pair.toolName}</span>
       </div>
-      <div className="px-3 py-2 border-t border-indigo-100">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] uppercase text-gray-400 font-medium">Args</p>
+      <div className="border-t border-border px-3 py-2">
+        <div className="mb-1 flex items-center justify-between">
+          <p className={sectionLabelClasses}>Args</p>
           <CopyButton text={JSON.stringify(pair.args, null, 2)} />
         </div>
-        <pre className="text-xs text-gray-600 overflow-auto max-h-24">{JSON.stringify(pair.args, null, 2)}</pre>
+        <pre className="max-h-24 overflow-auto text-xs text-muted-foreground">{JSON.stringify(pair.args, null, 2)}</pre>
       </div>
       {resultStr != null && (
-        <div className="px-3 py-2 border-t border-indigo-100">
-          <div className="w-full flex items-center justify-between text-[10px] uppercase text-gray-400 font-medium">
+        <div className="border-t border-border px-3 py-2">
+          <div className={cn("flex w-full items-center justify-between", sectionLabelClasses)}>
             <button
-              className="hover:text-gray-600"
+              className="transition-colors hover:transition-none hover:text-foreground"
               onClick={() => setResultExpanded(prev => !prev)}
             >
               Result ({formatByteSize(pair.result)}) — {resultExpanded ? "collapse" : "expand"}
@@ -651,7 +727,7 @@ function QaToolCard({ pair }: { pair: { toolName: string; args: unknown; result:
             {resultExpanded && <CopyButton text={resultStr} />}
           </div>
           {resultExpanded && (
-            <pre className="mt-1 text-xs text-gray-600 overflow-auto max-h-64 whitespace-pre-wrap">{resultStr}</pre>
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{resultStr}</pre>
           )}
         </div>
       )}
@@ -666,17 +742,17 @@ function QaConclusionStep({ step }: { step: QaStep }) {
 
   return (
     <div className="relative pl-5">
-      <div className="absolute -left-[5px] top-2 w-2 h-2 rounded-full bg-gray-400" />
-      <p className="text-[10px] uppercase text-gray-400 font-medium mb-1.5">
+      <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-foreground/40" />
+      <p className={cn(sectionLabelClasses, "mb-1.5")}>
         Step {step.step} — Conclusion
       </p>
-      <div className="bg-white/50 rounded-lg p-3">
-        <p className="text-xs text-gray-600 whitespace-pre-wrap">
+      <div className="rounded-lg bg-panel-raised p-3">
+        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
           {expanded ? text : truncated}
         </p>
         {text.length > 150 && (
           <button
-            className="text-xs text-indigo-500 hover:text-indigo-700 mt-1"
+            className="mt-1 text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
             onClick={() => setExpanded(prev => !prev)}
           >
             {expanded ? "show less" : "show full"}

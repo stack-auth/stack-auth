@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { StackProvider, StackTheme } from "@hexclave/next";
+import { HexclaveProvider, HexclaveTheme } from "@hexclave/next";
 import { getHexclaveClientApp } from "../hexclave";
 import Loading from "./loading";
 import "./globals.css";
@@ -18,21 +18,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }, []);
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <title>Hexclave — MCP Review Tool</title>
+        {/* Applies the stored theme (shared `theme` key with the dashboard) before first paint, so
+            a dark-mode user never sees a light flash. Mirrors the dashboard's inline script. */}
+        <script dangerouslySetInnerHTML={{ __html: "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()" }} />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {app == null ? (
           <Loading />
         ) : (
-          <StackProvider app={app}>
-            <StackTheme>
+          <HexclaveProvider app={app}>
+            <HexclaveTheme>
               <Suspense fallback={<Loading />}>
                 {children}
               </Suspense>
-            </StackTheme>
-          </StackProvider>
+            </HexclaveTheme>
+          </HexclaveProvider>
         )}
       </body>
     </html>

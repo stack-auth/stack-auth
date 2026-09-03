@@ -35,42 +35,88 @@ import {
 
 // Import all reducer arg schemas
 import AddManualQaReducer from "./add_manual_qa_reducer";
+import ClearMcpQaReviewReducer from "./clear_mcp_qa_review_reducer";
+import DeleteAiQueryLogReducer from "./delete_ai_query_log_reducer";
+import DeleteFeedbackReducer from "./delete_feedback_reducer";
+import DeleteMcpCallLogReducer from "./delete_mcp_call_log_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
+import LogAiQueryReducer from "./log_ai_query_reducer";
+import LogFeedbackReducer from "./log_feedback_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
-import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
-import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
+import SetHumanReviewedReducer from "./set_human_reviewed_reducer";
+import TouchSessionReducer from "./touch_session_reducer";
+import UpdateAiQueryUsageReducer from "./update_ai_query_usage_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
+import UpdateQaEntryWithPublishReducer from "./update_qa_entry_with_publish_reducer";
+import UpsertQaFromCallAndMarkReviewedReducer from "./upsert_qa_from_call_and_mark_reviewed_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import McpCallLogRow from "./mcp_call_log_table";
+import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
+import MyVisibleFeedbackLogRow from "./my_visible_feedback_log_table";
+import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
+import MyVisibleQaEntriesRow from "./my_visible_qa_entries_table";
+import PublishedQaRow from "./published_qa_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  mcpCallLog: __table({
-    name: 'mcp_call_log',
+  myVisibleAiQueryLog: __table({
+    name: 'my_visible_ai_query_log',
     indexes: [
-      { accessor: 'id', name: 'mcp_call_log_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
     ],
     constraints: [
-      { name: 'mcp_call_log_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, McpCallLogRow),
+  }, MyVisibleAiQueryLogRow),
+  myVisibleFeedbackLog: __table({
+    name: 'my_visible_feedback_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleFeedbackLogRow),
+  myVisibleMcpCallLog: __table({
+    name: 'my_visible_mcp_call_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleMcpCallLogRow),
+  myVisibleQaEntries: __table({
+    name: 'my_visible_qa_entries',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleQaEntriesRow),
+  publishedQa: __table({
+    name: 'published_qa',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, PublishedQaRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
+  __reducerSchema("clear_mcp_qa_review", ClearMcpQaReviewReducer),
+  __reducerSchema("delete_ai_query_log", DeleteAiQueryLogReducer),
+  __reducerSchema("delete_feedback", DeleteFeedbackReducer),
+  __reducerSchema("delete_mcp_call_log", DeleteMcpCallLogReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
+  __reducerSchema("log_ai_query", LogAiQueryReducer),
+  __reducerSchema("log_feedback", LogFeedbackReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
-  __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
-  __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
+  __reducerSchema("set_human_reviewed", SetHumanReviewedReducer),
+  __reducerSchema("touch_session", TouchSessionReducer),
+  __reducerSchema("update_ai_query_usage", UpdateAiQueryUsageReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
+  __reducerSchema("update_qa_entry_with_publish", UpdateQaEntryWithPublishReducer),
+  __reducerSchema("upsert_qa_from_call_and_mark_reviewed", UpsertQaFromCallAndMarkReviewedReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

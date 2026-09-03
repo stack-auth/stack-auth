@@ -2,9 +2,250 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Design tokens ported from the Hexclank observability dashboard
+   (hexclave-imessage-agent/observability/app/globals.css): a carbon mono palette with washed
+   translucent panels instead of hard borders — a darker sidebar canvas with a slightly lighter
+   main stage inset into it.
+
+   The source palette is dark-only. `.light` mirrors it by inverting the canvas relationship
+   (sidebar slightly darker than the stage, panels tinted with black instead of white) so this app
+   keeps its light/dark/system toggle.
+
+   Channel-triplet vars exist for every color that callers tint with an opacity modifier
+   (`bg-muted/70`, `bg-foreground/[0.06]`); the already-translucent panel/border tokens are plain
+   colors because tinting a tint is meaningless. */
+@layer base {
+  :root {
+    --sidebar: 16 16 16;
+    --background: 19 19 19;
+    --surface: 28 28 28;
+    --surface-raised: 38 38 38;
+    --surface-overlay: 48 48 48;
+    --panel: rgb(255 255 255 / 0.03);
+    --panel-raised: rgb(255 255 255 / 0.05);
+
+    --foreground: 250 250 250;
+    --foreground-muted: 185 185 185;
+    --foreground-faint: 143 143 143;
+
+    --border: rgb(255 255 255 / 0.06);
+    --border-strong: rgb(255 255 255 / 0.1);
+
+    --primary: 240 240 240;
+    --primary-foreground: 19 19 19;
+
+    --success: 99 201 139;
+    --danger: 239 106 106;
+    --warning: 232 195 92;
+
+    /* Categorical hues for the charts. Distinct enough to stay legible at 6px tall. */
+    --chart-1: 78 167 252;
+    --chart-2: 154 160 255;
+    --chart-3: 99 201 139;
+    --chart-4: 232 195 92;
+    --chart-5: 239 106 106;
+    --chart-6: 168 168 168;
+  }
+
+  :root.light {
+    --sidebar: 242 242 243;
+    --background: 251 251 252;
+    --surface: 244 244 245;
+    --surface-raised: 233 233 236;
+    --surface-overlay: 255 255 255;
+    --panel: rgb(0 0 0 / 0.035);
+    --panel-raised: rgb(0 0 0 / 0.06);
+
+    --foreground: 24 24 25;
+    --foreground-muted: 92 92 96;
+    --foreground-faint: 129 129 135;
+
+    --border: rgb(0 0 0 / 0.08);
+    --border-strong: rgb(0 0 0 / 0.14);
+
+    --primary: 28 28 28;
+    --primary-foreground: 250 250 250;
+
+    --success: 23 134 74;
+    --danger: 201 59 59;
+    --warning: 154 117 17;
+
+    --chart-1: 37 116 205;
+    --chart-2: 96 104 214;
+    --chart-3: 23 134 74;
+    --chart-4: 154 117 17;
+    --chart-5: 201 59 59;
+    --chart-6: 110 110 116;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+
+    min-width: 0;
+  }
+
+  html {
+    background: rgb(var(--sidebar));
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-sidebar text-foreground antialiased;
+
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    /* The reference dashboard's UI text is small and tightly tracked. */
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: -0.006em;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* Avoid iOS tap-highlight flashing on dense dashboard chrome. */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    font-weight: 590;
+    letter-spacing: -0.02em;
+  }
+
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--primary));
+    outline-offset: 1px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: rgb(var(--primary) / 0.35);
+    color: rgb(var(--foreground));
+  }
+}
+
+@layer utilities {
+  /* Numeric columns only line up if the digits share a width. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--foreground-faint) / 0.7);
+    background-clip: content-box;
+  }
+}
+
+/* The drag handle is a wide invisible strip inside the sidebar panel; its 1px visual line is drawn
+   by the pseudo-element on the trailing edge. The strip must not grow past the panel, which clips
+   overflow, and it must not set `position` itself — placement comes from the element's utilities. */
+.resizer-grip {
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer-grip::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 1px;
+  background: var(--border);
+  transition: background 120ms ease;
+}
+
+.resizer-grip:hover::after,
+.resizer-grip:focus-visible::after {
+  width: 2px;
+  background: rgb(var(--primary) / 0.55);
+}
+
+body.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing-sidebar .resizer-grip::after {
+  width: 2px;
+  background: rgb(var(--primary) / 0.55);
+}
+
+/* Collapsed navigation is a compact control rail, not a squeezed version of the expanded sidebar.
+   Keep one centerline for every hit target, and remove the invisible group label's reserved
+   height. */
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-panel {
+  border-right: 1px solid var(--border);
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-content {
+  gap: 4px;
+  padding: 12px 10px 8px;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-group {
+  padding: 4px 0;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-nav-button {
+  width: 40px;
+  min-height: 40px;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+  border-radius: 10px;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-nav-button[aria-current="page"] {
+  color: rgb(var(--foreground));
+}
+
+[data-slot="sidebar"][data-state="collapsed"] .sidebar-footer {
+  align-items: center;
+  padding: 8px 10px max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
