@@ -1,8 +1,8 @@
-import { deindent } from "./strings";
 import {
   CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
 } from "./analytics-clickmap-overlay";
+import { deindent } from "./strings";
 
 export const BROWSER_ACTION_QUERY_PARAM = "hexclave_action_id";
 
@@ -19,8 +19,6 @@ export function generateImpersonateSnippet(
   expiresAtDate: Date,
 ): string {
   const pid = encodeURIComponent(projectId);
-  // The target app's home URL is only known to that app. Preserve its current
-  // route, including any deployment base path, rather than guessing a destination.
   return deindent`
     var impersonationValue = encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() }));
     var impersonationAttributes = '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');

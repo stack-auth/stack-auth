@@ -18,5 +18,9 @@ export default function Page() {
     router.replace(destination.toString());
   }, [router]);
 
-  return <Spinner />;
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner />
+    </div>
+  );
 }
