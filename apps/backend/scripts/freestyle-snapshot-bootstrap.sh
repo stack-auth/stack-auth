@@ -44,9 +44,13 @@ case "$job_directory" in
   * ) echo "Invalid job directory" >&2; exit 2 ;;
 esac
 
+# Snapshots capture the disk, not the kernel's swap state, so swap must be re-enabled on every boot.
+if ! grep -q '^/swapfile ' /proc/swaps; then swapon /swapfile; fi
 cd "$job_directory"
-export HOME=/tmp/hexclave-home
-mkdir -p "$HOME"
+# /tmp is a tmpfs on BusyBox, so keep npm's cache and HOME on disk for larger installs.
+export HOME=/opt/hexclave-home
+export npm_config_cache=/opt/hexclave-npm-cache
+mkdir -p "$HOME" "$npm_config_cache"
 /usr/bin/npm install --ignore-scripts --no-audit --no-fund --package-lock=false
 exec /usr/bin/node ./runner.mjs
 JOB_RUNNER
@@ -56,9 +60,3 @@ rm -f "$archive" "$archive_checksum" /tmp/freestyle-snapshot-bootstrap.sh
 
 /usr/bin/node --version
 /usr/bin/npm --version
-
-# /tmp is a tmpfs on BusyBox, so npm's cache must live on disk or larger installs
-# (e.g. @react-email/components) exhaust memory mid-install.
-rm -rf /tmp/hexclave-home
-mkdir -p /tmp/hexclave-home /opt/hexclave-npm-cache
-ln -s /opt/hexclave-npm-cache /tmp/hexclave-home/.npm
