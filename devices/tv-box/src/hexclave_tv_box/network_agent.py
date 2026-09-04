@@ -7,6 +7,7 @@ import grp
 import json
 import logging
 import os
+import re
 import secrets
 import socketserver
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit
 
 from .policy import FRONTEND_RECOVERY_PROBE_SECONDS, NETWORK_POLL_SECONDS, SETUP_PORTAL_READY_TIMEOUT_SECONDS, NetworkMode, NetworkPolicy, NetworkState, advance_network_state, initial_network_state
 from .state import RUNTIME_ROOT, STATE_ROOT, atomic_write
@@ -29,7 +31,56 @@ WIFI_INTERFACE = "wlan0"
 PRODUCTION_URL = "https://app.hexclave.com/tv-box"
 OFFLINE_URL = "file:///usr/share/hexclave-tv-box/setup-ui/offline.html"
 SETUP_URL = "http://127.0.0.1/display"
+TEST_IMAGE_MARKER = Path("/etc/hexclave-tv-box-test-image")
+TEST_ORIGIN_FILE = Path("/boot/firmware/hexclave-tv-box-test-origin.txt")
+QUICK_TUNNEL_HOSTNAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$")
 MAX_AGENT_REQUEST_BYTES = 16_384
+
+
+def parse_test_renderer_origin(raw_value: str) -> str:
+    lines = raw_value.splitlines()
+    if len(lines) != 1 or raw_value not in {lines[0], f"{lines[0]}\n", f"{lines[0]}\r\n"}:
+        raise ValueError("TV Box test origin must be exactly one line without surrounding whitespace.")
+    origin = lines[0]
+    try:
+        parsed = urlsplit(origin)
+        port = parsed.port
+    except (UnicodeError, ValueError) as error:
+        raise ValueError("TV Box test origin is not a valid URL origin.") from error
+    hostname = parsed.hostname
+    if (
+        hostname is None
+        or parsed.scheme != "https"
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != ""
+        or parsed.query != ""
+        or parsed.fragment != ""
+        or not QUICK_TUNNEL_HOSTNAME_PATTERN.fullmatch(hostname)
+        or origin != f"https://{hostname}"
+    ):
+        raise ValueError("TV Box test origin must be one exact HTTPS *.trycloudflare.com origin.")
+    return origin
+
+
+def resolve_renderer_url(
+    *,
+    test_image_marker: Path = TEST_IMAGE_MARKER,
+    test_origin_file: Path = TEST_ORIGIN_FILE,
+) -> str:
+    # The build-time rootfs marker is the security boundary: the writable boot
+    # partition can select a tunnel only in an image deliberately built for testing.
+    if not test_image_marker.is_file() or not test_origin_file.is_file():
+        return PRODUCTION_URL
+    try:
+        origin = parse_test_renderer_origin(test_origin_file.read_text(encoding="utf-8"))
+    except ValueError as error:
+        # A typo on removable media must never broaden trust or put an appliance
+        # into a reboot loop. Reject the override and retain the production URL.
+        LOGGER.error("test-renderer-origin-rejected=%s", error)
+        return PRODUCTION_URL
+    return f"{origin}/tv-box"
 
 
 def _run(command: Sequence[str], timeout: int = 45) -> str:
@@ -48,7 +99,9 @@ def _run(command: Sequence[str], timeout: int = 45) -> str:
 def _frontend_reachable(url: str, timeout: int = 10) -> bool:
     request = urllib_request.Request(url, method="GET", headers={"User-Agent": "Hexclave-TV-Box-Recovery/1"})
     try:
-        with urllib_request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed production URL
+        # The caller supplies either the fixed production URL or the strictly
+        # validated test-image URL resolved above.
+        with urllib_request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             response.read(1)
             return 200 <= response.status < 400
     except (TimeoutError, OSError, urllib_error.URLError):
@@ -329,6 +382,7 @@ class TvBoxNetworkAgent:
         frontend_probe: Callable[[str, int], bool] = _frontend_reachable,
         setup_portal_waiter: Callable[[str, int], bool] = _wait_until_reachable,
         monotonic: Callable[[], float] = time.monotonic,
+        renderer_url: str = PRODUCTION_URL,
     ) -> None:
         self.controller = controller
         self.runtime_root = runtime_root
@@ -337,6 +391,7 @@ class TvBoxNetworkAgent:
         self.frontend_probe = frontend_probe
         self.setup_portal_waiter = setup_portal_waiter
         self.monotonic = monotonic
+        self.renderer_url = renderer_url
         self.lock = threading.RLock()
         self.portal_submission_active = False
         self.has_saved_network = bool(controller.saved_connections())
@@ -373,7 +428,7 @@ class TvBoxNetworkAgent:
                 self._service("stop", "hexclave-tv-box-setup-display.service")
                 self.controller.stop_setup()
                 self._service("stop", "hexclave-tv-box-setup.service")
-                self._set_kiosk_url(PRODUCTION_URL)
+                self._set_kiosk_url(self.renderer_url)
                 self._service("restart", "hexclave-tv-box-kiosk.service")
             else:
                 self._service("stop", "hexclave-tv-box-setup-display.service")
@@ -407,7 +462,7 @@ class TvBoxNetworkAgent:
         now = self.monotonic()
         if now < self.next_frontend_probe_at:
             return
-        reachable = self.frontend_probe(PRODUCTION_URL, 10)
+        reachable = self.frontend_probe(self.renderer_url, 10)
         recovered = self.frontend_reachable is False and reachable
         self.frontend_reachable = reachable
         self.next_frontend_probe_at = now + FRONTEND_RECOVERY_PROBE_SECONDS
@@ -528,7 +583,11 @@ def main() -> None:
         raise RuntimeError("TV Box Wi-Fi regulatory country is invalid.")
     _run(["iw", "reg", "set", country], 15)
     controller = NetworkManagerController(state_root=arguments.state_root, runtime_root=arguments.runtime_root)
-    agent = TvBoxNetworkAgent(controller, runtime_root=arguments.runtime_root)
+    agent = TvBoxNetworkAgent(
+        controller,
+        runtime_root=arguments.runtime_root,
+        renderer_url=resolve_renderer_url(),
+    )
     serve(agent, arguments.runtime_root / "control.sock", arguments.socket_group)
 
 

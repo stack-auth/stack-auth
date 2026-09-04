@@ -1,6 +1,8 @@
 import type { TvSnapshot } from "@/lib/tv-mode/types";
 
-type TvBoxApiConfiguration = { mode: "configured", apiBaseUrl: string };
+type TvBoxApiConfiguration =
+  | { mode: "browser-origin" }
+  | { mode: "configured", apiBaseUrl: string };
 
 type TvBoxDocumentOptions =
   | { mode: "live", api: TvBoxApiConfiguration }
@@ -13,7 +15,19 @@ function serializeJsonForHtml(value: unknown): string {
 export function resolveTvBoxApiConfiguration(options: {
   configuredApiUrl: string | undefined,
   configuredBrowserApiUrl: string | undefined,
+  nodeEnvironment: string | undefined,
+  quickTunnelEnabled: boolean,
 }): TvBoxApiConfiguration {
+  if (options.quickTunnelEnabled) {
+    if (options.nodeEnvironment !== "development") {
+      throw new Error("The TV Box Quick Tunnel transport cannot be used outside development.");
+    }
+    // Cloudflare may replace the Host header before this route renders. Let the
+    // browser supply the already-validated public origin instead of reconstructing
+    // it server-side or embedding a localhost API URL that points back to the box.
+    return { mode: "browser-origin" };
+  }
+
   const configuredBase = options.configuredBrowserApiUrl ?? options.configuredApiUrl;
   if (configuredBase == null) throw new Error("TV Box display API URL is not configured.");
   return { mode: "configured", apiBaseUrl: configuredBase };

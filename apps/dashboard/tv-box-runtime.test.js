@@ -280,6 +280,14 @@ describe("TV Box transport and playback helpers", () => {
       apiBaseUrl: "https://api.example.com",
     });
 
+    expect(resolveTvBoxRuntimeConfiguration({
+      mode: "live",
+      api: { mode: "browser-origin" },
+    }, "https://test-box.trycloudflare.com")).toEqual({
+      mode: "live",
+      apiBaseUrl: "https://test-box.trycloudflare.com",
+    });
+
     const snapshot = createSnapshot();
     const fixture = resolveTvBoxRuntimeConfiguration({
       mode: "fixture-preview",

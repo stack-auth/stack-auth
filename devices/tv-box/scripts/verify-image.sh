@@ -23,6 +23,26 @@ grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/]+={0,3}( |$)' "$rootfs/etc/ssh/hexclav
   exit 1
 }
 
+image_channel=$(sed -n 's/^image-channel=//p' "$rootfs/etc/hexclave-tv-box-release")
+case "$image_channel" in
+  production)
+    if [ -e "$rootfs/etc/hexclave-tv-box-test-image" ]; then
+      printf '%s\n' 'Production image contains the TV Box test-image marker.' >&2
+      exit 1
+    fi
+    ;;
+  test)
+    if [ "$(cat "$rootfs/etc/hexclave-tv-box-test-image" 2>/dev/null || true)" != test ]; then
+      printf '%s\n' 'Test image is missing its build-time TV Box test-image marker.' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf '%s\n' 'Image manifest contains an invalid or duplicate image channel.' >&2
+    exit 1
+    ;;
+esac
+
 if find "$rootfs/var/lib/hexclave-tv-box" -mindepth 1 -type f -print -quit | grep -q .; then
   printf '%s\n' 'Image contains initialized TV Box state.' >&2
   exit 1

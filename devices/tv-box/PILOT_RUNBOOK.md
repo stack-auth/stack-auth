@@ -7,10 +7,11 @@ This runbook is the acceptance boundary for the first small TV Box pilot. It doe
 1. Use a dedicated image-build host and the pinned `rpi-image-gen` revision recorded in `README.md`.
 2. Keep the support CA private key offline. Supply only its OpenSSH public key through `HEXCLAVE_TV_BOX_SUPPORT_CA_PUBLIC_KEY_FILE`.
 3. Set `HEXCLAVE_TV_BOX_WIFI_COUNTRY` for the destination region and run `scripts/build-image.sh` from a clean committed TV Box source tree.
-4. Mount the generated root and `TVBOX_STATE` filesystems read-only, then run `scripts/verify-image.sh DISK_IMAGE ROOTFS_MOUNT STATE_MOUNT OUTPUT_DIRECTORY`. Archive the disk-image hash, manifest, and filesystem hashes with the pilot build record. Verification must fail if the state partition contains any generated device identity, browser state, SSH key, or saved network.
-5. Flash only an explicitly selected, unmounted SD-card device with `scripts/manufacture.sh`.
-6. Boot every card once. Record the image version and public device ID, and verify that host keys and device IDs differ between two independently flashed cards. Never copy first-boot state into the base image.
-7. Shut the box down cleanly before packaging it.
+4. Ensure `HEXCLAVE_TV_BOX_TEST_IMAGE` is unset or exactly `false`. Test-channel images and the boot-partition `hexclave-tv-box-test-origin.txt` override are development artifacts and must never be shipped.
+5. Mount the generated root and `TVBOX_STATE` filesystems read-only, then run `scripts/verify-image.sh DISK_IMAGE ROOTFS_MOUNT STATE_MOUNT OUTPUT_DIRECTORY`. Confirm the archived manifest says `image-channel=production`; the verifier rejects an inconsistent channel/marker pair and initialized state, while still supporting separately identified test images. Archive the disk-image hash, manifest, and filesystem hashes with the pilot build record.
+6. Flash only an explicitly selected, unmounted SD-card device with `scripts/manufacture.sh`.
+7. Boot every card once. Record the image version and public device ID, and verify that host keys and device IDs differ between two independently flashed cards. Never copy first-boot state into the base image.
+8. Shut the box down cleanly before packaging it.
 
 Generated images, manifests, keys, certificates, customer network profiles, and device state are manufacturing artifacts. They do not belong in Git.
 

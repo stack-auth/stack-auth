@@ -7,12 +7,25 @@ This directory contains the device-only layer for the Raspberry Pi Zero 2 W pilo
 - Raspberry Pi `rpi-image-gen` pinned to commit `3f2c916086ad70197945bfc50ef953c1f6035f10` (v2.6.0).
 - `HEXCLAVE_TV_BOX_WIFI_COUNTRY`: region-specific two-letter regulatory country.
 - `HEXCLAVE_TV_BOX_SUPPORT_CA_PUBLIC_KEY_FILE`: OpenSSH CA **public** key. Never place the private key in this repository or image.
+- `HEXCLAVE_TV_BOX_TEST_IMAGE`: optional, defaults to `false`. Set it to exactly `true` only for a non-shippable hardware-test image.
 
 Run `scripts/build-image.sh` on a supported Raspberry Pi image-build host. Generated images, checksums and per-device state are release/manufacturing artifacts and must not be committed.
 
 Before building, run `scripts/validate-source.sh`. Supplying `RPI_IMAGE_GEN_DIR` additionally validates all custom metadata and dependency resolution against the exact pinned builder. From the repository root, run `pnpm test run apps/dashboard/tv-box-runtime.test.js apps/dashboard/src/app/tv-box/document.test.ts apps/dashboard/src/app/tv-box/qa/route.test.ts` for the framework-free renderer and route contracts.
 
 Pilot media must be at least 16 GB; the qualified hardware uses 32 GB high-endurance microSD cards. The MBR image contains a fixed boot partition, a 6 GB writable pilot root, a bounded 1 GB persistent-state partition, and a dedicated 2 GB swap partition. Creating these filesystems in the image avoids unsafe first-boot repartitioning and remains compatible with the Pi Zero 2 W boot layout.
+
+## Quick Tunnel test images
+
+A test image may open an ephemeral Cloudflare Quick Tunnel before `/tv-box` is deployed. Build it with `HEXCLAVE_TV_BOX_TEST_IMAGE=true`; this names the artifact `hexclave-tv-box-test` and writes a test-channel marker into the root filesystem. After flashing, place a file named `hexclave-tv-box-test-origin.txt` in the Mac-editable boot volume containing exactly one origin such as:
+
+```text
+https://example-random-name.trycloudflare.com
+```
+
+The appliance validates one lowercase, single-label, HTTPS `*.trycloudflare.com` origin and appends `/tv-box` itself. Ports, paths, queries, fragments, credentials, wildcards, nested subdomains, additional lines, and other domains are rejected. A missing or rejected override retains the production URL and records a bounded configuration error in the local journal. Add or replace the file while the card is powered off, then boot or reboot the box; the network agent resolves the URL once when it starts.
+
+Production images do not contain the build-time test marker and therefore ignore this boot file completely, even if it is later added. Never ship an image whose manifest says `image-channel=test`; rebuild a production image instead of trying to convert a flashed test image.
 
 ## Runtime ownership
 

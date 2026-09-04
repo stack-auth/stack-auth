@@ -28,6 +28,16 @@ describe("TV Box HTML document", () => {
     expect(document).not.toContain("react");
   });
 
+  it("embeds browser-origin transport without a configured API URL", () => {
+    const document = createTvBoxDocument({
+      mode: "live",
+      api: { mode: "browser-origin" },
+    });
+
+    expect(document).toContain('"mode":"live","api":{"mode":"browser-origin"}');
+    expect(document).not.toContain('"apiBaseUrl"');
+  });
+
   it("escapes configuration values before embedding them in HTML", () => {
     const document = createTvBoxDocument({
       mode: "live",
@@ -54,6 +64,8 @@ describe("TV Box API origin selection", () => {
     expect(resolveTvBoxApiConfiguration({
       configuredApiUrl: "https://api.hexclave.com",
       configuredBrowserApiUrl: "https://browser-api.hexclave.com",
+      nodeEnvironment: "production",
+      quickTunnelEnabled: false,
     })).toEqual({ mode: "configured", apiBaseUrl: "https://browser-api.hexclave.com" });
   });
 
@@ -61,13 +73,38 @@ describe("TV Box API origin selection", () => {
     expect(resolveTvBoxApiConfiguration({
       configuredApiUrl: "http://localhost:8102",
       configuredBrowserApiUrl: undefined,
+      nodeEnvironment: "development",
+      quickTunnelEnabled: false,
     })).toEqual({ mode: "configured", apiBaseUrl: "http://localhost:8102" });
   });
+
+  it("uses the browser origin only for an explicitly enabled development tunnel", () => {
+    expect(resolveTvBoxApiConfiguration({
+      configuredApiUrl: "http://localhost:8102",
+      configuredBrowserApiUrl: undefined,
+      nodeEnvironment: "development",
+      quickTunnelEnabled: true,
+    })).toEqual({ mode: "browser-origin" });
+  });
+
+  it.each(["production", "test", undefined])(
+    "rejects an enabled Quick Tunnel transport under NODE_ENV=%s",
+    (nodeEnvironment) => {
+      expect(() => resolveTvBoxApiConfiguration({
+        configuredApiUrl: "https://api.hexclave.com",
+        configuredBrowserApiUrl: undefined,
+        nodeEnvironment,
+        quickTunnelEnabled: true,
+      })).toThrowError(/cannot be used outside development/);
+    },
+  );
 
   it("rejects a missing API configuration", () => {
     expect(() => resolveTvBoxApiConfiguration({
       configuredApiUrl: undefined,
       configuredBrowserApiUrl: undefined,
+      nodeEnvironment: "development",
+      quickTunnelEnabled: false,
     })).toThrowError(/not configured/);
   });
 });

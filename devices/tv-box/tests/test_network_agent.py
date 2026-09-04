@@ -8,7 +8,10 @@ from pathlib import Path
 from hexclave_tv_box.network_agent import (
     NetworkManagerController,
     NetworkMode,
+    PRODUCTION_URL,
     TvBoxNetworkAgent,
+    parse_test_renderer_origin,
+    resolve_renderer_url,
     split_nmcli_line,
     validate_wifi_request,
 )
@@ -58,6 +61,69 @@ class FakeController:
 
 
 class NetworkAgentTests(unittest.TestCase):
+    def test_test_renderer_origin_accepts_only_one_exact_quick_tunnel_origin(self) -> None:
+        origin = "https://pilot-box.trycloudflare.com"
+        self.assertEqual(parse_test_renderer_origin(origin), origin)
+        self.assertEqual(parse_test_renderer_origin(f"{origin}\n"), origin)
+        self.assertEqual(parse_test_renderer_origin(f"{origin}\r\n"), origin)
+        for rejected in (
+            "",
+            "http://pilot-box.trycloudflare.com",
+            "https://*.trycloudflare.com",
+            "https://trycloudflare.com",
+            "https://nested.pilot-box.trycloudflare.com",
+            "https://pilot-box.trycloudflare.com/",
+            "https://pilot-box.trycloudflare.com/tv-box",
+            "https://pilot-box.trycloudflare.com?preview=true",
+            "https://pilot-box.trycloudflare.com:443",
+            "https://user@pilot-box.trycloudflare.com",
+            "https://PILOT-box.trycloudflare.com",
+            f" {origin}",
+            f"{origin}\nhttps://other-box.trycloudflare.com\n",
+            "https://pilot-box.example.com",
+        ):
+            with self.subTest(origin=rejected):
+                with self.assertRaisesRegex(ValueError, "TV Box test origin"):
+                    parse_test_renderer_origin(rejected)
+
+    def test_production_image_ignores_boot_origin_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            origin_file = root / "hexclave-tv-box-test-origin.txt"
+            origin_file.write_text("https://pilot-box.trycloudflare.com\n", encoding="utf-8")
+            self.assertEqual(
+                resolve_renderer_url(
+                    test_image_marker=root / "missing-marker",
+                    test_origin_file=origin_file,
+                ),
+                PRODUCTION_URL,
+            )
+
+    def test_test_image_uses_valid_boot_origin_and_rejects_invalid_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "test-image"
+            origin_file = root / "hexclave-tv-box-test-origin.txt"
+            marker.write_text("test\n", encoding="utf-8")
+            origin_file.write_text("https://pilot-box.trycloudflare.com\n", encoding="utf-8")
+            self.assertEqual(
+                resolve_renderer_url(test_image_marker=marker, test_origin_file=origin_file),
+                "https://pilot-box.trycloudflare.com/tv-box",
+            )
+
+            origin_file.write_text("https://*.trycloudflare.com\n", encoding="utf-8")
+            with self.assertLogs("hexclave-tv-box-network", level="ERROR") as logs:
+                result = resolve_renderer_url(test_image_marker=marker, test_origin_file=origin_file)
+            self.assertEqual(result, PRODUCTION_URL)
+            self.assertIn("test-renderer-origin-rejected", "\n".join(logs.output))
+
+            origin_file.write_bytes(b"\xff\xfe")
+            with self.assertLogs("hexclave-tv-box-network", level="ERROR"):
+                self.assertEqual(
+                    resolve_renderer_url(test_image_marker=marker, test_origin_file=origin_file),
+                    PRODUCTION_URL,
+                )
+
     def test_nmcli_escape_parser_preserves_colons_and_backslashes(self) -> None:
         self.assertEqual(split_nmcli_line(r"Office\:West:WPA2:72"), ["Office:West", "WPA2", "72"])
         self.assertEqual(split_nmcli_line(r"Back\\Slash:--:40"), [r"Back\Slash", "--", "40"])
@@ -239,21 +305,36 @@ class NetworkAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             now = [0.0]
             probe_results = iter((False, True))
+            probed_urls: list[str] = []
             services: list[tuple[str, ...]] = []
             controller = FakeController(saved=True, connected=True)
+
+            def probe(url: str, _timeout: int) -> bool:
+                probed_urls.append(url)
+                return next(probe_results)
+
             agent = TvBoxNetworkAgent(
                 controller,
                 runtime_root=Path(directory),
                 service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
-                frontend_probe=lambda _url, _timeout: next(probe_results),
+                frontend_probe=probe,
                 setup_portal_waiter=lambda _url, _timeout: True,
                 monotonic=lambda: now[0],
+                renderer_url="https://pilot-box.trycloudflare.com/tv-box",
             )
             agent.tick()
+            self.assertEqual(
+                (Path(directory) / "kiosk-url").read_text(encoding="utf-8"),
+                "https://pilot-box.trycloudflare.com/tv-box\n",
+            )
             services.clear()
             now[0] = 60
             agent.tick()
             self.assertEqual(services, [("systemctl", "try-restart", "hexclave-tv-box-kiosk.service")])
+            self.assertEqual(probed_urls, [
+                "https://pilot-box.trycloudflare.com/tv-box",
+                "https://pilot-box.trycloudflare.com/tv-box",
+            ])
             self.assertEqual(controller.calls, ["stop-setup"])
 
     def test_setup_credentials_remain_on_console_when_the_portal_is_slow(self) -> None:

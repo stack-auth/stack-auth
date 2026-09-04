@@ -27,6 +27,12 @@
 # X-Env-Var-source_commit-Required: y
 # X-Env-Var-source_commit-Valid: regex:^[0-9a-f]{40}$
 # X-Env-Var-source_commit-Set: y
+#
+# X-Env-Var-test_image:
+# X-Env-Var-test_image-Desc: Mark this as a non-shippable test image that may read a Quick Tunnel origin from the boot partition
+# X-Env-Var-test_image-Required: y
+# X-Env-Var-test_image-Valid: keywords:true,false
+# X-Env-Var-test_image-Set: y
 # METAEND
 ---
 mmdebstrap:
@@ -64,7 +70,21 @@ mmdebstrap:
       cp -a "${SRCROOT}/../setup-ui/." "$1/usr/share/hexclave-tv-box/setup-ui/"
       install -m 0644 "${IGconf_tvbox_support_ca_key}" "$1/etc/ssh/hexclave-support-ca.pub"
       printf '%s\n' "${IGconf_tvbox_wifi_country}" > "$1/etc/hexclave-tv-box-country"
-      sed -i "s/BUILD_SOURCE_COMMIT/${IGconf_tvbox_source_commit}/; s/BUILD_WIFI_REGION/${IGconf_tvbox_wifi_country}/" "$1/etc/hexclave-tv-box-release"
+      case "${IGconf_tvbox_test_image}" in
+        true)
+          image_channel=test
+          printf '%s\n' 'test' > "$1/etc/hexclave-tv-box-test-image"
+          ;;
+        false)
+          image_channel=production
+          rm -f "$1/etc/hexclave-tv-box-test-image"
+          ;;
+        *)
+          printf '%s\n' 'IGconf_tvbox_test_image must be true or false.' >&2
+          exit 1
+          ;;
+      esac
+      sed -i "s/BUILD_SOURCE_COMMIT/${IGconf_tvbox_source_commit}/; s/BUILD_WIFI_REGION/${IGconf_tvbox_wifi_country}/; s/BUILD_IMAGE_CHANNEL/${image_channel}/" "$1/etc/hexclave-tv-box-release"
     - |-
       set -eu
       chroot "$1" groupadd --system hexclave-tv-runtime

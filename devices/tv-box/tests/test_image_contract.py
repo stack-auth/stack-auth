@@ -22,6 +22,8 @@ class ImageContractTests(unittest.TestCase):
         self.assertNotIn("--remote-debugging", launcher)
         network_agent = (ROOT / "src/hexclave_tv_box/network_agent.py").read_text(encoding="utf-8")
         self.assertIn('PRODUCTION_URL = "https://app.hexclave.com/tv-box"', network_agent)
+        self.assertIn('TEST_IMAGE_MARKER = Path("/etc/hexclave-tv-box-test-image")', network_agent)
+        self.assertIn('TEST_ORIGIN_FILE = Path("/boot/firmware/hexclave-tv-box-test-origin.txt")', network_agent)
         kiosk = (ROOTFS / "etc/systemd/system/hexclave-tv-box-kiosk.service").read_text(encoding="utf-8")
         self.assertIn("Restart=always", kiosk)
         self.assertIn("StartLimitAction=reboot", kiosk)
@@ -66,6 +68,13 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("hexclave-tv-box-network.service", enable_line)
         build = (ROOT / "scripts/build-image.sh").read_text(encoding="utf-8")
         self.assertIn("status --porcelain --untracked-files=all", build)
+        self.assertIn("HEXCLAVE_TV_BOX_TEST_IMAGE=${HEXCLAVE_TV_BOX_TEST_IMAGE:-false}", build)
+        self.assertIn("true) tv_box_image_name=hexclave-tv-box-test", build)
+        self.assertIn("false) tv_box_image_name=hexclave-tv-box-pilot", build)
+        self.assertIn('"IGconf_image_name=$tv_box_image_name"', build)
+        self.assertIn('"IGconf_tvbox_test_image=$HEXCLAVE_TV_BOX_TEST_IMAGE"', build)
+        self.assertIn("# X-Env-Var-test_image-Valid: keywords:true,false", layer)
+        self.assertIn('printf \'%s\\n\' \'test\' > "$1/etc/hexclave-tv-box-test-image"', layer)
 
     def test_pi_zero_image_prebuilds_bounded_state_and_swap_without_runtime_repartitioning(self) -> None:
         device = (ROOT / "image/layer/hexclave-rpizero2w-armhf.yaml").read_text(encoding="utf-8")
@@ -191,7 +200,10 @@ class ImageContractTests(unittest.TestCase):
             ):
                 target = rootfs / path
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("fixture\n", encoding="utf-8")
+                target.write_text(
+                    "image-channel=production\n" if path == "etc/hexclave-tv-box-release" else "fixture\n",
+                    encoding="utf-8",
+                )
             support_ca = rootfs / "etc/ssh/hexclave-support-ca.pub"
             support_ca.parent.mkdir(parents=True, exist_ok=True)
             support_ca.write_text(
@@ -213,6 +225,32 @@ class ImageContractTests(unittest.TestCase):
             subprocess.run(command, check=True)
             self.assertIn("tv-box.img", (output / "disk-image-sha256.txt").read_text(encoding="utf-8"))
             self.assertTrue((output / "state-sha256.txt").exists())
+
+            marker = rootfs / "etc/hexclave-tv-box-test-image"
+            marker.write_text("test\n", encoding="utf-8")
+            rejected_production_marker = subprocess.run(
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            self.assertNotEqual(rejected_production_marker.returncode, 0)
+            self.assertIn("Production image contains", rejected_production_marker.stdout)
+            marker.unlink()
+
+            (rootfs / "etc/hexclave-tv-box-release").write_text("image-channel=test\n", encoding="utf-8")
+            rejected_missing_test_marker = subprocess.run(
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            self.assertNotEqual(rejected_missing_test_marker.returncode, 0)
+            self.assertIn("missing its build-time", rejected_missing_test_marker.stdout)
+            marker.write_text("test\n", encoding="utf-8")
+            subprocess.run(command, check=True)
+            marker.unlink()
+            (rootfs / "etc/hexclave-tv-box-release").write_text("image-channel=production\n", encoding="utf-8")
 
             saved_network = state / "network-connections/customer.nmconnection"
             saved_network.write_text("[connection]\n", encoding="utf-8")
