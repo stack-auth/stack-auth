@@ -18,6 +18,7 @@ import {
   type FlagValueType,
 } from "@/lib/feature-flags/config";
 import { getLastExposures } from "@/lib/feature-flags/admin-adapter";
+import { getAppStageLabel } from "@/lib/apps-utils";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { ArchiveIcon, ArrowCounterClockwiseIcon, FlagIcon, FlaskIcon, PencilSimpleIcon, PlusIcon, ProhibitIcon } from "@phosphor-icons/react";
 import {
@@ -52,6 +53,8 @@ type FlagRow = {
 };
 
 type StatusCategory = "all" | FlagStatus;
+
+const stageLabel = getAppStageLabel("feature-flags");
 
 export default function PageClient() {
   const adminApp = useAdminApp();
@@ -225,7 +228,12 @@ export default function PageClient() {
   return (
     <PageLayout
       title="Feature Flags"
-      description="Ship features safely with typed flags, targeting rules, and gradual rollouts"
+      description={
+        <span className="flex items-center gap-2">
+          Ship features safely with typed flags, targeting rules, and gradual rollouts
+          {stageLabel != null && <DesignBadge label={stageLabel} color="purple" size="sm" />}
+        </span>
+      }
       actions={
         <DesignButton size="sm" onClick={() => router.push(urlString`/projects/${project.id}/feature-flags/flags/new`)}>
           <PlusIcon className="h-4 w-4 mr-1" />

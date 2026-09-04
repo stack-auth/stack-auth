@@ -197,7 +197,7 @@ export const ALL_APPS = {
     displayName: "Feature Flags",
     subtitle: "Release features safely and run experiments",
     tags: ["developers", "operations"],
-    stage: "beta",
+    stage: "alpha",
     // Exposures and experiment results land in the Analytics pipeline; flags
     // themselves still evaluate without it.
     softRequirements: ["analytics"],
