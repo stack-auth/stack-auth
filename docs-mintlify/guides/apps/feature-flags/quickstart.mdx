@@ -8,10 +8,24 @@ This guide takes you from zero to a working flag: enable the app, create a flag,
 
 <Steps>
   <Step title="Enable the Feature Flags app">
-    In your Hexclave dashboard, open **Explore Apps**, select **Feature Flags**, and click **Enable**.
+    Feature Flags is currently in alpha, so it is not listed in **Explore Apps** yet. Enable it in your [Hexclave config](/guides/going-further/hexclave-config) instead:
+
+    ```ts title="hexclave.config.ts"
+    export const config: HexclaveConfig = {
+      apps: {
+        installed: {
+          "feature-flags": { enabled: true },
+          // Experiment results are computed from analytics events.
+          analytics: { enabled: true },
+        },
+      },
+    };
+    ```
+
+    Once enabled, the app appears in the dashboard sidebar and in Explore Apps like any other app.
 
     <Note>
-      Feature Flags is currently in alpha. It stays hidden in Explore Apps until you enable it.
+      Alpha apps may change without notice. Expect rough edges and keep an eye on the changelog.
     </Note>
   </Step>
 
