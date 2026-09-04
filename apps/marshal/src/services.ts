@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
-import { BASE_IMAGE, BUILDER_MACHINE_BY_MEMORY_MB, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SERVERLESS_CPU_BY_MEMORY_MB, SERVER_MACHINE_TYPE_BY_MEMORY_MB, UNREDACTED_ENV_KEY_REGEX, VOLUME_ID_REGEX, getConfig } from "./config.js";
+import { BASE_IMAGE, BUILDER_MACHINE_BY_MEMORY_MB, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, DEFAULT_SERVERLESS_MEMORY_MB, DEFAULT_SERVER_MEMORY_MB, MIN_VOLUME_SIZE_GB, SERVERLESS_CPU_BY_MEMORY_MB, SERVER_MACHINE_TYPE_BY_MEMORY_MB, UNREDACTED_ENV_KEY_REGEX, VOLUME_ID_REGEX, getConfig } from "./config.js";
 import { applyErrorMessage } from "./apply-error.js";
 import { domainVerificationRecord } from "./domain-verification.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
@@ -154,7 +154,19 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
       const sizes = Object.keys(allowed).map(Number).sort((a, b) => a - b).join(", ");
       throw badRequest(`config.memory_mb must be one of ${sizes} for a ${JSON.stringify(serviceKind)} service`);
     }
-    memoryMb = memoryMbRaw;
+    // NORMALIZED: the type's own default is dropped rather than carried, so a
+    // spec that spells out the size a service already runs on is byte-identical
+    // to one that says nothing. computeRevision hashes this field, and for a
+    // "server" a changed revision means the VM is deleted and recreated — so
+    // without this, restating the default would take a database down for no
+    // change at all.
+    //
+    // The backend normalizes too, but this is the boundary that turns a request
+    // into provider config and it does not trust the one above it (see the
+    // ports note): a replayed older spec, or any other caller, must get the
+    // same guarantee.
+    const defaultMemoryMb = serviceKind === "server" ? DEFAULT_SERVER_MEMORY_MB : DEFAULT_SERVERLESS_MEMORY_MB;
+    memoryMb = memoryMbRaw === defaultMemoryMb ? undefined : memoryMbRaw;
   }
 
   // Visibility belongs to the CONTAINER, not to a port — see PortConfig in

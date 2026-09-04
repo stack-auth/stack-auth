@@ -24,11 +24,19 @@ function spec(config: Record<string, unknown>) {
 
 describe("service memory validation", () => {
   it("accepts every size its own type has a machine for", () => {
+    // The type's own default normalizes back OUT (see below), so it round-trips
+    // as absent rather than as itself — which resolves to the same machine.
     for (const memoryMb of Object.keys(SERVERLESS_CPU_BY_MEMORY_MB).map(Number)) {
-      expect(validateServiceSpec(spec({ memory_mb: memoryMb })).config.memory_mb).toBe(memoryMb);
+      const applied = validateServiceSpec(spec({ memory_mb: memoryMb })).config.memory_mb;
+      expect(applied).toBe(memoryMb === DEFAULT_SERVERLESS_MEMORY_MB ? undefined : memoryMb);
     }
     for (const memoryMb of Object.keys(SERVER_MACHINE_TYPE_BY_MEMORY_MB).map(Number)) {
-      expect(validateServiceSpec(spec({ type: "server", max_instances: 1, memory_mb: memoryMb })).config.memory_mb).toBe(memoryMb);
+      const applied = validateServiceSpec(spec({ type: "server", max_instances: 1, memory_mb: memoryMb })).config.memory_mb;
+      expect(applied).toBe(memoryMb === DEFAULT_SERVER_MEMORY_MB ? undefined : memoryMb);
+    }
+    // Whatever it round-trips as, the resolved machine is the one asked for.
+    for (const memoryMb of Object.keys(SERVER_MACHINE_TYPE_BY_MEMORY_MB).map(Number)) {
+      expect(serviceMemoryMb(validateServiceSpec(spec({ type: "server", memory_mb: memoryMb })))).toBe(memoryMb);
     }
   });
 
@@ -42,6 +50,17 @@ describe("service memory validation", () => {
     for (const bad of [3072, 0, -1024, 1024.5, "4GB", "4096", true, {}]) {
       expect(() => validateServiceSpec(spec({ memory_mb: bad }))).toThrow(/memory_mb/);
     }
+  });
+
+  it("normalizes the type's own default back out, so restating it is a no-op", () => {
+    // The guarantee this exists for: writing `memory: "1GB"` next to a server
+    // already running 1GB must not replace the machine. The backend normalizes
+    // too, but this boundary does not trust the one above it.
+    expect("memory_mb" in validateServiceSpec(spec({ memory_mb: DEFAULT_SERVERLESS_MEMORY_MB })).config).toBe(false);
+    expect("memory_mb" in validateServiceSpec(spec({ type: "server", memory_mb: DEFAULT_SERVER_MEMORY_MB })).config).toBe(false);
+    // A server's default is a legal serverless size and vice versa, so the
+    // normalization is per TYPE rather than against one flat value.
+    expect(validateServiceSpec(spec({ memory_mb: DEFAULT_SERVER_MEMORY_MB })).config.memory_mb).toBe(DEFAULT_SERVER_MEMORY_MB);
   });
 
   it("omits the memory_mb key entirely when the caller names no size", () => {
@@ -70,6 +89,10 @@ describe("memory in the revision", () => {
     // and applyServiceSpec keeps the previous stored spec — so a size that hashed
     // identically would be accepted and then silently dropped, forever.
     expect(revision({ memory_mb: 2048 })).not.toBe(revision({ memory_mb: 4096 }));
+  });
+
+  it("hashes an explicitly-default size identically to an omitted one", () => {
+    expect(revision({ memory_mb: DEFAULT_SERVERLESS_MEMORY_MB })).toBe(revision({}));
   });
 
   it("leaves a service that names no size hashing exactly as it did before the field existed", () => {
