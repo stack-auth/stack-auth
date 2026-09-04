@@ -1679,6 +1679,14 @@ model DeploymentSource {
   // definitions, so it rides that sync's fence rather than needing one of its own.
   builderMemoryMb Int?
 
+  // Which infrastructure runtime this source's services run on: "fly" (the
+  // default, and what an absent `version` export in the deploy file means) or
+  // "gcp" (opted into with an internal `version` token). Written by the same
+  // sync that stores the definitions. Every source of one project must agree —
+  // services share a private network, which cannot span providers — and the
+  // sync route refuses one that does not; see syncSourceServices.
+  runtime String @default("fly")
+
   tenancy     Tenancy             @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   services    DeploymentService[]
   deployments Deployment[]

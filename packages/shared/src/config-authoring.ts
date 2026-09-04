@@ -279,28 +279,25 @@ export type HexclaveServerService = HexclaveServiceBase & HexclaveServiceSource 
    */
   persistentVolumes?: Record<string, HexclavePersistentVolume>,
   /**
-   * 1 (the default) keeps the single instance up. 0 is accepted but currently
-   * has NO effect: the runtime has no request-triggered suspend for a `server`,
-   * so it runs from deploy until you tear it down either way. It does not buy a
-   * server onto the Free plan — a `server` is paid-only whatever this says.
+   * 1 (the default) keeps the single instance up; 0 lets it suspend when idle
+   * and resume with its memory intact. Above 0 needs a paid plan.
    */
   minInstances?: 0 | 1,
   /** Always 1 for a server. Use `type: "serverless"` to scale out. */
   maxInstances?: 1,
   /**
-   * How much memory the container gets. Defaults to "1GB".
+   * How much memory the machine gets. Defaults to "512MB".
    *
    * CPU comes with it — you pick memory, the platform picks the matching
-   * machine — and on the smaller sizes that CPU is a BURSTABLE FRACTION of a
-   * core rather than a whole one: "1GB" is 0.25 vCPU sustained, "2GB" is 0.5,
-   * "4GB" is 1, and "8GB" is the first size with 2 dedicated cores. A CPU-bound
+   * machine shape: one shared, burstable vCPU up to "2GB", two shared vCPUs at
+   * "4GB", and "8GB" is the first size with 2 dedicated cores. A CPU-bound
    * service wants "8GB" even when it fits in less memory.
    *
-   * Changing this REPLACES the machine, so the service goes down and comes back
-   * (a few seconds to a minute). A persistent volume survives — the disk
-   * outlives the instance. Larger sizes need a paid plan.
+   * Changing this restarts the machine with the new shape, so the service is
+   * briefly unavailable. A persistent volume survives — the disk outlives the
+   * machine. Sizes above the default need a paid plan.
    */
-  memory?: "1GB" | "2GB" | "4GB" | "8GB",
+  memory?: "512MB" | "1GB" | "2GB" | "4GB" | "8GB",
 };
 
 /**
@@ -317,9 +314,9 @@ export type HexclaveServerlessService = HexclaveServiceBase & HexclaveServiceSou
   /**
    * How much memory each instance gets. Defaults to "512MB".
    *
-   * CPU comes with it: "512MB", "1GB" and "2GB" get 1 CPU, "4GB" gets 2, and
-   * "8GB" gets 4. Changing it rolls the service out normally — no downtime.
-   * Sizes above the default need a paid plan.
+   * CPU comes with it: one shared, burstable vCPU up to "2GB", two shared vCPUs
+   * at "4GB", and 2 dedicated cores at "8GB". Changing it rolls the machines
+   * one at a time. Sizes above the default need a paid plan.
    */
   memory?: "512MB" | "1GB" | "2GB" | "4GB" | "8GB",
 };
@@ -371,9 +368,10 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  */
 export type HexclaveBuilder = {
   /**
-   * How much memory the builder gets. Defaults to "8GB", or "16GB" when the
-   * build is auto-detected (that path unpacks a large base image and holds the
-   * whole layer store in memory, and dies at less).
+   * How much memory the builder gets. Leave it out and the build gets a machine
+   * sized for its shape — a larger one when the build is auto-detected (that
+   * path unpacks a large base image and holds the whole layer store in memory,
+   * and dies at less).
    *
    * Raise it when a build is killed for running out of memory or space — a
    * large monorepo install, or a compiler that wants the whole project in

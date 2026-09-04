@@ -35,6 +35,66 @@ export const DEPLOYMENT_SOURCE_ID_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/;
 export const MAX_DEPLOYMENT_SOURCE_ID_LENGTH = 63;
 
 // ---------------------------------------------------------------------------
+// Runtimes.
+//
+// Marshal can run a project's services on one of two infrastructure providers.
+// "fly" is the default and what every project runs on unless it says otherwise;
+// "gcp" is opted into per project with an INTERNAL, undocumented export in the
+// deploy file:
+//
+//   export const version = "gcp-beta-1";
+//
+// The token is a VERSION rather than a provider name on purpose: it is a
+// channel we hand to ourselves for testing, and the runtime it maps to (and the
+// behaviour that comes with it) may change from one token to the next without
+// the deploy file changing. Absent means the default. An unknown token is
+// refused by the CLI and the backend rather than ignored, so a typo in one of
+// ours cannot silently deploy to the default, and a stray `version` in a user's
+// file cannot silently mean anything.
+//
+// The runtime is pinned per PROJECT, not per deploy file: services of one
+// project share a private network and resolve each other's addresses, neither
+// of which can span providers. The backend enforces that every deploy file of a
+// project agrees, and Marshal pins the namespace on first use.
+export const DEPLOYMENT_RUNTIMES = ["fly", "gcp"] as const;
+export type DeploymentRuntime = typeof DEPLOYMENT_RUNTIMES[number];
+export const DEFAULT_DEPLOYMENT_RUNTIME = "fly" satisfies DeploymentRuntime;
+
+// Every accepted `version` token and the runtime it selects.
+export const DEPLOYMENT_VERSIONS = {
+  "gcp-beta-1": "gcp",
+} as const satisfies Record<string, DeploymentRuntime>;
+export type DeploymentVersion = keyof typeof DEPLOYMENT_VERSIONS;
+export const DEPLOYMENT_VERSION_TOKENS = Object.keys(DEPLOYMENT_VERSIONS) as DeploymentVersion[];
+
+export function isDeploymentRuntime(value: unknown): value is DeploymentRuntime {
+  return typeof value === "string" && (DEPLOYMENT_RUNTIMES as readonly string[]).includes(value);
+}
+
+export function isDeploymentVersion(value: unknown): value is DeploymentVersion {
+  return typeof value === "string" && Object.hasOwn(DEPLOYMENT_VERSIONS, value);
+}
+
+/**
+ * The runtime a deploy file's `version` export selects. Absent (or null) is the
+ * default runtime; an unknown token is null, and the caller refuses it.
+ */
+export function deploymentRuntimeForVersion(version: string | null | undefined): DeploymentRuntime | null {
+  if (version === undefined || version === null) return DEFAULT_DEPLOYMENT_RUNTIME;
+  return isDeploymentVersion(version) ? DEPLOYMENT_VERSIONS[version] : null;
+}
+
+import.meta.vitest?.test("version tokens map to runtimes, and absent is the default", ({ expect }) => {
+  expect(deploymentRuntimeForVersion(undefined)).toBe("fly");
+  expect(deploymentRuntimeForVersion(null)).toBe("fly");
+  expect(deploymentRuntimeForVersion("gcp-beta-1")).toBe("gcp");
+  // Unknown tokens are refused by the caller, never rounded to a runtime.
+  expect(deploymentRuntimeForVersion("gcp")).toBe(null);
+  expect(deploymentRuntimeForVersion("1.0.0")).toBe(null);
+  expect(isDeploymentVersion("constructor")).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
 // Source manifest
 //
 // What a deploy PACKAGED, recorded so a reader can answer "why is my upload
@@ -239,31 +299,39 @@ export function parseConnectionValue(value: string): { serviceId: string, output
 }
 
 /**
- * Whether a reference actually requires its target to have DEPLOYED.
+ * Whether a reference actually requires its target to have DEPLOYED. The
+ * answer depends on the RUNTIME, because it is a fact about where addresses
+ * come from:
  *
- * Every SERVICE output does — `url` and `hostname` alike, public or private,
- * named port or not. Both are the target's runtime ADDRESS, and no runtime
- * publishes an address for a service that does not exist yet: a private service
- * is reached at its VM's internal IP (assigned when the instance is created), a
+ * On "fly", a service's private hostname is a pure function of its identity
+ * (Fly's 6PN DNS publishes "<app>.internal" the moment the app exists), so
+ * `hostname` and a private `url` with a named port resolve before the target
+ * ever runs. Only a PUBLIC url (the platform URL, which exists once the service
+ * is up) and a bare `url()` (which has to read the target's ports) wait.
+ * `targetIsPublic` is null when the caller cannot answer — a reference into a
+ * source this deploy file does not contain, or one naming a port the target
+ * does not declare — in which case the conservative answer is that it waits.
+ * Getting this wrong in the other direction would serialize independent
+ * deploys, cascade false "skipped" results when the target fails, and reject
+ * mutually-wired services as circular.
+ *
+ * On "gcp", every SERVICE output waits — `url` and `hostname` alike, public or
+ * private, named port or not. Both are the target's runtime ADDRESS, and GCP
+ * publishes none for a service that does not exist yet: a private service is
+ * reached at its VM's internal IP (assigned when the instance is created), a
  * public one at its platform URL, and a serverless one at the URI its revision
- * got. None of them can be derived from the service's identity.
- *
- * This used to make an exception for a private `url` with a named port, on the
- * premise that it was built from a DETERMINISTIC "<service>.internal" hostname
- * and so resolved before its target came up. That premise died with the Fly 6PN
- * DNS it came from: nothing publishes such a record now, the reference blocks
- * until the target has an address, and a consumer ordered ahead of its target
- * failed the whole deploy with "blocked on unresolved refs".
- *
- * The cost is real and accepted: mutually-wired services are now a circular
- * dependency, reported as one, instead of silently resolving. They genuinely
- * cannot both go first when each needs the other's address.
+ * got. The cost is that mutually-wired services are a circular dependency
+ * there, reported as one, instead of silently resolving.
  *
  * `hexclave.*` outputs are not service outputs and never wait — they come from
  * the managed service, which always exists.
  */
-export function connectionRequiresTargetDeployed(outputKey: string): boolean {
-  return SERVICE_OUTPUT_KEYS.includes(outputKey as ServiceOutputKey);
+export function connectionRequiresTargetDeployed(runtime: DeploymentRuntime, outputKey: string, port: number | null, targetIsPublic: boolean | null): boolean {
+  if (!SERVICE_OUTPUT_KEYS.includes(outputKey as ServiceOutputKey)) return false;
+  if (runtime === "gcp") return true;
+  if (outputKey !== "url") return false;
+  if (port === null) return true;
+  return targetIsPublic !== false;
 }
 
 /** Formats a connection reference. The inverse of parseConnectionValue. */
@@ -719,36 +787,52 @@ const MEMORY_MB_BY_SIZE: Record<DeploymentMemorySize, number> = {
   "32GB": 32768,
 };
 
-// Which rungs each kind may ask for. These ARE the paid-plan ceilings: rather
-// than defining sizes nobody can select and refusing them later in the plan
-// gate, the ladder stops where the entitlement does, so autocomplete never
-// offers a value that cannot be deployed. Raising a ceiling is one entry here.
+// Which rungs each kind may ask for, PER RUNTIME. These ARE the paid-plan
+// ceilings: rather than defining sizes nobody can select and refusing them
+// later in the plan gate, the ladder stops where the entitlement does, so
+// autocomplete never offers a value that cannot be deployed. Raising a ceiling
+// is one entry here.
 //
-// A "server" has no 512MB rung because the smallest machine shape it can run on
-// carries a full gigabyte — offering it would be offering a size that silently
-// becomes a different one.
-export const SERVER_MEMORY_SIZES = ["1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
-export const SERVERLESS_MEMORY_SIZES = ["512MB", "1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
+// The ladders differ at the bottom because the runtimes' smallest shapes do.
+// On Fly a machine of either type can carry 512MB (and that IS what every
+// service ran on before sizes existed, so it is the default there for both
+// types). On GCP a "server" is a Compute Engine machine and the smallest one
+// carries a full gigabyte, so there is no 512MB server rung to offer — offering
+// it would be offering a size that silently becomes a different one.
+export const FLY_SERVER_MEMORY_SIZES = ["512MB", "1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
+export const FLY_SERVERLESS_MEMORY_SIZES = ["512MB", "1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
+export const GCP_SERVER_MEMORY_SIZES = ["1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
+export const GCP_SERVERLESS_MEMORY_SIZES = ["512MB", "1GB", "2GB", "4GB", "8GB"] as const satisfies readonly DeploymentMemorySize[];
+// Every rung ANY runtime offers a type, for the schema: the wire schema does not
+// know which runtime a definition is bound for, so it accepts the union and the
+// runtime-specific check happens where the runtime is known (the CLI, which has
+// the deploy file's `version`, and the sync route, which has the source's pin).
+export const SERVER_MEMORY_SIZES = FLY_SERVER_MEMORY_SIZES;
+export const SERVERLESS_MEMORY_SIZES = FLY_SERVERLESS_MEMORY_SIZES;
 // The builder starts where the services stop: it is a transient machine that
 // exists for one build, so its floor is the size a real build needs rather than
-// the size a small service idles at.
+// the size a small service idles at. The same on both runtimes.
 export const BUILDER_MEMORY_SIZES = ["8GB", "16GB", "32GB"] as const satisfies readonly DeploymentMemorySize[];
 
 // The sizes a deployment gets when it says nothing. Each is exactly what that
-// kind ran at before compute was configurable, so an unchanged deploy file
-// deploys the same machines it did before this existed.
-export const DEFAULT_SERVER_MEMORY = "1GB" satisfies DeploymentMemorySize;
+// kind ran at before compute was configurable ON THAT RUNTIME, so an unchanged
+// deploy file deploys the same machines it did before this existed — which is
+// also why the two runtimes disagree about a server's default.
+export const DEFAULT_SERVER_MEMORY = "512MB" satisfies DeploymentMemorySize;
 export const DEFAULT_SERVERLESS_MEMORY = "512MB" satisfies DeploymentMemorySize;
+export const GCP_DEFAULT_SERVER_MEMORY = "1GB" satisfies DeploymentMemorySize;
 export const DEFAULT_BUILDER_MEMORY = "8GB" satisfies DeploymentMemorySize;
 
-/** The rungs a service of this type may ask for. */
-export function deploymentMemorySizesForType(type: DeploymentServiceType): readonly DeploymentMemorySize[] {
-  return type === "server" ? SERVER_MEMORY_SIZES : SERVERLESS_MEMORY_SIZES;
+/** The rungs a service of this type may ask for on this runtime. */
+export function deploymentMemorySizesForType(type: DeploymentServiceType, runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): readonly DeploymentMemorySize[] {
+  if (runtime === "gcp") return type === "server" ? GCP_SERVER_MEMORY_SIZES : GCP_SERVERLESS_MEMORY_SIZES;
+  return type === "server" ? FLY_SERVER_MEMORY_SIZES : FLY_SERVERLESS_MEMORY_SIZES;
 }
 
-/** What a service of this type runs at when it declares no `memory`. */
-export function defaultDeploymentMemoryForType(type: DeploymentServiceType): DeploymentMemorySize {
-  return type === "server" ? DEFAULT_SERVER_MEMORY : DEFAULT_SERVERLESS_MEMORY;
+/** What a service of this type runs at on this runtime when it declares no `memory`. */
+export function defaultDeploymentMemoryForType(type: DeploymentServiceType, runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): DeploymentMemorySize {
+  if (type === "server") return runtime === "gcp" ? GCP_DEFAULT_SERVER_MEMORY : DEFAULT_SERVER_MEMORY;
+  return DEFAULT_SERVERLESS_MEMORY;
 }
 
 /** A size token as a whole number of megabytes. */
@@ -807,7 +891,17 @@ export function suggestDeploymentMemorySize(raw: string): DeploymentMemorySize |
 export function deploymentCpuForMemory(
   type: DeploymentServiceType,
   memory: DeploymentMemorySize,
+  runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME,
 ): { count: number, shared: boolean } {
+  if (runtime === "fly") {
+    // Fly machine guests, the same for both types: shared-cpu-1x up to 2GB,
+    // shared-cpu-2x at 4GB, and performance-2x (two dedicated cores) at 8GB.
+    switch (memory) {
+      case "4GB": { return { count: 2, shared: true }; }
+      case "8GB": { return { count: 2, shared: false }; }
+      default: { return { count: 1, shared: true }; }
+    }
+  }
   if (type === "server") {
     // Whole machines, from a fixed catalog: the three smallest are shared-core
     // and the fourth is the first with dedicated ones.
@@ -1367,12 +1461,18 @@ import.meta.vitest?.test("memory sizes are per-type ladders with derivable megab
   for (const memory of SERVER_MEMORY_SIZES) {
     await expect(deploymentServiceDefinitionSchema.validate({ ...base, type: "server", memory }, { abortEarly: false })).resolves.toBeDefined();
   }
-  // A server has no 512MB shape, so the rung that is legal on a serverless is
-  // refused here — and the message names what IS available rather than the
-  // whole token list.
+  // The schema accepts the UNION of the runtimes' ladders (it does not know
+  // which runtime a definition is bound for); the runtime-specific check lives
+  // in the CLI and the sync route. A GCP server has no 512MB shape, which is
+  // what the per-runtime ladder says and the schema deliberately does not.
   await expect(deploymentServiceDefinitionSchema.validate({
     ...base, type: "server", memory: "512MB",
-  }, { abortEarly: false })).rejects.toThrow(/not available for a "server" service — it can be 1GB, 2GB, 4GB, 8GB/);
+  }, { abortEarly: false })).resolves.toBeDefined();
+  expect(deploymentMemorySizesForType("server", "gcp")).not.toContain("512MB");
+  expect(deploymentMemorySizesForType("server", "fly")).toContain("512MB");
+  expect(defaultDeploymentMemoryForType("server", "gcp")).toBe("1GB");
+  expect(defaultDeploymentMemoryForType("server", "fly")).toBe("512MB");
+  expect(defaultDeploymentMemoryForType("serverless", "gcp")).toBe(defaultDeploymentMemoryForType("serverless", "fly"));
   // Builder-only rungs are not service rungs: the ladders stop where the plan
   // entitlement does, so a size nobody can deploy is never offered.
   await expect(deploymentServiceDefinitionSchema.validate({
@@ -1775,14 +1875,22 @@ import.meta.vitest?.test("connection references round-trip, with and without a p
   }
 });
 
-import.meta.vitest?.test("every service output makes a reference wait for its target", ({ expect }) => {
-  // REGRESSION: a private url() with a named port used to be exempt, because it was
-  // built from a name derived from the service id. Nothing publishes that name any
-  // more — the address is the target's, and only the target's rollout produces it.
-  expect(connectionRequiresTargetDeployed("url")).toBe(true);
-  expect(connectionRequiresTargetDeployed("hostname")).toBe(true);
+import.meta.vitest?.test("which references wait for their target depends on the runtime", ({ expect }) => {
+  // Fly: a private port's URL is as deterministic as the hostname it is built from.
+  expect(connectionRequiresTargetDeployed("fly", "url", 5432, false)).toBe(false);
+  expect(connectionRequiresTargetDeployed("fly", "url", 3000, true)).toBe(true);
+  // Unknown publicness (a target this deploy file cannot see) waits.
+  expect(connectionRequiresTargetDeployed("fly", "url", 3000, null)).toBe(true);
+  // A bare url() has to read the target's ports to know which one it means.
+  expect(connectionRequiresTargetDeployed("fly", "url", null, false)).toBe(true);
+  expect(connectionRequiresTargetDeployed("fly", "hostname", null, null)).toBe(false);
+  // GCP: every service output is the target's runtime address, and nothing
+  // publishes one before the target exists.
+  expect(connectionRequiresTargetDeployed("gcp", "url", 5432, false)).toBe(true);
+  expect(connectionRequiresTargetDeployed("gcp", "hostname", null, null)).toBe(true);
   // The managed service is not deployed by anyone, so its outputs never wait.
-  expect(connectionRequiresTargetDeployed("projectId")).toBe(false);
+  expect(connectionRequiresTargetDeployed("fly", "projectId", null, null)).toBe(false);
+  expect(connectionRequiresTargetDeployed("gcp", "projectId", null, null)).toBe(false);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a persistent volume on a server service", async ({ expect }) => {

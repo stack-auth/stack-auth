@@ -1,6 +1,7 @@
 // Core logic for the Deployments app: service definitions (synced from a deploy
 // file's `services` export into DeploymentService rows) + operational state
-// (Prisma) + the write-through to Marshal, the Google Cloud-backed container runtime
+// (Prisma) + the write-through to Marshal, the container runtime (Fly by default, Google
+// Cloud when a project opts in)
 // (apps/marshal).
 //
 // The shape of the world, because it is easy to mix up:
@@ -72,7 +73,10 @@ import {
   parseSourceManifest,
   soleHttpDeploymentPort,
   standardPortsHolderPort,
+  DEFAULT_DEPLOYMENT_RUNTIME,
+  type DeploymentRuntime,
 } from "@hexclave/shared/dist/deployments";
+import { runtimeFromStored } from "./runtime";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
@@ -320,6 +324,7 @@ export async function assertServicesAllowedByPlan(
   tenancy: Tenancy,
   services: Record<string, DeploymentServiceDefinition>,
   builder?: DeploymentBuilderDefinition | undefined,
+  runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME,
 ): Promise<void> {
   const entries = Object.entries(services);
 
@@ -334,7 +339,7 @@ export async function assertServicesAllowedByPlan(
   // while idle, and how far it may scale up is already MAX_INSTANCES_PER_SERVICE.
   const alwaysOnMemory = entries
     .filter(([, definition]) => effectiveMinInstances(definition) > 0)
-    .map(([serviceId, definition]) => ({ serviceId, megabytes: effectiveMemoryMb(definition) }));
+    .map(([serviceId, definition]) => ({ serviceId, megabytes: effectiveMemoryMb(definition, runtime) }));
   const totalAlwaysOnMemoryMb = alwaysOnMemory.reduce((total, service) => total + service.megabytes, 0);
   if (totalAlwaysOnMemoryMb > MAX_PROJECT_ALWAYS_ON_MEMORY_MB) {
     const biggest = [...alwaysOnMemory]
@@ -350,15 +355,18 @@ export async function assertServicesAllowedByPlan(
       "Either give one of them less `memory`, or let it scale to zero with `type: \"serverless\"` and `minInstances: 0` — a service that scales to zero does not count against this.",
     ].join("\n"));
   }
-  // A server is refused on its type alone, so it is deliberately excluded from
-  // the always-on list below: the two problems have different remedies, and a
-  // service named under both would be told to fix it twice.
+  // A server is paid-only ON GCP, where it has no suspend — see the doc comment — and there
+  // it is refused on its type alone, so it is deliberately excluded from the always-on list
+  // below: the two problems have different remedies, and a service named under both would be
+  // told to fix it twice. On Fly a server SUSPENDS at `minInstances: 0` (it resumes with its
+  // memory intact), so it is gated exactly like a serverless: always-on is what is paid.
+  const serverIsPaidOnly = runtime === "gcp";
   const serverServices = entries
-    .filter(([, definition]) => definition.type === "server")
+    .filter(([, definition]) => serverIsPaidOnly && definition.type === "server")
     .map(([serviceId]) => serviceId)
     .sort(stringCompare);
   const alwaysOnServices = entries
-    .filter(([, definition]) => definition.type !== "server" && effectiveMinInstances(definition) > 0)
+    .filter(([, definition]) => !(serverIsPaidOnly && definition.type === "server") && effectiveMinInstances(definition) > 0)
     .map(([serviceId]) => serviceId)
     .sort(stringCompare);
   // Any size above the type's own default. Stated as "above the default" rather
@@ -369,9 +377,9 @@ export async function assertServicesAllowedByPlan(
   // too: it would be two errors for one edit, and dropping the `memory` line
   // would not make the service deployable anyway.
   const oversizedServices = entries
-    .filter(([, definition]) => definition.type !== "server"
+    .filter(([, definition]) => !(serverIsPaidOnly && definition.type === "server")
       && definition.memory !== undefined
-      && definition.memory !== defaultDeploymentMemoryForType(definition.type))
+      && definition.memory !== defaultDeploymentMemoryForType(definition.type, runtime))
     .map(([serviceId]) => serviceId)
     .sort(stringCompare);
   // The size itself, not a flag: the message quotes it, and carrying the value
@@ -404,7 +412,9 @@ export async function assertServicesAllowedByPlan(
       `Always-on instances are not available on the Free plan, but ${alwaysOnServices.length === 1 ? `service ${planGateServiceList(alwaysOnServices, cap)} keeps` : `services ${planGateServiceList(alwaysOnServices, cap)} keep`} an instance running (\`minInstances\` above 0).`,
       "",
       "Either:",
-      `  - set \`minInstances: 0\` on ${alwaysOnServices.length === 1 ? "that service" : "those services"}, which scales to zero and cold-starts on the next request; or`,
+      serverIsPaidOnly
+        ? `  - set \`minInstances: 0\` on ${alwaysOnServices.length === 1 ? "that service" : "those services"}, which scales to zero and cold-starts on the next request; or`
+        : `  - set \`minInstances: 0\` on ${alwaysOnServices.length === 1 ? "that service" : "those services"} — a \`server\` then suspends when idle and resumes with its memory intact, and a \`serverless\` scales to zero and cold-starts on the next request. Note that a \`server\` defaults to \`minInstances: 1\`, so this has to be written out; or`,
       "  - upgrade your plan at https://app.hexclave.com to keep instances always on.",
     );
   }
@@ -438,8 +448,8 @@ export async function assertServicesAllowedByPlan(
  * marshalSpecForDefinition does, which is what makes "unset" and "set to the
  * default" the same amount of machine here too.
  */
-export function effectiveMemoryMb(definition: DeploymentServiceDefinition): number {
-  return deploymentMemoryToMb(definition.memory ?? defaultDeploymentMemoryForType(definition.type));
+export function effectiveMemoryMb(definition: DeploymentServiceDefinition, runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): number {
+  return deploymentMemoryToMb(definition.memory ?? defaultDeploymentMemoryForType(definition.type, runtime));
 }
 
 /**
@@ -600,6 +610,58 @@ export type SyncSourceServicesResult = {
  * belonging to other sources are never touched here, which is what lets several
  * repositories deploy into one project.
  */
+/**
+ * The runtime a project's services run on: that of any source that has ever provisioned a
+ * service, else that of any source that holds services, else the default. Every source of a
+ * project agrees (enforced below), so the first one found answers for all.
+ */
+export async function deploymentRuntimeForProject(prisma: PrismaClientTransaction, tenancy: Tenancy): Promise<DeploymentRuntime> {
+  const provisioned = await prisma.deploymentService.findFirst({
+    where: { tenancyId: tenancy.id, provisionedAt: { not: null } },
+    select: { source: { select: { runtime: true } } },
+  });
+  if (provisioned !== null) return runtimeFromStored(provisioned.source.runtime);
+  const anySource = await prisma.deploymentSource.findFirst({
+    where: { tenancyId: tenancy.id, services: { some: {} } },
+    select: { runtime: true },
+  });
+  return anySource === null ? DEFAULT_DEPLOYMENT_RUNTIME : runtimeFromStored(anySource.runtime);
+}
+
+/**
+ * A sync may not put a source on a runtime other than the one the project's PROVISIONED
+ * services run on. Services share a private network and resolve each other's addresses,
+ * neither of which can span providers — and a service that already exists on one runtime
+ * would be orphaned there, still running and still billed, by an apply on the other.
+ *
+ * Only provisioned services pin the project: a project whose services have never reached
+ * the runtime (synced but not deployed, or deployed and since torn down) may change its
+ * mind, which is what lets our own test projects move between runtimes by removing every
+ * service, deploying, and changing `version`. Marshal enforces the same rule on its own
+ * namespace pin, for callers that do not come through here.
+ */
+async function assertRuntimeAgreesWithProject(prisma: PrismaClientTransaction, tenancy: Tenancy, source: { id: string, sourceId: string }, runtime: DeploymentRuntime, declaredServiceIds: ReadonlySet<string>): Promise<void> {
+  const provisioned = await prisma.deploymentService.findMany({
+    where: { tenancyId: tenancy.id, provisionedAt: { not: null } },
+    select: { serviceId: true, sourceRowId: true, source: { select: { sourceId: true, runtime: true } } },
+  });
+  const conflicting = provisioned
+    // A service of THIS source that the sync no longer declares is torn down by the sync
+    // itself, so it is not one the new runtime would orphan.
+    .filter((row) => !(row.sourceRowId === source.id && !declaredServiceIds.has(row.serviceId)))
+    .filter((row) => runtimeFromStored(row.source.runtime) !== runtime);
+  if (conflicting.length === 0) return;
+  const ownConflicts = conflicting.filter((row) => row.sourceRowId === source.id).map((row) => row.serviceId).sort(stringCompare);
+  const otherSources = [...new Set(conflicting.filter((row) => row.sourceRowId !== source.id).map((row) => row.source.sourceId))].sort(stringCompare);
+  const current = runtimeFromStored(conflicting[0].source.runtime);
+  throw new StatusError(400, [
+    `This project's services run on the ${JSON.stringify(current)} runtime, and this deploy file selects ${JSON.stringify(runtime)}. A project runs on one runtime: its services share a private network, which cannot span runtimes.`,
+    ...(ownConflicts.length > 0 ? [`Services of this deploy file already running there: ${planGateServiceList(ownConflicts, 5)}.`] : []),
+    ...(otherSources.length > 0 ? [`Other deploy files with services running there: ${otherSources.map((id) => `\`${id}\``).join(", ")}.`] : []),
+    "To change the runtime, remove every service from the project (deploy each deploy file with none declared), then deploy again with the new `version`.",
+  ].join("\n"));
+}
+
 export async function syncSourceServices(
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
@@ -607,15 +669,18 @@ export async function syncSourceServices(
   services: Record<string, DeploymentServiceDefinition>,
   definitionSyncId: string,
   builder?: DeploymentBuilderDefinition | undefined,
+  runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME,
 ): Promise<SyncSourceServicesResult> {
-  // The builder belongs to the SOURCE, and it is written here rather than in its
-  // own call so it lands inside the same transaction — and so the same fence —
-  // as the definitions it was authored beside. Undefined clears it back to the
-  // deployment's own choice, because a deploy file that no longer says `builder`
-  // is a deploy file that no longer wants a size pinned.
+  await assertRuntimeAgreesWithProject(prisma, tenancy, source, runtime, new Set(Object.keys(services)));
+  // The builder and the runtime belong to the SOURCE, and they are written here
+  // rather than in their own call so they land inside the same transaction — and
+  // so the same fence — as the definitions they were authored beside. An
+  // undefined builder clears it back to the deployment's own choice, because a
+  // deploy file that no longer says `builder` is a deploy file that no longer
+  // wants a size pinned.
   await prisma.deploymentSource.update({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: source.id } },
-    data: { builderMemoryMb: builder?.memory === undefined ? null : deploymentMemoryToMb(builder.memory) },
+    data: { builderMemoryMb: builder?.memory === undefined ? null : deploymentMemoryToMb(builder.memory), runtime },
   });
   await assertNoVolumeShrink(prisma, tenancy, source.id, services);
   assertNoVolumeIdConflicts(services);
@@ -1308,7 +1373,7 @@ export function redactSecrets(text: string, secretValues: string[]): string {
 // Deploying
 
 /** Assembles the Marshal spec for a service's stored definition. */
-export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, resolvedEnv: Record<string, MarshalEnvValue>) {
+export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, resolvedEnv: Record<string, MarshalEnvValue>, runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME) {
   // A "server" is always a single instance whatever the definition says; the
   // schema and the CLI both reject other bounds, so this only applies the
   // defaults rather than overriding a stated intent, and it keeps the spec
@@ -1351,7 +1416,7 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       //
       // The same normalization is why every service that predates this field
       // keeps its existing revision and is not re-rolled on rollout.
-      ...(definition.memory === undefined || definition.memory === defaultDeploymentMemoryForType(definition.type)
+      ...(definition.memory === undefined || definition.memory === defaultDeploymentMemoryForType(definition.type, runtime)
         ? {}
         : { memory_mb: deploymentMemoryToMb(definition.memory) }),
     },
@@ -1451,7 +1516,7 @@ export async function startDeployment(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   deploymentId: string,
-  source: { id: string, sourceId: string, builderMemoryMb?: number | null },
+  source: { id: string, sourceId: string, builderMemoryMb?: number | null, runtime?: string | null },
   // In dependency order: every service in one level is applied concurrently,
   // and a level starts only once the previous one has converged.
   levels: string[][],
@@ -1464,6 +1529,7 @@ export async function startDeployment(options: {
   const { tenancy, prisma, deploymentId, source, levels, definitionsByServiceId, resolvedEnvByServiceId, marshalUploadId } = options;
   const client = getMarshalClientOrThrow();
   const ns = marshalNamespaceForTenancy(tenancy);
+  const runtime = runtimeFromStored(source.runtime);
 
   const targets: MarshalDeploymentTarget[] = levels.flat().map((serviceId) => {
     const definition = definitionsByServiceId.get(serviceId) ?? throwErr(`No definition for planned service ${serviceId}`);
@@ -1479,7 +1545,7 @@ export async function startDeployment(options: {
       // from `image` alone.
       ...(definition.image !== undefined ? { image: definition.image } : {}),
       ...(definition.build_command !== undefined ? { build_command: definition.build_command } : {}),
-      spec: marshalSpecForDefinition(definition, resolvedEnv),
+      spec: marshalSpecForDefinition(definition, resolvedEnv, runtime),
     };
   });
 
@@ -1494,6 +1560,9 @@ export async function startDeployment(options: {
       // runtime to pick the floor its build shape needs — a Railpack build needs
       // more than a Dockerfile one, and only the runtime knows which this is.
       ...(source.builderMemoryMb == null ? {} : { builder: { memory_mb: source.builderMemoryMb } }),
+      // The deploy file's runtime, which Marshal pins the namespace to on its first deploy
+      // and checks on every later one.
+      runtime,
     });
   } catch (e) {
     sanitizeMarshalError(e, "Starting the deployment failed");
@@ -1757,6 +1826,9 @@ export type DeploymentServiceApiShape = {
   // reader has no way to apply the type's default itself without knowing which
   // default belongs to which type, and every surface that shows this wants the
   // effective value rather than "unset".
+  // Which infrastructure runtime the service runs on: the default, or the one its deploy
+  // file's internal `version` export selected. Every service of a project shares it.
+  runtime: DeploymentRuntime,
   memory: DeploymentMemorySize,
   // The CPU that comes with that size, and whether it is a whole core or a
   // burstable fraction of one. Sent rather than derived client-side because the
@@ -1872,6 +1944,7 @@ export async function serviceToApiShape(options: {
   const { prisma, tenancy, row } = options;
   const volume = await getServiceVolume(prisma, tenancy, row.serviceId);
   const definition = definitionFromServiceRow(row, volume);
+  const runtime = runtimeFromStored(row.source.runtime);
 
   // The newest deployment that PLANNED this service, whatever became of it.
   // Read from the deployments themselves rather than from a column on the
@@ -1969,8 +2042,9 @@ export async function serviceToApiShape(options: {
     ports: definition.ports,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,
-    memory: definition.memory ?? defaultDeploymentMemoryForType(definition.type),
-    cpu: deploymentCpuForMemory(definition.type, definition.memory ?? defaultDeploymentMemoryForType(definition.type)),
+    runtime,
+    memory: definition.memory ?? defaultDeploymentMemoryForType(definition.type, runtime),
+    cpu: deploymentCpuForMemory(definition.type, definition.memory ?? defaultDeploymentMemoryForType(definition.type, runtime), runtime),
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
     image: row.image,

@@ -68,12 +68,12 @@ function soleHttpPortOrNull(spec: ServiceSpec): number | null {
  * Unreachable fallback for the same reason as serverMachineType's.
  */
 function serverlessResources(spec: ServiceSpec): { memoryMb: number, cpu: number } {
-  const memoryMb = serviceMemoryMb(spec);
+  const memoryMb = serviceMemoryMb("gcp", spec);
   return { memoryMb, cpu: serverlessCpuFor(memoryMb) };
 }
 
 function serverMachineType(spec: ServiceSpec): string {
-  return serverMachineTypeFor(serviceMemoryMb(spec));
+  return serverMachineTypeFor(serviceMemoryMb("gcp", spec));
 }
 
 function hostnameFromUrl(url: string | null): string | null {

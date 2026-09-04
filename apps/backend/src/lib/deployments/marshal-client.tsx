@@ -1,8 +1,10 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
+import type { DeploymentRuntime } from "@hexclave/shared/dist/deployments";
 
-// Thin client for Marshal, the GCP-backed deployments runtime (apps/marshal).
+// Thin client for Marshal, the deployments runtime (apps/marshal), which runs a project's
+// services on Fly (the default) or Google Cloud (opted into per project).
 // Marshal implements the Hexclave Runtime API: stateless, namespace-scoped
 // (the namespace is the tenancy id), single bearer credential. This module is
 // the only place backend code talks to it.
@@ -247,7 +249,9 @@ const LIST_TIMEOUT_MS = 2 * 60 * 1000;
 // Deliberately BELOW the 800s Vercel maxDuration both services declare (see
 // `src/index.ts` in each): this has to fire first, so the caller gets a clean
 // 504 from here rather than a platform-killed invocation with no body at all.
-const DEPLOY_START_TIMEOUT_MS = 13 * 60 * 1000;
+// Per runtime: a GCP deploy into a fresh namespace may provision a tenant project
+// synchronously when the pool is empty, which takes minutes; Fly has nothing of the kind.
+const DEPLOY_START_TIMEOUT_MS_BY_RUNTIME: Record<DeploymentRuntime, number> = { fly: 5 * 60 * 1000, gcp: 13 * 60 * 1000 };
 
 export class MarshalClient {
   constructor(private readonly config: MarshalDeploymentsConfig) {}
@@ -331,8 +335,11 @@ export class MarshalClient {
     // applied concurrently, and a level starts only once the previous one has
     // converged (a `url` ref can only resolve after its target is up).
     order: string[][],
+    // The runtime the project's deploy file selects; Marshal pins the namespace to it on
+    // first use and refuses a later deploy that disagrees (see apps/marshal/src/runtime.ts).
+    runtime: DeploymentRuntime,
   }): Promise<MarshalDeployment> {
-    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/sources/${sourceId}/deployments`, { method: "POST", body, timeoutMs: DEPLOY_START_TIMEOUT_MS });
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/sources/${sourceId}/deployments`, { method: "POST", body, timeoutMs: DEPLOY_START_TIMEOUT_MS_BY_RUNTIME[body.runtime] });
   }
 
   async getDeployment(ns: string, deploymentId: string): Promise<MarshalDeployment> {

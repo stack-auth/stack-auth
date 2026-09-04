@@ -12,6 +12,10 @@ import {
 import { computeRevision } from "./revision.js";
 import { validateServiceSpec } from "./services.js";
 
+// Every size in this file is a GCP fact (machine types, Cloud Run CPU pairs), so the specs
+// are validated against that runtime's ladder.
+const validateGcpSpec = (body: unknown) => validateServiceSpec(body, "gcp");
+
 const TEST_DATA_KEY = Buffer.from("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "hex");
 
 function spec(config: Record<string, unknown>) {
@@ -27,28 +31,28 @@ describe("service memory validation", () => {
     // The type's own default normalizes back OUT (see below), so it round-trips
     // as absent rather than as itself — which resolves to the same machine.
     for (const memoryMb of Object.keys(SERVERLESS_CPU_BY_MEMORY_MB).map(Number)) {
-      const applied = validateServiceSpec(spec({ memory_mb: memoryMb })).config.memory_mb;
+      const applied = validateGcpSpec(spec({ memory_mb: memoryMb })).config.memory_mb;
       expect(applied).toBe(memoryMb === DEFAULT_SERVERLESS_MEMORY_MB ? undefined : memoryMb);
     }
     for (const memoryMb of Object.keys(SERVER_MACHINE_TYPE_BY_MEMORY_MB).map(Number)) {
-      const applied = validateServiceSpec(spec({ type: "server", max_instances: 1, memory_mb: memoryMb })).config.memory_mb;
+      const applied = validateGcpSpec(spec({ type: "server", max_instances: 1, memory_mb: memoryMb })).config.memory_mb;
       expect(applied).toBe(memoryMb === DEFAULT_SERVER_MEMORY_MB ? undefined : memoryMb);
     }
     // Whatever it round-trips as, the resolved machine is the one asked for.
     for (const memoryMb of Object.keys(SERVER_MACHINE_TYPE_BY_MEMORY_MB).map(Number)) {
-      expect(serviceMemoryMb(validateServiceSpec(spec({ type: "server", memory_mb: memoryMb })))).toBe(memoryMb);
+      expect(serviceMemoryMb("gcp", validateGcpSpec(spec({ type: "server", memory_mb: memoryMb })))).toBe(memoryMb);
     }
   });
 
   it("refuses a size the service's own runtime has no shape for", () => {
     // 512MB is a legal container and NOT a legal machine: the smallest instance
     // shape carries a full gigabyte, so a "server" cannot be given one.
-    expect(() => validateServiceSpec(spec({ memory_mb: 512 }))).not.toThrow();
-    expect(() => validateServiceSpec(spec({ type: "server", memory_mb: 512 }))).toThrow(/memory_mb must be one of/);
+    expect(() => validateGcpSpec(spec({ memory_mb: 512 }))).not.toThrow();
+    expect(() => validateGcpSpec(spec({ type: "server", memory_mb: 512 }))).toThrow(/memory_mb must be one of/);
     // Off-ladder, non-integer and wrong-typed values are all the same refusal:
     // this is the boundary that turns a request into provider config.
     for (const bad of [3072, 0, -1024, 1024.5, "4GB", "4096", true, {}]) {
-      expect(() => validateServiceSpec(spec({ memory_mb: bad }))).toThrow(/memory_mb/);
+      expect(() => validateGcpSpec(spec({ memory_mb: bad }))).toThrow(/memory_mb/);
     }
   });
 
@@ -56,11 +60,11 @@ describe("service memory validation", () => {
     // The guarantee this exists for: writing `memory: "1GB"` next to a server
     // already running 1GB must not replace the machine. The backend normalizes
     // too, but this boundary does not trust the one above it.
-    expect("memory_mb" in validateServiceSpec(spec({ memory_mb: DEFAULT_SERVERLESS_MEMORY_MB })).config).toBe(false);
-    expect("memory_mb" in validateServiceSpec(spec({ type: "server", memory_mb: DEFAULT_SERVER_MEMORY_MB })).config).toBe(false);
+    expect("memory_mb" in validateGcpSpec(spec({ memory_mb: DEFAULT_SERVERLESS_MEMORY_MB })).config).toBe(false);
+    expect("memory_mb" in validateGcpSpec(spec({ type: "server", memory_mb: DEFAULT_SERVER_MEMORY_MB })).config).toBe(false);
     // A server's default is a legal serverless size and vice versa, so the
     // normalization is per TYPE rather than against one flat value.
-    expect(validateServiceSpec(spec({ memory_mb: DEFAULT_SERVER_MEMORY_MB })).config.memory_mb).toBe(DEFAULT_SERVER_MEMORY_MB);
+    expect(validateGcpSpec(spec({ memory_mb: DEFAULT_SERVER_MEMORY_MB })).config.memory_mb).toBe(DEFAULT_SERVER_MEMORY_MB);
   });
 
   it("omits the memory_mb key entirely when the caller names no size", () => {
@@ -68,13 +72,13 @@ describe("service memory validation", () => {
     // hashes the serialized spec, so either would change the revision of every
     // service that predates this field — and for a "server" a changed revision
     // means the VM is deleted and recreated.
-    expect("memory_mb" in validateServiceSpec(spec({})).config).toBe(false);
-    expect("memory_mb" in validateServiceSpec(spec({ memory_mb: null })).config).toBe(false);
+    expect("memory_mb" in validateGcpSpec(spec({})).config).toBe(false);
+    expect("memory_mb" in validateGcpSpec(spec({ memory_mb: null })).config).toBe(false);
   });
 
   it("resolves an absent size to the type's default", () => {
-    expect(serviceMemoryMb(validateServiceSpec(spec({})))).toBe(DEFAULT_SERVERLESS_MEMORY_MB);
-    expect(serviceMemoryMb(validateServiceSpec(spec({ type: "server" })))).toBe(DEFAULT_SERVER_MEMORY_MB);
+    expect(serviceMemoryMb("gcp", validateGcpSpec(spec({})))).toBe(DEFAULT_SERVERLESS_MEMORY_MB);
+    expect(serviceMemoryMb("gcp", validateGcpSpec(spec({ type: "server" })))).toBe(DEFAULT_SERVER_MEMORY_MB);
     // Every default is a size its own runtime actually has a shape for.
     expect(SERVERLESS_CPU_BY_MEMORY_MB[DEFAULT_SERVERLESS_MEMORY_MB]).toBeDefined();
     expect(SERVER_MACHINE_TYPE_BY_MEMORY_MB[DEFAULT_SERVER_MEMORY_MB]).toBeDefined();
@@ -82,7 +86,7 @@ describe("service memory validation", () => {
 });
 
 describe("memory in the revision", () => {
-  const revision = (config: Record<string, unknown>) => computeRevision(validateServiceSpec(spec(config)), TEST_DATA_KEY);
+  const revision = (config: Record<string, unknown>) => computeRevision(validateGcpSpec(spec(config)), TEST_DATA_KEY);
 
   it("changes the revision, because otherwise a resize could never happen", () => {
     // applyInstance returns the existing VM untouched when the revision matches,

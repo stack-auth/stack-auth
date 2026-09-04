@@ -90,6 +90,11 @@ import {
   type HexclaveOutputKey,
   type DeploymentBuilderDefinition,
   type DeploymentMemorySize,
+  DEFAULT_DEPLOYMENT_RUNTIME,
+  deploymentPortEntry,
+  DEPLOYMENT_VERSION_TOKENS,
+  deploymentRuntimeForVersion,
+  type DeploymentRuntime,
 } from "@hexclave/shared/dist/deployments";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import fs from "node:fs";
@@ -330,6 +335,11 @@ export type EvaluatedServices = {
   // than on any service. Undefined = the deployment picks the size its build
   // shape needs.
   builder: DeploymentBuilderDefinition | undefined,
+  // The infrastructure runtime the file's `version` export selects, and the
+  // token itself (undefined when absent). Internal: the export is undocumented,
+  // and absent means the default runtime — see DEPLOYMENT_VERSIONS.
+  runtime: DeploymentRuntime,
+  version: string | undefined,
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
@@ -665,9 +675,12 @@ export function evaluateDeploymentConfig(options: {
   // less helpful "no `deploymentGroupId` export".
   legacyIdExport?: unknown,
   deployExport: unknown,
+  // The file's `version` export, if any: an internal token selecting the
+  // infrastructure runtime. Absent is the default.
+  versionExport?: unknown,
   mode: "deploy" | "dev",
 }): EvaluatedServices {
-  const { deployFilePath, deploymentGroupIdExport, legacyIdExport, deployExport, mode } = options;
+  const { deployFilePath, deploymentGroupIdExport, legacyIdExport, deployExport, versionExport, mode } = options;
   const deployFileDirectory = path.dirname(deployFilePath);
 
   // `id` was the old name for this export. Refuse the file outright rather than
@@ -691,6 +704,18 @@ export function evaluateDeploymentConfig(options: {
   const sourceId = deploymentGroupIdExport;
   if (!DEPLOYMENT_SOURCE_ID_REGEX.test(sourceId) || sourceId.length > MAX_DEPLOYMENT_SOURCE_ID_LENGTH) {
     throw new CliError(`Invalid deployment group id ${JSON.stringify(sourceId)} in ${deployFilePath}. Ids must be at most ${MAX_DEPLOYMENT_SOURCE_ID_LENGTH} characters and contain only letters, numbers, underscores, dots, and hyphens (not starting with a dot or hyphen).`);
+  }
+
+  // Refused loudly rather than ignored, in both directions: a typo in one of our
+  // own tokens must not silently deploy to the default runtime, and a stray
+  // `version` in someone's deploy file must not silently mean anything.
+  const version = versionExport === undefined ? undefined : versionExport;
+  if (version !== undefined && typeof version !== "string") {
+    throw new CliError(`The \`version\` export of ${deployFilePath} must be a string (got ${typeof version}). Remove it unless you were given a value for it.`);
+  }
+  const runtime = deploymentRuntimeForVersion(version);
+  if (runtime === null) {
+    throw new CliError(`The deploy file ${deployFilePath} has an unknown \`version\` export ${JSON.stringify(version)}. Remove it, or use one of: ${DEPLOYMENT_VERSION_TOKENS.join(", ")}.`);
   }
 
   if (deployExport === undefined) {
@@ -866,7 +891,7 @@ export function evaluateDeploymentConfig(options: {
 
     // The ladder is the service type's own: a "server" runs on whole machines
     // and has no 512MB shape to run on.
-    const memory = readMemoryField(record.memory, `deploy.services.${serviceId}.memory`, deploymentMemorySizesForType(serviceType));
+    const memory = readMemoryField(record.memory, `deploy.services.${serviceId}.memory`, deploymentMemorySizesForType(serviceType, runtime));
 
     // A volume is local disk on a single host and attaches to at most one
     // instance, so only a "server" can hold one.
@@ -1022,27 +1047,27 @@ export function evaluateDeploymentConfig(options: {
     }
   }
 
-  // A service referencing its OWN address can never be satisfied: every service address is
-  // produced by that service's own rollout, so the reference would have to resolve before the
-  // deploy that creates it has finished.
-  //
-  // This used to apply only to a PUBLIC url, because a private address was name-derived and
-  // therefore known before anything ran. That stopped being true with the move off Fly 6PN
-  // DNS: nothing publishes such a record now, and `hostname` and a private `url` block on the
-  // target's real address like every other service output (see connectionRequiresTargetDeployed).
-  // Caught here rather than at deploy time, where it surfaced as "blocked on unresolved refs"
-  // after the upload — and where no retry could ever clear it.
+  // A service referencing an address of its OWN that its rollout produces can never be
+  // satisfied: the reference would have to resolve before the deploy that creates it has
+  // finished. Which addresses those are depends on the runtime (see
+  // connectionRequiresTargetDeployed): on the default runtime a private address is
+  // name-derived and known before anything runs, so only a public url is a cycle; on GCP
+  // every service output is. Caught here rather than at deploy time, where it surfaced as
+  // "blocked on unresolved refs" after the upload — and where no retry could ever clear it.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind !== "connection") continue;
       const parsed = parseConnectionValue(value.reference);
       if (parsed === null || parsed.serviceId !== serviceId) continue;
-      if (!connectionRequiresTargetDeployed(parsed.outputKey)) continue;
-      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} connects to the service's own ${parsed.outputKey}, which cannot exist before the service is deployed. Set it as a plain env var, or have the service read its own address at runtime.`);
+      const targetIsPublic = parsed.port === null || deploymentPortEntry(service.definition.ports, parsed.port) === null
+        ? null
+        : service.definition.public === true;
+      if (!connectionRequiresTargetDeployed(runtime, parsed.outputKey, parsed.port, targetIsPublic)) continue;
+      throw new CliError(`deploy.services.${serviceId}.env.${envVarKey} connects to the service's own ${parsed.outputKey}, which cannot exist before the service is deployed. ${runtime === "fly" && parsed.outputKey === "url" ? `Use service("${serviceId}").hostname() for its own address.` : "Set it as a plain env var, or have the service read its own address at runtime."}`);
     }
   }
 
-  return { sourceId, services, builder };
+  return { sourceId, services, builder, runtime, version };
 }
 
 /**
@@ -1051,7 +1076,7 @@ export function evaluateDeploymentConfig(options: {
  * services within one level are independent of each other. Throws on circular
  * dependencies, naming the cycle.
  */
-export function computeDeploymentLevels(services: Map<string, EvaluatedService>): string[][] {
+export function computeDeploymentLevels(services: Map<string, EvaluatedService>, runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): string[][] {
   const dependencies = new Map<string, Set<string>>();
   for (const [serviceId, service] of services) {
     const serviceDependencies = new Set<string>();
@@ -1069,14 +1094,20 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // having deployed. Adding a self-edge here would make computeDeploymentLevels report a
       // circular-dependency error where the check above gives the specific reason.
       //
-      // The same reasoning excludes DETERMINISTIC cross-service references: only
-      // `url` and a bare `internalUrl()` need the target deployed. Counting the
-      // rest would serialize independent deploys and reject mutually-wired
-      // services as circular.
-      // A target this file does not define is not part of this deploy either way,
-      // so it never becomes an edge.
-      if (!services.has(targetServiceId)) continue;
-      if (!connectionRequiresTargetDeployed(parsed.outputKey)) continue;
+      // The same reasoning excludes DETERMINISTIC cross-service references, which
+      // the runtime decides (see connectionRequiresTargetDeployed): counting them
+      // would serialize independent deploys and reject mutually-wired services as
+      // circular. A target this file does not define is not part of this deploy
+      // either way, so it never becomes an edge.
+      const target = services.get(targetServiceId);
+      if (target === undefined) continue;
+      // Null when the named port is not one the target declares — the reference
+      // is invalid, and validateConnections reports it with better context than
+      // a dependency edge could.
+      const targetIsPublic = parsed.port === null || deploymentPortEntry(target.definition.ports, parsed.port) === null
+        ? null
+        : target.definition.public === true;
+      if (!connectionRequiresTargetDeployed(runtime, parsed.outputKey, parsed.port, targetIsPublic)) continue;
       if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId) {
         serviceDependencies.add(targetServiceId);
       }
@@ -1229,8 +1260,8 @@ async function importModule(filePath: string, description: string): Promise<Reco
  * the first (`id`) comes back too, so evaluation can name the rename instead of
  * reporting a missing export.
  */
-export async function importDeployModule(deployFilePath: string): Promise<{ deploymentGroupId: unknown, legacyId: unknown, deploy: unknown }> {
+export async function importDeployModule(deployFilePath: string): Promise<{ deploymentGroupId: unknown, legacyId: unknown, deploy: unknown, version: unknown }> {
   const module = await importModule(deployFilePath, "deploy file");
-  return { deploymentGroupId: module.deploymentGroupId, legacyId: module.id, deploy: module.deploy };
+  return { deploymentGroupId: module.deploymentGroupId, legacyId: module.id, deploy: module.deploy, version: module.version };
 }
 

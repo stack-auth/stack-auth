@@ -107,15 +107,17 @@ describe("authoritative state authentication", () => {
   });
 
   it("authenticates tenant project assignments and rejects unsigned legacy objects", async () => {
+    // The assignment reads the namespace record first (none yet), then writes it.
+    send.mockRejectedValueOnce(Object.assign(new Error("no such key"), { name: "NoSuchKey" }));
     send.mockResolvedValueOnce({ ETag: "assignment-etag" });
     await expect(assignTenantProject("tenant-a", "hxc-tenant-a")).resolves.toBe("hxc-tenant-a");
-    const body = send.mock.calls[0][0].input.Body;
+    const body = send.mock.calls[1][0].input.Body;
     expect(typeof body).toBe("string");
 
-    send.mockResolvedValueOnce({ Body: { transformToString: async () => body } });
+    send.mockResolvedValueOnce({ ETag: "assignment-etag", Body: { transformToString: async () => body } });
     await expect(readTenantProjectAssignment("tenant-a")).resolves.toBe("hxc-tenant-a");
 
-    send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ project_id: "hxc-tenant-b" }) } });
+    send.mockResolvedValueOnce({ ETag: "legacy-etag", Body: { transformToString: async () => JSON.stringify({ project_id: "hxc-tenant-b" }) } });
     await expect(readTenantProjectAssignment("tenant-a")).rejects.toThrow("is unsigned");
   });
 

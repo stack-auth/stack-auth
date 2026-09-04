@@ -291,13 +291,19 @@ export type ReconciliationLease = {
   expires_at_millis: number,
 };
 
-// Namespace → tenant GCP project assignment (created once, conditionally). Google's
+// Namespace record: its runtime pin and, on GCP, its tenant project assignment. Google's
 // multi-tenant guidance recommends assigning pre-created projects to tenants on demand
 // (https://docs.cloud.google.com/run/docs/securing/multi-tenant), so the id is NOT derived
 // from the namespace: this mapping is the idempotency anchor that keeps reconciliation
 // deterministic across restarts and Marshal replicas.
-export type TenantProjectAssignment = {
-  project_id: string,
+export type TenantRecord = {
+  // Which infrastructure runtime this namespace's services run on. Absent record = "fly".
+  // See runtime.ts for how it is pinned.
+  runtime: "fly" | "gcp",
+  // The tenant GCP project, once one has been assigned. Null until the first GCP deploy
+  // claims one, and carried across a re-pin so a namespace that leaves GCP and comes back
+  // reuses the project it already had.
+  project_id: string | null,
 };
 
 // One entry of the pre-provisioned tenant project pool. A project enters the pool only
