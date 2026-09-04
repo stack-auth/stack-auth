@@ -20,7 +20,6 @@ export function createExperimentRunTransitionHandler(options: {
     experimentId: string,
     runId: string,
     actor: ExperimentActor,
-    source: string,
     config?: unknown,
   }) => Promise<ExperimentRun>,
   acceptsConfig: boolean,
@@ -59,7 +58,6 @@ export function createExperimentRunTransitionHandler(options: {
         experimentId: params.experiment_id,
         runId: params.run_id,
         actor: experimentActorFromAuth(auth),
-        source: "admin_api",
         ...config !== undefined ? { config } : {},
       });
       return {

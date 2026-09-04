@@ -1,6 +1,6 @@
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
-import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import type { Json } from "@hexclave/shared/dist/utils/json";
@@ -189,7 +189,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     completeFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun>,
     createFeatureFlagExperimentRevision(experimentId: string, runId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun>,
     getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults>,
-    listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,

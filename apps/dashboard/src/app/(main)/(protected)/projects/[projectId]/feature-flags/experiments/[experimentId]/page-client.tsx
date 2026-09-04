@@ -24,7 +24,6 @@ import {
   completeExperimentRun,
   createExperimentRun,
   getExperimentRun,
-  getFeatureFlagActivity,
   getExperimentResults,
   transitionExperimentRun,
   type ExperimentResults,
@@ -43,7 +42,6 @@ import {
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import {
   ChartBarIcon,
-  ClockCounterClockwiseIcon,
   FlagIcon,
   FlaskIcon,
   LightbulbIcon,
@@ -158,11 +156,6 @@ function ExperimentDetail(props: {
     [adminApp, props.experimentId, sinceDate, untilDate, resultsEligible, runRevision],
   );
 
-  const activityState = useAdapterData(
-    async () => await getFeatureFlagActivity(adminApp, { experimentId: props.experimentId }),
-    [adminApp, props.experimentId, runRevision],
-  );
-
   if (runState.status === "loading") {
     return (
       <div className="flex flex-col gap-4">
@@ -251,35 +244,6 @@ function ExperimentDetail(props: {
             </>
           )}
         </div>
-      </DesignCard>
-
-      <DesignCard title="Audit timeline" icon={ClockCounterClockwiseIcon} gradient="default">
-        {activityState.status === "loading" && <DesignSkeleton className="h-24 rounded-xl" />}
-        {activityState.status === "unavailable" && <BackendUnavailableAlert what="The audit timeline" />}
-        {activityState.status === "error" && <AdapterErrorAlert what="the audit timeline" message={activityState.message} />}
-        {activityState.status === "ok" && (
-          activityState.data.length === 0 ? (
-            <DesignEmptyState
-              icon={ClockCounterClockwiseIcon}
-              title="No activity yet"
-              description="Experiment lifecycle changes and revisions will appear here."
-            />
-          ) : (
-            <ol className="flex flex-col gap-2">
-              {activityState.data.map((entry) => (
-                <li key={entry.id} className="flex items-start gap-3 text-sm">
-                  <span className="text-xs text-muted-foreground w-20 shrink-0 pt-0.5" title={entry.timestampIso}>
-                    {formatRelativeTime(entry.timestampIso)}
-                  </span>
-                  <span className="min-w-0">
-                    {entry.message}
-                    {entry.actor != null && <span className="text-muted-foreground"> — {entry.actor}</span>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )
-        )}
       </DesignCard>
     </div>
   );

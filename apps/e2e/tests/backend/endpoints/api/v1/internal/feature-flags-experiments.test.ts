@@ -8,7 +8,6 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 //   POST/GET /api/v1/internal/feature-flags/experiments/:experiment_id/runs
 //   POST     .../runs/:run_id/{start,pause,resume,complete,revision}
 //   GET      .../runs/:run_id/results
-//   GET      /api/v1/internal/feature-flags/activity
 //   GET      /api/v1/internal/feature-flags/experiment-schedule-processor
 //
 // Results include a live evaluate → exposure → ClickHouse attribution cycle.
@@ -574,59 +573,28 @@ describe("experiment run results", () => {
     expect(conversion.status).toBe(200);
     expect(conversion.body.inserted).toBeGreaterThanOrEqual(1);
 
+    // Both the exposure and the conversion are async ClickHouse inserts that
+    // flush independently, so the results can briefly show the exposure without
+    // the conversion. Poll until the variant is both exposed and converted.
+    const findPrimaryVariant = (body: any) => body.metrics
+      .find((metric: { metric_id: string }) => metric.metric_id === "signup")
+      ?.variants.find((variant: { variant_id: string }) => variant.variant_id === result.variant_key);
     const deadline = performance.now() + 10_000;
     let resultsRes = await getResults(createRes.body.id);
     while (performance.now() < deadline) {
-      if (resultsRes.status === 200 && resultsRes.body.total_exposed_subjects >= 1) break;
+      if (resultsRes.status === 200 && resultsRes.body.total_exposed_subjects >= 1 && (findPrimaryVariant(resultsRes.body)?.converted_subjects ?? 0) >= 1) break;
       await wait(200);
       resultsRes = await getResults(createRes.body.id);
     }
     expect(resultsRes.status).toBe(200);
     expect(resultsRes.body.total_exposed_subjects).toBeGreaterThanOrEqual(1);
     expect(resultsRes.body.exposed_subjects_by_variant[result.variant_key]).toBeGreaterThanOrEqual(1);
-    const primary = resultsRes.body.metrics.find((metric: { metric_id: string }) => metric.metric_id === "signup");
-    expect(primary).toMatchObject({
+    expect(resultsRes.body.metrics.find((metric: { metric_id: string }) => metric.metric_id === "signup")).toMatchObject({
       metric_id: "signup",
       role: "primary",
       kind: "binary",
     });
-    expect(primary?.variants.find((variant: { variant_id: string }) => variant.variant_id === result.variant_key)?.converted_subjects).toBeGreaterThanOrEqual(1);
-  });
-});
-
-describe("feature flag activity feed", () => {
-  it("returns the audit entries of a run's lifecycle", async ({ expect }) => {
-    await createProjectWithAnalytics();
-    const createRes = await createRun();
-    expect(createRes.status).toBe(201);
-    const runId = createRes.body.id;
-    expect((await transitionRun(runId, "start")).status).toBe(200);
-    expect((await transitionRun(runId, "pause")).status).toBe(200);
-    expect((await transitionRun(runId, "resume")).status).toBe(200);
-    expect((await transitionRun(runId, "complete")).status).toBe(200);
-
-    const activityRes = await niceBackendFetch("/api/v1/internal/feature-flags/activity", {
-      method: "GET",
-      accessType: "admin",
-      query: {
-        resource_type: "experiment_run",
-        resource_id: runId,
-      },
-    });
-    expect(activityRes.status).toBe(200);
-    expect(activityRes.body.next_cursor).toBe(null);
-    // Newest-first audit trail of the transitions above.
-    expect(activityRes.body.items.map((item: any) => item.action)).toMatchInlineSnapshot(`
-      [
-        "completed",
-        "resumed",
-        "paused",
-        "started",
-        "created",
-      ]
-    `);
-    expect(activityRes.body.items.every((item: any) => item.source === "admin_api")).toBe(true);
-    expect(activityRes.body.items.every((item: any) => item.actor_type === "admin_key")).toBe(true);
+    expect(findPrimaryVariant(resultsRes.body)?.converted_subjects).toBeGreaterThanOrEqual(1);
   });
 });
 

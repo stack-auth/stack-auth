@@ -6,7 +6,7 @@ import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-te
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
-import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -1454,10 +1454,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults> {
     return await this._interface.getFeatureFlagExperimentResults(experimentId, runId);
-  }
-
-  async listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse> {
-    return await this._interface.listFeatureFlagActivity(options);
   }
 
   async createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse> {

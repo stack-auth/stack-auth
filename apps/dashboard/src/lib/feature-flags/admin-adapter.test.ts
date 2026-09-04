@@ -1,6 +1,6 @@
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { describe, expect, it, vi } from "vitest";
-import { evaluateFlagWithoutExposure, FeatureFlagsBackendUnavailableError, getExperimentResults, getExperimentRun, getFeatureFlagActivity, listExperimentRuns, transitionExperimentRun } from "./admin-adapter";
+import { evaluateFlagWithoutExposure, FeatureFlagsBackendUnavailableError, getExperimentResults, getExperimentRun, listExperimentRuns, transitionExperimentRun } from "./admin-adapter";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -174,38 +174,6 @@ describe("feature flags admin adapter", () => {
       user: { email: "user@example.com" },
       context: { environment: "production", plan: "pro" },
     });
-  });
-
-  it("loads lifecycle audit entries for every revision of a filtered experiment", async () => {
-    const firstRun = makeRun("completed");
-    const secondRun = { ...makeRun("running"), id: "00000000-0000-4000-8000-000000000002" };
-    const { app, sendRequest } = makeAdminApp((path) => {
-      if (path.endsWith("/runs")) return jsonResponse({ items: [secondRun, firstRun] });
-      const isSecond = path.includes(secondRun.id);
-      return jsonResponse({ items: [{
-        id: isSecond ? "activity-2" : "activity-1",
-        resource_type: "experiment_run",
-        resource_id: isSecond ? secondRun.id : firstRun.id,
-        action: isSecond ? "started" : "completed",
-        actor_type: "admin_user",
-        actor_id: null,
-        source: "dashboard",
-        before_state: null,
-        after_state: null,
-        metadata: null,
-        created_at_millis: isSecond ? 2000 : 1000,
-      }], next_cursor: null });
-    });
-    const activity = await getFeatureFlagActivity(app, { experimentId: "experiment-1" });
-    expect(activity.map((entry) => [entry.id, entry.experimentId, entry.action, entry.message])).toEqual([
-      ["activity-2", "experiment-1", "started", "Experiment run started"],
-      ["activity-1", "experiment-1", "completed", "Experiment run completed"],
-    ]);
-    expect(sendRequest.mock.calls.map((call) => call[0])).toEqual([
-      "/internal/feature-flags/experiments/experiment-1/runs",
-      `/internal/feature-flags/activity?resource_type=experiment_run&resource_id=${secondRun.id}`,
-      `/internal/feature-flags/activity?resource_type=experiment_run&resource_id=${firstRun.id}`,
-    ]);
   });
 
   it("fails loudly when app internals are absent", async () => {

@@ -20,7 +20,6 @@ const getScreenshots = (appName: string, count: number): string[] => {
 const FEATURE_FLAGS_NAVIGATION_ITEMS: AppNavigationItem[] = [
   { displayName: "Flags", href: "./flags" },
   { displayName: "Experiments", href: "./experiments" },
-  { displayName: "Activity", href: "./activity" },
 ];
 
 export const DUMMY_ORIGIN = "https://example.com";

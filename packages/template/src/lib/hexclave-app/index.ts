@@ -89,8 +89,6 @@ export type {
   FeatureFlagRequest,
 } from "./feature-flags";
 export type {
-  FeatureFlagActivityItem,
-  FeatureFlagActivityResponse,
   FeatureFlagExperimentMetricResult,
   FeatureFlagExperimentResults,
   FeatureFlagExperimentRun,

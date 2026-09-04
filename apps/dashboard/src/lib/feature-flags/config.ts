@@ -296,7 +296,7 @@ export function getFlagStatus(flag: FlagConfig): FlagStatus {
 /**
  * Human summary of what portion of traffic currently receives a non-fallback
  * variant, for the flags list. This intentionally describes configuration, not
- * live traffic — live exposure counts come from the activity adapter.
+ * live traffic — last-exposure timestamps come from the admin adapter.
  */
 export function describeCurrentRollout(flag: FlagConfig): string {
   const status = getFlagStatus(flag);

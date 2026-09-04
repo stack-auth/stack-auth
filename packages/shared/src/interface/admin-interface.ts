@@ -10,7 +10,7 @@ import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
-import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "./crud/feature-flags";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "./crud/feature-flags";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -283,15 +283,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
 
   async getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults> {
     const response = await this.sendAdminRequest(`/internal/feature-flags/experiments/${encodeURIComponent(experimentId)}/runs/${encodeURIComponent(runId)}/results`, {}, null);
-    return await response.json();
-  }
-
-  async listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse> {
-    const query = new URLSearchParams();
-    if (options?.cursor != null) query.set("cursor", options.cursor);
-    if (options?.limit != null) query.set("limit", options.limit.toString());
-    const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-    const response = await this.sendAdminRequest(`/internal/feature-flags/activity${suffix}`, {}, null);
     return await response.json();
   }
 

@@ -101,22 +101,3 @@ export type FeatureFlagExperimentResults = {
     | { status: "no_winner", reason: "insufficient_data" | "no_variant_confident" | "guardrail_regression" | "srm_detected" },
   winner_rollout: { flag_id: string, variant_id: string, flag_value: Json } | null,
 };
-
-export type FeatureFlagActivityItem = {
-  id: string,
-  resource_type: string,
-  resource_id: string,
-  action: string,
-  actor_type: string,
-  actor_id: string | null,
-  source: string,
-  before_state: Json | null,
-  after_state: Json | null,
-  metadata: Json | null,
-  created_at_millis: number,
-};
-
-export type FeatureFlagActivityResponse = {
-  items: FeatureFlagActivityItem[],
-  next_cursor: string | null,
-};

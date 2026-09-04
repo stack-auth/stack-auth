@@ -11,6 +11,5 @@ HexclaveAdminApp extends HexclaveServerApp and exposes the following internal co
 - `completeFeatureFlagExperimentRun(experimentId, runId)`
 - `createFeatureFlagExperimentRevision(experimentId, runId, immutableConfigSnapshot)`
 - `getFeatureFlagExperimentResults(experimentId, runId)`
-- `listFeatureFlagActivity({ cursor?, limit? })`
 
-Run operations use `/api/v1/internal/feature-flags/experiments/:experimentId/runs/:runId`; lifecycle transitions append `/start`, `/pause`, `/resume`, or `/complete`, revisions append `/revision` with `experiment_config`, and results append `/results`. Creating and listing runs omit `:runId`. Activity uses `/api/v1/internal/feature-flags/activity`. All requests use admin authentication. IDs and query values must be URL encoded. The SDK transports immutable run/result/activity payloads without reproducing backend lifecycle or statistics logic.
+Run operations use `/api/v1/internal/feature-flags/experiments/:experimentId/runs/:runId`; lifecycle transitions append `/start`, `/pause`, `/resume`, or `/complete`, revisions append `/revision` with `experiment_config`, and results append `/results`. Creating and listing runs omit `:runId`. All requests use admin authentication. IDs and query values must be URL encoded. The SDK transports immutable run/result payloads without reproducing backend lifecycle or statistics logic.

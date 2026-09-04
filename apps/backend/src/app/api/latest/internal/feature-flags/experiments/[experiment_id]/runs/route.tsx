@@ -62,7 +62,6 @@ export const POST = createSmartRouteHandler({
       experimentId: params.experiment_id,
       config: body.experiment_config,
       actor: experimentActorFromAuth(auth),
-      source: "admin_api",
     });
     return {
       statusCode: 201,

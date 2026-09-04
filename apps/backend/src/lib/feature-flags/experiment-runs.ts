@@ -32,8 +32,6 @@ export type ExperimentActor =
   | { type: "admin_key" }
   | { type: "system" };
 
-export const EXPERIMENT_RUN_RESOURCE_TYPE = "experiment_run";
-
 export function experimentRunNotFoundError(): StatusError {
   return new StatusError(StatusError.NotFound, "Experiment run not found");
 }
@@ -230,44 +228,6 @@ async function currentExperimentConfig(options: {
   return derived;
 }
 
-type PrismaClientLike = typeof globalPrismaClient | Prisma.TransactionClient;
-
-export async function logFeatureFlagAudit(prisma: PrismaClientLike, options: {
-  tenancy: Tenancy,
-  resourceType: string,
-  resourceId: string,
-  action: string,
-  actor: ExperimentActor,
-  source: string,
-  beforeState?: Prisma.InputJsonValue,
-  afterState?: Prisma.InputJsonValue,
-  metadata?: Prisma.InputJsonValue,
-}): Promise<void> {
-  await prisma.featureFlagAuditLog.create({
-    data: {
-      projectId: options.tenancy.project.id,
-      branchId: options.tenancy.branchId,
-      resourceType: options.resourceType,
-      resourceId: options.resourceId,
-      action: options.action,
-      actorType: options.actor.type,
-      actorId: options.actor.type === "user" ? options.actor.userId : null,
-      source: options.source,
-      ...options.beforeState !== undefined ? { beforeState: options.beforeState } : {},
-      ...options.afterState !== undefined ? { afterState: options.afterState } : {},
-      ...options.metadata !== undefined ? { metadata: options.metadata } : {},
-    },
-  });
-}
-
-function runAuditState(run: ExperimentRun): Prisma.InputJsonValue {
-  return {
-    state: run.state,
-    revision_number: run.revisionNumber,
-    config_revision_hash: run.configRevisionHash,
-  };
-}
-
 export async function listExperimentRuns(options: {
   tenancy: Tenancy,
   experimentId: string,
@@ -301,7 +261,6 @@ export async function createExperimentRun(options: {
   experimentId: string,
   config: unknown,
   actor: ExperimentActor,
-  source: string,
 }): Promise<ExperimentRun> {
   const config = await currentExperimentConfig({ ...options, submittedConfig: options.config });
   const configRevisionHash = computeExperimentConfigRevisionHash(config);
@@ -314,55 +273,42 @@ export async function createExperimentRun(options: {
     orderBy: { revisionNumber: "desc" },
     select: { revisionNumber: true },
   });
-  const run = await retryTransaction(globalPrismaClient, async (tx) => {
-    const created = await tx.experimentRun.create({
-      data: {
-        id: generateUuid(),
-        projectId: options.tenancy.project.id,
-        branchId: options.tenancy.branchId,
-        experimentId: options.experimentId,
-        // Concurrent creates may produce duplicate revision numbers for DRAFT
-        // runs; that's fine — revision numbers only become meaningful (and
-        // strictly increasing) along the RUNNING chain created by
-        // createNewRevision, which recomputes from the completed predecessor.
-        revisionNumber: (latestRun?.revisionNumber ?? 0) + 1,
-        configRevisionHash,
-        // Prisma JSON columns accept the validated plain-JSON config; the type
-        // system can't see through `unknown`-typed metric fields, so serialize
-        // through JSON to guarantee a plain value.
-        configSnapshot: JSON.parse(JSON.stringify(config)),
-        state: "DRAFT",
-        scheduledStartAt: config.schedule?.start_at_millis != null ? new Date(config.schedule.start_at_millis) : null,
-        scheduledEndAt: config.schedule?.end_at_millis != null ? new Date(config.schedule.end_at_millis) : null,
-        createdByUserId: options.actor.type === "user" ? options.actor.userId : null,
-      },
-    });
-    await logFeatureFlagAudit(tx, {
-      tenancy: options.tenancy,
-      resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-      resourceId: created.id,
-      action: "created",
-      actor: options.actor,
-      source: options.source,
-      afterState: runAuditState(created),
-    });
-    return created;
+  return await globalPrismaClient.experimentRun.create({
+    data: {
+      id: generateUuid(),
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      experimentId: options.experimentId,
+      // Concurrent creates may produce duplicate revision numbers for DRAFT
+      // runs; that's fine — revision numbers only become meaningful (and
+      // strictly increasing) along the RUNNING chain created by
+      // createNewRevision, which recomputes from the completed predecessor.
+      revisionNumber: (latestRun?.revisionNumber ?? 0) + 1,
+      configRevisionHash,
+      // Prisma JSON columns accept the validated plain-JSON config; the type
+      // system can't see through `unknown`-typed metric fields, so serialize
+      // through JSON to guarantee a plain value.
+      configSnapshot: JSON.parse(JSON.stringify(config)),
+      state: "DRAFT",
+      scheduledStartAt: config.schedule?.start_at_millis != null ? new Date(config.schedule.start_at_millis) : null,
+      scheduledEndAt: config.schedule?.end_at_millis != null ? new Date(config.schedule.end_at_millis) : null,
+      createdByUserId: options.actor.type === "user" ? options.actor.userId : null,
+    },
   });
-  return run;
 }
 
 async function transitionExperimentRun(options: {
   tenancy: Tenancy,
   experimentId: string,
   runId: string,
-  actor: ExperimentActor,
-  source: string,
   action: "started" | "paused" | "resumed" | "completed",
   fromStates: ("DRAFT" | "RUNNING" | "PAUSED")[],
   toState: "RUNNING" | "PAUSED" | "COMPLETED",
   extraData: Prisma.ExperimentRunUpdateManyMutationInput,
 }): Promise<ExperimentRun> {
-  const before = await getExperimentRun(options);
+  // Tenancy check before the compare-and-swap so a foreign run id 404s instead
+  // of being transitioned or 409ing.
+  await getExperimentRun(options);
   try {
     return await retryTransaction(globalPrismaClient, async (tx) => {
       const updated = await tx.experimentRun.updateMany({
@@ -373,19 +319,8 @@ async function transitionExperimentRun(options: {
       if (updated.count > 1) {
         throw new HexclaveAssertionError(`Transition matched ${updated.count} runs for id ${options.runId}; id is the primary key so this should be impossible`);
       }
-      const after = await tx.experimentRun.findUnique({ where: { id: options.runId } })
+      return await tx.experimentRun.findUnique({ where: { id: options.runId } })
         ?? throwErr(`Experiment run ${options.runId} disappeared right after a successful transition`);
-      await logFeatureFlagAudit(tx, {
-        tenancy: options.tenancy,
-        resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-        resourceId: options.runId,
-        action: options.action,
-        actor: options.actor,
-        source: options.source,
-        beforeState: runAuditState(before),
-        afterState: runAuditState(after),
-      });
-      return after;
     });
   } catch (error) {
     // Starting/resuming can violate either active-run partial unique index: one
@@ -407,7 +342,6 @@ export async function startExperimentRun(options: {
   experimentId: string,
   runId: string,
   actor: ExperimentActor,
-  source: string,
   config?: unknown,
 }): Promise<ExperimentRun> {
   const config = await currentExperimentConfig({ ...options, submittedConfig: options.config });
@@ -430,7 +364,6 @@ export async function pauseExperimentRun(options: {
   experimentId: string,
   runId: string,
   actor: ExperimentActor,
-  source: string,
 }): Promise<ExperimentRun> {
   return await transitionExperimentRun({
     ...options,
@@ -446,7 +379,6 @@ export async function resumeExperimentRun(options: {
   experimentId: string,
   runId: string,
   actor: ExperimentActor,
-  source: string,
 }): Promise<ExperimentRun> {
   return await transitionExperimentRun({
     ...options,
@@ -462,7 +394,6 @@ export async function completeExperimentRun(options: {
   experimentId: string,
   runId: string,
   actor: ExperimentActor,
-  source: string,
 }): Promise<ExperimentRun> {
   return await transitionExperimentRun({
     ...options,
@@ -487,7 +418,6 @@ export async function createNewRevision(options: {
   runId: string,
   config: unknown,
   actor: ExperimentActor,
-  source: string,
 }): Promise<ExperimentRun> {
   const config = await currentExperimentConfig({ ...options, submittedConfig: options.config });
   const configRevisionHash = computeExperimentConfigRevisionHash(config);
@@ -515,26 +445,6 @@ export async function createNewRevision(options: {
           scheduledEndAt: config.schedule?.end_at_millis != null ? new Date(config.schedule.end_at_millis) : null,
           createdByUserId: options.actor.type === "user" ? options.actor.userId : null,
         },
-      });
-      await logFeatureFlagAudit(tx, {
-        tenancy: options.tenancy,
-        resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-        resourceId: options.runId,
-        action: "completed",
-        actor: options.actor,
-        source: options.source,
-        beforeState: runAuditState(before),
-        metadata: { reason: "superseded_by_new_revision", successor_run_id: successor.id },
-      });
-      await logFeatureFlagAudit(tx, {
-        tenancy: options.tenancy,
-        resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-        resourceId: successor.id,
-        action: "revision_created",
-        actor: options.actor,
-        source: options.source,
-        afterState: runAuditState(successor),
-        metadata: { predecessor_run_id: options.runId },
       });
       return successor;
     });
@@ -571,8 +481,7 @@ async function moveSkippedScheduledRunBehindCurrentPage(run: Pick<ExperimentRun,
  * every mutation is a per-row CAS on the expected state, so overlapping
  * processor invocations (or a processor racing a manual transition) simply
  * no-op on rows the other side already handled, and a start that would violate
- * the one-active-run index skips that run and reports it via the audit log
- * only when it actually transitioned.
+ * the one-active-run index skips that run until a later tick.
  */
 export async function processScheduledExperimentRuns(options: {
   now: Date,
@@ -604,7 +513,7 @@ export async function processScheduledExperimentRuns(options: {
     } catch (error) {
       if (error instanceof StatusError) {
         // Leave the run in DRAFT. A later config correction can make the same
-        // scheduled run eligible without losing its audit/snapshot history.
+        // scheduled run eligible without losing its snapshot history.
         await moveSkippedScheduledRunBehindCurrentPage(run, options.now);
         continue;
       }
@@ -641,20 +550,7 @@ export async function processScheduledExperimentRuns(options: {
             scheduledEndAt: currentScheduledEndAt,
           },
         });
-        if (updated.count === 0) return false;
-        const after = await tx.experimentRun.findUnique({ where: { id: run.id } })
-          ?? throwErr(`Scheduled experiment run ${run.id} disappeared right after a successful start`);
-        await logFeatureFlagAudit(tx, {
-          tenancy,
-          resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-          resourceId: run.id,
-          action: "started",
-          actor: { type: "system" },
-          source: "schedule_processor",
-          beforeState: runAuditState(run),
-          afterState: runAuditState(after),
-        });
-        return true;
+        return updated.count === 1;
       });
       if (!didStart) continue;
     } catch (error) {
@@ -675,32 +571,13 @@ export async function processScheduledExperimentRuns(options: {
     take: options.batchLimit,
   });
   for (const run of dueEnds) {
-    const tenancy = await getSoleTenancyFromProjectBranch(run.projectId, run.branchId, true);
-    if (tenancy === null) {
-      await moveSkippedScheduledRunBehindCurrentPage(run, options.now);
-      continue;
-    }
-    const didComplete = await retryTransaction(globalPrismaClient, async (tx) => {
-      const updated = await tx.experimentRun.updateMany({
-        where: { id: run.id, state: { in: ["RUNNING", "PAUSED"] } },
-        data: { state: "COMPLETED", completedAt: options.now },
-      });
-      if (updated.count === 0) return false;
-      const after = await tx.experimentRun.findUnique({ where: { id: run.id } })
-        ?? throwErr(`Scheduled experiment run ${run.id} disappeared right after successful completion`);
-      await logFeatureFlagAudit(tx, {
-        tenancy,
-        resourceType: EXPERIMENT_RUN_RESOURCE_TYPE,
-        resourceId: run.id,
-        action: "completed",
-        actor: { type: "system" },
-        source: "schedule_processor",
-        beforeState: runAuditState(run),
-        afterState: runAuditState(after),
-      });
-      return true;
+    // Ending needs no branch config: the run's frozen snapshot already carries
+    // everything, and a CAS on the active states makes overlapping ticks safe.
+    const ended = await globalPrismaClient.experimentRun.updateMany({
+      where: { id: run.id, state: { in: ["RUNNING", "PAUSED"] } },
+      data: { state: "COMPLETED", completedAt: options.now },
     });
-    if (!didComplete) continue;
+    if (ended.count === 0) continue;
     completed++;
   }
 

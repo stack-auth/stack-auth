@@ -1,7 +1,6 @@
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { type Json } from "@hexclave/shared/dist/utils/json";
-import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 export class FeatureFlagsBackendUnavailableError extends Error {
@@ -304,59 +303,6 @@ export async function getExperimentResults(adminApp: object, experimentId: strin
       flagValue: asJson(winnerRolloutRecord.flag_value, "$.winner_rollout.flag_value"),
     },
   };
-}
-
-export type FeatureFlagActivityKind = "lifecycle";
-export type FeatureFlagLifecycleAction = "created" | "started" | "paused" | "resumed" | "completed" | "revision_created";
-export type FeatureFlagActivityEntry = { id: string, timestampIso: string, kind: FeatureFlagActivityKind, action: FeatureFlagLifecycleAction, resourceId: string, experimentId: string | null, actorType: string, actor: string | null, source: string, message: string };
-export type FeatureFlagActivityFilters = { experimentId?: string, action?: FeatureFlagLifecycleAction };
-
-const FEATURE_FLAG_LIFECYCLE_ACTIONS = ["created", "started", "paused", "resumed", "completed", "revision_created"] as const;
-const LIFECYCLE_MESSAGES: ReadonlyMap<FeatureFlagLifecycleAction, string> = new Map([
-  ["created", "Experiment run created"],
-  ["started", "Experiment run started"],
-  ["paused", "Experiment run paused"],
-  ["resumed", "Experiment run resumed"],
-  ["completed", "Experiment run completed"],
-  ["revision_created", "Experiment revision created"],
-]);
-
-export async function getFeatureFlagActivity(adminApp: object, filters: FeatureFlagActivityFilters): Promise<FeatureFlagActivityEntry[]> {
-  const runs = filters.experimentId === undefined ? [] : await listRunsForExperiment(adminApp, filters.experimentId);
-  const resourceIds = filters.experimentId === undefined ? [null] : runs.map((run) => run.runId);
-  const bodies = await Promise.all(resourceIds.map(async (resourceId) => {
-    const params = new URLSearchParams();
-    if (resourceId != null) {
-      params.set("resource_type", "experiment_run");
-      params.set("resource_id", resourceId);
-    }
-    const suffix = params.size === 0 ? "" : `?${params.toString()}`;
-    return asRecord(await requestJson(adminApp, `/internal/feature-flags/activity${suffix}`, { method: "GET" }), "$");
-  }));
-  return bodies.flatMap((body) => asArray(body.items, "$.items")).map((entryValue, index): FeatureFlagActivityEntry => {
-    const entry = asRecord(entryValue, `$.items[${index}]`);
-    const actorId = asStringOrNull(entry.actor_id, `$.items[${index}].actor_id`);
-    const resourceType = asString(entry.resource_type, `$.items[${index}].resource_type`);
-    if (resourceType !== "experiment_run") throw new AdapterResponseShapeError(`$.items[${index}].resource_type`, "experiment_run");
-    const action = asOneOf(entry.action, FEATURE_FLAG_LIFECYCLE_ACTIONS, `$.items[${index}].action`);
-    return {
-      id: asString(entry.id, `$.items[${index}].id`),
-      timestampIso: new Date(asNumber(entry.created_at_millis, `$.items[${index}].created_at_millis`)).toISOString(),
-      kind: "lifecycle",
-      action,
-      resourceId: asString(entry.resource_id, `$.items[${index}].resource_id`),
-      experimentId: filters.experimentId ?? null,
-      actorType: asString(entry.actor_type, `$.items[${index}].actor_type`),
-      actor: actorId,
-      source: asString(entry.source, `$.items[${index}].source`),
-      message: LIFECYCLE_MESSAGES.get(action) ?? throwNoLifecycleMessage(action),
-    };
-  }).filter((entry) => filters.action === undefined || entry.action === filters.action)
-    .sort((left, right) => stringCompare(right.timestampIso, left.timestampIso));
-}
-
-function throwNoLifecycleMessage(action: FeatureFlagLifecycleAction): never {
-  throw new HexclaveAssertionError(`No lifecycle activity message exists for ${action}`);
 }
 
 export async function getLastExposures(adminApp: object): Promise<Map<string, string>> {
