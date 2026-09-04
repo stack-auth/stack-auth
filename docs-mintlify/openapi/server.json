@@ -5215,11 +5215,6 @@
                     "type": "string",
                     "example": "Monthly subscription renewal",
                     "description": "Optional description for this quantity change"
-                  },
-                  "idempotency_key": {
-                    "type": "string",
-                    "example": "analytics-batch:550e8400-e29b-41d4-a716-446655440000",
-                    "description": "Optional retry key. Reusing it with the same update applies the quantity change exactly once."
                   }
                 },
                 "required": [
@@ -5228,8 +5223,7 @@
                 "example": {
                   "delta": 100,
                   "expires_at": "2024-12-31T23:59:59Z",
-                  "description": "Monthly subscription renewal",
-                  "idempotency_key": "analytics-batch:550e8400-e29b-41d4-a716-446655440000"
+                  "description": "Monthly subscription renewal"
                 }
               }
             }
