@@ -1,6 +1,8 @@
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 // E2E tests for the internal experiment-run lifecycle endpoints:
 //   POST/GET /api/v1/internal/feature-flags/experiments/:experiment_id/runs
@@ -9,9 +11,8 @@ import { Project, niceBackendFetch } from "../../../../backend-helpers";
 //   GET      /api/v1/internal/feature-flags/activity
 //   GET      /api/v1/internal/feature-flags/experiment-schedule-processor
 //
-// Results assertions are shallow (shape only): there is no evaluation endpoint
-// yet to generate real exposure data in ClickHouse, so the statistical content
-// of results is covered by backend unit tests instead.
+// Results include a live evaluate → exposure → ClickHouse attribution cycle.
+// Bayesian winner/SRM math stays in backend unit tests.
 
 const EXPERIMENT_ID = "my-experiment";
 const SECOND_EXPERIMENT_ID = "my-second-experiment";
@@ -518,14 +519,78 @@ describe("experiment run results", () => {
 
     expect((await transitionRun(runId, "start")).status).toBe(200);
 
-    // With no exposure data (no evaluation endpoint exists yet), only the
-    // shape is asserted: srm and winner must be present, and with zero
-    // subjects there can be no winner.
     const resultsRes = await getResults(runId);
     expect(resultsRes.status).toBe(200);
     expect(resultsRes.body.srm).toEqual({ detected: false, statistic: null, p_value: null });
     expect(resultsRes.body.winner).toEqual({ status: "no_winner", reason: "insufficient_data" });
     expect(resultsRes.body.winner_rollout).toBe(null);
+  });
+
+  it("attributes a live evaluate-and-exposure cycle in results", async ({ expect }) => {
+    await createProjectWithAnalytics();
+    const createRes = await createRun();
+    expect(createRes.status).toBe(201);
+    expect((await transitionRun(createRes.body.id, "start")).status).toBe(200);
+
+    await Auth.Otp.signIn();
+    const evaluated = await niceBackendFetch("/api/v1/feature-flags/evaluate", {
+      method: "POST",
+      accessType: "client",
+      body: { flag_keys: ["my-flag"], fallbacks: { "my-flag": false } },
+    });
+    expect(evaluated.status).toBe(200);
+    const result = evaluated.body.results["my-flag"];
+    expect(result.experiment_id).toBe(EXPERIMENT_ID);
+    expect(result.experiment_run_id).toBe(createRes.body.id);
+    expect(typeof result.exposure_token).toBe("string");
+    expect(["control", "treatment"]).toContain(result.variant_key);
+
+    const now = Date.now();
+    const exposure = await niceBackendFetch("/api/v1/feature-flags/exposures/batch", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        batch_id: randomUUID(),
+        exposures: [{
+          event_id: randomUUID(),
+          exposure_token: result.exposure_token,
+          exposed_at_ms: now,
+        }],
+      },
+    });
+    expect(exposure.status).toBe(200);
+    expect(exposure.body).toEqual({ inserted: 1 });
+
+    const conversion = await niceBackendFetch("/api/v1/analytics/events/batch", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        session_replay_segment_id: randomUUID(),
+        batch_id: randomUUID(),
+        sent_at_ms: now + 1_000,
+        events: [{ event_type: "signed-up", event_at_ms: now + 500, data: {} }],
+      },
+    });
+    expect(conversion.status).toBe(200);
+    expect(conversion.body.inserted).toBeGreaterThanOrEqual(1);
+
+    const deadline = performance.now() + 10_000;
+    let resultsRes = await getResults(createRes.body.id);
+    while (performance.now() < deadline) {
+      if (resultsRes.status === 200 && resultsRes.body.total_exposed_subjects >= 1) break;
+      await wait(200);
+      resultsRes = await getResults(createRes.body.id);
+    }
+    expect(resultsRes.status).toBe(200);
+    expect(resultsRes.body.total_exposed_subjects).toBeGreaterThanOrEqual(1);
+    expect(resultsRes.body.exposed_subjects_by_variant[result.variant_key]).toBeGreaterThanOrEqual(1);
+    const primary = resultsRes.body.metrics.find((metric: { metric_id: string }) => metric.metric_id === "signup");
+    expect(primary).toMatchObject({
+      metric_id: "signup",
+      role: "primary",
+      kind: "binary",
+    });
+    expect(primary?.variants.find((variant: { variant_id: string }) => variant.variant_id === result.variant_key)?.converted_subjects).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -662,15 +727,18 @@ describe("experiment schedule processor", () => {
   });
 
   it("reconciles cancellation and postponement from current branch config", async ({ expect }) => {
-    const originalStartMillis = Date.now() - 60_000;
-    await createProjectWithAnalytics({ startsAt: new Date(originalStartMillis).toISOString() });
-    // The drafts below are due immediately, and the e2e environment runs the
-    // schedule processor as a background cron. A manually started run keeps
-    // the processor from starting them (one active run per experiment), so the
-    // test only observes the schedule reconciliation.
+    // Create and start an unschedulable blocking run first. createRun() submits
+    // the current branch definition, so a past startsAt here would 400 (the
+    // submitted snapshot would omit the published schedule) and would also let
+    // the background cron start later due drafts. One active run per experiment
+    // keeps those drafts in DRAFT so this test only observes reconciliation.
+    await createProjectWithAnalytics();
     const blockingRun = await createRun();
     expect(blockingRun.status).toBe(201);
     expect((await transitionRun(blockingRun.body.id, "start")).status).toBe(200);
+
+    const originalStartMillis = Date.now() - 60_000;
+    await updateFeatureFlagConfig({ startsAt: new Date(originalStartMillis).toISOString() });
 
     const cancelledRun = await createRun({
       ...validExperimentConfig(),

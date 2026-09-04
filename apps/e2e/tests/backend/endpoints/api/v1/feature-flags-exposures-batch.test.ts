@@ -4,14 +4,9 @@ import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
 // E2E tests for POST /api/v1/feature-flags/exposures/batch.
-//
-// NOTE: there is no flag evaluation endpoint yet (it lands with the
-// feature-flags core workstream), so e2e tests cannot mint a real signed
-// evaluation token. This file therefore only covers the negative paths;
-// positive-path coverage (valid tokens round-tripping into exposure rows)
-// lives in the backend unit tests
-// (apps/backend/src/lib/feature-flags/exposure-tokens.test.ts) until the
-// evaluation endpoint exists.
+// Positive paths mint a real evaluation token from a started experiment run
+// via POST /api/v1/feature-flags/evaluate. Token-schema edge cases stay in
+// apps/backend/src/lib/feature-flags/exposure-tokens.test.ts.
 
 async function uploadExposureBatch(options: {
   batchId: string,
