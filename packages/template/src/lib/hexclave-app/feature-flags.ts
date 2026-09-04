@@ -1,6 +1,7 @@
 import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagEvaluateResult, FeatureFlagExposureRequest } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
@@ -314,16 +315,31 @@ export class FeatureFlagController<TIdentity> {
     requests: readonly FeatureFlagRequest[],
   ): Promise<Map<string, FeatureFlagDetails<Json>>> {
     validateRequests(requests);
-    const withResolvedTeamContext = (result: Map<string, FeatureFlagDetails<Json>>) => {
-      // Resolve analytics context after evaluation rather than during React
-      // render. Apply it for cache hits too: another flag call may have changed
-      // the active team since this result was first evaluated.
-      this._dependencies.onTeamContextResolved?.(requests.find((request) => request.options?.teamId != null)?.options?.teamId ?? null);
-      return result;
-    };
+    const resultPromise = this._getOrCreateResultPromise(identity, requests);
+    // Resolve analytics context after evaluation rather than during React
+    // render. Apply it for cache hits too: another flag call may have changed
+    // the active team since this result was first evaluated.
+    //
+    // This runs on a detached branch instead of being chained onto the returned
+    // promise on purpose: the React hook suspends on the returned promise with
+    // use(), which only settles if it sees the *same* promise object on every
+    // render. A fresh .then() wrapper per call re-suspends indefinitely once
+    // the evaluation rejects. The branch's rejection is ignored because the
+    // identical rejection already reaches the caller through resultPromise.
+    runAsynchronously(resultPromise.then(
+      () => this._dependencies.onTeamContextResolved?.(requests.find((request) => request.options?.teamId != null)?.options?.teamId ?? null),
+      () => undefined,
+    ));
+    return resultPromise;
+  }
+
+  private _getOrCreateResultPromise(
+    identity: FeatureFlagIdentity<TIdentity>,
+    requests: readonly FeatureFlagRequest[],
+  ): Promise<Map<string, FeatureFlagDetails<Json>>> {
     const resultKey = `${identity.cacheKey}:${canonicalFeatureFlagRequestKey(requests)}`;
     const cachedResult = this._resultPromises.get(resultKey);
-    if (cachedResult != null && this._isFresh(cachedResult)) return cachedResult.promise.then(withResolvedTeamContext);
+    if (cachedResult != null && this._isFresh(cachedResult)) return cachedResult.promise;
     this._resultPromises.delete(resultKey);
     const networkKey = `${identity.cacheKey}:${canonicalNetworkRequestKey(requests)}`;
     const cachedEvaluation = this._evaluationPromises.get(networkKey);
@@ -332,7 +348,7 @@ export class FeatureFlagController<TIdentity> {
       : this._evaluateWire(identity, requests, networkKey);
     const resultPromise = evaluationPromise.then(async (response) => await this._mapResponse(identity, requests, response));
     setBoundedMap(this._resultPromises, resultKey, { promise: resultPromise, createdAt: this._now() }, this._maxCacheEntries());
-    return resultPromise.then(withResolvedTeamContext);
+    return resultPromise;
   }
 
   private _evaluateWire(

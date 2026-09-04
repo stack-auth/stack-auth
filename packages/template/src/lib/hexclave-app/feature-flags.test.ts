@@ -41,6 +41,38 @@ describe("FeatureFlagController", () => {
     expect([...second.keys()]).toEqual(["checkout", "header"]);
   });
 
+  it("returns the identical promise object for a cached result, before and after it settles", async () => {
+    // React's use() only settles a suspended component if it is handed the
+    // same promise object on every render; a fresh wrapper per call would
+    // re-suspend forever once the evaluation rejects.
+    const resolvedTeamIds: Array<string | null> = [];
+    const controller = new FeatureFlagController<string>({
+      evaluate: async (_identity, request) => responseFor(request),
+      sendExposures: async () => {},
+      onTeamContextResolved: (teamId) => resolvedTeamIds.push(teamId),
+    });
+    const identity = { cacheKey: "user-1", value: "session-1" };
+    const requests = [{ key: "checkout", fallback: false, options: { exposure: "none" as const, teamId: "team-a" } }];
+
+    const first = controller.getFeatureFlags(identity, requests);
+    expect(controller.getFeatureFlags(identity, requests)).toBe(first);
+    await first;
+    expect(controller.getFeatureFlags(identity, requests)).toBe(first);
+    await first;
+    // The team-context side effect still fires once per call, cache hits included.
+    expect(resolvedTeamIds).toEqual(["team-a", "team-a", "team-a"]);
+
+    const failing = new FeatureFlagController<string>({
+      evaluate: async () => {
+        throw new Error("evaluation unavailable");
+      },
+      sendExposures: async () => {},
+    });
+    const rejected = failing.getFeatureFlags(identity, requests);
+    expect(failing.getFeatureFlags(identity, requests)).toBe(rejected);
+    await expect(rejected).rejects.toThrowError("evaluation unavailable");
+  });
+
   it("keeps evaluation caches isolated when identity changes", async () => {
     const evaluate = vi.fn(async (_identity: string, request: FeatureFlagEvaluateRequest) => responseFor(request));
     const controller = new FeatureFlagController<string>({ evaluate, sendExposures: async () => {} });
