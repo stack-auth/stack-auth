@@ -54,6 +54,11 @@ export type FeatureFlagControllerDependencies<TIdentity> = {
     identity: TIdentity,
     exposures: { event_id: string, exposure_token: string, exposed_at_ms: number }[],
   ) => Promise<void>,
+  // Best-effort analytics side effect, invoked after each evaluation settles
+  // (cache hits included). It runs detached from the promise returned to the
+  // caller: a throw here is reported through the SDK error reporter but never
+  // fails the flag read, because analytics context must not decide whether a
+  // feature is on. Implementations should therefore not throw.
   onTeamContextResolved?: (teamId: string | null) => void,
   cacheTtlMillis?: number,
   cacheMaxEntries?: number,
