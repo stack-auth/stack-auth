@@ -39,7 +39,15 @@ import * as yup from "yup";
 import Image from "next/image";
 import { useAdminApp } from "../use-admin-app";
 
-type ServerType = "shared" | "managed" | "resend" | "standard";
+// "resend" is Resend over SMTP; "resend-api"/"usesend-api" reach a provider over its HTTP API.
+type ServerType = "shared" | "managed" | "resend" | "resend-api" | "usesend-api" | "standard";
+
+const HTTP_SERVER_TYPES = ["resend-api", "usesend-api"] as const;
+type HttpServerType = typeof HTTP_SERVER_TYPES[number];
+
+function isHttpServerType(serverType: ServerType): serverType is HttpServerType {
+  return (HTTP_SERVER_TYPES as readonly string[]).includes(serverType);
+}
 
 type ManagedDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
@@ -79,6 +87,8 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
   if (config.isShared) return "shared";
   if (config.provider === "managed") return "managed";
   if (config.provider === "resend") return "resend";
+  if (config.provider === "resend-api") return "resend-api";
+  if (config.provider === "usesend-api") return "usesend-api";
   return "standard";
 }
 
@@ -104,6 +114,8 @@ function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], pro
     port: config.port != null ? String(config.port) : "",
     username: config.username ?? "",
     password: config.password ?? "",
+    apiKey: config.apiKey ?? "",
+    baseUrl: config.baseUrl ?? "",
   };
 }
 
@@ -164,9 +176,21 @@ const PROVIDERS: ProviderMeta[] = [
     icon: ShieldCheck,
   },
   {
+    value: "resend-api",
+    label: "Resend API",
+    tagline: "Connect a Resend account with an API key, over HTTP.",
+    customIcon: <ResendIcon className="h-5 w-5" />,
+  },
+  {
+    value: "usesend-api",
+    label: "useSend API",
+    tagline: "Your own useSend instance, over its HTTP API.",
+    icon: PaperPlaneTilt,
+  },
+  {
     value: "resend",
-    label: "Resend",
-    tagline: "Connect a Resend account with an API key.",
+    label: "Resend (SMTP)",
+    tagline: "Connect a Resend account with an API key, over SMTP.",
     customIcon: <ResendIcon className="h-5 w-5" />,
   },
   {
@@ -755,10 +779,20 @@ export function DomainSettings() {
 
   const isShared = serverType === "shared";
 
-  const visibleSenderFields = serverType === "resend" || serverType === "standard";
+  const visibleSenderFields = serverType === "resend" || serverType === "standard" || isHttpServerType(serverType);
   const configFields = useMemo(() => {
     if (serverType === "resend") {
       return [{ label: "Resend API Key", key: "password", type: "password" as const }];
+    }
+    if (serverType === "resend-api") {
+      return [{ label: "Resend API Key", key: "apiKey", type: "password" as const }];
+    }
+    if (serverType === "usesend-api") {
+      // useSend is self-hosted, so unlike Resend there is no default origin to fall back to.
+      return [
+        { label: "useSend API Key", key: "apiKey", type: "password" as const },
+        { label: "Base URL", key: "baseUrl", type: "text" as const },
+      ];
     }
     if (serverType === "standard") {
       return [
@@ -839,7 +873,15 @@ export function DomainSettings() {
           return val;
         };
 
-        const emailConf: AdminEmailConfig & { type: "standard" | "resend" } = serverType === "resend" ? {
+        const emailConf: AdminEmailConfig & { type: "standard" | "resend" | "http" } = isHttpServerType(serverType) ? {
+          type: "http",
+          provider: serverType,
+          apiKey: requireField("apiKey", "API key"),
+          // Resend has a public API, so a blank base URL there means "use the default".
+          baseUrl: serverType === "usesend-api" ? requireField("baseUrl", "Base URL") : (formValues.baseUrl || undefined),
+          senderEmail: requireField("senderEmail", "Sender email"),
+          senderName: requireField("senderName", "Sender name"),
+        } : serverType === "resend" ? {
           type: "resend",
           host: "smtp.resend.com",
           port: 465,
@@ -865,7 +907,13 @@ export function DomainSettings() {
 
         const testResult = await hexclaveAdminApp.sendTestEmail({
           recipientEmail: "test-email-recipient@sent-with-hexclave.com",
-          emailConfig: emailConf,
+          emailConfig: emailConf.type === "http" ? {
+            provider: emailConf.provider,
+            apiKey: emailConf.apiKey,
+            baseUrl: emailConf.baseUrl,
+            senderEmail: emailConf.senderEmail,
+            senderName: emailConf.senderName,
+          } : emailConf,
         });
 
         if (testResult.status === "error") {
@@ -876,7 +924,22 @@ export function DomainSettings() {
         await updateConfig({
           adminApp: hexclaveAdminApp,
           configUpdate: {
-            "emails.server": {
+            // The object is replaced wholesale, so leaving the unused transport's fields undefined
+            // is what clears credentials left behind by a previously-selected provider.
+            "emails.server": emailConf.type === "http" ? {
+              isShared: false,
+              provider: emailConf.provider,
+              apiKey: emailConf.apiKey,
+              baseUrl: emailConf.baseUrl,
+              senderEmail: emailConf.senderEmail,
+              senderName: emailConf.senderName,
+              host: undefined,
+              port: undefined,
+              username: undefined,
+              password: undefined,
+              managedSubdomain: undefined,
+              managedSenderLocalPart: undefined,
+            } satisfies CompleteConfig["emails"]["server"] : {
               isShared: false,
               host: emailConf.host,
               port: emailConf.port,
@@ -885,6 +948,8 @@ export function DomainSettings() {
               senderEmail: emailConf.senderEmail,
               senderName: emailConf.senderName,
               provider: emailConf.type === "resend" ? "resend" : "smtp",
+              apiKey: undefined,
+              baseUrl: undefined,
               managedSubdomain: undefined,
               managedSenderLocalPart: undefined,
             } satisfies CompleteConfig["emails"]["server"],

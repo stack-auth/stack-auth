@@ -13,6 +13,7 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { EMAIL_SETUP_PROVIDERS } from "../schemas";
 import {
   FEATURED_APP_IDS,
   INTERNAL_PROJECT_ID,
@@ -68,7 +69,7 @@ export const GET = createSmartRouteHandler({
       }).defined(),
       email_setup: yupObject({
         kind: yupString().oneOf(["shared", "custom-domain", "custom-server"]).defined(),
-        provider: yupString().oneOf(["resend", "smtp", "managed"]).nullable().defined(),
+        provider: yupString().oneOf(EMAIL_SETUP_PROVIDERS).nullable().defined(),
         sender_email: yupString().nullable().defined(),
         managed_subdomain: yupString().nullable().defined(),
       }).defined(),

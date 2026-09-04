@@ -227,7 +227,7 @@ const environmentSchemaFuzzerConfig = [{
     ...branchSchemaFuzzerConfig[0].emails[0],
     server: [{
       isShared: [true, false],
-      provider: ["resend", "smtp", "managed"] as const,
+      provider: ["resend", "resend-api", "usesend-api", "smtp", "managed"] as const,
       host: ["example.com", "://super weird host that's not valid"],
       port: [1234, 0.12543, -100, Infinity],
       username: ["some-username", "some username with a space"],
@@ -236,6 +236,8 @@ const environmentSchemaFuzzerConfig = [{
       senderEmail: ["some-sender@example.com", "some invalid email"],
       managedSubdomain: ["mail.example.com", "invalid subdomain"],
       managedSenderLocalPart: ["noreply", "some invalid local part"],
+      apiKey: ["re_some_api_key"],
+      baseUrl: ["https://send.example.com", "not a url"],
     }],
   }],
   payments: [{

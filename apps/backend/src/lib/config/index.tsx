@@ -1558,6 +1558,17 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
       sender_email: renderedConfig.emails.server.managedSubdomain && renderedConfig.emails.server.managedSenderLocalPart
         ? `${renderedConfig.emails.server.managedSenderLocalPart}@${renderedConfig.emails.server.managedSubdomain}`
         : renderedConfig.emails.server.senderEmail,
+    } : (renderedConfig.emails.server.provider === "resend-api" || renderedConfig.emails.server.provider === "usesend-api") ? {
+      // Providers reached over HTTP have no SMTP host/port/username to report, so they get their own
+      // `type` rather than being squeezed into 'standard' — emailConfigSchema requires every SMTP
+      // field when type is 'standard', so reporting them as 'standard' would fail validation on
+      // read and take the whole project endpoint down with it.
+      type: 'http',
+      email_provider: renderedConfig.emails.server.provider,
+      api_key: renderedConfig.emails.server.apiKey,
+      base_url: renderedConfig.emails.server.baseUrl,
+      sender_name: renderedConfig.emails.server.senderName,
+      sender_email: renderedConfig.emails.server.senderEmail,
     } : {
       type: 'standard',
       host: renderedConfig.emails.server.host,

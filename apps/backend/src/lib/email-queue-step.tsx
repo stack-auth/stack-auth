@@ -875,6 +875,9 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text,
+        // The outbox row id is stable across every retry of this email, which is exactly the
+        // de-duplication key HTTP providers need: a retried 5xx must not deliver twice.
+        idempotencyKey: row.id,
       });
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;

@@ -782,14 +782,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
 
   async sendTestEmail(data: {
     recipient_email: string,
-    email_config: {
-      host: string,
-      port: number,
-      username: string,
-      password: string,
-      sender_email: string,
-      sender_name: string,
-    },
+    // `type` is optional so callers written before the HTTP transport existed keep compiling; the
+    // endpoint reads a missing `type` as 'standard'.
+    email_config:
+      | { type?: "standard", host: string, port: number, username: string, password: string, sender_email: string, sender_name: string }
+      | { type: "http", email_provider: "resend-api" | "usesend-api", api_key: string, base_url?: string, sender_email: string, sender_name: string },
   }): Promise<{ success: boolean, error_message?: string }> {
     const response = await this.sendAdminRequest(`/internal/send-test-email`, {
       method: "POST",

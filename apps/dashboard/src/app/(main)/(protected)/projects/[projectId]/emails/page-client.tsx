@@ -135,12 +135,35 @@ function InbucketCard() {
   );
 }
 
+/**
+ * How each stored `emails.server.provider` value is named in the UI. 'resend' is Resend reached over
+ * SMTP and predates 'resend-api', which talks to Resend's HTTP API instead — they are separate
+ * values so existing configs keep their meaning, so both need a label a user can tell apart.
+ *
+ * A Record rather than a Map on purpose: keying it by the provider union makes adding a provider to
+ * the config schema without a label here a compile error, and makes the lookup total so it needs no
+ * fallback for a value that cannot occur.
+ */
+const EMAIL_SERVER_TYPE_LABELS: Record<NonNullable<CompleteConfig['emails']['server']['provider']>, string> = {
+  managed: 'Managed By Hexclave',
+  resend: 'Resend (SMTP)',
+  'resend-api': 'Resend (API)',
+  'usesend-api': 'useSend (API)',
+  smtp: 'Custom SMTP',
+};
+
+/** The provider values this dialog writes as an HTTP transport, in the order they are offered. */
+const HTTP_EMAIL_PROVIDERS = ['resend-api', 'usesend-api'] as const;
+type HttpEmailProviderValue = typeof HTTP_EMAIL_PROVIDERS[number];
+
+function isHttpEmailProviderValue(value: string | undefined): value is HttpEmailProviderValue {
+  return value != null && (HTTP_EMAIL_PROVIDERS as readonly string[]).includes(value);
+}
+
 function EmailServerCard({ emailConfig, isDevelopmentEnvironment }: { emailConfig: CompleteConfig['emails']['server'], isDevelopmentEnvironment: boolean }) {
   const serverType = emailConfig.isShared
     ? 'Shared'
-    : emailConfig.provider === 'managed'
-      ? 'Managed By Hexclave'
-      : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
+    : EMAIL_SERVER_TYPE_LABELS[emailConfig.provider];
 
   const senderEmail = emailConfig.isShared
     ? 'noreply@sent-with-hexclave.com'
@@ -616,6 +639,14 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
     return { type: 'shared', senderName: project.displayName } as const;
   } else if (emailConfig.isShared) {
     return { type: 'shared' } as const;
+  } else if (isHttpEmailProviderValue(emailConfig.provider)) {
+    return {
+      type: emailConfig.provider,
+      senderEmail: emailConfig.senderEmail,
+      senderName: emailConfig.senderName,
+      apiKey: emailConfig.apiKey,
+      baseUrl: emailConfig.baseUrl,
+    } as const;
   } else if (emailConfig.provider === 'resend') {
     return {
       type: 'resend',
@@ -646,14 +677,25 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
   }
 };
 
+// Every type that lets the user choose their own sender identity. 'managed' is excluded because its
+// sender comes from the provisioned domain, and 'shared' because it sends from a fixed address.
+const SENDER_CONFIGURABLE_TYPES = ["standard", "resend", ...HTTP_EMAIL_PROVIDERS];
+
 const emailServerSchema = yup.object({
-  type: yup.string().oneOf(['shared', 'standard', 'resend', 'managed']).defined(),
+  type: yup.string().oneOf(['shared', 'standard', 'resend', 'managed', ...HTTP_EMAIL_PROVIDERS]).defined(),
   host: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Host is required"),
   port: definedWhenTypeIsOneOf(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), ["standard"], "Port is required"),
   username: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Username is required"),
   password: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Password is required"),
-  senderEmail: definedWhenTypeIsOneOf(strictEmailSchema("Sender email must be a valid email"), ["standard", "resend"], "Sender email is required"),
-  senderName: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Email sender name is required"),
+  apiKey: definedWhenTypeIsOneOf(yup.string(), [...HTTP_EMAIL_PROVIDERS], "API key is required"),
+  // Only useSend needs one: it is self-hosted, so there is no default origin to fall back to.
+  baseUrl: definedWhenTypeIsOneOf(
+    yup.string().matches(/^https:\/\/./, "Base URL must start with https://"),
+    ["usesend-api"],
+    "Base URL is required for useSend, because it is self-hosted",
+  ),
+  senderEmail: definedWhenTypeIsOneOf(strictEmailSchema("Sender email must be a valid email"), SENDER_CONFIGURABLE_TYPES, "Sender email is required"),
+  senderName: definedWhenTypeIsOneOf(yup.string(), SENDER_CONFIGURABLE_TYPES, "Email sender name is required"),
 });
 
 // Helper component for input with info tooltip
@@ -726,10 +768,16 @@ function EditEmailServerDialog(props: {
   const defaultValues = useMemo(() => getDefaultValues(config.emails.server, project), [config, project]);
   const { toast } = useToast();
 
-  async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" }) {
+  async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" | "http" }) {
     const testResult = await hexclaveAdminApp.sendTestEmail({
       recipientEmail: 'test-email-recipient@sent-with-hexclave.com',
-      emailConfig,
+      emailConfig: emailConfig.type === 'http' ? {
+        provider: emailConfig.provider,
+        apiKey: emailConfig.apiKey,
+        baseUrl: emailConfig.baseUrl,
+        senderEmail: emailConfig.senderEmail,
+        senderName: emailConfig.senderName,
+      } : emailConfig,
     });
 
     if (testResult.status === 'error') {
@@ -737,10 +785,26 @@ function EditEmailServerDialog(props: {
       return 'prevent-close-and-prevent-reset';
     }
     setError(null);
+    // The two transports write disjoint credential sets, and the whole `emails.server` object is
+    // replaced on every save, so leaving the other transport's fields undefined is what clears any
+    // stale credentials from a previous provider.
     const didUpdate = await updateConfig({
       adminApp: hexclaveAdminApp,
       configUpdate: {
-        "emails.server": {
+        "emails.server": emailConfig.type === 'http' ? {
+          isShared: false,
+          provider: emailConfig.provider,
+          apiKey: emailConfig.apiKey,
+          baseUrl: emailConfig.baseUrl,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+          host: undefined,
+          port: undefined,
+          username: undefined,
+          password: undefined,
+          managedSubdomain: undefined,
+          managedSenderLocalPart: undefined,
+        } satisfies CompleteConfig['emails']['server'] : {
           isShared: false,
           host: emailConfig.host,
           port: emailConfig.port,
@@ -749,6 +813,8 @@ function EditEmailServerDialog(props: {
           senderEmail: emailConfig.senderEmail,
           senderName: emailConfig.senderName,
           provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+          apiKey: undefined,
+          baseUrl: undefined,
           managedSubdomain: undefined,
           managedSenderLocalPart: undefined,
         } satisfies CompleteConfig['emails']['server']
@@ -789,6 +855,18 @@ function EditEmailServerDialog(props: {
           title: "Email server unchanged",
           description: "Managed email configuration is controlled through the managed domain setup.",
           variant: 'success',
+        });
+      } else if (isHttpEmailProviderValue(values.type)) {
+        if (!values.apiKey || !values.senderEmail || !values.senderName) {
+          throwErr("Missing email server config for an HTTP email provider");
+        }
+        return await testEmailAndUpdateConfig({
+          type: 'http',
+          provider: values.type,
+          apiKey: values.apiKey,
+          baseUrl: values.baseUrl,
+          senderEmail: values.senderEmail,
+          senderName: values.senderName,
         });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {
@@ -835,10 +913,58 @@ function EditEmailServerDialog(props: {
           options={[
             { label: "Shared (noreply@sent-with-hexclave.com)", value: 'shared' },
             { label: "Managed (via managed domain setup)", value: 'managed' },
-            { label: "Resend (your own email address)", value: 'resend' },
+            { label: "Resend API (your own email address)", value: 'resend-api' },
+            { label: "useSend API (self-hosted, your own email address)", value: 'usesend-api' },
+            { label: "Resend over SMTP (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
           ]}
         />
+        {isHttpEmailProviderValue(form.watch('type')) && <>
+          <div className="hexclave-sensitive">
+            <InputFieldWithInfo
+              label={form.watch('type') === 'usesend-api' ? "useSend API Key" : "Resend API Key"}
+              name="apiKey"
+              control={form.control}
+              type="password"
+              required
+              infoText={form.watch('type') === 'usesend-api'
+                ? "Create an API key in your useSend instance under Settings → API Keys."
+                : "Get your API key from resend.com/api-keys. Create a new key with 'Sending access' permissions."}
+            />
+          </div>
+          {form.watch('type') === 'usesend-api' && (
+            <InputFieldWithInfo
+              label="Base URL"
+              name="baseUrl"
+              control={form.control}
+              type="text"
+              required
+              infoText="The origin of your useSend instance, e.g. https://send.your-domain.com. Must be https, and must be reachable from the internet — a private-network address is rejected."
+            />
+          )}
+          <InputFieldWithInfo
+            label="Sender Email"
+            name="senderEmail"
+            control={form.control}
+            type="email"
+            required
+            infoText={form.watch('type') === 'usesend-api'
+              ? "The email address emails will be sent from. Must be a verified domain in your useSend instance."
+              : "The email address emails will be sent from. Must be a verified domain in your Resend account."}
+          />
+          <InputField
+            label="Sender Name"
+            name="senderName"
+            control={form.control}
+            type="text"
+            required
+          />
+          <Alert className="bg-blue-500/5 border-blue-500/20">
+            <Typography variant="secondary" className="text-sm">
+              <strong>Note:</strong> Your API key will be encrypted and securely stored in the database.
+            </Typography>
+          </Alert>
+        </>}
         {form.watch('type') === 'resend' && <>
           <div className="hexclave-sensitive">
             <InputFieldWithInfo
@@ -976,13 +1102,23 @@ function TestSendingDialog(props: {
         return "prevent-close";
       }
 
+      // Held as the narrowed value rather than a boolean so the config below can read the provider
+      // without a cast; `null` means this project is on one of the SMTP-shaped transports.
+      const httpProvider = isHttpEmailProviderValue(emailServerConfig.provider) ? emailServerConfig.provider : null;
+
       const missingFields: string[] = [];
-      if (emailServerConfig.provider !== "managed") {
-        if (!emailServerConfig.host) missingFields.push("host");
-        if (!emailServerConfig.port) missingFields.push("port");
-        if (!emailServerConfig.username) missingFields.push("username");
+      if (httpProvider != null) {
+        if (!emailServerConfig.apiKey) missingFields.push("API key");
+        // Only useSend needs an explicit base URL; Resend falls back to its public API.
+        if (httpProvider === "usesend-api" && !emailServerConfig.baseUrl) missingFields.push("base URL");
+      } else {
+        if (emailServerConfig.provider !== "managed") {
+          if (!emailServerConfig.host) missingFields.push("host");
+          if (!emailServerConfig.port) missingFields.push("port");
+          if (!emailServerConfig.username) missingFields.push("username");
+        }
+        if (!emailServerConfig.password) missingFields.push("password");
       }
-      if (!emailServerConfig.password) missingFields.push("password");
       if (!emailServerConfig.senderName) missingFields.push("sender name");
       if (!emailServerConfig.senderEmail) missingFields.push("sender email");
       if (missingFields.length > 0) {
@@ -992,7 +1128,15 @@ function TestSendingDialog(props: {
 
       // Convert CompleteConfig email server to AdminEmailConfig format
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' || emailServerConfig.provider === 'managed' ? {
+      const emailConfig: AdminEmailConfig = httpProvider != null ? {
+        type: 'http',
+        provider: httpProvider,
+        apiKey: emailServerConfig.apiKey ?? throwErr("Email API key is missing"),
+        baseUrl: emailServerConfig.baseUrl,
+        senderName: emailServerConfig.senderName ?? throwErr("Email sender name is missing"),
+        senderEmail: emailServerConfig.senderEmail ?? throwErr("Email sender email is missing"),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      } : emailServerConfig.provider === 'resend' || emailServerConfig.provider === 'managed' ? {
         type: 'resend',
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         host: emailServerConfig.provider === "managed" ? "smtp.resend.com" : (emailServerConfig.host ?? throwErr("Email host is missing")),
@@ -1021,7 +1165,15 @@ function TestSendingDialog(props: {
 
       const result = await hexclaveAdminApp.sendTestEmail({
         recipientEmail: values.email,
-        emailConfig: emailConfig,
+        // The 'shared' variant is ruled out by the guard higher up, so the type here is already
+        // narrowed to the two sendable transports.
+        emailConfig: emailConfig.type === 'http' ? {
+          provider: emailConfig.provider,
+          apiKey: emailConfig.apiKey,
+          baseUrl: emailConfig.baseUrl,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+        } : emailConfig,
       });
 
       if (result.status === 'ok') {

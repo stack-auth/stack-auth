@@ -42,6 +42,9 @@ export type AdminProjectConfig = {
 
 export type AdminEmailConfig = (
   {
+    // "resend" is SMTP with Resend's SMTP endpoint pre-filled — it predates the HTTP transport
+    // below and is kept distinct from "http" + provider "resend-api" so existing configs keep
+    // working unchanged.
     type: "standard" | "resend",
     senderName: string,
     senderEmail: string,
@@ -49,6 +52,15 @@ export type AdminEmailConfig = (
     port: number,
     username: string,
     password: string,
+  }
+  | {
+    type: "http",
+    provider: "resend-api" | "usesend-api",
+    apiKey: string,
+    // Optional for "resend-api", which has a public API; required for the self-hosted "usesend-api".
+    baseUrl?: string,
+    senderName: string,
+    senderEmail: string,
   }
   | {
     type: "shared",

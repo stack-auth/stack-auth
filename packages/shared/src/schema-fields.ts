@@ -754,7 +754,7 @@ export const oauthAccountMergeStrategySchema = yupString().oneOf(['link_method',
 export const oauthIssuerUrlSchema = urlSchema.meta({ openapiField: { description: 'OIDC issuer URL for custom OIDC providers. Must support OIDC discovery (/.well-known/openid-configuration). Only used when type is "custom_oidc".', exampleValue: 'https://accounts.google.com' } });
 export const oauthScopeSchema = yupString().meta({ openapiField: { description: 'Space-separated OAuth scopes to request from the custom OIDC provider. Defaults to "openid email profile" if not specified.', exampleValue: 'openid email profile' } });
 // Project email config
-export const emailTypeSchema = yupString().oneOf(['shared', 'standard']).meta({ openapiField: { description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.', exampleValue: 'standard' } });
+export const emailTypeSchema = yupString().oneOf(['shared', 'standard', 'http']).meta({ openapiField: { description: 'Email provider type, one of shared, standard, http. "shared" uses the shared email provider and is only meant for development. "standard" uses your own SMTP server. "http" uses an email provider\'s HTTP API (see email_provider) instead of SMTP.', exampleValue: 'standard' } });
 export const emailSenderNameSchema = yupString().meta({ openapiField: { description: 'Email sender name. Needs to be specified when using type="standard"', exampleValue: 'Stack' } });
 export const emailHostSchema = yupString().meta({ openapiField: { description: 'Email host. Needs to be specified when using type="standard"', exampleValue: 'smtp.your-domain.com' } });
 export const emailPortSchema = yupNumber().min(0).max(65535).meta({ openapiField: { description: 'Email port. Needs to be specified when using type="standard"', exampleValue: 587 } });
@@ -764,6 +764,16 @@ export const emailSenderEmailSchema = emailSchema.meta({ openapiField: { descrip
 // need the 70-char bcrypt limit from passwordSchema. Some providers (e.g. ZeptoMail) generate
 // passwords well over 100 chars.
 export const emailPasswordSchema = yupString().max(256).meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
+// HTTP email providers (Resend, useSend) authenticate with an API key rather than SMTP credentials.
+// Stored encrypted like the SMTP password, so the same generous length limit applies.
+export const emailApiKeySchema = yupString().max(256).meta({ openapiField: { description: 'API key for an HTTP email provider. Needs to be specified when using type="http".', exampleValue: 're_123456789' } });
+// The provider values are suffixed with `-api` because the legacy `resend` provider means "SMTP,
+// pre-filled with Resend's SMTP endpoint" and predates this field. Keeping the names distinct means
+// existing `resend` configs keep their old meaning and need no migration.
+export const emailProviderSchema = yupString().oneOf(['resend-api', 'usesend-api']).meta({ openapiField: { description: 'Which HTTP email provider to use. Needs to be specified when using type="http".', exampleValue: 'resend-api' } });
+// Only meaningful for self-hosted providers. Resend defaults to https://api.resend.com; useSend has no
+// default because every deployment is at its own origin.
+export const emailBaseUrlSchema = yupString().meta({ openapiField: { description: 'Base URL of the email provider API. Required for email_provider="usesend-api" (your own instance); optional for email_provider="resend-api".', exampleValue: 'https://send.your-domain.com' } });
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 // Project email theme config
@@ -1061,13 +1071,24 @@ import.meta.vitest?.test("neonAuthorizationHeaderSchema handles malformed Basic 
 });
 
 // Utils
+/**
+ * A trigger value is normally compared with strict equality, but may also be a predicate. The
+ * predicate form exists so a field can be required for several values of the same discriminator —
+ * eg. `sender_email` is required both for `type: 'standard'` and for `type: 'http'`.
+ */
+export type YupWhenTrigger = any | ((actual: any) => boolean);
+
+function matchesTrigger(expected: YupWhenTrigger, actual: any): boolean {
+  return typeof expected === "function" ? expected(actual) === true : expected === actual;
+}
+
 export function yupDefinedWhen<S extends yup.AnyObject>(
   schema: S,
-  triggers: Record<string, any>,
+  triggers: Record<string, YupWhenTrigger>,
 ): S {
   const entries = Object.entries(triggers);
   return schema.when(entries.map(([key]) => key), {
-    is: (...values: any[]) => entries.every(([key, value], index) => value === values[index]),
+    is: (...values: any[]) => entries.every(([_key, value], index) => matchesTrigger(value, values[index])),
     then: (schema: S) => schema.defined(),
     otherwise: (schema: S) => schema.optional()
   });
@@ -1075,11 +1096,11 @@ export function yupDefinedWhen<S extends yup.AnyObject>(
 
 export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
   schema: S,
-  triggers: Record<string, any>,
+  triggers: Record<string, YupWhenTrigger>,
 ): S {
   const entries = Object.entries(triggers);
   return schema.when(entries.map(([key]) => key), {
-    is: (...values: any[]) => entries.every(([key, value], index) => value === values[index]),
+    is: (...values: any[]) => entries.every(([_key, value], index) => matchesTrigger(value, values[index])),
     then: (schema: S) => schema.defined().nonEmpty(),
     otherwise: (schema: S) => schema.optional()
   });

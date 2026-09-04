@@ -14,6 +14,11 @@ minimumReleaseAge: 10080
 # __turbopack_context__.a is not a function in dashboard builds.
 # Keep this version-pinned so future releases still go through minimumReleaseAge.
 minimumReleaseAgeExclude:
+  # Freestyle retired the serverless code-execution API that freestyle@0.1.x calls, and moved to a
+  # VM API on a different host, so 0.1.x cannot authenticate with current API keys at all. The 0.2
+  # line is the only version that works and it is newer than minimumReleaseAge allows. Remove this
+  # exclusion once 0.2.2 has aged past the threshold.
+  - freestyle@0.2.2
   - next@16.3.1
   - '@next/env@16.3.1'
   - '@next/swc-darwin-arm64@16.3.1'

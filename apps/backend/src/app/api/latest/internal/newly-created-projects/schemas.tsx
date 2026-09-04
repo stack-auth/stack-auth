@@ -7,6 +7,14 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 
+/**
+ * Mirrors the `emails.server.provider` values in the config schema. Kept as a const array so the
+ * two yup schemas that describe this row (here and in ./[projectId]/route.tsx) and the TS row type
+ * in ./helpers.tsx cannot drift apart when a new provider is added.
+ */
+export const EMAIL_SETUP_PROVIDERS = ["resend", "resend-api", "usesend-api", "smtp", "managed"] as const;
+export type EmailSetupProvider = typeof EMAIL_SETUP_PROVIDERS[number];
+
 export const OwnerMemberSchema = yupObject({
   id: yupString().defined(),
   display_name: yupString().nullable().defined(),
@@ -56,7 +64,7 @@ export const ProjectRowSchema = yupObject({
   }).defined(),
   email_setup: yupObject({
     kind: yupString().oneOf(["shared", "custom-domain", "custom-server"]).defined(),
-    provider: yupString().oneOf(["resend", "smtp", "managed"]).nullable().defined(),
+    provider: yupString().oneOf(EMAIL_SETUP_PROVIDERS).nullable().defined(),
     sender_email: yupString().nullable().defined(),
     managed_subdomain: yupString().nullable().defined(),
   }).defined(),

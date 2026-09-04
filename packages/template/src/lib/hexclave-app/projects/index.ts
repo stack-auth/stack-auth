@@ -279,6 +279,13 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
       email_config: options.config?.emailConfig && (
         options.config.emailConfig.type === 'shared' ? {
           type: 'shared',
+        } : options.config.emailConfig.type === 'http' ? {
+          type: 'http',
+          email_provider: options.config.emailConfig.provider,
+          api_key: options.config.emailConfig.apiKey,
+          base_url: options.config.emailConfig.baseUrl,
+          sender_name: options.config.emailConfig.senderName,
+          sender_email: options.config.emailConfig.senderEmail,
         } : {
           type: 'standard',
           host: options.config.emailConfig.host,
