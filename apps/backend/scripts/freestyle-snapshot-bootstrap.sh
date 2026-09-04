@@ -27,15 +27,7 @@ tar -xzf "$archive" -C /opt/node --strip-components=1 \
 ln -sf /opt/node/bin/node /usr/bin/node
 mkdir -p /usr/local/bin "$work_root"
 
-if [ -e /opt/node/bin/npm ]; then
-  ln -sf /opt/node/bin/npm /usr/bin/npm
-else
-  cat > /usr/bin/npm <<'NPM_RUNNER'
-#!/bin/sh
-exec /usr/bin/node /opt/node/lib/node_modules/npm/bin/npm-cli.js "$@"
-NPM_RUNNER
-  chmod 755 /usr/bin/npm
-fi
+ln -sf /opt/node/bin/npm /usr/bin/npm
 
 cat > /usr/local/bin/hexclave-run-job <<'JOB_RUNNER'
 #!/bin/sh
@@ -65,6 +57,8 @@ rm -f "$archive" "$archive_checksum" /tmp/freestyle-snapshot-bootstrap.sh
 /usr/bin/node --version
 /usr/bin/npm --version
 
+# /tmp is a tmpfs on BusyBox, so npm's cache must live on disk or larger installs
+# (e.g. @react-email/components) exhaust memory mid-install.
 rm -rf /tmp/hexclave-home
 mkdir -p /tmp/hexclave-home /opt/hexclave-npm-cache
 ln -s /opt/hexclave-npm-cache /tmp/hexclave-home/.npm
