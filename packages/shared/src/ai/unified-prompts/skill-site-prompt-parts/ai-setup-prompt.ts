@@ -568,16 +568,10 @@ const shouldSetupAppPrompt: Record<PublicAppSetupPromptId, string> = {
   "vercel": shouldSetupOnlyIfFitting,
   "clickmaps": shouldSetupAlways,
   "session-replays": shouldSetupAlways,
-  "feature-flags": deindent`
-    50%. When the project ships features incrementally, needs kill switches, or wants to run A/B experiments.
-  `,
 };
 
 const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
 {
-  "feature-flags": deindent`
-    Define flags in the project's branch configuration and evaluate them through the Hexclave SDK. Feature flags control product behavior, not authorization; continue to enforce permissions on the server.
-  `,
   "authentication": deindent`
     Start by choosing the sign-in methods in \`hexclave.config.ts\`. A reasonable SaaS default is OTP plus one OAuth provider:
 
