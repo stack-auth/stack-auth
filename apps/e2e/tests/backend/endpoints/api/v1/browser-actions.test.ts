@@ -1,6 +1,7 @@
 import { it } from "../../../../helpers";
 import { Auth, backendContext, niceBackendFetch, Project } from "../../../backend-helpers";
 import { localhostUrl } from "../../../../helpers/ports";
+import { runInNewContext } from "node:vm";
 
 const origin = localhostUrl("01");
 
@@ -61,7 +62,38 @@ it("creates and consumes an impersonation browser action without returning the r
   const consumed = await consumeAction(created.body.id);
   expect(consumed.status).toMatchInlineSnapshot(`200`);
   expect(consumed.body.javascript).toContain("hexclave-refresh-");
-  expect(consumed.body.javascript).toContain("window.location.reload");
+  expect(consumed.body.javascript).toContain("window.location.replace");
+
+  const cookies = new Map<string, string>();
+  let destination: string | undefined;
+  runInNewContext(consumed.body.javascript, {
+    document: {
+      set cookie(value: string) {
+        const pair = value.split(";")[0];
+        const separator = pair.indexOf("=");
+        cookies.set(pair.slice(0, separator), decodeURIComponent(pair.slice(separator + 1)));
+      },
+    },
+    location: { protocol: "http:" },
+    window: { location: { replace: (url: string) => { destination = url; } } },
+  });
+  expect(destination).toMatchInlineSnapshot(`"/"`);
+  const refreshCookie = [...cookies.entries()].find(([name]) => name.startsWith("stack-refresh-") && !name.endsWith("--default"));
+  if (refreshCookie == null) {
+    throw new Error("Impersonation must install a refresh token cookie");
+  }
+  const refreshed = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { refreshToken: refreshCookie[1] },
+  });
+  expect(refreshed.status).toMatchInlineSnapshot(`200`);
+  const impersonatedUser = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+    userAuth: { accessToken: refreshed.body.access_token },
+  });
+  expect(impersonatedUser.status).toMatchInlineSnapshot(`200`);
+  expect(impersonatedUser.body.id).toBe(userId);
 });
 
 it("rejects missing and mismatched origins", async ({ expect }) => {

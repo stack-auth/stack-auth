@@ -206,7 +206,7 @@ export function ImpersonateUserDialog(props: {
           </div>
         </div>
         <Typography variant="secondary" className="text-sm">
-          Paste this snippet into the browser console on your app.
+          Paste this snippet into the browser console on your app. It switches users and opens the app’s home page.
         </Typography>
         {fallbackSnippetLoading ? (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
