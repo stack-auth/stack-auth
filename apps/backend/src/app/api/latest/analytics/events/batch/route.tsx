@@ -17,8 +17,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 const MAX_EVENTS = 500;
 const MAX_COMPRESSED_BYTES = 1 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
+// Plausibility window for event_at_ms, anchored to the server's receive time
+// (never to the client's sent_at_ms, which comes from the same skewed clock).
+// The past bound covers offline queues; the future bound only needs to keep
+// nonsense timestamps (year 2099, etc.) out of ClickHouse, so it is generous:
+// end-user clocks being hours off is common and not the customer's fault.
 const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const MAX_EVENT_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 
 // Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
 // representable in JS strings but rejected by ClickHouse's JSON parser.
@@ -123,6 +128,8 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       inserted: yupNumber().defined(),
+      // Events skipped for an implausible event_at_ms; they were not billed.
+      dropped: yupNumber().defined(),
     }).defined(),
   }),
   async handler({ auth, body }) {
@@ -136,14 +143,23 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "A refresh token is required for analytics events");
     }
 
+    // Implausible timestamps are dropped per event rather than failing the
+    // batch. The SDK re-sends the same pending batch on every non-2xx until it
+    // succeeds, so a rejection caused by a wrong end-user clock would wedge
+    // that client's analytics forever (newer events queue behind it). Dropping
+    // lets the rest of the batch land and the client move on; the count is
+    // reported so it stays observable. Dropped events are not billed.
     const receivedAtMillis = Date.now();
-    if (body.sent_at_ms < receivedAtMillis - MAX_EVENT_AGE_MS || body.sent_at_ms > receivedAtMillis + MAX_EVENT_FUTURE_SKEW_MS) {
-      throw new StatusError(StatusError.BadRequest, "Analytics sent_at_ms is too far in the past or future");
-    }
-    for (const event of body.events) {
-      if (event.event_at_ms < body.sent_at_ms - MAX_EVENT_AGE_MS || event.event_at_ms > body.sent_at_ms + MAX_EVENT_FUTURE_SKEW_MS) {
-        throw new StatusError(StatusError.BadRequest, "Analytics event_at_ms is outside the accepted batch window");
-      }
+    const plausibleEvents = body.events.filter((event) =>
+      event.event_at_ms >= receivedAtMillis - MAX_EVENT_AGE_MS && event.event_at_ms <= receivedAtMillis + MAX_EVENT_FUTURE_SKEW_MS
+    );
+    const droppedCount = body.events.length - plausibleEvents.length;
+    if (plausibleEvents.length === 0) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { inserted: 0, dropped: droppedCount },
+      };
     }
 
     // Split events into reserved (auto-capture, trusted shape) and custom
@@ -151,7 +167,7 @@ export const POST = createSmartRouteHandler({
     // two auto-capture types are rejected outright — in particular
     // $feature-flag-exposure rows may only enter through the signed
     // feature-flags exposure route, never through this public one.
-    const preparedEvents = body.events.map((event) => {
+    const preparedEvents = plausibleEvents.map((event) => {
       if (isReservedEventName(event.event_type)) {
         if (event.event_type !== "$page-view" && event.event_type !== "$click") {
           throw new StatusError(StatusError.BadRequest, `Reserved event type ${JSON.stringify(event.event_type)} cannot be uploaded via this endpoint`);
@@ -186,9 +202,9 @@ export const POST = createSmartRouteHandler({
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {
       const eventsItem = await getHexclaveServerApp().getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      const isDebited = await eventsItem.tryDecreaseQuantity(body.events.length);
+      const isDebited = await eventsItem.tryDecreaseQuantity(preparedEvents.length);
       if (!isDebited) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, body.events.length);
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, preparedEvents.length);
       }
     }
 
@@ -220,7 +236,7 @@ export const POST = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: body.events.length },
+      body: { inserted: preparedEvents.length, dropped: droppedCount },
     };
   },
 });

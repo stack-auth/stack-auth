@@ -60,7 +60,10 @@ it("accepts a custom event with a valid name, properties, and value", async ({ e
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 2 },
+      "body": {
+        "dropped": 0,
+        "inserted": 2,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
