@@ -149,9 +149,16 @@ export const POST = createSmartRouteHandler({
     // that client's analytics forever (newer events queue behind it). Dropping
     // lets the rest of the batch land and the client move on; the count is
     // reported so it stays observable. Dropped events are not billed.
+    //
+    // Each event keeps its position in the original batch (batchIndex): the
+    // stable event id is `batch_id:batchIndex`, and it must not shift when an
+    // earlier event is dropped, or a retried batch would mint new ids for the
+    // same events.
     const receivedAtMillis = Date.now();
-    const plausibleEvents = body.events.filter((event) =>
+    const plausibleEvents = body.events.flatMap((event, batchIndex) =>
       event.event_at_ms >= receivedAtMillis - MAX_EVENT_AGE_MS && event.event_at_ms <= receivedAtMillis + MAX_EVENT_FUTURE_SKEW_MS
+        ? [{ ...event, batchIndex }]
+        : []
     );
     const droppedCount = body.events.length - plausibleEvents.length;
     if (plausibleEvents.length === 0) {
@@ -175,7 +182,7 @@ export const POST = createSmartRouteHandler({
         if (event.value !== undefined) {
           throw new StatusError(StatusError.BadRequest, `Reserved event type ${JSON.stringify(event.event_type)} does not accept a value`);
         }
-        return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: event.data, team_id: event.team_id };
+        return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: event.data, team_id: event.team_id, batchIndex: event.batchIndex };
       }
       const { properties, value } = validateCustomEventPayload({
         eventName: event.event_type,
@@ -185,7 +192,7 @@ export const POST = createSmartRouteHandler({
       // Custom event payloads are wrapped as { properties, value } so customer
       // property keys can never collide with the top-level value field, and
       // numeric-metric queries can always read data.value.
-      return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: { properties, value }, team_id: event.team_id };
+      return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: { properties, value }, team_id: event.team_id, batchIndex: event.batchIndex };
     });
 
     const projectId = auth.tenancy.project.id;
@@ -210,10 +217,10 @@ export const POST = createSmartRouteHandler({
 
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
     const normalizedBatchId = body.batch_id.toLowerCase();
-    const rows = preparedEvents.map((event, index) => ({
+    const rows = preparedEvents.map((event) => ({
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
-      data: attachStableAnalyticsEventId(stripLoneSurrogates(event.data), `${normalizedBatchId}:${index}`),
+      data: attachStableAnalyticsEventId(stripLoneSurrogates(event.data), `${normalizedBatchId}:${event.batchIndex}`),
       project_id: projectId,
       branch_id: branchId,
       user_id: userId,

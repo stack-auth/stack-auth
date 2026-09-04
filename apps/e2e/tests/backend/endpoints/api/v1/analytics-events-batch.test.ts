@@ -192,6 +192,46 @@ it("drops events with implausible timestamps instead of rejecting the batch", as
   `);
 });
 
+it("keeps stable event ids anchored to the original batch position when earlier events are dropped", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.fastSignUp();
+
+  const sessionReplaySegmentId = randomUUID();
+  const batchId = randomUUID();
+  const now = Date.now();
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId,
+    batchId,
+    sentAtMs: now,
+    events: [
+      { event_type: "$page-view", event_at_ms: now + 30 * 24 * 60 * 60 * 1000, data: { path: "/dropped" } },
+      { event_type: "$page-view", event_at_ms: now - 100, data: { path: "/kept" } },
+    ],
+  });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ inserted: 1, dropped: 1 });
+
+  // The id is batch_id:<position in the uploaded batch>, so the surviving
+  // event is :1 even though it is the only row stored. A retried batch that
+  // later accepts the first event must not renumber this one to :0.
+  let queryRes;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await wait(500);
+    queryRes = await niceBackendFetch("/api/v1/analytics/query", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        query: "SELECT toString(data.event_id) AS event_id, toString(data.path) AS path FROM events WHERE session_replay_segment_id = {segId:String}",
+        params: { segId: sessionReplaySegmentId },
+      },
+    });
+    if (queryRes.status === 200 && queryRes.body?.result?.length === 1) break;
+  }
+  expect(queryRes?.status).toBe(200);
+  expect(queryRes?.body.result).toEqual([{ event_id: `${batchId.toLowerCase()}:1`, path: "/kept" }]);
+});
+
 it("returns 200 with nothing inserted when every event is implausible, so the client can move on", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
