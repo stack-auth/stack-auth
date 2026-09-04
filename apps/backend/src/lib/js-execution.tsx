@@ -74,7 +74,7 @@ function createFreestyleEngine(): JsEngine {
       return await executeJavascriptInFreestyleVm({
         snapshotId,
         code,
-        nodeModules: options.nodeModules ?? {},
+        nodeModules: new Map(Object.entries(options.nodeModules ?? {})),
         executionTimeoutMs: options.executionTimeoutMs,
         signal: options.signal,
         scheduleCleanup: runAsynchronouslyAndWaitUntil,

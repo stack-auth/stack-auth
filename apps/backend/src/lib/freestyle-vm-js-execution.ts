@@ -46,7 +46,7 @@ export async function executeJavascriptInFreestyleVm(options: {
   createVm: CreateFreestyleExecutionVm,
   snapshotId: string,
   code: string,
-  nodeModules: Record<string, string>,
+  nodeModules: Map<string, string>,
   executionTimeoutMs?: number,
   signal?: AbortSignal,
   scheduleCleanup: (cleanup: Promise<void>) => void,
@@ -101,7 +101,7 @@ export async function executeJavascriptInFreestyleVm(options: {
     const packageJson = JSON.stringify({
       private: true,
       type: "module",
-      dependencies: options.nodeModules,
+      dependencies: Object.fromEntries(options.nodeModules),
     }, null, 2) + "\n";
 
     await awaitWithAbortSignal(vm.makeDirectory(hostJobDirectory), executionSignal);

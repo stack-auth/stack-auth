@@ -51,7 +51,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     const result = await executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default async () => ({ status: 'ok', data: 42 });",
-      nodeModules: { react: "19.1.1" },
+      nodeModules: new Map([["react", "19.1.1"]]),
       executionTimeoutMs: 630_000,
       scheduleCleanup: vi.fn(),
       onCleanupError: vi.fn(),
@@ -93,7 +93,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     const execution = executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default () => 42;",
-      nodeModules: {},
+      nodeModules: new Map(),
       scheduleCleanup: vi.fn(),
       onCleanupError: vi.fn(),
       createVm: async () => fake.vm,
@@ -121,7 +121,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     await expect(executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default () => ({ status: 'ok', data: 42 });",
-      nodeModules: {},
+      nodeModules: new Map(),
       scheduleCleanup: vi.fn(),
       onCleanupError,
       createVm: async () => fake.vm,
@@ -145,7 +145,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     await expect(executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default () => 42;",
-      nodeModules: {},
+      nodeModules: new Map(),
       signal: controller.signal,
       scheduleCleanup,
       onCleanupError: vi.fn(),
@@ -175,7 +175,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     const execution = executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default () => 42;",
-      nodeModules: {},
+      nodeModules: new Map(),
       signal: controller.signal,
       scheduleCleanup,
       onCleanupError: vi.fn(),
