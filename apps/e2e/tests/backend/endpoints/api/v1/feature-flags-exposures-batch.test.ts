@@ -119,9 +119,9 @@ it("records a signed exposure once across retries and rejects in-batch duplicate
   });
 
   expect(first.status).toBe(200);
-  expect(first.body).toEqual({ inserted: 1 });
+  expect(first.body).toEqual({ inserted: 1, dropped: 0 });
   expect(replay.status).toBe(200);
-  expect(replay.body).toEqual({ inserted: 0 });
+  expect(replay.body).toEqual({ inserted: 0, dropped: 0 });
   expect(duplicateEvaluation.status).toBe(400);
   expect(duplicateEvaluation.body).toBe("Exposure batches cannot contain duplicate event or evaluation IDs");
 });
@@ -152,7 +152,7 @@ it("rolls back every new receipt when one event ID conflicts", async ({ expect }
     exposures: [{ event_id: siblingEventId, exposure_token: siblingToken, exposed_at_ms: exposedAtMillis }],
   });
   expect(corrected.status).toBe(200);
-  expect(corrected.body).toEqual({ inserted: 1 });
+  expect(corrected.body).toEqual({ inserted: 1, dropped: 0 });
 });
 
 it("throws error when analytics is not enabled", async ({ expect }) => {
