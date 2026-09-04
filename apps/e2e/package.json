@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/e2e-tests",
-  "version": "1.0.108",
+  "version": "1.0.115",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
