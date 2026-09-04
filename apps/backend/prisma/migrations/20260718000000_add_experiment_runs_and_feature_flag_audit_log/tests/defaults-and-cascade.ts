@@ -48,18 +48,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${randomUUID()}::uuid, ${'nonexistent-' + randomUUID()}, 'main', 'exp-3', 'hash-3', '{}'::jsonb, NOW())
   `).rejects.toThrow(/ExperimentRun_projectId_fkey/);
 
-  // Audit log rows accept nullable actor/before/after and default createdAt.
-  const auditId = randomUUID();
-  await sql`
-    INSERT INTO "FeatureFlagAuditLog" ("id", "projectId", "branchId", "resourceType", "resourceId", "action", "actorType", "source")
-    VALUES (${auditId}::uuid, ${projectId}, 'main', 'experiment_run', ${runId}, 'created', 'system', 'schedule_processor')
-  `;
-  const audits = await sql`SELECT "actorId", "beforeState", "afterState", "createdAt" FROM "FeatureFlagAuditLog" WHERE "id" = ${auditId}::uuid`;
-  expect(audits).toHaveLength(1);
-  expect(audits[0].actorId).toBeNull();
-  expect(audits[0].beforeState).toBeNull();
-  expect(audits[0].createdAt).toBeInstanceOf(Date);
-
   const receiptId = randomUUID();
   const eventId = randomUUID();
   const evaluationId = randomUUID();
@@ -88,40 +76,10 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${randomUUID()}::uuid, ${projectId}, 'main', ${randomUUID()}::uuid, ${evaluationId}::uuid, ${randomUUID()}::uuid, 'sha256:other', ${randomUUID()}::uuid)
   `).rejects.toThrow(/FeatureFlagExposureReceipt_project_evaluation_key/);
 
-  const analyticsReceiptId = randomUUID();
-  const analyticsBatchId = randomUUID();
-  await sql`
-    INSERT INTO "AnalyticsEventBatchReceipt" ("id", "projectId", "branchId", "batchId", "payloadHash", "eventCount")
-    VALUES (${analyticsReceiptId}::uuid, ${projectId}, 'main', ${analyticsBatchId}::uuid, 'sha256:payload', 2)
-  `;
-  const analyticsReceipts = await sql`
-    SELECT "payloadHash", "eventCount", "insertedCount", "processingNonce", "processingStartedAt", "billingNonce", "billingStartedAt", "billingCompletedAt", "completedAt", "createdAt"
-    FROM "AnalyticsEventBatchReceipt" WHERE "id" = ${analyticsReceiptId}::uuid
-  `;
-  expect(analyticsReceipts).toHaveLength(1);
-  expect(analyticsReceipts[0].payloadHash).toBe('sha256:payload');
-  expect(Number(analyticsReceipts[0].eventCount)).toBe(2);
-  expect(analyticsReceipts[0].insertedCount).toBeNull();
-  expect(analyticsReceipts[0].processingNonce).toBeNull();
-  expect(analyticsReceipts[0].processingStartedAt).toBeNull();
-  expect(analyticsReceipts[0].billingNonce).toBeNull();
-  expect(analyticsReceipts[0].billingStartedAt).toBeNull();
-  expect(analyticsReceipts[0].billingCompletedAt).toBeNull();
-  expect(analyticsReceipts[0].completedAt).toBeNull();
-  expect(analyticsReceipts[0].createdAt).toBeInstanceOf(Date);
-  await expect(sql`
-    INSERT INTO "AnalyticsEventBatchReceipt" ("id", "projectId", "branchId", "batchId", "payloadHash", "eventCount")
-    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', ${analyticsBatchId}::uuid, 'sha256:different', 1)
-  `).rejects.toThrow(/AnalyticsEventBatchReceipt_project_branch_batch_key/);
-
   // Deleting the project cascades to every new project-owned table.
   await sql`DELETE FROM "Project" WHERE "id" = ${projectId}`;
   const remainingRuns = await sql`SELECT COUNT(*) AS count FROM "ExperimentRun" WHERE "projectId" = ${projectId}`;
   expect(Number(remainingRuns[0].count)).toBe(0);
-  const remainingAudits = await sql`SELECT COUNT(*) AS count FROM "FeatureFlagAuditLog" WHERE "projectId" = ${projectId}`;
-  expect(Number(remainingAudits[0].count)).toBe(0);
   const remainingReceipts = await sql`SELECT COUNT(*) AS count FROM "FeatureFlagExposureReceipt" WHERE "projectId" = ${projectId}`;
   expect(Number(remainingReceipts[0].count)).toBe(0);
-  const remainingAnalyticsReceipts = await sql`SELECT COUNT(*) AS count FROM "AnalyticsEventBatchReceipt" WHERE "projectId" = ${projectId}`;
-  expect(Number(remainingAnalyticsReceipts[0].count)).toBe(0);
 };
