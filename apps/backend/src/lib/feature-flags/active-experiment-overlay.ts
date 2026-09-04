@@ -109,6 +109,11 @@ export function overlayActiveExperimentRuns(
     experiments = candidate.experiments ?? throwErr("Overlay candidate omitted experiments after a successful validation");
     activeFlagIds.add(flagId);
   }
+  // When every run was skipped, hand back the published config object itself
+  // rather than a copy: spreading would turn an absent `experiments` into `{}`,
+  // which changes the config shape (and anything derived from it, like the
+  // bootstrap ETag) without any experiment actually being overlaid.
+  if (activeFlagIds.size === 0) return config;
   return { ...config, flags, experiments };
 }
 
