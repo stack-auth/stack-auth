@@ -3,6 +3,7 @@ import type { CreateVmOptions } from "freestyle";
 import { describe, expect, test, vi } from "vitest";
 import {
   executeJavascriptInFreestyleVm,
+  isExecuteResult,
   type FreestyleExecutionVm,
 } from "./freestyle-vm-js-execution";
 
@@ -10,14 +11,17 @@ function createFakeVm(options: {
   exitCode?: number | null,
   resultJson?: string,
   deleteError?: Error,
+  deleteHangs?: boolean,
   onPtyOpen?: () => void,
 } = {}) {
   const writes = new Map<string, string>();
   const directories: string[] = [];
   const commands: string[] = [];
   const detach = vi.fn();
-  const deleteVm = vi.fn(async () => {
+  const deleteVm = vi.fn(() => {
+    if (options.deleteHangs === true) return new Promise<void>(() => {});
     if (options.deleteError != null) throw options.deleteError;
+    return Promise.resolve();
   });
   const vm: FreestyleExecutionVm = {
     id: "vm-test",
@@ -135,7 +139,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     const abortReason = new Error("request ended");
     const fake = createFakeVm({
       exitCode: null,
-      onPtyOpen: () => queueMicrotask(() => controller.abort(abortReason)),
+      onPtyOpen: () => queueMicrotask(() => queueMicrotask(() => controller.abort(abortReason))),
     });
     let scheduledCleanup: Promise<void> | undefined;
     const scheduleCleanup = vi.fn((cleanup: Promise<void>) => {
@@ -155,6 +159,7 @@ describe("executeJavascriptInFreestyleVm", () => {
     expect(scheduleCleanup).toHaveBeenCalledOnce();
     await scheduledCleanup;
     expect(fake.deleteVm).toHaveBeenCalledOnce();
+    expect(fake.detach).toHaveBeenCalledOnce();
   });
 
   test("deletes a VM that finishes creating after the invocation aborts", async () => {
@@ -191,5 +196,37 @@ describe("executeJavascriptInFreestyleVm", () => {
     await scheduledCleanup;
     expect(fake.deleteVm).toHaveBeenCalledOnce();
     expect(fake.commands).toEqual([]);
+  });
+
+  test("reports cleanup timeout without delaying a successful result", async () => {
+    const fake = createFakeVm({ deleteHangs: true });
+    const onCleanupError = vi.fn();
+
+    await expect(executeJavascriptInFreestyleVm({
+      snapshotId: "sandbox-snapshot",
+      code: "export default () => ({ status: 'ok', data: 42 });",
+      nodeModules: new Map(),
+      cleanupTimeoutMs: 10,
+      scheduleCleanup: vi.fn(),
+      onCleanupError,
+      createVm: async () => fake.vm,
+    })).resolves.toEqual({ status: "ok", data: { rendered: true } });
+
+    expect(onCleanupError).toHaveBeenCalledOnce();
+    expect(onCleanupError).toHaveBeenCalledWith(
+      "vm-test",
+      expect.objectContaining({ name: "TimeoutError" }),
+    );
+  });
+});
+
+describe("isExecuteResult", () => {
+  test("rejects malformed results and accepts valid results", () => {
+    expect(isExecuteResult({ status: "ok" })).toBe(false);
+    expect(isExecuteResult({ status: "weird" })).toBe(false);
+    expect(isExecuteResult({ status: "error", error: { message: 1 } })).toBe(false);
+    expect(isExecuteResult({ status: "error", error: { message: "x", stack: 2 } })).toBe(false);
+    expect(isExecuteResult({ status: "ok", data: null })).toBe(true);
+    expect(isExecuteResult({ status: "error", error: { message: "x" } })).toBe(true);
   });
 });

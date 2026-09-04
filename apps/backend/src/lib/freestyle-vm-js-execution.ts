@@ -4,6 +4,7 @@ import type { ExecuteResult } from "./js-execution-types";
 export { DEFAULT_FREESTYLE_SNAPSHOT_ID } from "./freestyle-vm-constants";
 
 const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 15_000;
 const VM_TTL_GRACE_SECONDS = 5 * 60;
 const RUNTIME_ROOT = "/opt/hexclave-runtime";
 
@@ -48,11 +49,13 @@ export async function executeJavascriptInFreestyleVm(options: {
   code: string,
   nodeModules: Map<string, string>,
   executionTimeoutMs?: number,
+  cleanupTimeoutMs?: number,
   signal?: AbortSignal,
   scheduleCleanup: (cleanup: Promise<void>) => void,
   onCleanupError: (vmId: string, error: unknown) => void,
 }): Promise<ExecuteResult> {
   const timeoutMs = options.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+  const cleanupTimeoutMs = options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const executionSignal = options.signal == null
     ? timeoutSignal
@@ -90,6 +93,7 @@ export async function executeJavascriptInFreestyleVm(options: {
       options.scheduleCleanup(deleteFreestyleVmWhenCreated(
         createVmPromise,
         options.onCleanupError,
+        cleanupTimeoutMs,
       ));
     }
     throw error;
@@ -134,18 +138,23 @@ export async function executeJavascriptInFreestyleVm(options: {
       throw new HexclaveAssertionError("Freestyle VM returned malformed JSON", {
         cause: error,
         vmId: vm.id,
-        resultJson,
+        resultJsonLength: resultJson.length,
       });
     }
     if (!isExecuteResult(result)) {
       throw new HexclaveAssertionError("Freestyle VM returned a malformed execution result", {
         vmId: vm.id,
-        result,
+        resultType: typeof result,
+        resultKeys: typeof result === "object" && result !== null ? Object.keys(result) : undefined,
       });
     }
     return result;
   } finally {
-    const cleanupPromise = deleteFreestyleVmAfterExecution(vm, options.onCleanupError);
+    const cleanupPromise = deleteFreestyleVmAfterExecution(
+      vm,
+      options.onCleanupError,
+      cleanupTimeoutMs,
+    );
     if (executionSignal.aborted) {
       options.scheduleCleanup(cleanupPromise);
     } else {
@@ -185,7 +194,13 @@ async function runPtyCommand(
       exited = true;
       resolveOutcome({ type: "exit", exitCode });
     },
-    onError: (error) => resolveOutcome({ type: "error", error }),
+    onError: (error) => resolveOutcome({
+      type: "error",
+      error: new HexclaveAssertionError("Freestyle PTY reported an error", {
+        cause: error,
+        vmId: vm.id,
+      }),
+    }),
     onClose: (info) => {
       if (!exited) {
         resolveOutcome({
@@ -213,9 +228,11 @@ async function runPtyCommand(
 async function deleteFreestyleVmAfterExecution(
   vm: FreestyleExecutionVm,
   onCleanupError: (vmId: string, error: unknown) => void,
+  cleanupTimeoutMs: number,
 ): Promise<void> {
   try {
-    await vm.delete();
+    // ttlSeconds remains the provider-side backstop; this only bounds request latency.
+    await awaitWithAbortSignal(vm.delete(), AbortSignal.timeout(cleanupTimeoutMs));
   } catch (error) {
     onCleanupError(vm.id, error);
   }
@@ -224,6 +241,7 @@ async function deleteFreestyleVmAfterExecution(
 async function deleteFreestyleVmWhenCreated(
   createVmPromise: Promise<FreestyleExecutionVm>,
   onCleanupError: (vmId: string, error: unknown) => void,
+  cleanupTimeoutMs: number,
 ): Promise<void> {
   let vm: FreestyleExecutionVm;
   try {
@@ -232,7 +250,7 @@ async function deleteFreestyleVmWhenCreated(
     // Creation failed, so there is no VM to own or delete.
     return;
   }
-  await deleteFreestyleVmAfterExecution(vm, onCleanupError);
+  await deleteFreestyleVmAfterExecution(vm, onCleanupError, cleanupTimeoutMs);
 }
 
 async function awaitWithAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

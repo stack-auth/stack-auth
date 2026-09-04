@@ -13,6 +13,10 @@ const snapshotId = readHexclaveEnvironmentVariable(
   "STACK_FREESTYLE_SNAPSHOT_ID",
 )
   ?? DEFAULT_FREESTYLE_SNAPSHOT_ID;
+const baseUrl = readHexclaveEnvironmentVariable(
+  "HEXCLAVE_FREESTYLE_API_ENDPOINT",
+  "STACK_FREESTYLE_API_ENDPOINT",
+);
 const apiKey = readHexclaveEnvironmentVariable(
   "HEXCLAVE_FREESTYLE_API_KEY",
   "STACK_FREESTYLE_API_KEY",
@@ -22,7 +26,8 @@ function readEnvironmentVariable(name: string): string | undefined {
   // This bootstrap must run before Hexclave or its generated shared package is
   // built, so it deliberately cannot depend on the backend getEnvVariable helper.
   // eslint-disable-next-line no-restricted-syntax
-  return process.env[name] || undefined;
+  const value = process.env[name];
+  return value === "" ? undefined : value;
 }
 
 function readHexclaveEnvironmentVariable(
@@ -37,11 +42,11 @@ function readHexclaveEnvironmentVariable(
   return hexclaveValue ?? stackValue;
 }
 
-if (!apiKey) {
+if (apiKey == null) {
   throw new Error("Set HEXCLAVE_FREESTYLE_API_KEY, STACK_FREESTYLE_API_KEY, or FREESTYLE_API_KEY before bootstrapping the snapshot.");
 }
 
-const freestyle = new Freestyle({ apiKey });
+const freestyle = new Freestyle({ apiKey, baseUrl });
 try {
   const existing = await freestyle.vms.snapshots.get(snapshotId);
   throw new Error(`Snapshot slug ${snapshotId} already belongs to ${existing.id}; choose a new HEXCLAVE_FREESTYLE_SNAPSHOT_ID or delete the old snapshot explicitly.`);
