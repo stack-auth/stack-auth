@@ -1,0 +1,19 @@
+apps/dashboard/src/app/(main)/page.tsx
+  s_7338d1b47393b2::t_760de128596c3b 21-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5fca0e3c12089c29f81ca9486b9a32a75ca02e2c",
+  "prompts": {},
+  "sessions": {
+    "s_7338d1b47393b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f36cbb7e-a56c-4cf3-ad9f-677ccd0f2d46",
+        "model": "grok-4.6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
