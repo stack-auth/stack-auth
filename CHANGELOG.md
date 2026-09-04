@@ -4,7 +4,8 @@
 
 ## 9/4/26
 
-- _(entries added throughout the week)_
+- Microsoft sign-in no longer asks for admin consent on every login.
+- Fixed impersonation links and console snippets landing on the wrong page.
 
 ## 8/14/26
 
