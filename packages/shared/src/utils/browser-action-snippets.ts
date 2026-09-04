@@ -19,14 +19,14 @@ export function generateImpersonateSnippet(
   expiresAtDate: Date,
 ): string {
   const pid = encodeURIComponent(projectId);
-  // The impersonated user may not have access to the page the administrator was on.
-  // Start at the app's home page instead of reloading a potentially restricted route.
+  // The target app's home URL is only known to that app. Preserve its current
+  // route, including any deployment base path, rather than guessing a destination.
   return deindent`
     var impersonationValue = encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() }));
     var impersonationAttributes = '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
     document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
     document.cookie = 'stack-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
     document.cookie = 'stack-refresh-${pid}=' + encodeURIComponent(${JSON.stringify(refreshToken)}) + impersonationAttributes;
-    window.location.replace('/');
+    window.location.reload();
   `;
 }

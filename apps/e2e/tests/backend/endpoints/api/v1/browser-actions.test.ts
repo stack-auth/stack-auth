@@ -62,10 +62,10 @@ it("creates and consumes an impersonation browser action without returning the r
   const consumed = await consumeAction(created.body.id);
   expect(consumed.status).toMatchInlineSnapshot(`200`);
   expect(consumed.body.javascript).toContain("hexclave-refresh-");
-  expect(consumed.body.javascript).toContain("window.location.replace");
+  expect(consumed.body.javascript).toContain("window.location.reload");
 
   const cookies = new Map<string, string>();
-  let destination: string | undefined;
+  let reloaded = false;
   runInNewContext(consumed.body.javascript, {
     document: {
       set cookie(value: string) {
@@ -75,9 +75,9 @@ it("creates and consumes an impersonation browser action without returning the r
       },
     },
     location: { protocol: "http:" },
-    window: { location: { replace: (url: string) => { destination = url; } } },
+    window: { location: { reload: () => { reloaded = true; } } },
   });
-  expect(destination).toMatchInlineSnapshot(`"/"`);
+  expect(reloaded).toMatchInlineSnapshot(`true`);
   const refreshCookie = [...cookies.entries()].find(([name]) => name.startsWith("stack-refresh-") && !name.endsWith("--default"));
   if (refreshCookie == null) {
     throw new Error("Impersonation must install a refresh token cookie");
