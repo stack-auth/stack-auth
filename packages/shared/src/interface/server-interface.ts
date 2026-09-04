@@ -1111,12 +1111,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          delta: data.delta,
-          expires_at: data.expires_at,
-          description: data.description,
-          idempotency_key: data.idempotency_key,
-        }),
+        body: JSON.stringify({ delta: data.delta, expires_at: data.expires_at, description: data.description }),
       },
       null
     );

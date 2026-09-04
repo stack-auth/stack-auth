@@ -246,10 +246,6 @@ export const POST = createSmartRouteHandler({
       if (receipt === undefined) throw new HexclaveAssertionError(`Exposure receipt for evaluation ${payload.evaluation_id} disappeared before billing`);
       return receipt.billingCompletedAt === null;
     }).length;
-    const billingIdempotencyKey = createHash("sha256").update([
-      "feature-flag-exposures",
-      batchPayloadHash,
-    ].join("\0"), "utf8").digest("hex");
     if (billedItem != null && receiptsNeedingBilling > 0) {
       const billingReservation = await globalPrismaClient.featureFlagExposureReceipt.updateMany({
         where: { ingestionNonce, completedAt: null, billingCompletedAt: null },
@@ -258,16 +254,22 @@ export const POST = createSmartRouteHandler({
       if (billingReservation.count !== receiptsNeedingBilling) {
         throw new HexclaveAssertionError(`Reserved ${billingReservation.count} of ${receiptsNeedingBilling} exposure receipts for billing`);
       }
+      // The quantity debit itself is not idempotent. billingCompletedAt below
+      // is what stops a retried batch from paying again once we *know* the
+      // debit landed; a debit whose response was lost in flight is the one
+      // window where a retry can charge twice. Accepted for now rather than
+      // adding an idempotency ledger to the payments quantity path.
       let isDebited: boolean;
       try {
-        isDebited = await billedItem.tryDecreaseQuantity(accepted.length, { idempotencyKey: billingIdempotencyKey });
+        isDebited = await billedItem.tryDecreaseQuantity(accepted.length);
       } catch (error) {
-        // billingStartedAt is intentionally retained. The next request uses the
-        // same debit key, so it can safely confirm an ambiguous billing attempt
-        // before resuming delivery without charging twice.
         await globalPrismaClient.featureFlagExposureReceipt.updateMany({
           where: { ingestionNonce, completedAt: null },
           data: { processingStartedAt: null },
+        });
+        await globalPrismaClient.featureFlagExposureReceipt.updateMany({
+          where: { billingNonce, completedAt: null },
+          data: { billingNonce: null, billingStartedAt: null, billingCompletedAt: null },
         });
         throw error;
       }
@@ -336,9 +338,9 @@ export const POST = createSmartRouteHandler({
         },
       });
     } catch (error) {
-      // The stable billing idempotency key stays attached to this durable
-      // receipt. Retrying resumes delivery without another debit and avoids an
-      // ambiguous refund if ClickHouse accepted an earlier attempt.
+      // billingCompletedAt stays set on the durable receipt, so a retry
+      // resumes delivery without another debit and avoids an ambiguous refund
+      // if ClickHouse accepted an earlier attempt.
       await globalPrismaClient.featureFlagExposureReceipt.updateMany({
         where: { ingestionNonce, completedAt: null },
         data: { processingStartedAt: null },

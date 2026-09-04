@@ -13,7 +13,6 @@ const itemUpdateSchema = yupObject({
   expires_at: yupString().optional(),
   description: yupString().optional(),
   allow_negative: yupBoolean().optional(),
-  idempotency_key: yupString().min(1).max(256).optional(),
 }).defined();
 
 

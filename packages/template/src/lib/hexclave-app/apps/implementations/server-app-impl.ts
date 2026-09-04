@@ -1280,17 +1280,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
         else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
       },
-      tryDecreaseQuantity: async (delta: number, options?: { idempotencyKey?: string }) => {
+      tryDecreaseQuantity: async (delta: number) => {
         try {
           const updateOptions = customer.type === "user"
             ? { itemId: crud.id, userId: customer.id }
             : customer.type === "team"
               ? { itemId: crud.id, teamId: customer.id }
               : { itemId: crud.id, customCustomerId: customer.id };
-          await app._interface.updateItemQuantity(updateOptions, {
-            delta: -delta,
-            ...options?.idempotencyKey === undefined ? {} : { idempotency_key: options.idempotencyKey },
-          });
+          await app._interface.updateItemQuantity(updateOptions, { delta: -delta });
           if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
           else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
           else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
