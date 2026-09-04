@@ -11,6 +11,8 @@ This guide takes you from zero to a working flag: enable the app, create a flag,
     Feature Flags is currently in alpha, so it is not listed in **Explore Apps** yet. Enable it in your [Hexclave config](/guides/going-further/hexclave-config) instead:
 
     ```ts title="hexclave.config.ts"
+    import type { HexclaveConfig } from "@hexclave/js"; // replace `js` with the correct framework SDK package
+
     export const config: HexclaveConfig = {
       apps: {
         installed: {
