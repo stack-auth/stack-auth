@@ -1,1 +1,1 @@
-export const DEFAULT_FREESTYLE_SNAPSHOT_ID = "hexclave-js-node24-v2";
+export const DEFAULT_FREESTYLE_SNAPSHOT_ID = "hexclave-js-node24-v3";

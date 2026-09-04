@@ -4,8 +4,10 @@ import { Freestyle, FreestyleApiError } from "freestyle";
 import { DEFAULT_FREESTYLE_SNAPSHOT_ID } from "../src/lib/freestyle-vm-constants";
 
 const NODE_VERSION = "24.18.1";
-const NODE_ARCHIVE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz`;
-const NODE_ARCHIVE_SHA256 = "9f5eb6ac21845a66c493c91a253b1da32fd684e89e9b7202d4936982336be4ca";
+// The unofficial-builds glibc-217 build has static libstdc++/libgcc and works on
+// BusyBox's glibc-only userland. Use .tar.gz because xz needs a 64 MiB dictionary.
+const NODE_ARCHIVE_URL = `https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64-glibc-217.tar.gz`;
+const NODE_ARCHIVE_SHA256 = "b7c5c7a46838c4b6b68586e0ad224e019dda0ed29b0ed8907568bb89617fc784";
 const snapshotId = readHexclaveEnvironmentVariable(
   "HEXCLAVE_FREESTYLE_SNAPSHOT_ID",
   "STACK_FREESTYLE_SNAPSHOT_ID",
@@ -57,55 +59,10 @@ if (archiveSha256 !== NODE_ARCHIVE_SHA256) {
   throw new Error(`Node archive checksum mismatch: expected ${NODE_ARCHIVE_SHA256}, received ${archiveSha256}`);
 }
 
-const [collectorScript, bootstrapScript] = await Promise.all([
-  readFile(new URL("./freestyle-node-runtime-bundle.sh", import.meta.url), "utf8"),
-  readFile(new URL("./freestyle-snapshot-bootstrap.sh", import.meta.url), "utf8"),
-]);
-
-const { vm: collectorVm } = await freestyle.vms.create({
-  snapshotId: "freestyle/ubuntu-sm",
-  ttlSeconds: 15 * 60,
-  automaticRestart: false,
-  metadata: {
-    app: "hexclave",
-    purpose: "javascript-runtime-collector",
-  },
-  firewall: { rules: [] },
-});
-
-let runtimeBundle: Uint8Array;
-let runtimeBundleSha256: string;
-try {
-  await Promise.all([
-    collectorVm.fs.writeFile("/tmp/hexclave-node-archive.tar.gz", archive),
-    collectorVm.fs.writeTextFile(
-      "/tmp/freestyle-node-runtime-bundle.sh",
-      collectorScript,
-      { mode: 0o700 },
-    ),
-  ]);
-  // freestyle/ubuntu-sm runs exec as the unprivileged `ubuntu` user by default; the bundle
-  // script needs root for /opt and chroot.
-  const collection = await collectorVm.exec({
-    command: "/tmp/freestyle-node-runtime-bundle.sh",
-    linuxUser: "root",
-    timeoutMs: 300_000,
-  });
-  if (collection.statusCode !== 0) {
-    throw new Error(`Node runtime collection exited with status ${collection.statusCode}: ${collection.stderr ?? ""}`);
-  }
-  [runtimeBundle, runtimeBundleSha256] = await Promise.all([
-    collectorVm.fs.readFile("/tmp/hexclave-node-runtime.tar.gz"),
-    collectorVm.fs.readTextFile("/tmp/hexclave-node-runtime.sha256"),
-  ]);
-  runtimeBundleSha256 = runtimeBundleSha256.trim();
-  const receivedBundleSha256 = createHash("sha256").update(runtimeBundle).digest("hex");
-  if (receivedBundleSha256 !== runtimeBundleSha256) {
-    throw new Error(`Node runtime bundle checksum mismatch: expected ${runtimeBundleSha256}, received ${receivedBundleSha256}`);
-  }
-} finally {
-  await collectorVm.delete();
-}
+const bootstrapScript = await readFile(
+  new URL("./freestyle-snapshot-bootstrap.sh", import.meta.url),
+  "utf8",
+);
 
 const { vm } = await freestyle.vms.create({
   snapshotId: "freestyle/busybox",
@@ -123,8 +80,8 @@ const { vm } = await freestyle.vms.create({
 try {
   await vm.resize({ memory: 1024, storage: 2048 });
   await Promise.all([
-    vm.fs.writeFile("/opt/hexclave-node-runtime.tar.gz", runtimeBundle),
-    vm.fs.writeTextFile("/opt/hexclave-node-runtime.sha256", `${runtimeBundleSha256}\n`),
+    vm.fs.writeFile("/opt/hexclave-node-archive.tar.gz", archive),
+    vm.fs.writeTextFile("/opt/hexclave-node-archive.sha256", `${NODE_ARCHIVE_SHA256}\n`),
     vm.fs.writeTextFile(
       "/tmp/freestyle-snapshot-bootstrap.sh",
       bootstrapScript,
@@ -132,7 +89,7 @@ try {
     ),
   ]);
   const bootstrap = await vm.exec({
-    command: "/tmp/freestyle-snapshot-bootstrap.sh",
+    command: `NODE_VERSION=${NODE_VERSION} /tmp/freestyle-snapshot-bootstrap.sh`,
     timeoutMs: 300_000,
   });
   if (bootstrap.statusCode !== 0) {
@@ -145,11 +102,15 @@ try {
   await Promise.all([
     vm.fs.writeTextFile(
       `${verificationHostDirectory}/package.json`,
-      JSON.stringify({ private: true, type: "module", dependencies: {} }) + "\n",
+      JSON.stringify({
+        private: true,
+        type: "module",
+        dependencies: { "is-odd": "3.0.1" },
+      }) + "\n",
     ),
     vm.fs.writeTextFile(
       `${verificationHostDirectory}/runner.mjs`,
-      `import { writeFile } from "node:fs/promises";\nawait writeFile("./verified", process.version);\n`,
+      `import isOdd from "is-odd";\nimport { writeFile } from "node:fs/promises";\nif (!isOdd(3)) throw new Error("is-odd verification failed");\nawait writeFile("./verified", process.version);\n`,
     ),
   ]);
   const verification = await vm.exec({
