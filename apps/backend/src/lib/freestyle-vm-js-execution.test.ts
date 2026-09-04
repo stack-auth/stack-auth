@@ -1,3 +1,4 @@
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { CreateVmOptions } from "freestyle";
 import { describe, expect, test, vi } from "vitest";
 import {
@@ -89,15 +90,24 @@ describe("executeJavascriptInFreestyleVm", () => {
 
   test("rejects a failed runner and still deletes its VM", async () => {
     const fake = createFakeVm({ exitCode: 7 });
-
-    await expect(executeJavascriptInFreestyleVm({
+    const execution = executeJavascriptInFreestyleVm({
       snapshotId: "sandbox-snapshot",
       code: "export default () => 42;",
       nodeModules: {},
       scheduleCleanup: vi.fn(),
       onCleanupError: vi.fn(),
       createVm: async () => fake.vm,
-    })).rejects.toThrow("runner exited with status 7");
+    });
+
+    await expect(execution).rejects.toThrow("runner exited with non-zero code");
+    const thrownError = await execution.then(
+      () => undefined,
+      error => error,
+    );
+    expect(thrownError).toBeInstanceOf(HexclaveAssertionError);
+    if (thrownError instanceof HexclaveAssertionError) {
+      expect(thrownError.extraData).toMatchObject({ vmId: "vm-test", exitCode: 7 });
+    }
 
     expect(fake.detach).toHaveBeenCalledOnce();
     expect(fake.deleteVm).toHaveBeenCalledOnce();

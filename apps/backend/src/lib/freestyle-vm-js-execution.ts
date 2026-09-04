@@ -1,4 +1,5 @@
 import type { CreateVmOptions } from "freestyle";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import type { ExecuteResult } from "./js-execution-types";
 export { DEFAULT_FREESTYLE_SNAPSHOT_ID } from "./freestyle-vm-constants";
 
@@ -116,7 +117,10 @@ export async function executeJavascriptInFreestyleVm(options: {
       executionSignal,
     );
     if (exitCode !== 0) {
-      throw new Error(`Freestyle VM JavaScript runner exited with status ${exitCode}`);
+      throw new HexclaveAssertionError("Freestyle VM JavaScript runner exited with non-zero code", {
+        vmId: vm.id,
+        exitCode,
+      });
     }
 
     const resultJson = await vm.readTextFile(
@@ -127,10 +131,17 @@ export async function executeJavascriptInFreestyleVm(options: {
     try {
       result = JSON.parse(resultJson);
     } catch (error) {
-      throw new Error("Freestyle VM returned malformed JSON", { cause: error });
+      throw new HexclaveAssertionError("Freestyle VM returned malformed JSON", {
+        cause: error,
+        vmId: vm.id,
+        resultJson,
+      });
     }
     if (!isExecuteResult(result)) {
-      throw new Error("Freestyle VM returned a malformed execution result");
+      throw new HexclaveAssertionError("Freestyle VM returned a malformed execution result", {
+        vmId: vm.id,
+        result,
+      });
     }
     return result;
   } finally {
@@ -163,7 +174,7 @@ async function runPtyCommand(
   type PtyOutcome = { type: "exit", exitCode: number } | { type: "error", error: unknown };
   let exited = false;
   let resolveOutcome: (outcome: PtyOutcome) => void = () => {
-    throw new Error("PTY outcome resolver was used before initialization");
+    throw new HexclaveAssertionError("PTY outcome resolver was used before initialization");
   };
   const outcomePromise = new Promise<PtyOutcome>((resolve) => {
     resolveOutcome = resolve;
@@ -179,7 +190,12 @@ async function runPtyCommand(
       if (!exited) {
         resolveOutcome({
           type: "error",
-          error: new Error(`Freestyle PTY closed before the command exited (code ${info.code})`),
+          error: new HexclaveAssertionError("Freestyle PTY closed before the command exited", {
+            vmId: vm.id,
+            code: info.code,
+            reason: info.reason,
+            wasClean: info.wasClean,
+          }),
         });
       }
     },

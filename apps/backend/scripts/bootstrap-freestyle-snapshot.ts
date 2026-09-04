@@ -84,8 +84,11 @@ try {
       { mode: 0o700 },
     ),
   ]);
+  // freestyle/ubuntu-sm runs exec as the unprivileged `ubuntu` user by default; the bundle
+  // script needs root for /opt and chroot.
   const collection = await collectorVm.exec({
     command: "/tmp/freestyle-node-runtime-bundle.sh",
+    linuxUser: "root",
     timeoutMs: 300_000,
   });
   if (collection.statusCode !== 0) {
