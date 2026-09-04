@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { BASE_IMAGE, BASE_IMAGE_WORKDIR, BUILDER_IMAGE, BUILD_DOCKERFILE_DIR, BUILD_ENV_DIR, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDKIT_TMPFS_SIZE, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, getConfig } from "./config.js";
+import { BASE_IMAGE, BASE_IMAGE_WORKDIR, BUILDER_IMAGE, BUILD_DOCKERFILE_DIR, BUILD_ENV_DIR, BUILD_TIMEOUT_SECONDS, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, builderMachineFor, buildkitTmpfsSize, getConfig } from "./config.js";
 import { builderInstanceName } from "./naming.js";
 import { presignValidatedUploadGet } from "./store.js";
 import type { ReconciliationLeaseGuard } from "./reconciliation-lock.js";
@@ -155,6 +155,10 @@ export type StartBuildOptions = {
   // Built in this order, in ONE machine. The first failure aborts the rest: the
   // whole deployment fails, so there is no half-built cluster to salvage.
   targets: BuildTarget[],
+  // The builder size the deployment asked for, or null to let the build shape
+  // decide. One value per build, because there is one machine — see
+  // builderMachineFor, which also applies the floor this must not skip.
+  builderMemoryMb: number | null,
 };
 
 // ONE env channel, Vercel-style: every declared env var goes to both the build and the
@@ -512,11 +516,16 @@ export function createGcpBuilder(): Builder {
         }),
       ];
       await lease.assertOwned();
+      // What the caller asked for, floored at what this build shape needs. The
+      // floor is not an entitlement: a Railpack build simply does not fit in the
+      // smaller machine (see RAILPACK_MIN_BUILDER_MEMORY_MB), so a request below
+      // it is raised rather than failed.
+      const builder = builderMachineFor({ requestedMemoryMb: options.builderMemoryMb, isRailpackBuild });
       const machine = await context.compute.createBuilder({
         name: builderInstanceName(config.envId, options.deploymentId),
         image: BUILDER_IMAGE,
-        machineType: isRailpackBuild ? "e2-standard-4" : "e2-standard-2",
-        diskSizeGb: isRailpackBuild ? 50 : 30,
+        machineType: builder.machineType,
+        diskSizeGb: builder.diskSizeGb,
         files,
         env: {
           BUILD_ENV_DIR,
@@ -529,7 +538,10 @@ export function createGcpBuilder(): Builder {
           RAILPACK_CLI_URL,
           RAILPACK_CLI_SHA256,
           RAILPACK_FRONTEND_IMAGE,
-          ...(isRailpackBuild ? { BUILDKIT_TMPFS_SIZE: RAILPACK_BUILDKIT_TMPFS_SIZE } : {}),
+          // Scaled to the machine, not fixed: the snapshot store is what a big
+          // dependency tree fills first, so a larger builder that kept a fixed
+          // store would buy nothing at all.
+          ...(isRailpackBuild ? { BUILDKIT_TMPFS_SIZE: buildkitTmpfsSize(builder.memoryMb) } : {}),
         },
       });
       return { builderApp: context.project.projectId, builderMachineId: machine.name };

@@ -299,6 +299,71 @@ describe("access control", () => {
   });
 });
 
+describe("compute sizing", () => {
+  it("reports the size a service runs at, and the CPU that comes with it", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await syncServices({
+      sized: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: {} },
+    }, "sizing-src");
+
+    const response = await niceBackendFetch("/api/v1/deployments/services/sized", { accessType: "admin" });
+    expect(response.status).toBe(200);
+    // Resolved, never null: a service that declares no size is running its
+    // type's default, not running nothing — and the reader should not have to
+    // know which default belongs to which type.
+    expect(response.body).toMatchObject({
+      memory: "512MB",
+      cpu: { count: 1, shared: false },
+    });
+  });
+
+  it("refuses sizes the plan does not entitle, and everything else it cannot run", async ({ expect }) => {
+    await Project.createAndSwitch();
+    // Same switch every other plan limit respects; on a dev machine with limits
+    // disabled the gate must fail OPEN rather than half-apply.
+    const planUsage = await niceBackendFetch("/api/v1/internal/plan-usage", { accessType: "admin" });
+    const enforced = (planUsage.body as any)?.are_plan_limits_enforced !== false;
+
+    const sync = async (body: Record<string, unknown>) => await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { source_id: "sizing-gate-src", ...body },
+    });
+
+    // A size off the ladder is a schema error on every plan: it names a machine
+    // shape the runtime does not have.
+    const offLadder = await sync({ services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, memory: "3GB", env: {} } } });
+    expect(offLadder.status).toBe(400);
+    const builderOffLadder = await sync({
+      services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: {} } },
+      builder: { memory: "512MB" },
+    });
+    expect(builderOffLadder.status).toBe(400);
+
+    // The default rung always syncs, whatever the plan.
+    expect((await sync({
+      services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, memory: "512MB", env: {} } },
+      builder: { memory: "8GB" },
+    })).status).toBe(200);
+
+    const oversized = await sync({
+      services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, memory: "4GB", env: {} } },
+    });
+    const biggerBuilder = await sync({
+      services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: {} } },
+      builder: { memory: "32GB" },
+    });
+    if (!enforced) {
+      expect([oversized.status, biggerBuilder.status]).toEqual([200, 200]);
+      return;
+    }
+    expect(oversized.status).toBe(400);
+    expect(JSON.stringify(oversized.body)).toContain("Free plan");
+    expect(biggerBuilder.status).toBe(400);
+    expect(JSON.stringify(biggerBuilder.body)).toContain("Free plan");
+  });
+});
+
 describe("definition sync", () => {
   it("syncs, lists, and reads container service definitions", async ({ expect }) => {
     await Project.createAndSwitch();

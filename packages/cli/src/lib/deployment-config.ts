@@ -68,9 +68,12 @@ import {
   MAX_VOLUME_ID_LENGTH,
   MAX_VOLUME_SIZE_GB,
   MIN_VOLUME_SIZE_GB,
+  BUILDER_MEMORY_SIZES,
   SERVICE_OUTPUT_KEYS,
   connectionRequiresTargetDeployed,
+  deploymentMemorySizesForType,
   deploymentServiceIsBuilt,
+  suggestDeploymentMemorySize,
   formatConnectionValue,
   isValidDeploymentCommand,
   parseConnectionValue,
@@ -85,6 +88,8 @@ import {
   type DeploymentServiceType,
   type DeploymentVolumeDefinition,
   type HexclaveOutputKey,
+  type DeploymentBuilderDefinition,
+  type DeploymentMemorySize,
 } from "@hexclave/shared/dist/deployments";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import fs from "node:fs";
@@ -321,13 +326,50 @@ export type EvaluatedServices = {
   // but previously owned by this source as removed.
   sourceId: string,
   services: Map<string, EvaluatedService>,
+  // The machine that builds them. One per deployment, so it sits here rather
+  // than on any service. Undefined = the deployment picks the size its build
+  // shape needs.
+  builder: DeploymentBuilderDefinition | undefined,
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
-  "type", "public", "ports", "minInstances", "maxInstances",
+  "type", "public", "ports", "minInstances", "maxInstances", "memory",
   "rootDirectory", "dockerfilePath", "image", "devCommand", "buildCommand", "startCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
+// `services` and `builder` are the two halves of a deploy file: what to run, and
+// what to build it on.
+const KNOWN_DEPLOY_FIELDS = new Set(["services", "builder"]);
+const KNOWN_BUILDER_FIELDS = new Set(["memory"]);
+
+/**
+ * Reads a memory size token, refusing anything but the canonical spelling.
+ *
+ * `available` is the ladder for this particular slot — a "server" has no 512MB
+ * shape and the builder starts where the services stop — so the message names
+ * what this thing can be rather than every token that exists.
+ *
+ * Near-misses get a "did you mean": `"4gb"`, `"4 GB"` and `"4Gi"` are all
+ * refused, but they are what somebody types first, and a bare list of seven
+ * tokens leaves the reader to spot the difference by eye.
+ */
+function readMemoryField(
+  raw: unknown,
+  at: string,
+  available: readonly DeploymentMemorySize[],
+): DeploymentMemorySize | undefined {
+  if (raw === undefined) return undefined;
+  const options = available.map((size) => JSON.stringify(size)).join(", ");
+  if (typeof raw !== "string") {
+    throw new CliError(`${at} must be one of ${options} (got ${JSON.stringify(raw)}). Write the size with its unit, e.g. \`memory: "4GB"\`.`);
+  }
+  if ((available as readonly string[]).includes(raw)) return raw as DeploymentMemorySize;
+  const suggestion = suggestDeploymentMemorySize(raw);
+  if (suggestion !== null && (available as readonly string[]).includes(suggestion)) {
+    throw new CliError(`${at} is ${JSON.stringify(raw)}. Write it as ${JSON.stringify(suggestion)} — sizes have one spelling each, in MB or GB (note the capital B; "Mb" is megabits).`);
+  }
+  throw new CliError(`${at} must be one of ${options} (got ${JSON.stringify(raw)}).`);
+}
 
 function readOptionalIntegerField(record: Record<string, unknown>, serviceId: string, field: string): number | undefined {
   const value = record[field];
@@ -459,6 +501,28 @@ function evaluatePorts(serviceId: string, isPublic: boolean, portsRaw: unknown):
     console.error(`Note: services.${serviceId} is public with ${entries.length} ports. The lowest (${holder.port}) owns the standard 80/443, so it is the one the service's URL points at and the only port a custom domain can front; ${rest.map((entry) => entry.port).join(", ")} ${rest.length === 1 ? "is reachable at its own" : "are reachable at their own"} port number.`);
   }
   return ports;
+}
+
+/**
+ * Reads the deploy export's `builder`.
+ *
+ * Returns undefined when the file says nothing OR when it declares an empty
+ * object: both mean "no opinion", and storing `{}` would make an empty
+ * declaration look different from an absent one to every reader downstream.
+ */
+function evaluateBuilder(deployFilePath: string, builderRaw: unknown): DeploymentBuilderDefinition | undefined {
+  if (builderRaw === undefined) return undefined;
+  if (builderRaw === null || typeof builderRaw !== "object" || Array.isArray(builderRaw)) {
+    throw new CliError(`deploy.builder of ${deployFilePath} must be an object, e.g. \`builder: { memory: "32GB" }\`.`);
+  }
+  const record = builderRaw as Record<string, unknown>;
+  for (const field of Object.keys(record)) {
+    if (!KNOWN_BUILDER_FIELDS.has(field)) {
+      throw new CliError(`deploy.builder of ${deployFilePath} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_BUILDER_FIELDS].join(", ")}.`);
+    }
+  }
+  const memory = readMemoryField(record.memory, `deploy.builder.memory of ${deployFilePath}`, BUILDER_MEMORY_SIZES);
+  return memory === undefined ? undefined : { memory };
 }
 
 function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Record<string, DeploymentVolumeDefinition> | undefined {
@@ -663,10 +727,13 @@ export function evaluateDeploymentConfig(options: {
   }
   const deployRecord = deployRaw as Record<string, unknown>;
   for (const field of Object.keys(deployRecord)) {
-    if (field !== "services") {
-      throw new CliError(`The \`deploy\` export of ${deployFilePath} returned an unknown field ${JSON.stringify(field)}. The only supported field is \`services\`.`);
+    if (!KNOWN_DEPLOY_FIELDS.has(field)) {
+      throw new CliError(`The \`deploy\` export of ${deployFilePath} returned an unknown field ${JSON.stringify(field)}. Supported fields: ${[...KNOWN_DEPLOY_FIELDS].join(", ")}.`);
     }
   }
+  // The builder is one machine per deployment, so it is read once here rather
+  // than per service.
+  const builder = evaluateBuilder(deployFilePath, deployRecord.builder);
   const servicesRaw = deployRecord.services;
   if (servicesRaw === undefined) {
     throw new CliError(`The \`deploy\` export of ${deployFilePath} returned no \`services\`. Add them, e.g.:\n${EXAMPLE_DEPLOYMENT_EXPORT}`);
@@ -797,6 +864,10 @@ export function evaluateDeploymentConfig(options: {
       }
     }
 
+    // The ladder is the service type's own: a "server" runs on whole machines
+    // and has no 512MB shape to run on.
+    const memory = readMemoryField(record.memory, `deploy.services.${serviceId}.memory`, deploymentMemorySizesForType(serviceType));
+
     // A volume is local disk on a single host and attaches to at most one
     // instance, so only a "server" can hold one.
     const persistentVolumes = evaluatePersistentVolumes(serviceId, record.persistentVolumes);
@@ -829,6 +900,12 @@ export function evaluateDeploymentConfig(options: {
         // A "serverless" defaults to 0 (scale to zero) downstream.
         min_instances: serviceType === "server" ? minInstances ?? 1 : minInstances,
         max_instances: maxInstances,
+        // Left undefined when the file says nothing, rather than written out
+        // like `public` above: the default is applied at deploy time, and a
+        // definition that states the value it already runs at must hash the
+        // same as one that omits it — otherwise adding `memory: "1GB"` to a
+        // running server would replace the machine for no change at all.
+        memory,
         // Stored/displayed as a config-directory-relative posix path ("." for
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
@@ -965,7 +1042,7 @@ export function evaluateDeploymentConfig(options: {
     }
   }
 
-  return { sourceId, services };
+  return { sourceId, services, builder };
 }
 
 /**

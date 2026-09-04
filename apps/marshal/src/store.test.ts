@@ -251,6 +251,7 @@ describe("stored deployment encryption", () => {
     images: {},
     builder_app: null,
     builder_machine_id: null,
+    builder_memory_mb: null,
     upload_id: "00000000-0000-0000-0000-000000000000",
   } satisfies StoredDeployment;
 

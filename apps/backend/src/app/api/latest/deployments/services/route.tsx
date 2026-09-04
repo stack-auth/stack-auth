@@ -1,7 +1,7 @@
 import { HEXCLAVE_SERVICE_ID, assertServicesAllowedByPlan, getOrCreateDeploymentSource, listServiceRows, serviceToApiShape, syncSourceServices, tearDownServices } from "@/lib/deployments";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentServiceDefinitionSchema } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_SOURCE_ID_REGEX, MAX_DEPLOYMENT_SOURCE_ID_LENGTH, deploymentBuilderDefinitionSchema, deploymentServiceDefinitionSchema } from "@hexclave/shared/dist/deployments";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
@@ -59,6 +59,12 @@ export const PUT = createSmartRouteHandler({
         userSpecifiedIdSchema("serviceId").notOneOf([HEXCLAVE_SERVICE_ID], `The service id ${JSON.stringify(HEXCLAVE_SERVICE_ID)} is reserved for the managed Hexclave service`),
         deploymentServiceDefinitionSchema.defined(),
       ).defined(),
+      // The machine that BUILDS this source, as opposed to the machines its
+      // services run on. One per source, so it is synced alongside the
+      // definitions rather than per service — and inside the same fence, so a
+      // deploy cannot pair one checkout's source with another's builder size.
+      // Absent clears any size the source had pinned.
+      builder: deploymentBuilderDefinitionSchema.optional(),
     }).defined(),
     method: yupString().oneOf(["PUT"]).defined(),
   }),
@@ -78,7 +84,7 @@ export const PUT = createSmartRouteHandler({
       // the latter is what an empty `services` export actually means.
       throw new StatusError(400, "The services record must contain at least one service. (Nothing to sync — the deploy file's `services` are empty.)");
     }
-    await assertServicesAllowedByPlan(auth.tenancy, body.services);
+    await assertServicesAllowedByPlan(auth.tenancy, body.services, body.builder);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const syncId = randomUUID();
     // One transaction: the sync detaches volumes before re-attaching them, so a
@@ -93,7 +99,7 @@ export const PUT = createSmartRouteHandler({
     // committed newer state instead.
     const { removedServiceIds } = await retryTransaction(prisma, async (transaction) => {
       const source = await getOrCreateDeploymentSource(transaction, auth.tenancy, body.source_id);
-      return await syncSourceServices(transaction, auth.tenancy, source, body.services, syncId);
+      return await syncSourceServices(transaction, auth.tenancy, source, body.services, syncId, body.builder);
     }, { level: "serializable" });
 
     // AFTER the transaction: tearing down a container is not something a

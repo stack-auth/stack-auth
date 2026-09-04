@@ -96,6 +96,39 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     });
   });
 
+  it("reads memory from the ladder its service type actually has machines for", () => {
+    const memoryOf = (service: unknown) => evaluate(() => ({ web: service })).services.get("web")?.definition.memory;
+    expect(memoryOf({ type: "serverless", ports: {}, memory: "8GB" })).toBe("8GB");
+    expect(memoryOf({ type: "server", ports: {}, memory: "4GB" })).toBe("4GB");
+    // Absent stays absent rather than being written out as the default: the
+    // backend normalizes an explicit default back out anyway, and a definition
+    // that states what it already runs must not read differently from one that
+    // says nothing.
+    expect(memoryOf({ type: "serverless", ports: {} })).toBe(undefined);
+    // No 512MB machine shape exists, so the rung a serverless may use is not
+    // one a server may — and the error names the ladder for THIS service.
+    const badMemory = (service: unknown) => () => evaluate(() => ({ web: service }));
+    expect(badMemory({ type: "server", ports: {}, memory: "512MB" }))
+      .toThrow(/deploy\.services\.web\.memory must be one of "1GB", "2GB", "4GB", "8GB"/);
+    // Sizes only the builder may ask for are not service sizes.
+    expect(badMemory({ type: "serverless", ports: {}, memory: "32GB" })).toThrow(/must be one of/);
+  });
+
+  it("refuses non-canonical memory spellings but says which one to write", () => {
+    const memory = (value: unknown) => () => evaluate(() => ({ web: { type: "serverless", ports: {}, memory: value } }));
+    // Recognising a spelling is not accepting it: one canonical token per size,
+    // for the same reason a port key may not have a leading zero.
+    expect(memory("4gb")).toThrow(/Write it as "4GB"/);
+    expect(memory("4 GB")).toThrow(/Write it as "4GB"/);
+    expect(memory("4Gi")).toThrow(/Write it as "4GB"/);
+    expect(memory("4096MB")).toThrow(/Write it as "4GB"/);
+    // "Mb" is megabits, so it is called out rather than silently accepted.
+    expect(memory("512Mb")).toThrow(/megabits/);
+    // Unrecognisable values fall back to naming the ladder.
+    expect(memory("3GB")).toThrow(/must be one of/);
+    expect(memory(4096)).toThrow(/must be one of/);
+  });
+
   it("rejects port lists it could not serve", () => {
     const evaluatePorts = (ports: unknown) => () => evaluate(() => ({ web: { type: "serverless", ports } }));
     // The FIELD is still required — an omitted `ports` is a forgotten line far
@@ -824,5 +857,41 @@ describe("build and start commands", () => {
 
   it("rejects an unknown command field rather than silently dropping it", () => {
     expect(() => evaluate(web({ runCommand: "node server.js" }))).toThrow(/unknown field "runCommand"/);
+  });
+});
+
+describe("the deploy export's builder", () => {
+  const evaluateDeploy = (deployRaw: unknown) => evaluateDeploymentConfig({
+    deployFilePath: DEPLOY_FILE_PATH,
+    deploymentGroupIdExport: "test-source",
+    deployExport: () => deployRaw,
+    mode: "deploy",
+  });
+  const withServices = (extra: Record<string, unknown>) => ({
+    services: { web: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: {} } },
+    ...extra,
+  });
+
+  it("is a sibling of services, because one machine builds them all", () => {
+    expect(evaluateDeploy(withServices({ builder: { memory: "32GB" } })).builder).toEqual({ memory: "32GB" });
+    // Its ladder starts where the service ladders stop: a builder is a transient
+    // machine sized for a build, not for an idling service.
+    expect(evaluateDeploy(withServices({ builder: { memory: "8GB" } })).builder).toEqual({ memory: "8GB" });
+    expect(() => evaluateDeploy(withServices({ builder: { memory: "512MB" } }))).toThrow(/deploy\.builder\.memory of .* must be one of "8GB", "16GB", "32GB"/);
+    expect(() => evaluateDeploy(withServices({ builder: { memory: "32gb" } }))).toThrow(/Write it as "32GB"/);
+  });
+
+  it("collapses an empty builder to no opinion at all", () => {
+    // `{}` and absent both mean "let the deployment decide"; storing one as a
+    // declaration would make them read differently downstream.
+    expect(evaluateDeploy(withServices({})).builder).toBe(undefined);
+    expect(evaluateDeploy(withServices({ builder: {} })).builder).toBe(undefined);
+  });
+
+  it("rejects fields neither half of the deploy export knows", () => {
+    expect(() => evaluateDeploy(withServices({ builder: { cpu: 4 } }))).toThrow(/unknown field "cpu"/);
+    expect(() => evaluateDeploy(withServices({ builder: "32GB" }))).toThrow(/must be an object/);
+    // The top-level check now names both supported fields rather than just one.
+    expect(() => evaluateDeploy(withServices({ builders: {} }))).toThrow(/unknown field "builders". Supported fields: services, builder/);
   });
 });

@@ -223,6 +223,7 @@ describe("createMockBuilder", () => {
       targets: ["web", "api", "worker-queue"].map((serviceKey) => ({
         serviceKey, pushTarget: `us-central1-docker.pkg.dev/project/marshal/hx-test-ns-${serviceKey}:tag`, dockerfilePath: null, rootDirectory: null, baseImage: null, buildCommand: null, buildEnv: {},
       })),
+      builderMemoryMb: null,
     }, { assertOwned: async () => {} } as any);
     await vi.waitFor(() => expect(completions.length).toBe(1));
 

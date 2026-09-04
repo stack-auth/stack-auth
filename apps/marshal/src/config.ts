@@ -3,6 +3,7 @@
 // NODE_ENV: an omitted production NODE_ENV must fail closed.
 
 import { assertDataEncryptionKeyIsSafe, parseDataEncryptionRootKey } from "./spec-crypto.js";
+import type { ServiceKind } from "./types.js";
 
 export type MarshalConfig = {
   port: number,
@@ -181,22 +182,138 @@ export function gcpDiskName(volumeId: string): string {
   return `${VOLUME_NAME_PREFIX}${volumeId}`.replace(/_/g, "-");
 }
 
-export const MACHINE_GUEST = { cpu_kind: "shared", cpus: 1, memory_mb: 512 };
-export const BUILDER_GUEST = { cpu_kind: "shared", cpus: 2, memory_mb: 2048 };
-// Railpack builds get a bigger machine: every builder is ephemeral (no image cache) and the
-// railpack-builder base image is large, and the default guest can time out during
-// 15 minutes on base-image extraction alone. The CPUs are what buy that back.
+// ---------------------------------------------------------------------------
+// Compute sizing.
 //
-// The RAM has to cover TWO things at once, which is what the first sizing of it got wrong:
-// the tmpfs holding buildkit's snapshot store (below) AND the build process itself. At 8g
-// with a 6g tmpfs there were ~2g left, and a Next 16 app with ~1.1g of node_modules either
-// filled the store (ENOSPC) or was OOM-killed at ~1.3g RSS. 16g is the ceiling for two
-// compilation. The larger shape splits memory roughly 10/6 between snapshots and the build.
-export const RAILPACK_BUILDER_GUEST = { cpu_kind: "performance", cpus: 2, memory_mb: 16384 };
-// A cap, not a reservation — unused tmpfs pages cost nothing. Sized so the store cannot fill
-// before the guest's remaining ~6g is what limits the build, since ENOSPC from inside a
-// buildkit step is a far more confusing failure than running out of memory.
-export const RAILPACK_BUILDKIT_TMPFS_SIZE = "10g";
+// Callers name MEMORY and nothing else; everything below is derived here. That
+// is not a simplification of a richer contract — it is the only shape that can
+// be honoured, because neither runtime accepts free choice: a "server" is a
+// Compute Engine instance and must be one of a fixed catalog of machine types,
+// and a Cloud Run container's CPU and memory come in legal PAIRS (past 4 GiB a
+// single CPU is not an allowed combination). A caller-supplied CPU could ask for
+// something no provider will take, and the 400 would arrive after the caller's
+// upload had already been consumed.
+//
+// These tables are the runtime half of the ladder in @hexclave/shared's
+// deployments.ts. KEPT IN SYNC WITH IT — the backend refuses a size that is not
+// on its copy, and this one refuses a size that is not on ours, exactly as
+// validateServiceSpec re-validates every other part of a spec rather than
+// trusting the boundary above it.
+
+// The machine shape a "server" of each size runs on.
+//
+// The three smallest are SHARED-CORE: e2-micro is 0.25 vCPU sustained (burstable
+// to 2), e2-small 0.5, e2-medium 1. e2-standard-2 is the first with dedicated
+// cores. So a memory change is also a CPU change, which is why the sizes are
+// coarse and why every surface that shows one shows the CPU beside it.
+export const SERVER_MACHINE_TYPE_BY_MEMORY_MB: Partial<Record<number, string>> = {
+  1024: "e2-micro",
+  2048: "e2-small",
+  4096: "e2-medium",
+  8192: "e2-standard-2",
+};
+// What a "serverless" container of each size gets. Every pair here is one Cloud
+// Run accepts; the table exists so an invalid pair is unrepresentable rather
+// than validated.
+export const SERVERLESS_CPU_BY_MEMORY_MB: Partial<Record<number, number>> = {
+  512: 1,
+  1024: 1,
+  2048: 1,
+  4096: 2,
+  8192: 4,
+};
+// What a service runs at when its spec names no size. Absent MUST mean exactly
+// this, in both directions: the backend omits the field rather than restating
+// the default precisely so that a spec which changes nothing hashes to the same
+// revision — and for a "server" a changed revision means the VM is replaced.
+export const DEFAULT_SERVER_MEMORY_MB = 1024;
+export const DEFAULT_SERVERLESS_MEMORY_MB = 512;
+
+/**
+ * The machine shape a server of this size runs on.
+ *
+ * Throws rather than falling back, and the callers are why: validateServiceSpec
+ * refuses any size that is not a key here, so reaching this means a STORED spec
+ * (replayed on every reconcile) named a size this Marshal does not know — and
+ * creating an instance with no machine type would be a worse outcome than
+ * failing the apply.
+ */
+export function serverMachineTypeFor(memoryMb: number): string {
+  const machineType = SERVER_MACHINE_TYPE_BY_MEMORY_MB[memoryMb];
+  if (machineType === undefined) throw new Error(`no server machine shape for ${memoryMb}MB`);
+  return machineType;
+}
+
+/** The CPU a serverless container of this size gets. Throws for the same reason. */
+export function serverlessCpuFor(memoryMb: number): number {
+  const cpu = SERVERLESS_CPU_BY_MEMORY_MB[memoryMb];
+  if (cpu === undefined) throw new Error(`no container CPU for ${memoryMb}MB`);
+  return cpu;
+}
+
+/** The memory a spec asks for, or its type's default. */
+export function serviceMemoryMb(spec: { config: { type: ServiceKind, memory_mb?: number } }): number {
+  return spec.config.memory_mb ?? (spec.config.type === "server" ? DEFAULT_SERVER_MEMORY_MB : DEFAULT_SERVERLESS_MEMORY_MB);
+}
+
+// The builder machine for one deployment, by requested memory. Disk grows with
+// it: a build big enough to need 32g of RAM is pulling and unpacking more
+// layers too, and ENOSPC on the boot disk is the same failure as ENOSPC in the
+// snapshot store, from a different direction.
+export const BUILDER_MACHINE_BY_MEMORY_MB: Partial<Record<number, { machineType: string, diskSizeGb: number }>> = {
+  8192: { machineType: "e2-standard-2", diskSizeGb: 30 },
+  16384: { machineType: "e2-standard-4", diskSizeGb: 50 },
+  32768: { machineType: "e2-standard-8", diskSizeGb: 100 },
+};
+export const DEFAULT_BUILDER_MEMORY_MB = 8192;
+// The FLOOR for a Railpack build, not its default: a request for less is raised
+// to this rather than refused.
+//
+// Every builder is ephemeral (no image cache) and the railpack-builder base
+// image is large, so a small machine can spend its entire 15 minutes on
+// base-image extraction alone — the CPUs that come with the larger shape are
+// what buy that back. The RAM has to cover TWO things at once, which is what the
+// first sizing of this got wrong: the tmpfs holding buildkit's snapshot store
+// AND the build process itself. At 8g with a 6g tmpfs there were ~2g left, and a
+// Next 16 app with ~1.1g of node_modules either filled the store (ENOSPC) or was
+// OOM-killed at ~1.3g RSS.
+export const RAILPACK_MIN_BUILDER_MEMORY_MB = 16384;
+
+/**
+ * The builder machine for a deployment: what was asked for, floored at what the
+ * build shape needs, and defaulted when nothing was asked.
+ *
+ * A request BELOW the floor is raised rather than refused. The floor is a fact
+ * about how much machine this kind of build takes, not an entitlement, and
+ * failing a deploy because the author asked for a machine that merely would not
+ * have worked is worse than quietly giving them one that does.
+ */
+export function builderMachineFor(options: { requestedMemoryMb: number | null, isRailpackBuild: boolean }): { machineType: string, diskSizeGb: number, memoryMb: number } {
+  const floor = options.isRailpackBuild ? RAILPACK_MIN_BUILDER_MEMORY_MB : DEFAULT_BUILDER_MEMORY_MB;
+  const memoryMb = Math.max(options.requestedMemoryMb ?? floor, floor);
+  const machine = BUILDER_MACHINE_BY_MEMORY_MB[memoryMb];
+  if (machine === undefined) throw new Error(`no builder machine shape for ${memoryMb}MB`);
+  return { ...machine, memoryMb };
+}
+
+/**
+ * The BuildKit snapshot-store tmpfs for a builder of this size.
+ *
+ * A cap, not a reservation — unused tmpfs pages cost nothing. It has to SCALE
+ * with the machine in both directions: fixed at 10g, a 32g builder would gain
+ * nothing at all from its extra memory (the store, not the build, is what runs
+ * out first on a large dependency tree), and an 8g one would have almost nothing
+ * left for the build itself.
+ *
+ * ~60%, which is roughly the 10/6 split that a 16g Railpack builder was verified
+ * to survive on: enough store that ENOSPC is not what a build hits first, since
+ * running out of space inside a buildkit step is a far more confusing failure
+ * than running out of memory.
+ */
+export function buildkitTmpfsSize(memoryMb: number): string {
+  return `${Math.max(1, Math.floor((memoryMb * 6) / 10 / 1024))}g`;
+}
+
 export const BUILDER_IMAGE = "docker.io/moby/buildkit:v0.23.2@sha256:ddd1ca44b21eda906e81ab14a3d467fa6c39cd73b9a39df1196210edcb8db59e";
 // Railpack (https://railpack.com) builds services that don't declare a Dockerfile: the CLI
 // analyzes the source and emits a build plan that its BuildKit frontend executes. CLI and

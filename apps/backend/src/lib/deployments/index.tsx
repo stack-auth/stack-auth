@@ -44,17 +44,26 @@ import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
 import {
+  DEFAULT_BUILDER_MEMORY,
+  DEFAULT_SERVERLESS_MEMORY,
   DEPLOYMENT_CONNECTION_VALUE_REGEX,
   DEPLOYMENT_ENV_VAR_KEY_REGEX,
+  DeploymentBuilderDefinition,
   DeploymentEnvVarDefinition,
   DeploymentPortEntry,
   DeploymentPorts,
+  DeploymentMemorySize,
   DeploymentServiceDefinition,
   DeploymentServiceType,
   DeploymentSourceManifest,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
+  MAX_PROJECT_ALWAYS_ON_MEMORY_MB,
   SERVICE_OUTPUT_KEYS,
+  defaultDeploymentMemoryForType,
+  deploymentCpuForMemory,
+  deploymentMemoryFromMb,
+  deploymentMemoryToMb,
   deploymentPortEntries,
   deploymentPortEntry,
   deploymentServiceIsBuilt,
@@ -195,6 +204,7 @@ export function definitionFromServiceRow(row: {
   image: string | null,
   buildCommand: string | null,
   startCommand: string | null,
+  memoryMb: number | null,
   env: Prisma.JsonValue,
 }, volume: { volumeId: string, path: string | null, sizeGb: number } | null = null): DeploymentServiceDefinition {
   if (row.type !== "server" && row.type !== "serverless") {
@@ -210,6 +220,11 @@ export function definitionFromServiceRow(row: {
     ports: parseStoredPorts(row.ports, row.serviceId),
     min_instances: row.minInstances ?? undefined,
     max_instances: row.maxInstances ?? undefined,
+    // Undefined when the column is null (the type's default) AND when it holds a
+    // megabyte count matching no size we run — a row written by a future version
+    // or edited by hand degrades to "unset", which every reader already handles,
+    // rather than claiming a size the service is not on.
+    memory: row.memoryMb === null ? undefined : deploymentMemoryFromMb(row.memoryMb) ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
     image: row.image ?? undefined,
@@ -301,8 +316,40 @@ export async function getServiceVolume(prisma: PrismaClientTransaction, tenancy:
  * downgrade-time sweep that rescales running services, which belongs with the
  * billing lifecycle rather than here.
  */
-export async function assertServicesAllowedByPlan(tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
+export async function assertServicesAllowedByPlan(
+  tenancy: Tenancy,
+  services: Record<string, DeploymentServiceDefinition>,
+  builder?: DeploymentBuilderDefinition | undefined,
+): Promise<void> {
   const entries = Object.entries(services);
+
+  // Capacity guard first, and NOT plan-gated: nothing meters deployment compute,
+  // so the per-service ladder bounds what one service may ask for and this
+  // bounds how many of them may ask at once. It applies on every plan, including
+  // the ones this function otherwise lets straight through, and it deliberately
+  // does not fail open the way the plan read below does — it is our own capacity
+  // limit rather than a fact about a billing store we might not reach.
+  //
+  // Only always-on services count. One that scales to zero holds no machine
+  // while idle, and how far it may scale up is already MAX_INSTANCES_PER_SERVICE.
+  const alwaysOnMemory = entries
+    .filter(([, definition]) => effectiveMinInstances(definition) > 0)
+    .map(([serviceId, definition]) => ({ serviceId, megabytes: effectiveMemoryMb(definition) }));
+  const totalAlwaysOnMemoryMb = alwaysOnMemory.reduce((total, service) => total + service.megabytes, 0);
+  if (totalAlwaysOnMemoryMb > MAX_PROJECT_ALWAYS_ON_MEMORY_MB) {
+    const biggest = [...alwaysOnMemory]
+      .sort((a, b) => b.megabytes - a.megabytes || stringCompare(a.serviceId, b.serviceId))
+      .slice(0, 5)
+      .map((service) => `  - \`${service.serviceId}\`: ${deploymentMemoryFromMb(service.megabytes) ?? `${service.megabytes}MB`}`);
+    throw new StatusError(400, [
+      `This project's always-on services would need ${Math.round(totalAlwaysOnMemoryMb / 1024)}GB of memory at once, but a project may hold at most ${MAX_PROJECT_ALWAYS_ON_MEMORY_MB / 1024}GB.`,
+      "",
+      "The largest of them:",
+      ...biggest,
+      "",
+      "Either give one of them less `memory`, or let it scale to zero with `type: \"serverless\"` and `minInstances: 0` — a service that scales to zero does not count against this.",
+    ].join("\n"));
+  }
   // A server is refused on its type alone, so it is deliberately excluded from
   // the always-on list below: the two problems have different remedies, and a
   // service named under both would be told to fix it twice.
@@ -314,7 +361,23 @@ export async function assertServicesAllowedByPlan(tenancy: Tenancy, services: Re
     .filter(([, definition]) => definition.type !== "server" && effectiveMinInstances(definition) > 0)
     .map(([serviceId]) => serviceId)
     .sort(stringCompare);
-  if (serverServices.length === 0 && alwaysOnServices.length === 0) return;
+  // Any size above the type's own default. Stated as "above the default" rather
+  // than as a rung list so the Free entitlement stays one idea — the smallest
+  // thing each type runs on — however the paid ladder later moves.
+  //
+  // A `server` is refused outright above, so a sized server is not named here
+  // too: it would be two errors for one edit, and dropping the `memory` line
+  // would not make the service deployable anyway.
+  const oversizedServices = entries
+    .filter(([, definition]) => definition.type !== "server"
+      && definition.memory !== undefined
+      && definition.memory !== defaultDeploymentMemoryForType(definition.type))
+    .map(([serviceId]) => serviceId)
+    .sort(stringCompare);
+  // The size itself, not a flag: the message quotes it, and carrying the value
+  // rather than a boolean is what keeps the two in step.
+  const oversizedBuilderMemory = builder?.memory !== undefined && builder.memory !== DEFAULT_BUILDER_MEMORY ? builder.memory : null;
+  if (serverServices.length === 0 && alwaysOnServices.length === 0 && oversizedServices.length === 0 && oversizedBuilderMemory === null) return;
 
   // Null = this project isn't plan-gated at all (self-hosted, or plan limits
   // disabled) or the plan couldn't be read. All of those must fail open —
@@ -323,7 +386,8 @@ export async function assertServicesAllowedByPlan(tenancy: Tenancy, services: Re
 
   // Both sections can fire at once, and the CLI truncates the whole message at
   // 1000 chars — so name fewer services when there are two remedies to fit.
-  const cap = serverServices.length > 0 && alwaysOnServices.length > 0 ? 3 : 5;
+  const sections = [serverServices.length > 0, alwaysOnServices.length > 0, oversizedServices.length > 0].filter(Boolean).length;
+  const cap = sections > 1 ? 3 : 5;
   const lines: string[] = [];
   if (serverServices.length > 0) {
     lines.push(
@@ -344,7 +408,38 @@ export async function assertServicesAllowedByPlan(tenancy: Tenancy, services: Re
       "  - upgrade your plan at https://app.hexclave.com to keep instances always on.",
     );
   }
+  if (oversizedServices.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(
+      `Extra memory is not available on the Free plan, but ${oversizedServices.length === 1 ? `service ${planGateServiceList(oversizedServices, cap)} asks` : `services ${planGateServiceList(oversizedServices, cap)} ask`} for more than the ${DEFAULT_SERVERLESS_MEMORY} every service gets.`,
+      "",
+      "Either:",
+      `  - drop \`memory\` from ${oversizedServices.length === 1 ? "that service" : "those services"}; or`,
+      "  - upgrade your plan at https://app.hexclave.com to size your services.",
+    );
+  }
+  if (oversizedBuilderMemory !== null) {
+    if (lines.length > 0) lines.push("");
+    lines.push(
+      `A larger builder is not available on the Free plan, but \`builder\` asks for ${oversizedBuilderMemory}.`,
+      "",
+      "Either:",
+      "  - drop `memory` from `builder`; or",
+      "  - upgrade your plan at https://app.hexclave.com to build on a bigger machine.",
+    );
+  }
   throw new StatusError(400, lines.join("\n"));
+}
+
+/**
+ * How much memory a service actually runs with, in megabytes.
+ *
+ * The definition's own size, or its type's default — the same resolution
+ * marshalSpecForDefinition does, which is what makes "unset" and "set to the
+ * default" the same amount of machine here too.
+ */
+export function effectiveMemoryMb(definition: DeploymentServiceDefinition): number {
+  return deploymentMemoryToMb(definition.memory ?? defaultDeploymentMemoryForType(definition.type));
 }
 
 /**
@@ -511,7 +606,17 @@ export async function syncSourceServices(
   source: { id: string, sourceId: string },
   services: Record<string, DeploymentServiceDefinition>,
   definitionSyncId: string,
+  builder?: DeploymentBuilderDefinition | undefined,
 ): Promise<SyncSourceServicesResult> {
+  // The builder belongs to the SOURCE, and it is written here rather than in its
+  // own call so it lands inside the same transaction — and so the same fence —
+  // as the definitions it was authored beside. Undefined clears it back to the
+  // deployment's own choice, because a deploy file that no longer says `builder`
+  // is a deploy file that no longer wants a size pinned.
+  await prisma.deploymentSource.update({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: source.id } },
+    data: { builderMemoryMb: builder?.memory === undefined ? null : deploymentMemoryToMb(builder.memory) },
+  });
   await assertNoVolumeShrink(prisma, tenancy, source.id, services);
   assertNoVolumeIdConflicts(services);
 
@@ -567,6 +672,11 @@ export async function syncSourceServices(
       ports: definition.ports,
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
+      // Null when the definition says nothing, so the service keeps running at
+      // its type's default and the column can tell "unset" from "set to the
+      // default" — the two must NOT hash the same downstream by accident, they
+      // are made to hash the same deliberately (see buildServiceSpec).
+      memoryMb: definition.memory === undefined ? null : deploymentMemoryToMb(definition.memory),
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
       // With no buildCommand this is the image to run and the service is not
@@ -1230,6 +1340,20 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       // machine with it instead of the image's own entrypoint and command, so
       // changing only this rolls the machines without rebuilding anything.
       ...(definition.start_command !== undefined ? { start_command: definition.start_command } : {}),
+      // NORMALIZED OUT when it is the type's default, rather than written out
+      // like `min_instances` above. Marshal hashes this field into the service's
+      // revision (it has to — otherwise a resize would find a matching revision
+      // and silently never happen), and a "server" whose revision changes is a
+      // VM that gets replaced. So a definition that spells out the size it is
+      // already running on must produce the SAME spec as one that says nothing:
+      // writing `memory: "1GB"` into a deploy file next to a live Postgres is a
+      // no-op edit, and it must not take the database down.
+      //
+      // The same normalization is why every service that predates this field
+      // keeps its existing revision and is not re-rolled on rollout.
+      ...(definition.memory === undefined || definition.memory === defaultDeploymentMemoryForType(definition.type)
+        ? {}
+        : { memory_mb: deploymentMemoryToMb(definition.memory) }),
     },
     env: resolvedEnv,
   };
@@ -1327,7 +1451,7 @@ export async function startDeployment(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   deploymentId: string,
-  source: { id: string, sourceId: string },
+  source: { id: string, sourceId: string, builderMemoryMb?: number | null },
   // In dependency order: every service in one level is applied concurrently,
   // and a level starts only once the previous one has converged.
   levels: string[][],
@@ -1365,6 +1489,11 @@ export async function startDeployment(options: {
       ...(marshalUploadId === undefined ? {} : { upload_id: marshalUploadId }),
       targets,
       order: levels,
+      // One builder per deployment, so it sits beside `targets` rather than on
+      // one of them. Omitted when the source pins no size, which leaves the
+      // runtime to pick the floor its build shape needs — a Railpack build needs
+      // more than a Dockerfile one, and only the runtime knows which this is.
+      ...(source.builderMemoryMb == null ? {} : { builder: { memory_mb: source.builderMemoryMb } }),
     });
   } catch (e) {
     sanitizeMarshalError(e, "Starting the deployment failed");
@@ -1624,6 +1753,16 @@ export type DeploymentServiceApiShape = {
   ports: DeploymentPorts,
   min_instances: number | null,
   max_instances: number | null,
+  // The size the service RUNS at, never null: unlike the two bounds above, a
+  // reader has no way to apply the type's default itself without knowing which
+  // default belongs to which type, and every surface that shows this wants the
+  // effective value rather than "unset".
+  memory: DeploymentMemorySize,
+  // The CPU that comes with that size, and whether it is a whole core or a
+  // burstable fraction of one. Sent rather than derived client-side because the
+  // mapping is a property of the machine shapes the runtime picks, and a second
+  // copy of it in the dashboard is a second thing to keep in step.
+  cpu: { count: number, shared: boolean },
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
@@ -1830,6 +1969,8 @@ export async function serviceToApiShape(options: {
     ports: definition.ports,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,
+    memory: definition.memory ?? defaultDeploymentMemoryForType(definition.type),
+    cpu: deploymentCpuForMemory(definition.type, definition.memory ?? defaultDeploymentMemoryForType(definition.type)),
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
     image: row.image,

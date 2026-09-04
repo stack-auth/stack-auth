@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildEnvByteLength, buildTimeEnv, computeWebhookToken, type Builder } from "./builds.js";
-import { BASE_IMAGE, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, UNREDACTED_ENV_KEY_REGEX, VOLUME_ID_REGEX, getConfig } from "./config.js";
+import { BASE_IMAGE, BUILDER_MACHINE_BY_MEMORY_MB, BUILD_TIMEOUT_SECONDS, MAX_BUILD_ENV_BYTES, MAX_COMMAND_LENGTH, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_REDACTED_ENV_VALUE_LENGTH, MIN_VOLUME_SIZE_GB, SERVERLESS_CPU_BY_MEMORY_MB, SERVER_MACHINE_TYPE_BY_MEMORY_MB, UNREDACTED_ENV_KEY_REGEX, VOLUME_ID_REGEX, getConfig } from "./config.js";
 import { applyErrorMessage } from "./apply-error.js";
 import { domainVerificationRecord } from "./domain-verification.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
@@ -138,6 +138,25 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   }
   const portList = portEntries(ports);
 
+  // Memory. Re-validated here rather than trusted, like every other part of a
+  // spec: this is the boundary that turns a request into provider config, and an
+  // unsupported size would otherwise reach a provider API and come back as a
+  // rejection the caller cannot read.
+  //
+  // The ladder is per TYPE because the two runtimes have different smallest
+  // shapes: a "server" is a whole machine and the smallest one carries a full
+  // gigabyte, so there is no 512MB server to be had.
+  const memoryMbRaw = config.memory_mb;
+  let memoryMb: number | undefined;
+  if (memoryMbRaw !== undefined && memoryMbRaw !== null) {
+    const allowed = serviceKind === "server" ? SERVER_MACHINE_TYPE_BY_MEMORY_MB : SERVERLESS_CPU_BY_MEMORY_MB;
+    if (typeof memoryMbRaw !== "number" || !Number.isInteger(memoryMbRaw) || !Object.hasOwn(allowed, memoryMbRaw)) {
+      const sizes = Object.keys(allowed).map(Number).sort((a, b) => a - b).join(", ");
+      throw badRequest(`config.memory_mb must be one of ${sizes} for a ${JSON.stringify(serviceKind)} service`);
+    }
+    memoryMb = memoryMbRaw;
+  }
+
   // Visibility belongs to the CONTAINER, not to a port — see PortConfig in
   // types.ts. A per-port public flag would misdescribe the service-level ingress contract.
   const isPublic = config.public ?? false;
@@ -271,7 +290,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   return {
     // Key order is canonical here too (see the source note below). `persistent_volumes` is
     // only present when set; computeRevision mirrors that same conditional spread.
-    config: { type: serviceKind, public: isPublic, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}), ...(startCommand !== undefined ? { start_command: startCommand } : {}) },
+    config: { type: serviceKind, public: isPublic, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}), ...(startCommand !== undefined ? { start_command: startCommand } : {}), ...(memoryMb !== undefined ? { memory_mb: memoryMb } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: { image },
@@ -677,7 +696,7 @@ function sourceLeaseKey(sourceId: string): string {
   return `source:${sourceId}`;
 }
 
-export function validateDeploymentRequest(body: unknown): { uploadId: string | null, targets: DeploymentTarget[], order: string[][] } {
+export function validateDeploymentRequest(body: unknown): { uploadId: string | null, targets: DeploymentTarget[], order: string[][], builderMemoryMb: number | null } {
   const record = asRecord(body);
   if (record === null) throw badRequest("request body must be an object");
   // Optional: a deployment whose every target names a prebuilt image builds
@@ -763,7 +782,28 @@ export function validateDeploymentRequest(body: unknown): { uploadId: string | n
   const buildsFromSource = targets.some(targetIsBuilt);
   if (buildsFromSource && uploadId === null) throw badRequest("upload_id is required: at least one target is built from source");
   if (!buildsFromSource && uploadId !== null) throw badRequest("upload_id must be omitted: every target names an already-built image, so there is nothing to build");
-  return { uploadId, targets, order };
+  // Deployment-level, because a builder is: one machine builds every target of
+  // one deployment, so there is a single size to state. Absent = let the build
+  // shape decide, which is the only thing that CAN decide it (whether the build
+  // is auto-detected is derived from the targets, not declared by the caller).
+  //
+  // Not floored here — builderMachineFor does that at the point the machine is
+  // created, where "is this a Railpack build" is already known.
+  const builderRaw = record.builder;
+  let builderMemoryMb: number | null = null;
+  if (builderRaw !== undefined && builderRaw !== null) {
+    const builder = asRecord(builderRaw);
+    if (builder === null) throw badRequest("builder must be an object");
+    const requested = builder.memory_mb;
+    if (requested !== undefined && requested !== null) {
+      if (typeof requested !== "number" || !Number.isInteger(requested) || !Object.hasOwn(BUILDER_MACHINE_BY_MEMORY_MB, requested)) {
+        const sizes = Object.keys(BUILDER_MACHINE_BY_MEMORY_MB).map(Number).sort((a, b) => a - b).join(", ");
+        throw badRequest(`builder.memory_mb must be one of ${sizes}`);
+      }
+      builderMemoryMb = requested;
+    }
+  }
+  return { uploadId, targets, order, builderMemoryMb };
 }
 
 // A relative path with nothing that could break the harness's TSV manifest or
@@ -792,7 +832,7 @@ function validateOptionalRelativePath(value: unknown, label: string): string | u
  * reads (see advanceDeployment).
  */
 export async function startSourceDeployment(ns: string, sourceId: string, body: unknown, builder: Builder): Promise<Deployment> {
-  const { uploadId, targets, order } = validateDeploymentRequest(body);
+  const { uploadId, targets, order, builderMemoryMb } = validateDeploymentRequest(body);
   const config = getConfig();
   // Targets that need the builder, and targets that already have their image.
   // Everything below branches on THIS rather than on "does the target have an
@@ -885,6 +925,7 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
       images: prebuiltImages,
       builder_app: null,
       builder_machine_id: null,
+      builder_memory_mb: builderMemoryMb,
       upload_id: uploadId,
     };
 
@@ -928,6 +969,7 @@ export async function startSourceDeployment(ns: string, sourceId: string, body: 
           buildCommand: target.build_command ?? null,
           buildEnv: buildTimeEnv(target.spec.env),
         })),
+        builderMemoryMb,
       }, lease);
       if (started.builderApp !== null || started.builderMachineId !== null) {
         // Attach the builder coordinates (live-log proxy + stale-build backstop need

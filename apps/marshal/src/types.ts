@@ -82,6 +82,17 @@ export type ContainerConfig = {
   //
   // Run through `/bin/sh -c`, so an image without a shell cannot use one.
   start_command?: string,
+  // How much memory the container gets, in megabytes. Absent = the type's
+  // default (DEFAULT_SERVER_MEMORY_MB / DEFAULT_SERVERLESS_MEMORY_MB), and the
+  // caller omits it rather than restating the default — see computeRevision,
+  // which hashes this and would otherwise replace a "server" VM for an edit
+  // that changed nothing.
+  //
+  // The CPU that comes with it is derived here, not sent: a "server" runs on a
+  // machine shape from a fixed catalog and a "serverless" container has legal
+  // cpu/memory pairs rather than free choice, so a caller-named CPU could ask
+  // for a combination no provider will accept.
+  memory_mb?: number,
 };
 
 export type ServiceSpec = {
@@ -264,6 +275,10 @@ export type StoredDeployment = Omit<Deployment, "services"> & {
   // lazy backstop can detect a dead builder. Null for mock builds.
   builder_app: string | null,
   builder_machine_id: string | null,
+  // The builder size the caller asked for, in megabytes, or null to let the
+  // build shape decide. Stored on the DEPLOYMENT because that is the scope a
+  // builder has: one machine builds every target of one deployment.
+  builder_memory_mb: number | null,
   // The upload the build consumed, kept for diagnostics; the bytes themselves are
   // copied to a deployment-specific object and the original is deleted once the
   // build owns its copy. Null when every target names a prebuilt image: nothing

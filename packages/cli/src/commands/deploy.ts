@@ -550,7 +550,7 @@ export function registerDeployCommand(program: Command) {
 
       // Always the deploy file: services live there, never in hexclave.config.ts.
       const deploySource = await resolveDeploySource(opts.deployFile, process.cwd());
-      const { sourceId, services } = evaluateDeploymentConfig({
+      const { sourceId, services, builder } = evaluateDeploymentConfig({
         deployFilePath: deploySource.path,
         deploymentGroupIdExport: deploySource.deploymentGroupIdExport,
         legacyIdExport: deploySource.legacyIdExport,
@@ -572,6 +572,17 @@ export function registerDeployCommand(program: Command) {
         levels = computeDeploymentLevels(services);
       }
       const deploySet = levels.flat();
+
+      // A builder size with nothing to build is a note, not an error: the deploy
+      // is still exactly what the author asked for, and a `--service-id` deploy
+      // of one prebuilt service out of a file whose other services DO build is
+      // an entirely ordinary thing to do.
+      if (builder?.memory !== undefined && !deploySet.some((serviceId) => {
+        const service = services.get(serviceId);
+        return service !== undefined && deploymentServiceIsBuilt(service.definition);
+      })) {
+        console.error(`Note: deploy.builder sets memory ${JSON.stringify(builder.memory)}, but ${opts.serviceId != null ? `services.${opts.serviceId} runs` : "every service in this deploy runs"} an already-built image, so no builder machine starts and the size has no effect here.`);
+      }
 
       // Pre-flight: every secret without a default must have a stored value
       // BEFORE anything is packaged or uploaded. The backend re-checks this
@@ -611,6 +622,11 @@ export function registerDeployCommand(program: Command) {
         jsonBody: {
           source_id: sourceId,
           services: Object.fromEntries([...services.values()].map((service) => [service.serviceId, service.definition])),
+          // Synced with the definitions rather than sent with the deploy: the
+          // builder is part of what the deploy file says, so it belongs inside
+          // the same sync fence — a deploy cannot then pair one checkout's
+          // source with another checkout's builder size.
+          ...(builder === undefined ? {} : { builder }),
         },
       });
       if (typeof syncResponse?.sync_id !== "string") {

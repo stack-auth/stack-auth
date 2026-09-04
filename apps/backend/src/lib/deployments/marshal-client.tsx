@@ -95,6 +95,16 @@ export type MarshalServiceSpec = {
     // machine configuration rather than image content, so it takes effect on a
     // roll and never causes a build.
     start_command?: string,
+    // How much memory the container gets, in megabytes. Marshal derives the CPU
+    // and the machine shape from it — the pair is a property of what the
+    // provider will accept, so the backend does not get to name a CPU.
+    //
+    // ABSENT means the type's default, and the backend deliberately omits the
+    // field when the definition asks for that default: Marshal hashes this into
+    // the service revision, and a spec that spells out the size the service is
+    // already running on must hash identically to one that leaves it out (a
+    // changed revision replaces a "server" VM).
+    memory_mb?: number,
   },
   // A spec always names an already-built image: images are produced by the
   // deployment's single build, which builds every service of the deployment
@@ -311,6 +321,11 @@ export class MarshalClient {
     // Omitted when every target names an already-built image: nothing is built,
     // so the runtime needs no source archive and starts no builder machine.
     upload_id?: string,
+    // The builder machine for this deployment. One machine builds every target,
+    // so this is deployment-level rather than per-target. Omitted = the runtime
+    // picks the size the build shape needs, which only it can know (an
+    // auto-detected build needs more than one driven by a Dockerfile).
+    builder?: { memory_mb: number },
     targets: MarshalDeploymentTarget[],
     // Service keys grouped into dependency levels: everything in one level is
     // applied concurrently, and a level starts only once the previous one has
