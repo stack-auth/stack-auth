@@ -14,7 +14,7 @@ test -d "$rootfs"
 test -d "$state"
 mkdir -p "$output"
 
-required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
+required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/pam.d/hexclave-tv-box-kiosk etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
 for path in $required; do
   test -e "$rootfs/$path" || { printf 'Missing image path: %s\n' "$path" >&2; exit 1; }
 done

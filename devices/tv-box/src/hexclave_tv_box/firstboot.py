@@ -7,6 +7,7 @@ import grp
 import os
 import pwd
 import secrets
+import stat
 import subprocess
 import uuid
 from collections.abc import Callable, Sequence
@@ -98,19 +99,53 @@ def initialize_device(
     return {"device_id": device_id, "machine_id": machine_id, "hostname": hostname}
 
 
-def apply_system_hostname(identity: dict[str, str], system_root: Path = Path("/")) -> None:
-    hostname_path = system_root / "etc" / "hostname"
-    # The systemd sandbox grants write access to this exact existing file, not
-    # the whole of /etc. A partial write is recoverable because the canonical
-    # value lives in the state partition and is reapplied on every boot.
-    flags = os.O_WRONLY | os.O_TRUNC | os.O_CLOEXEC
+def _update_existing_regular_file(path: Path, transform: Callable[[str], str]) -> None:
+    # First boot is allowed to mutate only these pre-existing identity files.
+    # Opening without following links keeps a compromised image path from
+    # redirecting the root service outside that exact scope.
+    flags = os.O_RDWR | os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(hostname_path, flags)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        stream.write(f"{identity['hostname']}\n")
+    descriptor = os.open(path, flags)
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise OSError(f"TV Box identity target is not a regular file: {path}")
+    with os.fdopen(descriptor, "r+", encoding="utf-8") as stream:
+        updated = transform(stream.read())
+        stream.seek(0)
+        stream.truncate()
+        stream.write(updated)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def _hosts_with_hostname(contents: str, hostname: str) -> str:
+    replacement = f"127.0.1.1\t{hostname}"
+    lines: list[str] = []
+    replaced = False
+    for line in contents.splitlines():
+        fields = line.split()
+        if fields and fields[0] == "127.0.1.1":
+            if not replaced:
+                lines.append(replacement)
+                replaced = True
+            continue
+        lines.append(line)
+    if not replaced:
+        lines.append(replacement)
+    return "\n".join(lines) + "\n"
+
+
+def apply_system_hostname(identity: dict[str, str], system_root: Path = Path("/")) -> None:
+    hostname = identity["hostname"]
+    _update_existing_regular_file(system_root / "etc" / "hostname", lambda _contents: f"{hostname}\n")
+    # sudo resolves the current hostname before executing the forced support
+    # command. Keep the local hosts entry synchronized with the unique first-
+    # boot hostname so restricted support remains quiet and deterministic.
+    _update_existing_regular_file(
+        system_root / "etc" / "hosts",
+        lambda contents: _hosts_with_hostname(contents, hostname),
+    )
 
 
 def apply_device_permissions(state_root: Path = STATE_ROOT) -> None:

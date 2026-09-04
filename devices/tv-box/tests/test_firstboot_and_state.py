@@ -32,9 +32,18 @@ class FirstBootTests(unittest.TestCase):
             system_root = Path(directory)
             (system_root / "etc").mkdir()
             (system_root / "etc/hostname").write_text("image-default\n", encoding="utf-8")
+            (system_root / "etc/hosts").write_text(
+                "127.0.0.1\tlocalhost\n127.0.1.1\timage-default\n192.0.2.10\tkeep.example\n",
+                encoding="utf-8",
+            )
             identity = {"device_id": "unused", "machine_id": "a" * 32, "hostname": "hexclave-tv-abcdef"}
             apply_system_hostname(identity, system_root)
+            apply_system_hostname(identity, system_root)
             self.assertEqual((system_root / "etc" / "hostname").read_text(encoding="utf-8"), "hexclave-tv-abcdef\n")
+            self.assertEqual(
+                (system_root / "etc" / "hosts").read_text(encoding="utf-8"),
+                "127.0.0.1\tlocalhost\n127.0.1.1\thexclave-tv-abcdef\n192.0.2.10\tkeep.example\n",
+            )
 
     def test_system_hostname_refuses_a_linked_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -47,6 +56,19 @@ class FirstBootTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 apply_system_hostname(identity, system_root)
             self.assertEqual(outside.read_text(encoding="utf-8"), "keep\n")
+
+    def test_system_hostname_refuses_a_linked_hosts_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            system_root = Path(directory)
+            (system_root / "etc").mkdir()
+            (system_root / "etc/hostname").write_text("image-default\n", encoding="utf-8")
+            outside = system_root / "outside"
+            outside.write_text("127.0.0.1\tkeep\n", encoding="utf-8")
+            (system_root / "etc/hosts").symlink_to(outside)
+            identity = {"device_id": "unused", "machine_id": "a" * 32, "hostname": "hexclave-tv-abcdef"}
+            with self.assertRaises(OSError):
+                apply_system_hostname(identity, system_root)
+            self.assertEqual(outside.read_text(encoding="utf-8"), "127.0.0.1\tkeep\n")
 
     def test_exact_state_clear_cannot_escape_or_remove_siblings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

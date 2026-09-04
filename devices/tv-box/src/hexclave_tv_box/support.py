@@ -19,6 +19,7 @@ SERVICES = (
     "hexclave-tv-box-setup-display.service",
     "hexclave-tv-box-setup.service",
 )
+MAX_DIAGNOSTIC_FILE_BYTES = 2_048
 
 
 def run(command: Sequence[str]) -> str:
@@ -32,6 +33,19 @@ def run(command: Sequence[str]) -> str:
         timeout=30,
     )
     return result.stdout.strip()
+
+
+def _diagnostic_file_value(path: Path) -> str:
+    try:
+        raw_value = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return "unavailable"
+    if len(raw_value.encode("utf-8")) > MAX_DIAGNOSTIC_FILE_BYTES:
+        return "invalid"
+    lines = raw_value.splitlines()
+    if len(lines) != 1 or raw_value not in {lines[0], f"{lines[0]}\n", f"{lines[0]}\r\n"} or not lines[0].isprintable():
+        return "invalid"
+    return lines[0]
 
 
 def agent_request(request: dict[str, object], socket_path: Path = RUNTIME_ROOT / "control.sock") -> dict[str, object]:
@@ -53,6 +67,10 @@ def diagnostics() -> str:
     lines.append(release.read_text(encoding="utf-8").strip() if release.exists() else "image-version=unknown")
     device_id = STATE_ROOT / "identity" / "device-id"
     lines.append(f"device-id={device_id.read_text(encoding='utf-8').strip() if device_id.exists() else 'unknown'}")
+    # This is the root-written public document URL, never a credential or an
+    # API token. Reporting the effective value distinguishes production from
+    # an explicitly enabled test-image origin without broad shell access.
+    lines.append(f"effective-renderer-url={_diagnostic_file_value(RUNTIME_ROOT / 'kiosk-url')}")
     checks: tuple[tuple[str, Sequence[str]], ...] = (
         ("uptime", ["uptime", "-p"]),
         ("memory", ["free", "-h"]),
@@ -63,6 +81,8 @@ def diagnostics() -> str:
         ("timesync", ["timedatectl", "show", "--property=NTPSynchronized", "--value"]),
         ("wifi-state", ["nmcli", "--get-values", "GENERAL.STATE", "device", "show", "wlan0"]),
         ("drm", ["sh", "-c", "for f in /sys/class/drm/card*-HDMI-A-*/status; do printf '%s=' \"$(basename \"$(dirname \"$f\")\")\"; cat \"$f\"; done"]),
+        ("active-vt", ["fgconsole"]),
+        ("kiosk-main-pid", ["systemctl", "show", "hexclave-tv-box-kiosk.service", "--property=MainPID", "--value"]),
     )
     for label, command in checks:
         try:

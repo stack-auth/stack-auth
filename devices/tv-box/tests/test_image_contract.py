@@ -29,6 +29,14 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("StartLimitAction=reboot", kiosk)
         self.assertIn("RuntimeDirectory=hexclave-tv-box-browser-cache", kiosk)
         self.assertIn("Conflicts=getty@tty1.service hexclave-tv-box-setup-display.service", kiosk)
+        self.assertIn("Wants=dbus.socket systemd-logind.service", kiosk)
+        self.assertIn("StandardInput=tty-fail", kiosk)
+        self.assertIn("PAMName=hexclave-tv-box-kiosk", kiosk)
+        self.assertIn("ExecStartPost=+/usr/bin/chvt 1", kiosk)
+        self.assertIn("TimeoutStopSec=10", kiosk)
+        self.assertIn("KillMode=control-group", kiosk)
+        kiosk_pam = (ROOTFS / "etc/pam.d/hexclave-tv-box-kiosk").read_text(encoding="utf-8")
+        self.assertIn("session required pam_systemd.so", kiosk_pam)
         setup_display = (ROOTFS / "etc/systemd/system/hexclave-tv-box-setup-display.service").read_text(encoding="utf-8")
         self.assertIn("User=hexclave-tv-portal", setup_display)
         self.assertIn("StandardOutput=tty", setup_display)
@@ -63,6 +71,8 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("dtoverlay=disable-bt", layer)
         self.assertIn('rm -f "$1/var/lib/dbus/machine-id" "$1/var/lib/systemd/random-seed"', layer)
         self.assertIn("ln -s /var/lib/hexclave-tv-box/network-connections", layer)
+        self.assertIn("--home-dir /var/empty/hexclave-support", layer)
+        self.assertIn('install -d -m 0755 -o root -g root "$1/var/empty/hexclave-support"', layer)
         enable_line = next(line for line in layer.splitlines() if "systemctl enable" in line)
         self.assertNotIn("hexclave-tv-box-kiosk.service", enable_line)
         self.assertIn("hexclave-tv-box-network.service", enable_line)
@@ -196,6 +206,7 @@ class ImageContractTests(unittest.TestCase):
                 "usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py",
                 "etc/systemd/system/hexclave-tv-box-kiosk.service",
                 "etc/systemd/system/hexclave-tv-box-setup-display.service",
+                "etc/pam.d/hexclave-tv-box-kiosk",
                 "etc/hexclave-tv-box-release",
             ):
                 target = rootfs / path

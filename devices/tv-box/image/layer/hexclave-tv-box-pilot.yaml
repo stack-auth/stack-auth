@@ -96,7 +96,8 @@ mmdebstrap:
       # authentication when UsePAM is disabled. *NP* is deliberately not a
       # usable password hash and is not a Linux lock marker; with every
       # password method disabled, the support CA remains the only entry path.
-      chroot "$1" useradd --system --password '*NP*' --home-dir /nonexistent --shell /bin/sh hexclave-support
+      install -d -m 0755 -o root -g root "$1/var/empty/hexclave-support"
+      chroot "$1" useradd --system --password '*NP*' --home-dir /var/empty/hexclave-support --shell /bin/sh hexclave-support
       chmod 0755 "$1/usr/lib/hexclave-tv-box/kiosk-launch" "$1/usr/lib/hexclave-tv-box/forced-support-command" "$1/usr/lib/hexclave-tv-box/support"
       chmod 0440 "$1/etc/sudoers.d/hexclave-tv-box-support"
       chroot "$1" systemctl mask \

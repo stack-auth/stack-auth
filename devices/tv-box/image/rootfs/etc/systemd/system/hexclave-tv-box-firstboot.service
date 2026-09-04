@@ -12,7 +12,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
-ReadWritePaths=/etc/hostname /var/lib/hexclave-tv-box
+ReadWritePaths=/etc/hostname /etc/hosts /var/lib/hexclave-tv-box
 
 [Install]
 WantedBy=multi-user.target

@@ -583,10 +583,15 @@ def main() -> None:
         raise RuntimeError("TV Box Wi-Fi regulatory country is invalid.")
     _run(["iw", "reg", "set", country], 15)
     controller = NetworkManagerController(state_root=arguments.state_root, runtime_root=arguments.runtime_root)
+    renderer_url = resolve_renderer_url()
+    # The selected URL is a public document location, not a credential. One
+    # startup log makes test-image override failures diagnosable without
+    # exposing a shell or recording browser/session state.
+    LOGGER.info("effective-renderer-url=%s", renderer_url)
     agent = TvBoxNetworkAgent(
         controller,
         runtime_root=arguments.runtime_root,
-        renderer_url=resolve_renderer_url(),
+        renderer_url=renderer_url,
     )
     serve(agent, arguments.runtime_root / "control.sock", arguments.socket_group)
 

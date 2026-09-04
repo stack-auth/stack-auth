@@ -98,16 +98,38 @@ class PortalAndSupportTests(unittest.TestCase):
     def test_diagnostics_exposes_only_the_public_device_identifier(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_root = Path(directory)
+            runtime_root = state_root / "runtime"
             (state_root / "identity").mkdir()
+            runtime_root.mkdir()
             (state_root / "identity/device-id").write_text("public-device-id\n", encoding="utf-8")
+            (runtime_root / "kiosk-url").write_text("https://pilot-box.trycloudflare.com/tv-box\n", encoding="utf-8")
             with (
                 mock.patch("hexclave_tv_box.support.STATE_ROOT", state_root),
+                mock.patch("hexclave_tv_box.support.RUNTIME_ROOT", runtime_root),
                 mock.patch("hexclave_tv_box.support.run", return_value="healthy"),
             ):
                 result = diagnostics()
         self.assertIn("device-id=public-device-id", result)
+        self.assertIn("effective-renderer-url=https://pilot-box.trycloudflare.com/tv-box", result)
         self.assertNotIn("cookie", result.casefold())
         self.assertNotIn("password", result.casefold())
+
+    def test_diagnostics_rejects_multiline_runtime_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_root = Path(directory)
+            runtime_root = state_root / "runtime"
+            (state_root / "identity").mkdir()
+            runtime_root.mkdir()
+            (state_root / "identity/device-id").write_text("public-device-id\n", encoding="utf-8")
+            (runtime_root / "kiosk-url").write_text("https://example.com/tv-box\ninjected=value\n", encoding="utf-8")
+            with (
+                mock.patch("hexclave_tv_box.support.STATE_ROOT", state_root),
+                mock.patch("hexclave_tv_box.support.RUNTIME_ROOT", runtime_root),
+                mock.patch("hexclave_tv_box.support.run", return_value="healthy"),
+            ):
+                result = diagnostics()
+        self.assertIn("effective-renderer-url=invalid", result)
+        self.assertNotIn("injected=value", result)
 
     def test_forced_support_command_never_interprets_shell_syntax(self) -> None:
         with (
