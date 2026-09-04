@@ -558,7 +558,7 @@ describe("experiment run results", () => {
       },
     });
     expect(exposure.status).toBe(200);
-    expect(exposure.body).toEqual({ inserted: 1 });
+    expect(exposure.body).toEqual({ inserted: 1, dropped: 0 });
 
     const conversion = await niceBackendFetch("/api/v1/analytics/events/batch", {
       method: "POST",

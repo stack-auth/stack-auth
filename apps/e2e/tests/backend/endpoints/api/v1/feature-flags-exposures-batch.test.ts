@@ -296,25 +296,56 @@ it("rejects too many exposures (>500)", async ({ expect }) => {
   `);
 });
 
-it("rejects exposures with exposed_at_ms too far in the past", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true }, "feature-flags": { enabled: true } } } });
-  await Auth.Otp.signIn();
+it("accepts exposures from a client with a skewed clock", async ({ expect }) => {
+  const token = await createActiveExperimentToken();
 
-  // The timestamp bounds are checked before token verification, so a garbage
-  // token is fine here — the request must fail on the timestamp.
+  // The SDK awaits the automatic exposure upload inside getFeatureFlag(), so a
+  // rejection here would break flag evaluation for any end user whose device
+  // clock is a few minutes off. Hours of skew in either direction must land.
+  const fastClock = await uploadExposureBatch({
+    batchId: randomUUID(),
+    exposures: [{ event_id: randomUUID(), exposure_token: token, exposed_at_ms: Date.now() + 3 * 60 * 60 * 1000 }],
+  });
+  expect(fastClock.status).toBe(200);
+  expect(fastClock.body).toEqual({ inserted: 1, dropped: 0 });
+
+  const slowToken = await evaluateActiveExperimentToken();
+  const slowClock = await uploadExposureBatch({
+    batchId: randomUUID(),
+    exposures: [{ event_id: randomUUID(), exposure_token: slowToken, exposed_at_ms: Date.now() - 3 * 60 * 60 * 1000 }],
+  });
+  expect(slowClock.status).toBe(200);
+  expect(slowClock.body).toEqual({ inserted: 1, dropped: 0 });
+});
+
+it("drops exposures with implausible exposed_at_ms instead of rejecting the batch", async ({ expect }) => {
+  const plausibleToken = await createActiveExperimentToken();
+  const implausibleToken = await evaluateActiveExperimentToken();
+
   const res = await uploadExposureBatch({
     batchId: randomUUID(),
-    exposures: [{ event_id: randomUUID(), exposure_token: "some-token", exposed_at_ms: Date.now() - 25 * 60 * 60 * 1000 }],
+    exposures: [
+      { event_id: randomUUID(), exposure_token: plausibleToken, exposed_at_ms: Date.now() },
+      { event_id: randomUUID(), exposure_token: implausibleToken, exposed_at_ms: Date.now() - 30 * 24 * 60 * 60 * 1000 },
+    ],
   });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ inserted: 1, dropped: 1 });
 
-  expect(res).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Exposure exposed_at_ms is too far in the past or future",
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  // Token verification still runs before the plausibility filter, so a bad
+  // token cannot hide behind an implausible timestamp.
+  const garbage = await uploadExposureBatch({
+    batchId: randomUUID(),
+    exposures: [{ event_id: randomUUID(), exposure_token: "not-a-valid-jwt", exposed_at_ms: Date.now() - 30 * 24 * 60 * 60 * 1000 }],
+  });
+  expect(garbage.status).toBe(401);
+
+  const allImplausible = await uploadExposureBatch({
+    batchId: randomUUID(),
+    exposures: [{ event_id: randomUUID(), exposure_token: await evaluateActiveExperimentToken(), exposed_at_ms: Date.now() + 365 * 24 * 60 * 60 * 1000 }],
+  });
+  expect(allImplausible.status).toBe(200);
+  expect(allImplausible.body).toEqual({ inserted: 0, dropped: 1 });
 });
 
 it("rejects invalid event_id", async ({ expect }) => {

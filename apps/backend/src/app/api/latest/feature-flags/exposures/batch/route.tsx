@@ -1,5 +1,5 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { computeExposureSubjectHash, EXPOSURE_TOKEN_TTL_MS, verifyFeatureFlagEvaluationToken } from "@/lib/feature-flags/exposure-tokens";
+import { computeExposureSubjectHash, verifyFeatureFlagEvaluationToken } from "@/lib/feature-flags/exposure-tokens";
 import { EXPOSURE_RECEIPT_CLEANUP_BATCH_SIZE, EXPOSURE_RECEIPT_RETENTION_MS } from "@/lib/feature-flags/exposure-receipts";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getHexclaveServerApp } from "@/hexclave";
@@ -19,13 +19,15 @@ const MAX_EXPOSURES = 500;
 // Evaluation tokens are compact JWTs (~700 bytes); anything much larger is
 // garbage and gets rejected before signature verification is even attempted.
 const MAX_TOKEN_LENGTH = 4096;
-// event_at_ms bounds: an exposure can't be reported from further in the past
-// than the evaluation token could have lived (plus slack for retries), and
-// only slightly in the future (clock skew). Everything else is rejected
-// rather than clamped so client clock bugs surface instead of silently
-// skewing attribution windows.
-const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
-const MAX_EVENT_BEFORE_EVALUATION_SKEW_MS = 60 * 1000;
+// exposed_at_ms comes from the end user's clock; the token's issued_at and the
+// receive time come from ours. Staleness and replay are already enforced by
+// token expiry and the receipt ledger, so this bound only has to keep nonsense
+// timestamps out of ClickHouse. It is deliberately generous because device
+// clocks that are hours off are common, and an exposure that fails here would
+// surface as a failed getFeatureFlag() call for that user (the SDK awaits the
+// automatic exposure upload). Out-of-window exposures are dropped, not
+// rejected, so the rest of the batch lands and the client moves on.
+const MAX_EXPOSURE_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 // ClickHouse requests may run for up to ten minutes. A lease must outlive that
 // timeout or a retry can take ownership while the first insert is still active.
 const EXPOSURE_PROCESSING_LEASE_MS = 12 * 60 * 1000;
@@ -80,6 +82,8 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       inserted: yupNumber().defined(),
+      // Exposures skipped for an implausible exposed_at_ms; they were not billed.
+      dropped: yupNumber().defined(),
     }).defined(),
   }),
   async handler({ auth, body }) {
@@ -93,11 +97,6 @@ export const POST = createSmartRouteHandler({
     }
 
     const now = Date.now();
-    for (const exposure of body.exposures) {
-      if (exposure.exposed_at_ms < now - EXPOSURE_TOKEN_TTL_MS - MAX_EVENT_BEFORE_EVALUATION_SKEW_MS || exposure.exposed_at_ms > now + MAX_EVENT_FUTURE_SKEW_MS) {
-        throw new StatusError(StatusError.BadRequest, "Exposure exposed_at_ms is too far in the past or future");
-      }
-    }
 
     // All-or-nothing: if any token fails verification the whole batch is
     // rejected. Combined with event_id idempotency this keeps retries simple —
@@ -111,11 +110,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.UserAuthenticationRequired();
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    for (const { exposure, payload } of verified) {
-      const issuedAtMillis = Number(payload.issued_at_millis);
-      if (!Number.isSafeInteger(issuedAtMillis) || exposure.exposed_at_ms < issuedAtMillis - MAX_EVENT_BEFORE_EVALUATION_SKEW_MS || exposure.exposed_at_ms > issuedAtMillis + EXPOSURE_TOKEN_TTL_MS) {
-        throw new StatusError(StatusError.BadRequest, "Exposure timestamp is outside the evaluation token window");
-      }
+    for (const { payload } of verified) {
       if (payload.subject_hash !== computeExposureSubjectHash({ projectId: auth.tenancy.project.id, subjectType: payload.subject_type, subjectId: payload.subject_id })) {
         throw new StatusError(StatusError.Unauthorized, "Invalid or expired feature flag evaluation token");
       }
@@ -128,12 +123,25 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    // The token's issued_at is the earliest instant this exposure could have
+    // happened on our clock; the receive time is the latest. Anything outside
+    // that span by more than the skew allowance is nonsense and is dropped.
+    const plausible = verified.filter(({ exposure, payload }) => {
+      const issuedAtMillis = Number(payload.issued_at_millis);
+      if (!Number.isSafeInteger(issuedAtMillis)) throw new HexclaveAssertionError("A verified exposure token carried a non-integer issued_at_millis", { issuedAtMillis: payload.issued_at_millis });
+      return exposure.exposed_at_ms >= issuedAtMillis - MAX_EXPOSURE_CLOCK_SKEW_MS && exposure.exposed_at_ms <= now + MAX_EXPOSURE_CLOCK_SKEW_MS;
+    });
+    const droppedCount = verified.length - plausible.length;
+    if (plausible.length === 0) {
+      return { statusCode: 200, bodyType: "json", body: { inserted: 0, dropped: droppedCount } };
+    }
+
     // De-duplicate both caller retry IDs and signed evaluation IDs. One signed
     // evaluation represents one eligible exposure and cannot be replayed with
     // fresh caller IDs to amplify storage, quota, or experiment counts.
     const seenEventIds = new Set<string>();
     const seenEvaluationIds = new Set<string>();
-    const deduped = verified.map(({ exposure, payload }) => {
+    const deduped = plausible.map(({ exposure, payload }) => {
       const key = exposure.event_id.toLowerCase();
       const evaluationId = payload.evaluation_id;
       if (seenEventIds.has(key) || seenEvaluationIds.has(evaluationId)) {
@@ -206,7 +214,7 @@ export const POST = createSmartRouteHandler({
     const leaseExpiresBefore = new Date(now - EXPOSURE_PROCESSING_LEASE_MS);
     const unfinishedReceipts = receipts.filter((receipt) => receipt.completedAt === null);
     if (unfinishedReceipts.length === 0) {
-      return { statusCode: 200, bodyType: "json", body: { inserted: 0 } };
+      return { statusCode: 200, bodyType: "json", body: { inserted: 0, dropped: droppedCount } };
     }
     const alreadyOwned = unfinishedReceipts.filter((receipt) => receipt.ingestionNonce === ingestionNonce);
     let ownsWholeBatch = alreadyOwned.length === unfinishedReceipts.length;
@@ -359,7 +367,7 @@ export const POST = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: rows.length },
+      body: { inserted: rows.length, dropped: droppedCount },
     };
   },
 });
