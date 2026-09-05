@@ -14,6 +14,8 @@ minimumReleaseAge: 10080
 # __turbopack_context__.a is not a function in dashboard builds.
 # Keep this version-pinned so future releases still go through minimumReleaseAge.
 minimumReleaseAgeExclude:
+  # The VM migration requires the current SDK/API contract immediately.
+  - freestyle@0.2.7
   - next@16.3.1
   - '@next/env@16.3.1'
   - '@next/swc-darwin-arm64@16.3.1'
