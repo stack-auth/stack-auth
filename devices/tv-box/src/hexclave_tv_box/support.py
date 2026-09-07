@@ -21,7 +21,8 @@ SERVICES = (
     "hexclave-tv-box-setup.service",
 )
 MAX_DIAGNOSTIC_FILE_BYTES = 2_048
-KIOSK_HEALTH_PATH = Path("/run/hexclave-tv-box-browser-cache/kiosk-health")
+KIOSK_HEALTH_PATH = STATE_ROOT / "browser" / "kiosk-health"
+KIOSK_LOG_IDENTIFIER = "hexclave-tv-box-kiosk"
 
 
 def run(command: Sequence[str]) -> str:
@@ -84,6 +85,14 @@ def diagnostics() -> str:
         ("wifi-state", ["nmcli", "--get-values", "GENERAL.STATE", "device", "show", "wlan0"]),
         ("drm", ["sh", "-c", "for f in /sys/class/drm/card*-HDMI-A-*/status; do printf '%s=' \"$(basename \"$(dirname \"$f\")\")\"; cat \"$f\"; done"]),
         ("active-vt", ["fgconsole"]),
+        ("seat0-active-session", ["loginctl", "show-seat", "seat0", "--property=ActiveSession", "--value"]),
+        ("sessions", ["loginctl", "list-sessions", "--no-legend", "--no-pager"]),
+        ("renderer-account", ["id", "hexclave-tv"]),
+        ("tty1", ["stat", "--format=%n mode=%a owner=%U group=%G", "/dev/tty1"]),
+        ("drm-card", ["stat", "--format=%n mode=%a owner=%U group=%G", "/dev/dri/card0"]),
+        ("drm-render", ["stat", "--format=%n mode=%a owner=%U group=%G", "/dev/dri/renderD128"]),
+        ("cage-version", ["cage", "-v"]),
+        ("cog-version", ["cog", "--version"]),
         ("kiosk-main-pid", ["systemctl", "show", "hexclave-tv-box-kiosk.service", "--property=MainPID", "--value"]),
     )
     for label, command in checks:
@@ -116,6 +125,25 @@ def diagnostics() -> str:
         "kiosk-health-state="
         f"{_diagnostic_file_value(KIOSK_HEALTH_PATH)}"
     )
+    wayland_runtime = Path("/run/hexclave-tv-box-wayland")
+    try:
+        runtime_stat = wayland_runtime.stat()
+        sockets = sorted(
+            path.name
+            for path in wayland_runtime.iterdir()
+            if path.name.startswith("wayland-") and path.is_socket()
+        )
+        wayland_status = (
+            f"mode={runtime_stat.st_mode & 0o777:o},uid={runtime_stat.st_uid},gid={runtime_stat.st_gid},"
+            f"sockets={','.join(sockets) if len(sockets) > 0 else 'none'}"
+        )
+    except OSError:
+        wayland_status = "unavailable"
+    lines.append(f"wayland-runtime={wayland_status}")
+    lines.append(
+        "cog-wayland-module="
+        f"{'present' if Path('/usr/lib/arm-linux-gnueabihf/cog/modules/libcogplatform-wl.so').is_file() else 'missing'}"
+    )
     for service in SERVICES:
         try:
             active = run(["systemctl", "is-active", service])
@@ -130,10 +158,11 @@ def diagnostics() -> str:
 
 
 def recent_service_logs() -> str:
-    return run([
+    service_logs = run([
         "journalctl",
         "--no-pager",
         "--output=short-iso",
+        "--boot=0",
         "--lines=200",
         "--unit=hexclave-tv-box-firstboot.service",
         "--unit=hexclave-tv-box-network.service",
@@ -141,6 +170,20 @@ def recent_service_logs() -> str:
         "--unit=hexclave-tv-box-setup.service",
         "--unit=hexclave-tv-box-kiosk.service",
     ])
+    # PAM/logind may associate the renderer process with its interactive
+    # session scope instead of the originating system service. The explicit
+    # identifier preserves those bounded diagnostics without exposing the
+    # rest of the system journal.
+    renderer_logs = run([
+        "journalctl",
+        "--no-pager",
+        "--output=short-iso",
+        "--boot=0",
+        "--lines=200",
+        f"--identifier={KIOSK_LOG_IDENTIFIER}",
+    ])
+    sections = [section for section in (service_logs, renderer_logs) if section != ""]
+    return "\n".join(sections)
 
 
 def reset_pairing(state_root: Path, confirmation: str) -> None:

@@ -35,6 +35,6 @@ export XDG_CONFIG_HOME="$config_dir"
 url=$(tr -d '\r\n' < "$url_file")
 
 exec /usr/bin/python3 -m hexclave_tv_box.kiosk_supervisor \
-  --health-file="$cache_dir/kiosk-health" \
+  --health-file="$cookie_dir/kiosk-health" \
   --cookie-jar="$cookie_dir/cookies.sqlite" \
   "$url"

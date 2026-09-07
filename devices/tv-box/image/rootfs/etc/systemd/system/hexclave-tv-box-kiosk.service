@@ -20,6 +20,7 @@ TTYPath=/dev/tty1
 StandardInput=tty-fail
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=hexclave-tv-box-kiosk
 UtmpIdentifier=tty1
 UtmpMode=user
 TTYReset=yes

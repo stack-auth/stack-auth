@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import logging
 import os
+import re
 import signal
 import subprocess
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from .state import atomic_write
 
@@ -18,6 +22,13 @@ LOGGER = logging.getLogger("hexclave-tv-box-kiosk")
 READINESS_TIMEOUT_SECONDS = 45
 LIVENESS_GRACE_SECONDS = 15
 POLL_SECONDS = 1
+MAX_RENDERER_DIAGNOSTIC_LINES = 64
+MAX_RENDERER_DIAGNOSTIC_LINE_CHARACTERS = 512
+SENSITIVE_RENDERER_VALUE_PATTERN = re.compile(
+    r"(?i)(?:authorization|proxy-authorization|set-cookie|password|passwd|client-secret|"
+    r"access-token|refresh-token|pairing[-_ ]?code)\s*[:=]"
+)
+URL_QUERY_PATTERN = re.compile(r"(https?://[^\s?#]+)(?:\?[^\s#]*)?(?:#[^\s]*)?")
 
 
 @dataclass(frozen=True)
@@ -45,6 +56,38 @@ class RendererHealth:
                 ("web-process", self.web_process),
             )
         )
+
+
+def _sanitize_renderer_output(raw_line: bytes) -> str | None:
+    line = raw_line.decode("utf-8", errors="replace").strip()
+    if line == "":
+        return None
+    if SENSITIVE_RENDERER_VALUE_PATTERN.search(line) is not None:
+        return "[sensitive renderer diagnostic suppressed]"
+    # Renderer failures occasionally contain the document URL. Query strings
+    # and fragments are unnecessary for diagnosing Cage/Cog and may contain
+    # application state, so retain only the public URL path.
+    line = URL_QUERY_PATTERN.sub(r"\1", line)
+    return line[:MAX_RENDERER_DIAGNOSTIC_LINE_CHARACTERS]
+
+
+class _RendererOutputTail:
+    """Drain renderer stderr continuously while retaining only a bounded tail."""
+
+    def __init__(self) -> None:
+        self._lines: collections.deque[str] = collections.deque(maxlen=MAX_RENDERER_DIAGNOSTIC_LINES)
+        self._lock = threading.Lock()
+
+    def consume(self, stream: BinaryIO) -> None:
+        for raw_line in iter(stream.readline, b""):
+            line = _sanitize_renderer_output(raw_line)
+            if line is not None:
+                with self._lock:
+                    self._lines.append(line)
+
+    def snapshot(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._lines)
 
 
 def read_process_table(proc_root: Path = Path("/proc")) -> dict[int, ProcessInfo]:
@@ -136,16 +179,39 @@ def supervise(
     process_reader: Callable[[], dict[int, ProcessInfo]] = read_process_table,
     monotonic: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
-    process_factory: Callable[[Sequence[str]], subprocess.Popen[bytes]] = subprocess.Popen,
+    process_factory: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
     readiness_timeout: int = READINESS_TIMEOUT_SECONDS,
     liveness_grace: int = LIVENESS_GRACE_SECONDS,
 ) -> int:
     if readiness_timeout <= 0 or liveness_grace <= 0:
         raise ValueError("TV Box kiosk supervision intervals must be positive.")
 
-    process = process_factory(command)
+    # Page console forwarding is disabled in the Cog command below. Capture
+    # only compositor/browser output so a failed appliance can report the
+    # actual platform error without allowing an unbounded local log file.
+    process = process_factory(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output_tail = _RendererOutputTail()
+    output_thread: threading.Thread | None = None
+    if process.stdout is not None:
+        output_thread = threading.Thread(
+            target=output_tail.consume,
+            args=(process.stdout,),
+            name="tv-box-renderer-output",
+            daemon=True,
+        )
+        output_thread.start()
     stopping = False
     last_health_value: str | None = None
+
+    def report_renderer_failure() -> None:
+        if output_thread is not None:
+            output_thread.join(timeout=1)
+        lines = output_tail.snapshot()
+        if len(lines) == 0:
+            LOGGER.error("kiosk-renderer-diagnostic unavailable")
+            return
+        for line in lines:
+            LOGGER.error("kiosk-renderer-diagnostic %s", line)
 
     def publish_health(state: str, health: RendererHealth | None = None) -> None:
         nonlocal last_health_value
@@ -181,6 +247,7 @@ def supervise(
             return_code = process.poll()
             if return_code is not None:
                 publish_health("exited")
+                report_renderer_failure()
                 LOGGER.error("kiosk-renderer-exited code=%s", return_code)
                 return return_code if return_code != 0 else 1
 
@@ -198,6 +265,7 @@ def supervise(
                     LOGGER.error("kiosk-renderer-readiness-timeout %s", health.summary())
                     publish_health("failed-readiness", health)
                     _terminate_exact_tree(process, process_reader)
+                    report_renderer_failure()
                     return 1
             else:
                 if missing_since is None:
@@ -208,6 +276,7 @@ def supervise(
                     LOGGER.error("kiosk-renderer-liveness-timeout %s", health.summary())
                     publish_health("failed-liveness", health)
                     _terminate_exact_tree(process, process_reader)
+                    report_renderer_failure()
                     return 1
             sleeper(POLL_SECONDS)
     finally:

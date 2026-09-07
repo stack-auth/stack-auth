@@ -9,7 +9,10 @@ from hexclave_tv_box.network_agent import (
     NetworkManagerController,
     NetworkMode,
     PRODUCTION_URL,
+    TEST_SETUP_PASSWORD_ALPHABET,
+    TEST_SETUP_PASSWORD_LENGTH,
     TvBoxNetworkAgent,
+    _generate_setup_password,
     parse_test_renderer_origin,
     resolve_renderer_url,
     split_nmcli_line,
@@ -61,6 +64,16 @@ class FakeController:
 
 
 class NetworkAgentTests(unittest.TestCase):
+    def test_test_setup_password_is_short_but_still_wpa_personal_compatible(self) -> None:
+        password = _generate_setup_password(test_image=True)
+        self.assertEqual(len(password), TEST_SETUP_PASSWORD_LENGTH)
+        self.assertEqual(TEST_SETUP_PASSWORD_LENGTH, 8)
+        self.assertTrue(all(character in TEST_SETUP_PASSWORD_ALPHABET for character in password))
+
+    def test_production_setup_password_keeps_the_high_entropy_length(self) -> None:
+        password = _generate_setup_password(test_image=False)
+        self.assertGreaterEqual(len(password), 16)
+
     def test_test_renderer_origin_accepts_only_one_exact_quick_tunnel_origin(self) -> None:
         origin = "https://pilot-box.trycloudflare.com"
         self.assertEqual(parse_test_renderer_origin(origin), origin)

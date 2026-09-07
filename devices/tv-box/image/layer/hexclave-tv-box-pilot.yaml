@@ -79,6 +79,17 @@ mmdebstrap:
         true)
           image_channel=test
           printf '%s\n' 'test' > "$1/etc/hexclave-tv-box-test-image"
+          # A failing renderer must remain reachable for qualification. Pilot
+          # images retain the reboot fallback; only explicitly non-shippable
+          # test images stop after exhausting a service's bounded retries.
+          for service in \
+            hexclave-tv-box-kiosk.service \
+            hexclave-tv-box-network.service \
+            hexclave-tv-box-setup-display.service \
+            hexclave-tv-box-setup.service
+          do
+            sed -i 's/^StartLimitAction=reboot$/StartLimitAction=none/' "$1/etc/systemd/system/$service"
+          done
           ;;
         false)
           image_channel=production

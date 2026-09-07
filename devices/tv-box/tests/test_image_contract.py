@@ -19,7 +19,7 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("XDG_DATA_HOME", launcher)
         self.assertIn("XDG_CONFIG_HOME", launcher)
         self.assertIn("hexclave_tv_box.kiosk_supervisor", launcher)
-        self.assertIn("--health-file=", launcher)
+        self.assertIn('--health-file="$cookie_dir/kiosk-health"', launcher)
         self.assertNotIn("--remote-debugging", launcher)
         supervisor = (ROOT / "src/hexclave_tv_box/kiosk_supervisor.py").read_text(encoding="utf-8")
         self.assertIn('"--platform=wl"', supervisor)
@@ -47,6 +47,7 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("TimeoutStopSec=10", kiosk)
         self.assertIn("KillMode=control-group", kiosk)
         self.assertIn("Environment=WLR_LIBINPUT_NO_DEVICES=1", kiosk)
+        self.assertIn("SyslogIdentifier=hexclave-tv-box-kiosk", kiosk)
         kiosk_pam = (ROOTFS / "etc/pam.d/hexclave-tv-box-kiosk").read_text(encoding="utf-8")
         self.assertIn("session required pam_systemd.so", kiosk_pam)
         setup_display = (ROOTFS / "etc/systemd/system/hexclave-tv-box-setup-display.service").read_text(encoding="utf-8")
@@ -99,6 +100,7 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn('"IGconf_tvbox_test_image=$HEXCLAVE_TV_BOX_TEST_IMAGE"', build)
         self.assertIn("# X-Env-Var-test_image-Valid: keywords:true,false", layer)
         self.assertIn('printf \'%s\\n\' \'test\' > "$1/etc/hexclave-tv-box-test-image"', layer)
+        self.assertIn("sed -i 's/^StartLimitAction=reboot$/StartLimitAction=none/'", layer)
 
     def test_pi_zero_image_prebuilds_bounded_state_and_swap_without_runtime_repartitioning(self) -> None:
         device = (ROOT / "image/layer/hexclave-rpizero2w-armhf.yaml").read_text(encoding="utf-8")
@@ -220,7 +222,9 @@ class ImageContractTests(unittest.TestCase):
                 "usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py",
                 "usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py",
                 "etc/systemd/system/hexclave-tv-box-kiosk.service",
+                "etc/systemd/system/hexclave-tv-box-network.service",
                 "etc/systemd/system/hexclave-tv-box-setup-display.service",
+                "etc/systemd/system/hexclave-tv-box-setup.service",
                 "etc/pam.d/hexclave-tv-box-kiosk",
                 "etc/hexclave-tv-box-release",
             ):
@@ -237,8 +241,11 @@ class ImageContractTests(unittest.TestCase):
                         else (
                             "Environment=WLR_LIBINPUT_NO_DEVICES=1\n"
                             "Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland\n"
+                            "StartLimitAction=reboot\n"
                         )
                         if path == "etc/systemd/system/hexclave-tv-box-kiosk.service"
+                        else "StartLimitAction=reboot\n"
+                        if path.startswith("etc/systemd/system/hexclave-tv-box-") and path.endswith(".service")
                         else "fixture\n"
                     ),
                     encoding="utf-8",
@@ -287,9 +294,45 @@ class ImageContractTests(unittest.TestCase):
             self.assertNotEqual(rejected_missing_test_marker.returncode, 0)
             self.assertIn("missing its build-time", rejected_missing_test_marker.stdout)
             marker.write_text("test\n", encoding="utf-8")
+            rejected_test_reboot = subprocess.run(
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            self.assertNotEqual(rejected_test_reboot.returncode, 0)
+            self.assertIn("test-channel restart-limit action", rejected_test_reboot.stdout)
+            for service in (
+                "hexclave-tv-box-kiosk.service",
+                "hexclave-tv-box-network.service",
+                "hexclave-tv-box-setup-display.service",
+                "hexclave-tv-box-setup.service",
+            ):
+                service_path = rootfs / "etc/systemd/system" / service
+                service_path.write_text(
+                    service_path.read_text(encoding="utf-8").replace(
+                        "StartLimitAction=reboot",
+                        "StartLimitAction=none",
+                    ),
+                    encoding="utf-8",
+                )
             subprocess.run(command, check=True)
             marker.unlink()
             (rootfs / "etc/hexclave-tv-box-release").write_text("image-channel=production\n", encoding="utf-8")
+            for service in (
+                "hexclave-tv-box-kiosk.service",
+                "hexclave-tv-box-network.service",
+                "hexclave-tv-box-setup-display.service",
+                "hexclave-tv-box-setup.service",
+            ):
+                service_path = rootfs / "etc/systemd/system" / service
+                service_path.write_text(
+                    service_path.read_text(encoding="utf-8").replace(
+                        "StartLimitAction=none",
+                        "StartLimitAction=reboot",
+                    ),
+                    encoding="utf-8",
+                )
 
             saved_network = state / "network-connections/customer.nmconnection"
             saved_network.write_text("[connection]\n", encoding="utf-8")

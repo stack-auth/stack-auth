@@ -14,7 +14,7 @@ test -d "$rootfs"
 test -d "$state"
 mkdir -p "$output"
 
-required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/pam.d/hexclave-tv-box-kiosk etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
+required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-network.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/systemd/system/hexclave-tv-box-setup.service etc/pam.d/hexclave-tv-box-kiosk etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
 for path in $required; do
   test -e "$rootfs/$path" || { printf 'Missing image path: %s\n' "$path" >&2; exit 1; }
 done
@@ -44,24 +44,33 @@ grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/]+={0,3}( |$)' "$rootfs/etc/ssh/hexclav
 }
 
 image_channel=$(sed -n 's/^image-channel=//p' "$rootfs/etc/hexclave-tv-box-release")
+reboot_services='hexclave-tv-box-kiosk.service hexclave-tv-box-network.service hexclave-tv-box-setup-display.service hexclave-tv-box-setup.service'
 case "$image_channel" in
   production)
     if [ -e "$rootfs/etc/hexclave-tv-box-test-image" ]; then
       printf '%s\n' 'Production image contains the TV Box test-image marker.' >&2
       exit 1
     fi
+    expected_start_limit_action=reboot
     ;;
   test)
     if [ "$(cat "$rootfs/etc/hexclave-tv-box-test-image" 2>/dev/null || true)" != test ]; then
       printf '%s\n' 'Test image is missing its build-time TV Box test-image marker.' >&2
       exit 1
     fi
+    expected_start_limit_action=none
     ;;
   *)
     printf '%s\n' 'Image manifest contains an invalid or duplicate image channel.' >&2
     exit 1
     ;;
 esac
+for service in $reboot_services; do
+  grep -qxF "StartLimitAction=$expected_start_limit_action" "$rootfs/etc/systemd/system/$service" || {
+    printf 'Image service %s does not use the %s-channel restart-limit action.\n' "$service" "$image_channel" >&2
+    exit 1
+  }
+done
 
 if find "$rootfs/var/lib/hexclave-tv-box" -mindepth 1 -type f -print -quit | grep -q .; then
   printf '%s\n' 'Image contains initialized TV Box state.' >&2

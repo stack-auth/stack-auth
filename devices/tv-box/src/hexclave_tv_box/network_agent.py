@@ -35,6 +35,8 @@ TEST_IMAGE_MARKER = Path("/etc/hexclave-tv-box-test-image")
 TEST_ORIGIN_FILE = Path("/boot/firmware/hexclave-tv-box-test-origin.txt")
 QUICK_TUNNEL_HOSTNAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$")
 MAX_AGENT_REQUEST_BYTES = 16_384
+TEST_SETUP_PASSWORD_LENGTH = 8
+TEST_SETUP_PASSWORD_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
 
 def parse_test_renderer_origin(raw_value: str) -> str:
@@ -81,6 +83,19 @@ def resolve_renderer_url(
         LOGGER.error("test-renderer-origin-rejected=%s", error)
         return PRODUCTION_URL
     return f"{origin}/tv-box"
+
+
+def _generate_setup_password(*, test_image: bool) -> str:
+    if test_image:
+        # WPA Personal requires at least eight characters. Test appliances use
+        # the minimum length from an ambiguity-free alphabet because this
+        # temporary credential must often be entered manually during repeated
+        # image qualification. Production retains the higher-entropy value.
+        return "".join(
+            secrets.choice(TEST_SETUP_PASSWORD_ALPHABET)
+            for _ in range(TEST_SETUP_PASSWORD_LENGTH)
+        )
+    return secrets.token_urlsafe(12)
 
 
 def _run(command: Sequence[str], timeout: int = 45) -> str:
@@ -186,10 +201,12 @@ class NetworkManagerController:
         *,
         state_root: Path = STATE_ROOT,
         runtime_root: Path = RUNTIME_ROOT,
+        test_image_marker: Path = TEST_IMAGE_MARKER,
         runner: Callable[[Sequence[str], int], str] = _run,
     ) -> None:
         self.state_root = state_root
         self.runtime_root = runtime_root
+        self.test_image_marker = test_image_marker
         self.runner = runner
         self.setup_ssid: str | None = None
         self.setup_password: str | None = None
@@ -266,7 +283,7 @@ class NetworkManagerController:
         suffix_path = self.state_root / "identity" / "hostname"
         suffix = suffix_path.read_text(encoding="utf-8").strip()[-4:].upper()
         setup_ssid = f"Hexclave TV Box-{suffix}"
-        setup_password = secrets.token_urlsafe(12)
+        setup_password = _generate_setup_password(test_image=self.test_image_marker.is_file())
         try:
             self._nmcli(
                 "connection", "add", "type", "wifi", "ifname", WIFI_INTERFACE,

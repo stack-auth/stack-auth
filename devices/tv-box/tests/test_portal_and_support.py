@@ -100,12 +100,21 @@ class PortalAndSupportTests(unittest.TestCase):
 
     def test_recent_logs_are_bounded_to_tv_box_units(self) -> None:
         with mock.patch("hexclave_tv_box.support.run", return_value="logs") as runner:
-            self.assertEqual(recent_service_logs(), "logs")
-            command = runner.call_args.args[0]
-            self.assertIn("--lines=200", command)
-            self.assertNotIn("NetworkManager.service", command)
-            self.assertIn("--unit=hexclave-tv-box-setup-display.service", command)
-            self.assertTrue(all("hexclave-tv-box-" in value for value in command if value.startswith("--unit=")))
+            self.assertEqual(recent_service_logs(), "logs\nlogs")
+            self.assertEqual(runner.call_count, 2)
+            service_command = runner.call_args_list[0].args[0]
+            renderer_command = runner.call_args_list[1].args[0]
+            self.assertIn("--lines=200", service_command)
+            self.assertIn("--boot=0", service_command)
+            self.assertNotIn("NetworkManager.service", service_command)
+            self.assertIn("--unit=hexclave-tv-box-setup-display.service", service_command)
+            self.assertTrue(
+                all("hexclave-tv-box-" in value for value in service_command if value.startswith("--unit="))
+            )
+            self.assertIn("--lines=200", renderer_command)
+            self.assertIn("--boot=0", renderer_command)
+            self.assertIn("--identifier=hexclave-tv-box-kiosk", renderer_command)
+            self.assertFalse(any(value.startswith("--unit=") for value in renderer_command))
 
     def test_diagnostics_exposes_only_the_public_device_identifier(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

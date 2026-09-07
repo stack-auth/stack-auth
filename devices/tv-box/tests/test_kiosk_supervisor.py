@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
 
 from hexclave_tv_box.kiosk_supervisor import (
     ProcessInfo,
+    _sanitize_renderer_output,
     descendant_processes,
     renderer_health,
     supervise,
@@ -16,6 +18,7 @@ class FakeProcess:
     def __init__(self, pid: int = 100) -> None:
         self.pid = pid
         self.terminated = False
+        self.stdout = None
 
     def poll(self) -> int | None:
         return None
@@ -29,6 +32,17 @@ class FakeProcess:
 
 
 class KioskSupervisorTests(unittest.TestCase):
+    def test_renderer_diagnostics_are_bounded_and_suppress_sensitive_values(self) -> None:
+        self.assertEqual(
+            _sanitize_renderer_output(b"failed URL https://example.com/tv-box?code=secret#fragment\n"),
+            "failed URL https://example.com/tv-box",
+        )
+        self.assertEqual(
+            _sanitize_renderer_output(b"Authorization: Bearer secret\n"),
+            "[sensitive renderer diagnostic suppressed]",
+        )
+        self.assertEqual(_sanitize_renderer_output(b"\n"), None)
+
     def test_renderer_health_requires_cage_cog_and_the_real_web_process(self) -> None:
         processes = {
             100: ProcessInfo(90, "cage"),
@@ -69,7 +83,7 @@ class KioskSupervisorTests(unittest.TestCase):
                 process_reader=lambda: {100: ProcessInfo(90, "cage")},
                 monotonic=lambda: next(times),
                 sleeper=lambda _seconds: None,
-                process_factory=lambda _command: process,
+                process_factory=lambda _command, **_options: process,
             )
 
             self.assertEqual(result, 1)
@@ -109,7 +123,7 @@ class KioskSupervisorTests(unittest.TestCase):
                 process_reader=process_reader,
                 monotonic=lambda: next(times),
                 sleeper=lambda _seconds: None,
-                process_factory=lambda _command: process,
+                process_factory=lambda _command, **_options: process,
             )
 
             self.assertEqual(result, 1)
@@ -118,6 +132,34 @@ class KioskSupervisorTests(unittest.TestCase):
                 health_file.read_text(encoding="utf-8"),
                 "failed-liveness cage=ready,cog=ready,web-process=missing\n",
             )
+
+    def test_renderer_exit_reports_the_sanitized_stderr_tail(self) -> None:
+        class ExitedProcess(FakeProcess):
+            def __init__(self) -> None:
+                super().__init__()
+                self.stdout = io.BytesIO(
+                    b"Unable to create the wlroots backend\n"
+                    b"Authorization: Bearer must-not-appear\n"
+                )
+
+            def poll(self) -> int | None:
+                return 1
+
+        process = ExitedProcess()
+        with tempfile.TemporaryDirectory() as directory:
+            health_file = Path(directory) / "health"
+            with self.assertLogs("hexclave-tv-box-kiosk", level="ERROR") as logs:
+                result = supervise(
+                    ["cage", "--", "cog"],
+                    health_path=health_file,
+                    process_factory=lambda _command, **_options: process,
+                )
+            self.assertEqual(result, 1)
+            output = "\n".join(logs.output)
+            self.assertIn("Unable to create the wlroots backend", output)
+            self.assertIn("sensitive renderer diagnostic suppressed", output)
+            self.assertNotIn("must-not-appear", output)
+            self.assertEqual(health_file.read_text(encoding="utf-8"), "exited\n")
 
 
 if __name__ == "__main__":
