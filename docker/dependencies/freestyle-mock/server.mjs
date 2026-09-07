@@ -1425,8 +1425,9 @@ class PersistentResidentRunner {
       };
       if (timeout !== undefined) {
         active.timer = setTimeout(() => {
-          process.kill("SIGKILL");
+          if (this.active !== active) return;
           this.active = null;
+          process.kill("SIGKILL");
           reject(new Error(`resident runner timed out after ${timeout}ms`));
         }, timeout);
       }
@@ -1437,8 +1438,13 @@ class PersistentResidentRunner {
 
   async dispose() {
     const process = this.process;
+    const active = this.active;
     this.process = null;
     this.active = null;
+    if (active) {
+      clearTimeout(active.timer);
+      active.reject(new Error("resident runner is not running"));
+    }
     if (!process) return;
     process.kill("SIGTERM");
     await process.wait().catch(() => {});
