@@ -218,6 +218,7 @@ export const POST = createSmartRouteHandler({
       Object.fromEntries(definitionsByServiceId),
       source.builderMemoryMb === null ? undefined : { memory: deploymentMemoryFromMb(source.builderMemoryMb) ?? undefined },
       runtimeFromStored(source.runtime),
+      source.sourceId,
     );
 
     // Platform capacity, before the upload is consumed and before anything is

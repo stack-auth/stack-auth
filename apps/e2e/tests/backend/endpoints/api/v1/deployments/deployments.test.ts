@@ -470,10 +470,11 @@ describe("definition sync", () => {
   });
 
   it("rejects shrinking a volume at sync time, before anything is uploaded", async ({ expect }) => {
-    await Project.createAndSwitch();
+    // Paid: this grows the disk past the Free plan's per-volume ceiling, and the point of
+    // the test is the grow-only rule rather than the plan gate. min_instances is still
+    // written out because a `server` defaults to an always-on instance.
+    await Project.createAndSwitchOnPaidPlan();
     const serviceId = uniqueServiceId("shrink");
-    // min_instances is written out because this project is on the Free plan, which does not
-    // allow an always-on instance — and a `server` defaults to one.
     const definition = (sizeGb: number) => ({
       [serviceId]: { type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1, persistent_volumes: { data: { path: "/data", size_gb: sizeGb } }, env: {} },
     });
@@ -498,6 +499,103 @@ describe("definition sync", () => {
       body: { source_id: sourceId, services: { [serviceId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, max_instances: 1, env: {} } } },
     });
     expect(detached.status).toBe(200);
+  });
+
+  it("caps the Free plan at one volume per project, and at 10GB each", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const planUsage = await niceBackendFetch("/api/v1/internal/plan-usage", { accessType: "admin" });
+    const enforced = (planUsage.body as any)?.are_plan_limits_enforced !== false;
+    const disk = (serviceId: string, sizeGb: number) => ({
+      // A Fly `server` at min_instances 0 suspends rather than staying up, which is what
+      // lets a Free project declare one at all — and so what makes a disk reachable here.
+      [serviceId]: {
+        type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1,
+        persistent_volumes: { data: { path: "/data", size_gb: sizeGb } }, env: {},
+      },
+    });
+    const sync = async (services: Record<string, unknown>, sourceId: string) => await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin", body: { source_id: sourceId, services },
+    });
+
+    const oneServiceId = uniqueServiceId("vol1");
+    // At the ceiling exactly: 10GB is allowed, so the cap is > rather than >=.
+    expect((await sync(disk(oneServiceId, 10), "vol-cap-src")).status).toBe(200);
+    // Re-syncing the SAME disk is not a second disk — it already has a row, and counting
+    // the row and the declaration would refuse every re-deploy of a project's one volume.
+    expect((await sync(disk(oneServiceId, 10), "vol-cap-src")).status).toBe(200);
+
+    const oversized = await sync(disk(uniqueServiceId("vol2"), 11), "vol-size-src");
+    const second = await sync(disk(uniqueServiceId("vol3"), 1), "vol-count-src");
+    if (!enforced) {
+      expect(oversized.status).toBe(200);
+      expect(second.status).toBe(200);
+      return;
+    }
+    expect(oversized.status).toBe(400);
+    expect(JSON.stringify(oversized.body)).toContain("larger than 10GB are not available on the Free plan");
+    expect(JSON.stringify(oversized.body)).toContain("upgrade your plan");
+    // A second disk in ANOTHER deploy file still counts: the cap is per project, which is
+    // what a per-source count would miss.
+    expect(second.status).toBe(400);
+    expect(JSON.stringify(second.body)).toContain("Free plan allows 1 persistent volume per project");
+    expect(JSON.stringify(second.body)).toContain("upgrade your plan");
+  });
+
+  it("counts a Free project's unmounted disks, and says so", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const planUsage = await niceBackendFetch("/api/v1/internal/plan-usage", { accessType: "admin" });
+    if ((planUsage.body as any)?.are_plan_limits_enforced === false) return;
+    const serviceId = uniqueServiceId("orphan");
+    const { sourceId } = await syncServices({
+      [serviceId]: {
+        type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1,
+        persistent_volumes: { data: { path: "/data", size_gb: 1 } }, env: {},
+      },
+    });
+    // Dropping the volume DETACHES it — the row (and the disk Fly bills for) stays. A
+    // count over the deploy file alone would now see zero disks and let a second one in.
+    await syncServices({ [serviceId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, max_instances: 1, env: {} } }, sourceId);
+
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin",
+      body: {
+        source_id: sourceId,
+        services: {
+          [uniqueServiceId("next")]: {
+            type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1,
+            persistent_volumes: { data2: { path: "/data", size_gb: 1 } }, env: {},
+          },
+        },
+      },
+    });
+    expect(response.status).toBe(400);
+    const message = JSON.stringify(response.body);
+    expect(message).toContain("Free plan allows 1 persistent volume per project");
+    // The unmounted disk is invisible in the deploy file, so the message has to name it or
+    // the count reads as the platform miscounting.
+    expect(message).toContain("no service currently mounts");
+  });
+
+  it("lets a paid plan hold several volumes, and larger ones", async ({ expect }) => {
+    await Project.createAndSwitchOnPaidPlan();
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        source_id: "vol-paid-src",
+        services: {
+          [uniqueServiceId("big")]: {
+            type: "server", ports: { 3000: { protocol: "http" } }, min_instances: 0, max_instances: 1,
+            persistent_volumes: { data: { path: "/data", size_gb: 50 } }, env: {},
+          },
+          [uniqueServiceId("also")]: {
+            type: "server", ports: { 3001: { protocol: "http" } }, min_instances: 0, max_instances: 1,
+            persistent_volumes: { more: { path: "/more", size_gb: 20 } }, env: {},
+          },
+        },
+      },
+    });
+    expect(response.status).toBe(200);
   });
 
   it("rejects a volume on a service that could run more than one instance", async ({ expect }) => {

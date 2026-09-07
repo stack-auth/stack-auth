@@ -102,7 +102,7 @@ export const PUT = createSmartRouteHandler({
         throw new StatusError(400, `The memory size ${JSON.stringify(definition.memory)} of service ${JSON.stringify(serviceId)} is not available for a ${JSON.stringify(definition.type)} service on this project's runtime — it can be ${available.join(", ")}.`);
       }
     }
-    await assertServicesAllowedByPlan(auth.tenancy, body.services, body.builder, runtime);
+    await assertServicesAllowedByPlan(auth.tenancy, body.services, body.builder, runtime, body.source_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const syncId = randomUUID();
     // One transaction: the sync detaches volumes before re-attaching them, so a
