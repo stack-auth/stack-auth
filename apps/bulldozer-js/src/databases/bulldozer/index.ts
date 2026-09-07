@@ -1839,38 +1839,30 @@ export function defineConcatTable(): BulldozerTableImplementation {
       await Promise.all(states.map(advance));
       let previousCanonicalKey: string | undefined;
       for (;;) {
-        let selected: InputState | undefined;
+        let selected: { state: InputState, groupKey: PiledriverObject } | undefined;
         for (const state of states) {
-          if (state.current === undefined) continue;
+          const current = state.current;
+          if (current === undefined) continue;
           if (
             selected === undefined
+            || (range.reverse
+              ? compareTotal(current.groupKey, selected.groupKey) > 0
+              : compareTotal(current.groupKey, selected.groupKey) < 0)
           ) {
-            selected = state;
-            continue;
-          }
-          const selectedCurrent = selected.current;
-          if (selectedCurrent === undefined) throw new Error(`Concat input table ${selected.inputTableKey} lost its current group`);
-          if (
-            range.reverse
-              ? compareTotal(state.current.groupKey, selectedCurrent.groupKey) > 0
-              : compareTotal(state.current.groupKey, selectedCurrent.groupKey) < 0
-          ) {
-            selected = state;
+            selected = { state, groupKey: current.groupKey };
           }
         }
         if (selected === undefined) return;
-        const selectedCurrent = selected.current;
-        if (selectedCurrent === undefined) throw new Error(`Concat input table ${selected.inputTableKey} lost its current group`);
-        const groupKey = selectedCurrent.groupKey;
-        const canonicalKey = canonicalGroupKeyString(groupKey);
-        if (canonicalKey === previousCanonicalKey) {
-          await advance(selected);
-          continue;
+        // Equal group keys are adjacent in the merged stream (the canonical-string tie-break makes
+        // the order total), so comparing against the previously yielded key is enough to dedupe
+        // groups that several inputs share — no set of all seen keys needed.
+        const canonicalKey = canonicalGroupKeyString(selected.groupKey);
+        if (canonicalKey !== previousCanonicalKey) {
+          previousCanonicalKey = canonicalKey;
+          yield { groupKey: selected.groupKey };
+          if (range.limit !== undefined && ++yielded >= range.limit) return;
         }
-        previousCanonicalKey = canonicalKey;
-        yield { groupKey };
-        if (range.limit !== undefined && ++yielded >= range.limit) return;
-        await advance(selected);
+        await advance(selected.state);
       }
     },
     async * listRowsInGroup({ inputTables, groupKey, range }) {
