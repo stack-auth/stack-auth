@@ -1415,6 +1415,9 @@ class PersistentResidentRunner {
     const path = `/tmp/freestyle-resident-jobs/${id}.mjs`;
     await this.runtime.writeFile(path, code);
     const process = this.process;
+    if (!process) {
+      throw new Error("resident runner is not running");
+    }
     return new Promise((resolve, reject) => {
       const active = {
         id,
@@ -1433,7 +1436,13 @@ class PersistentResidentRunner {
         }, timeout);
       }
       this.active = active;
-      process.writeStdin(`${JSON.stringify({ id, path })}\n`);
+      try {
+        process.writeStdin(`${JSON.stringify({ id, path })}\n`);
+      } catch (error) {
+        clearTimeout(active.timer);
+        if (this.active === active) this.active = null;
+        reject(error);
+      }
     });
   }
 
