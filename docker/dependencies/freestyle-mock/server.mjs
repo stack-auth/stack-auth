@@ -1296,9 +1296,10 @@ function makeWrapper(userModulePath, userModuleDir) {
 
 function makeResidentJobModule(userModulePath, userModuleDir) {
   return `${makePreludeSource()}
+// Guest stdout may not end with a newline, so start the frame on its own line.
 const emit = (payload) =>
   process.stdout.write(
-    ${JSON.stringify(RESULT_PREFIX)} + JSON.stringify(payload) + "\\n",
+    "\\n" + ${JSON.stringify(RESULT_PREFIX)} + JSON.stringify(payload) + "\\n",
   );
 ${makeJobBody({
   userModulePath,
@@ -1330,7 +1331,7 @@ for await (const line of rl) {
     await import(request.path);
     await fs.rm(request.path, { force: true });
     process.stdout.write(
-      resultPrefix +
+      "\\n" + resultPrefix +
         JSON.stringify({ id: request.id, exitCode: 0, stderr: "" }) +
         "\\n",
     );
@@ -1339,7 +1340,7 @@ for await (const line of rl) {
       await fs.rm(request.path, { force: true }).catch(() => {});
     }
     process.stdout.write(
-      resultPrefix +
+      "\\n" + resultPrefix +
         JSON.stringify({
           id: request?.id,
           exitCode: 1,
