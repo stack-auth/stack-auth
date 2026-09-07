@@ -72,7 +72,7 @@ export function isDeploymentRuntime(value: unknown): value is DeploymentRuntime 
 }
 
 export function isDeploymentVersion(value: unknown): value is DeploymentVersion {
-  return typeof value === "string" && Object.hasOwn(DEPLOYMENT_VERSIONS, value);
+  return typeof value === "string" && (DEPLOYMENT_VERSION_TOKENS as readonly string[]).includes(value);
 }
 
 /**
