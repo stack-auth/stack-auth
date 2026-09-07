@@ -4,7 +4,7 @@
 
 ## 9/11/26
 
-- _(entries added throughout the week)_
+- Fixed impersonation links and console snippets not navigating correctly.
 
 ## 8/28/26
 
