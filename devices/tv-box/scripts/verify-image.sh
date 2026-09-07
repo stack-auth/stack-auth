@@ -14,10 +14,22 @@ test -d "$rootfs"
 test -d "$state"
 mkdir -p "$output"
 
-required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/pam.d/hexclave-tv-box-kiosk etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
+required='usr/lib/hexclave-tv-box/kiosk-launch usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py etc/systemd/system/hexclave-tv-box-kiosk.service etc/systemd/system/hexclave-tv-box-setup-display.service etc/pam.d/hexclave-tv-box-kiosk etc/ssh/hexclave-support-ca.pub etc/hexclave-tv-box-release'
 for path in $required; do
   test -e "$rootfs/$path" || { printf 'Missing image path: %s\n' "$path" >&2; exit 1; }
 done
+grep -qxF 'Environment=WLR_LIBINPUT_NO_DEVICES=1' "$rootfs/etc/systemd/system/hexclave-tv-box-kiosk.service" || {
+  printf '%s\n' 'Image kiosk does not declare no-input Cage operation.' >&2
+  exit 1
+}
+grep -qF 'hexclave_tv_box.kiosk_supervisor' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
+  printf '%s\n' 'Image kiosk does not launch the renderer supervisor.' >&2
+  exit 1
+}
+if find "$rootfs/usr/lib/python3/dist-packages/hexclave_tv_box" -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -quit | grep -q .; then
+  printf '%s\n' 'Image contains generated build-host Python bytecode.' >&2
+  exit 1
+fi
 grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/]+={0,3}( |$)' "$rootfs/etc/ssh/hexclave-support-ca.pub" || {
   printf '%s\n' 'Image support CA is not an OpenSSH public key.' >&2
   exit 1

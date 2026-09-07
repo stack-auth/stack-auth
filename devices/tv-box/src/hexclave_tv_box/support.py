@@ -10,6 +10,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from .kiosk_supervisor import read_process_table, renderer_health
 from .state import RUNTIME_ROOT, STATE_ROOT, clear_exact_state_directory
 
 ADMIN_CONFIRMATION = "CONFIRM-ADMIN-UNPAIRED"
@@ -20,6 +21,7 @@ SERVICES = (
     "hexclave-tv-box-setup.service",
 )
 MAX_DIAGNOSTIC_FILE_BYTES = 2_048
+KIOSK_HEALTH_PATH = Path("/run/hexclave-tv-box-browser-cache/kiosk-health")
 
 
 def run(command: Sequence[str]) -> str:
@@ -90,6 +92,30 @@ def diagnostics() -> str:
         except (OSError, subprocess.SubprocessError):
             value = "unavailable"
         lines.append(f"{label}:\n{value}")
+    try:
+        kiosk_pid_value = run([
+            "systemctl", "show", "hexclave-tv-box-kiosk.service", "--property=MainPID", "--value",
+        ])
+        kiosk_pid = int(kiosk_pid_value)
+        supervisor_processes = read_process_table()
+        supervisor = supervisor_processes.get(kiosk_pid)
+        cage_processes = [
+            pid
+            for pid, info in supervisor_processes.items()
+            if info.parent_pid == kiosk_pid and info.name == "cage"
+        ]
+        if supervisor is None or supervisor.name != "python3" or len(cage_processes) != 1:
+            process_health = "supervisor=missing,cage=missing,cog=missing,web-process=missing"
+        else:
+            health = renderer_health(supervisor_processes, cage_processes[0])
+            process_health = f"supervisor=ready,{health.summary()}"
+    except (OSError, subprocess.SubprocessError, ValueError):
+        process_health = "unavailable"
+    lines.append(f"kiosk-process-health={process_health}")
+    lines.append(
+        "kiosk-health-state="
+        f"{_diagnostic_file_value(KIOSK_HEALTH_PATH)}"
+    )
     for service in SERVICES:
         try:
             active = run(["systemctl", "is-active", service])
@@ -155,7 +181,11 @@ def execute(command: str, arguments: list[str], state_root: Path = STATE_ROOT) -
     if command == "recent-logs" and not arguments:
         return recent_service_logs()
     if command == "restart-kiosk" and not arguments:
-        run(["systemctl", "restart", "hexclave-tv-box-kiosk.service"])
+        # Keep shutdown and startup as independently bounded operations. A
+        # wedged Cog/Cage shutdown may require the unit's SIGKILL fallback but
+        # must not consume the timeout of the subsequent start operation.
+        run(["systemctl", "stop", "hexclave-tv-box-kiosk.service"])
+        run(["systemctl", "start", "hexclave-tv-box-kiosk.service"])
         return "Kiosk restarted."
     if command == "restart-network" and not arguments:
         run(["systemctl", "restart", "hexclave-tv-box-network.service"])

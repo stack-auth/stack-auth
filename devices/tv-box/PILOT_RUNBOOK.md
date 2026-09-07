@@ -27,12 +27,12 @@ Apply the organization's approval, custody, and audit process around that comman
 
 Perform these checks on the exact Raspberry Pi Zero 2 W, power supply, microSD class, and HDMI configuration intended for the pilot.
 
-- Cold boot with no keyboard, mouse, or interactive login. The display must reach local Wi-Fi setup or `/tv-box` automatically.
+- Cold boot with no keyboard, mouse, or interactive login. The display must reach local Wi-Fi setup or `/tv-box` automatically, and restricted diagnostics must report the Cage, Cog, and WPE process chain as ready.
 - First boot without a saved network must expose a password-protected temporary setup network and show its per-session credentials directly on HDMI without depending on Cage, Cog, WPE, or internet access.
 - Join open, WPA2 Personal, and WPA3 Personal test networks where available. Confirm the Wi-Fi password never appears in the system journal, process list, diagnostics, or Hexclave requests.
 - Pair the display, reboot it, and confirm pairing persists without administrator action.
 - Unpair it from the dashboard. The display must return to pairing and accept immediate re-pairing without a device reboot or local reset.
-- Stop Cog, terminate its WPE web process, and stop Cage in separate trials. The kiosk must recover automatically. Repeated crash-loop recovery must reboot rather than leave a dead display.
+- Stop Cog, terminate its WPE web process, and stop Cage in separate trials. The kiosk health marker must first report degradation, the kiosk must recover automatically after the bounded grace period, and repeated crash-loop recovery must reboot rather than leave a dead display.
 - Disconnect Wi-Fi, restore it, deny backend access temporarily, and restore access. Local network setup and browser recovery must remain independent; backend failure must not erase pairing or Wi-Fi state.
 - Remove and restore HDMI while running. The compositor must recover a stable fullscreen picture at the pilot resolution.
 - Perform five controlled abrupt power cuts across boot, pairing, normal playback, and network recovery. The filesystem, pairing cookie, unique identity, and saved network must remain valid, or the box must return to a safe setup state.

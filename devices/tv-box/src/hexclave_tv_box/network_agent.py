@@ -410,10 +410,26 @@ class TvBoxNetworkAgent:
     def _set_kiosk_url(self, url: str) -> None:
         atomic_write(self.runtime_root / "kiosk-url", f"{url}\n", 0o644)
 
+    def _restart_kiosk(self) -> None:
+        # Cog 0.18.x can make Cage slow to close. Separate bounded operations
+        # prevent one combined systemctl restart job from consuming the agent
+        # request timeout after systemd has already performed the SIGKILL
+        # fallback and started a usable replacement process.
+        self._service("stop", "hexclave-tv-box-kiosk.service")
+        self._service("start", "hexclave-tv-box-kiosk.service")
+
     def apply_mode(self) -> None:
         with self.lock:
             if self.state.mode is self.applied_mode:
                 return
+            if self.state.mode in {NetworkMode.STATION_INITIAL, NetworkMode.STATION_RETRY}:
+                # NetworkManager's explicit activation is synchronous. Recheck
+                # immediately so a normal saved-network boot launches the live
+                # renderer once instead of launching the offline renderer and
+                # tearing the complete Cage/Cog stack down five seconds later.
+                self.controller.activate_saved_connections()
+                if self.controller.connected():
+                    self.state = NetworkState(NetworkMode.CONNECTED, self.monotonic())
             if self.state.mode is NetworkMode.SETUP:
                 # Setup credentials must remain available even when WebKit
                 # cannot start. The console service owns tty1 in this mode;
@@ -429,14 +445,13 @@ class TvBoxNetworkAgent:
                 self.controller.stop_setup()
                 self._service("stop", "hexclave-tv-box-setup.service")
                 self._set_kiosk_url(self.renderer_url)
-                self._service("restart", "hexclave-tv-box-kiosk.service")
+                self._restart_kiosk()
             else:
                 self._service("stop", "hexclave-tv-box-setup-display.service")
                 self.controller.stop_setup()
                 self._service("stop", "hexclave-tv-box-setup.service")
                 self._set_kiosk_url(OFFLINE_URL)
-                self.controller.activate_saved_connections()
-                self._service("restart", "hexclave-tv-box-kiosk.service")
+                self._restart_kiosk()
             self.applied_mode = self.state.mode
             LOGGER.info("network-state=%s", self.state.mode.value)
 
@@ -471,7 +486,7 @@ class TvBoxNetworkAgent:
             # origin was unavailable during a browser restart. The in-page
             # runtime handles API outages once loaded; this restart is only
             # for recovery of the public application document itself.
-            self._service("try-restart", "hexclave-tv-box-kiosk.service")
+            self._restart_kiosk()
             LOGGER.info("frontend-recovered")
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:

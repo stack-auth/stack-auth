@@ -18,8 +18,13 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("/run/hexclave-tv-box-browser-cache", launcher)
         self.assertIn("XDG_DATA_HOME", launcher)
         self.assertIn("XDG_CONFIG_HOME", launcher)
-        self.assertIn("--webprocess-failure=exit", launcher)
+        self.assertIn("hexclave_tv_box.kiosk_supervisor", launcher)
+        self.assertIn("--health-file=", launcher)
         self.assertNotIn("--remote-debugging", launcher)
+        supervisor = (ROOT / "src/hexclave_tv_box/kiosk_supervisor.py").read_text(encoding="utf-8")
+        self.assertIn('"--webprocess-failure=exit"', supervisor)
+        self.assertIn('"--enable-write-console-messages-to-stdout=false"', supervisor)
+        self.assertNotIn("--remote-debugging", supervisor)
         network_agent = (ROOT / "src/hexclave_tv_box/network_agent.py").read_text(encoding="utf-8")
         self.assertIn('PRODUCTION_URL = "https://app.hexclave.com/tv-box"', network_agent)
         self.assertIn('TEST_IMAGE_MARKER = Path("/etc/hexclave-tv-box-test-image")', network_agent)
@@ -35,6 +40,7 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("ExecStartPost=+/usr/bin/chvt 1", kiosk)
         self.assertIn("TimeoutStopSec=10", kiosk)
         self.assertIn("KillMode=control-group", kiosk)
+        self.assertIn("Environment=WLR_LIBINPUT_NO_DEVICES=1", kiosk)
         kiosk_pam = (ROOTFS / "etc/pam.d/hexclave-tv-box-kiosk").read_text(encoding="utf-8")
         self.assertIn("session required pam_systemd.so", kiosk_pam)
         setup_display = (ROOTFS / "etc/systemd/system/hexclave-tv-box-setup-display.service").read_text(encoding="utf-8")
@@ -63,6 +69,8 @@ class ImageContractTests(unittest.TestCase):
         self.assertNotIn("${DIRECTORY}", layer)
         self.assertIn('cp -a "${SRCROOT}/rootfs/." "$1/"', layer)
         self.assertIn('cp -a "${SRCROOT}/../src/hexclave_tv_box"', layer)
+        self.assertIn("-name __pycache__ -prune -exec rm -rf {} +", layer)
+        self.assertIn("-name '*.pyc' -o -name '*.pyo'", layer)
         self.assertIn('cp -a "${SRCROOT}/../setup-ui/."', layer)
         self.assertIn(': > "$1/etc/machine-id"', layer)
         self.assertIn(': > "$1/etc/hostname"', layer)
@@ -202,6 +210,7 @@ class ImageContractTests(unittest.TestCase):
             image.write_bytes(b"pilot-image")
             for path in (
                 "usr/lib/hexclave-tv-box/kiosk-launch",
+                "usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py",
                 "usr/lib/python3/dist-packages/hexclave_tv_box/network_agent.py",
                 "usr/lib/python3/dist-packages/hexclave_tv_box/setup_display.py",
                 "etc/systemd/system/hexclave-tv-box-kiosk.service",
@@ -212,7 +221,15 @@ class ImageContractTests(unittest.TestCase):
                 target = rootfs / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(
-                    "image-channel=production\n" if path == "etc/hexclave-tv-box-release" else "fixture\n",
+                    (
+                        "image-channel=production\n"
+                        if path == "etc/hexclave-tv-box-release"
+                        else "hexclave_tv_box.kiosk_supervisor\n"
+                        if path == "usr/lib/hexclave-tv-box/kiosk-launch"
+                        else "Environment=WLR_LIBINPUT_NO_DEVICES=1\n"
+                        if path == "etc/systemd/system/hexclave-tv-box-kiosk.service"
+                        else "fixture\n"
+                    ),
                     encoding="utf-8",
                 )
             support_ca = rootfs / "etc/ssh/hexclave-support-ca.pub"

@@ -27,6 +27,10 @@ TTYVHangup=yes
 TTYVTDisallocate=yes
 RuntimeDirectory=hexclave-tv-box-browser-cache
 RuntimeDirectoryMode=0700
+# A shipped TV Box deliberately has no keyboard or mouse. Cage otherwise
+# waits for a libinput device instead of launching its single Cog client.
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/lib/hexclave-tv-box/kiosk-launch
 ExecStartPost=+/usr/bin/chvt 1
 Restart=always

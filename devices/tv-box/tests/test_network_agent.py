@@ -270,6 +270,36 @@ class NetworkAgentTests(unittest.TestCase):
             self.assertIn(("systemctl", "start", "hexclave-tv-box-setup.service"), services)
             self.assertNotIn("http://127.0.0.1", (Path(directory) / "kiosk-url").read_text(encoding="utf-8"))
 
+    def test_saved_network_activation_avoids_offline_kiosk_restart_when_it_connects(self) -> None:
+        class ConnectingController(FakeController):
+            def activate_saved_connections(self) -> None:
+                super().activate_saved_connections()
+                self.is_connected = True
+
+        with tempfile.TemporaryDirectory() as directory:
+            services: list[tuple[str, ...]] = []
+            controller = ConnectingController(saved=True, connected=False)
+            agent = TvBoxNetworkAgent(
+                controller,
+                runtime_root=Path(directory),
+                service_runner=lambda command, _timeout: services.append(tuple(command)) or "",
+                frontend_probe=lambda _url, _timeout: True,
+                setup_portal_waiter=lambda _url, _timeout: True,
+                renderer_url="https://pilot-box.trycloudflare.com/tv-box",
+            )
+
+            agent.tick()
+
+            self.assertEqual(agent.state.mode, NetworkMode.CONNECTED)
+            self.assertEqual(controller.calls, ["activate-saved", "stop-setup"])
+            self.assertEqual(
+                (Path(directory) / "kiosk-url").read_text(encoding="utf-8"),
+                "https://pilot-box.trycloudflare.com/tv-box\n",
+            )
+            self.assertIn(("systemctl", "stop", "hexclave-tv-box-kiosk.service"), services)
+            self.assertIn(("systemctl", "start", "hexclave-tv-box-kiosk.service"), services)
+            self.assertNotIn("file:///", (Path(directory) / "kiosk-url").read_text(encoding="utf-8"))
+
     def test_connect_switches_state_but_leaves_service_stop_for_next_tick(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             now = [0.0]
@@ -296,7 +326,8 @@ class NetworkAgentTests(unittest.TestCase):
             self.assertEqual(agent.state.mode, NetworkMode.CONNECTED)
             self.assertIn(("systemctl", "stop", "hexclave-tv-box-setup-display.service"), services)
             self.assertIn(("systemctl", "stop", "hexclave-tv-box-setup.service"), services)
-            self.assertIn(("systemctl", "restart", "hexclave-tv-box-kiosk.service"), services)
+            self.assertIn(("systemctl", "stop", "hexclave-tv-box-kiosk.service"), services)
+            self.assertIn(("systemctl", "start", "hexclave-tv-box-kiosk.service"), services)
 
             agent.handle_request({"command": "reset-network"})
             self.assertFalse(agent.has_saved_network)
@@ -330,7 +361,10 @@ class NetworkAgentTests(unittest.TestCase):
             services.clear()
             now[0] = 60
             agent.tick()
-            self.assertEqual(services, [("systemctl", "try-restart", "hexclave-tv-box-kiosk.service")])
+            self.assertEqual(services, [
+                ("systemctl", "stop", "hexclave-tv-box-kiosk.service"),
+                ("systemctl", "start", "hexclave-tv-box-kiosk.service"),
+            ])
             self.assertEqual(probed_urls, [
                 "https://pilot-box.trycloudflare.com/tv-box",
                 "https://pilot-box.trycloudflare.com/tv-box",

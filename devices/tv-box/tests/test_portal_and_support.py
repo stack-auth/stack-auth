@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from hexclave_tv_box.setup_portal import SetupPortalServer, SubmissionLimiter
+from hexclave_tv_box.kiosk_supervisor import ProcessInfo
 from hexclave_tv_box.support import ADMIN_CONFIRMATION, diagnostics, execute, factory_reset, forced_command_main, recent_service_logs, reset_pairing
 
 
@@ -86,6 +87,17 @@ class PortalAndSupportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported"):
             execute("shell", ["/bin/sh"])
 
+    def test_support_kiosk_restart_uses_separately_bounded_stop_and_start(self) -> None:
+        with mock.patch("hexclave_tv_box.support.run", return_value="") as runner:
+            self.assertEqual(execute("restart-kiosk", []), "Kiosk restarted.")
+        self.assertEqual(
+            [call.args[0] for call in runner.call_args_list],
+            [
+                ["systemctl", "stop", "hexclave-tv-box-kiosk.service"],
+                ["systemctl", "start", "hexclave-tv-box-kiosk.service"],
+            ],
+        )
+
     def test_recent_logs_are_bounded_to_tv_box_units(self) -> None:
         with mock.patch("hexclave_tv_box.support.run", return_value="logs") as runner:
             self.assertEqual(recent_service_logs(), "logs")
@@ -130,6 +142,41 @@ class PortalAndSupportTests(unittest.TestCase):
                 result = diagnostics()
         self.assertIn("effective-renderer-url=invalid", result)
         self.assertNotIn("injected=value", result)
+
+    def test_diagnostics_reports_only_bounded_kiosk_process_health(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_root = Path(directory)
+            runtime_root = state_root / "runtime"
+            health_path = runtime_root / "kiosk-health"
+            (state_root / "identity").mkdir()
+            runtime_root.mkdir()
+            (state_root / "identity/device-id").write_text("public-device-id\n", encoding="utf-8")
+            (runtime_root / "kiosk-url").write_text("https://example.com/tv-box\n", encoding="utf-8")
+            health_path.write_text("ready cage=ready,cog=ready,web-process=ready\n", encoding="utf-8")
+
+            def fake_run(command: list[str]) -> str:
+                if "--property=MainPID" in command:
+                    return "100"
+                return "healthy"
+
+            with (
+                mock.patch("hexclave_tv_box.support.STATE_ROOT", state_root),
+                mock.patch("hexclave_tv_box.support.RUNTIME_ROOT", runtime_root),
+                mock.patch("hexclave_tv_box.support.KIOSK_HEALTH_PATH", health_path),
+                mock.patch("hexclave_tv_box.support.run", side_effect=fake_run),
+                mock.patch("hexclave_tv_box.support.read_process_table", return_value={
+                    100: ProcessInfo(1, "python3"),
+                    101: ProcessInfo(100, "cage"),
+                    102: ProcessInfo(101, "cog"),
+                    103: ProcessInfo(102, "WPEWebProcess"),
+                    200: ProcessInfo(1, "customer-process-name-must-not-appear"),
+                }),
+            ):
+                result = diagnostics()
+
+        self.assertIn("kiosk-process-health=supervisor=ready,cage=ready,cog=ready,web-process=ready", result)
+        self.assertIn("kiosk-health-state=ready cage=ready,cog=ready,web-process=ready", result)
+        self.assertNotIn("customer-process", result)
 
     def test_forced_support_command_never_interprets_shell_syntax(self) -> None:
         with (
