@@ -18,6 +18,10 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("/run/hexclave-tv-box-browser-cache", launcher)
         self.assertIn("XDG_DATA_HOME", launcher)
         self.assertIn("XDG_CONFIG_HOME", launcher)
+        self.assertIn("wayland_runtime_dir=/run/hexclave-tv-box-wayland", launcher)
+        self.assertIn('export XDG_RUNTIME_DIR="$wayland_runtime_dir"', launcher)
+        self.assertIn('stat -c %u "$wayland_runtime_dir"', launcher)
+        self.assertIn('stat -c %a "$wayland_runtime_dir"', launcher)
         self.assertIn("hexclave_tv_box.kiosk_supervisor", launcher)
         self.assertIn('--health-file="$cookie_dir/kiosk-health"', launcher)
         self.assertNotIn("--remote-debugging", launcher)
@@ -234,7 +238,11 @@ class ImageContractTests(unittest.TestCase):
                     (
                         "image-channel=production\n"
                         if path == "etc/hexclave-tv-box-release"
-                        else "hexclave_tv_box.kiosk_supervisor\n"
+                        else (
+                            "wayland_runtime_dir=/run/hexclave-tv-box-wayland\n"
+                            'export XDG_RUNTIME_DIR="$wayland_runtime_dir"\n'
+                            "hexclave_tv_box.kiosk_supervisor\n"
+                        )
                         if path == "usr/lib/hexclave-tv-box/kiosk-launch"
                         else '"--platform=wl"\n'
                         if path == "usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py"

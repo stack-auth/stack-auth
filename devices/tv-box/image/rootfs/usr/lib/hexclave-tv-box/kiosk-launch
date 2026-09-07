@@ -7,8 +7,25 @@ cache_dir=/run/hexclave-tv-box-browser-cache
 data_dir=/run/hexclave-tv-box-browser-cache/data
 config_dir=/run/hexclave-tv-box-browser-cache/config
 timezone_file=/var/lib/hexclave-tv-box/identity/timezone
+wayland_runtime_dir=/run/hexclave-tv-box-wayland
 
 install -d -m 0700 "$cookie_dir" "$cache_dir" "$data_dir" "$config_dir"
+if [ ! -d "$wayland_runtime_dir" ] || [ -L "$wayland_runtime_dir" ]; then
+  printf '%s\n' 'TV Box Wayland runtime directory is unavailable.' >&2
+  exit 1
+fi
+if [ "$(stat -c %u "$wayland_runtime_dir")" != "$(id -u)" ]; then
+  printf '%s\n' 'TV Box Wayland runtime directory has the wrong owner.' >&2
+  exit 1
+fi
+if [ "$(stat -c %a "$wayland_runtime_dir")" != 700 ]; then
+  printf '%s\n' 'TV Box Wayland runtime directory has unsafe permissions.' >&2
+  exit 1
+fi
+if [ ! -w "$wayland_runtime_dir" ] || [ ! -x "$wayland_runtime_dir" ]; then
+  printf '%s\n' 'TV Box Wayland runtime directory is not usable.' >&2
+  exit 1
+fi
 for _attempt in $(seq 1 60); do
   if [ -s "$url_file" ]; then
     break
@@ -29,6 +46,10 @@ if [ -s "$timezone_file" ]; then
 fi
 
 export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
+# PAM establishes the renderer's logind session after systemd applies the
+# service environment. Reassert the systemd-owned private directory here so
+# Cage never inherits a cleared or replaced XDG_RUNTIME_DIR from PAM.
+export XDG_RUNTIME_DIR="$wayland_runtime_dir"
 export XDG_CACHE_HOME="$cache_dir"
 export XDG_DATA_HOME="$data_dir"
 export XDG_CONFIG_HOME="$config_dir"

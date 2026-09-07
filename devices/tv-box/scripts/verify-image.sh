@@ -30,6 +30,14 @@ grep -qF 'hexclave_tv_box.kiosk_supervisor' "$rootfs/usr/lib/hexclave-tv-box/kio
   printf '%s\n' 'Image kiosk does not launch the renderer supervisor.' >&2
   exit 1
 }
+grep -qxF 'wayland_runtime_dir=/run/hexclave-tv-box-wayland' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
+  printf '%s\n' 'Image kiosk launcher does not select its private Wayland runtime directory.' >&2
+  exit 1
+}
+grep -qxF 'export XDG_RUNTIME_DIR="$wayland_runtime_dir"' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
+  printf '%s\n' 'Image kiosk launcher does not restore its Wayland runtime directory after PAM setup.' >&2
+  exit 1
+}
 grep -qF '"--platform=wl"' "$rootfs/usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py" || {
   printf '%s\n' 'Image kiosk does not pin Cog to the Cage Wayland platform.' >&2
   exit 1
