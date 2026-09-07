@@ -122,6 +122,104 @@ export type PiledriverGarbageCollectionResult = {
   gcGeneration: string,
 };
 
+export function zeroPiledriverGarbageCollectionResult(
+  cutoffTimestampMillis: number,
+  processStartedAtMillis: number,
+  maxObjects: number,
+  startedAtMillis: number,
+): PiledriverGarbageCollectionResult {
+  parseNonNegativeInteger(cutoffTimestampMillis, "cutoffTimestampMillis");
+  parseNonNegativeInteger(processStartedAtMillis, "processStartedAtMillis");
+  parseNonNegativeInteger(startedAtMillis, "startedAtMillis");
+  if (!Number.isSafeInteger(maxObjects) || maxObjects <= 0) throw new Error("Piledriver GC maxObjects must be a positive safe integer");
+  const completedAtMillis = startedAtMillis;
+  const elapsedMillis = 0;
+  return {
+    cutoff: {
+      timestampMillis: cutoffTimestampMillis,
+      timestampIso: new Date(cutoffTimestampMillis).toISOString(),
+      processStartedAtMillis,
+      processStartedAtIso: new Date(processStartedAtMillis).toISOString(),
+      ageAtCollectionStartMillis: Math.max(0, startedAtMillis - cutoffTimestampMillis),
+      restartBarrierMarginMillis: processStartedAtMillis - cutoffTimestampMillis,
+      collectionStartedMillisAfterProcessStart: Math.max(0, startedAtMillis - processStartedAtMillis),
+    },
+    limits: { maxObjects, limitReached: false, moreEligibleWorkMayRemain: false, queuedCandidatesRemaining: 0 },
+    objects: {
+      deleted: 0,
+      candidatesExamined: 0,
+      candidatesQueuedFromIndex: 0,
+      candidatesQueuedFromMetadataRepair: 0,
+      candidatesSkipped: 0,
+      metadataEntriesExaminedForRepair: 0,
+      resumedDeletions: 0,
+      childObjectsBecameUnreferenced: 0,
+      maxCascadeDepth: 0,
+      duplicateQueueAttemptsIgnored: 0,
+    },
+    references: {
+      outgoingEdgesProcessed: 0,
+      legacyImmortalEdgesIgnored: 0,
+      referenceCountCompareAndSetAttempts: 0,
+      referenceCountCompareAndSetConflicts: 0,
+    },
+    recovery: {
+      missingCandidateEntriesRepaired: 0,
+      staleCandidatesWithoutMetadataRemoved: 0,
+      staleCandidatesFromInactiveGenerationsRemoved: 0,
+      staleCandidatesWithLiveReferencesRemoved: 0,
+      staleCandidateKeysCorrected: 0,
+      candidatesNoLongerOldEnough: 0,
+      deletionClaimConflicts: 0,
+      deletionProgressCompareAndSetConflicts: 0,
+    },
+    reclaimed: {
+      heapPayloadBytes: 0,
+      heapPayloadMiB: 0,
+      heapKeyBytes: 0,
+      metadataValueBytes: 0,
+      metadataKeyBytes: 0,
+      candidateKeyBytes: 0,
+      knownLogicalBytes: 0,
+      knownLogicalMiB: 0,
+      smallestHeapPayloadBytes: null,
+      largestHeapPayloadBytes: null,
+      averageHeapPayloadBytes: null,
+      physicalFileBytesReduced: null,
+      physicalStorageNote: "In-memory storage has no persistent file to reclaim.",
+    },
+    scanning: {
+      candidateIndexPagesRead: 0,
+      candidateIndexEntriesRead: 0,
+      candidateIndexReachedCutoff: false,
+      candidateIndexScanComplete: true,
+      metadataRepairPagesRead: 0,
+      metadataRepairPassComplete: true,
+    },
+    samples: {
+      limitPerCategory: GC_DIAGNOSTIC_SAMPLE_LIMIT,
+      deletedObjectKeysBase64: [],
+      resumedDeletionObjectKeysBase64: [],
+      repairedMissingCandidateObjectKeysBase64: [],
+      staleCandidateObjectKeysBase64: [],
+      legacyImmortalReferencedObjectKeysBase64: [],
+    },
+    timing: {
+      startedAtMillis,
+      completedAtMillis,
+      elapsedMillis,
+      initializationMillis: 0,
+      candidateIndexReadMillis: 0,
+      metadataRepairMillis: 0,
+      durabilityWaitMillis: 0,
+      activeCollectionMillis: 0,
+      deletedObjectsPerSecond: 0,
+      reclaimedHeapMiBPerSecond: 0,
+    },
+    gcGeneration: "none",
+  };
+}
+
 function encodeJson(value: unknown) {
   return textEncoder.encode(JSON.stringify(value)).buffer;
 }
@@ -230,6 +328,10 @@ function aggregateKeys(keys: ArrayBuffer[]) {
   return result;
 }
 
+export function aggregateSerializedReferences(buffer: ArrayBuffer | null) {
+  return aggregateKeys(buffer === null ? [] : serializedHeapReferenceKeys(buffer));
+}
+
 function candidateKey(heapKey: ArrayBuffer, eligibleAtMillis: number) {
   parseNonNegativeInteger(eligibleAtMillis, "candidate eligibleAtMillis");
   if (heapKey.byteLength + 8 > 64) throw new Error("Piledriver heap key is too large for the GC candidate index");
@@ -261,7 +363,9 @@ export function declarePiledriverGarbageCollector(options: {
   lowLevelDb: LowLevelDatabase,
   heapDump: LowLevelKvDump,
   processStartedAtMillis: number,
+  missingMetadataBehavior?: "legacy-immortal" | "initialize-on-positive-reference",
 }) {
+  const missingMetadataBehavior = options.missingMetadataBehavior ?? "legacy-immortal";
   const metadataStore = options.lowLevelDb.declareKvStore("piledriver-gc-reference-metadata-v3");
   const candidateStore = options.lowLevelDb.declareKvStore("piledriver-gc-zero-reference-candidates-v3");
   const stateStore = options.lowLevelDb.declareKvStore("piledriver-gc-state-v3");
@@ -295,9 +399,8 @@ export function declarePiledriverGarbageCollector(options: {
         return;
       }
 
-      // Objects without metadata predate refcount GC and are deliberately immortal. This makes
-      // rollout O(1) even for very large existing heaps; only objects created after this state
-      // record are tracked and eligible for collection.
+      // The default mode treats objects without metadata as predating reference-counting GC. The
+      // opt-in mode initializes metadata on the first positive reference to a reserved heap key.
       // First-time initialization may race across processes. A deterministic initial generation
       // ensures every contender tags metadata identically even though the state write is
       // last-write-wins; existing databases continue to use their persisted random generation.
@@ -326,8 +429,25 @@ export function declarePiledriverGarbageCollector(options: {
   };
 
   const replaceMetadata = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, replacement: ReferenceMetadata, requiresSeq: DatabaseSeq) => {
-    const result = await metadataStore.compareAndSet(key, existingBuffer, encodeJson(replacement), { requiresSeq });
-    return result.wasSet ? result.seq : null;
+    const result = await metadataStore.compareAndSetAll(
+      [{ key, compare: existingBuffer, value: encodeJson(replacement) }],
+      { requiresSeq },
+    );
+    const entry = result.results[0];
+    return entry.wasSet ? entry.seq : null;
+  };
+
+  const combineSeqsDeduped = (seqs: Iterable<DatabaseSeq>): DatabaseSeq => {
+    const unique = [...new Set(seqs)].filter(seq => seq !== options.lowLevelDb.initialSeq);
+    if (unique.length === 0) return options.lowLevelDb.initialSeq;
+    if (unique.length === 1) return unique[0];
+    return options.lowLevelDb.combineSeqs(...unique);
+  };
+
+  // get carries no requiresSeq, so wait before deciding whether metadata must be initialized.
+  const readReferenceMetadata = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+    await options.lowLevelDb.waitUntilAvailable(requiresSeq);
+    return await metadataStore.get(key);
   };
 
   const changeReferenceCount = async (
@@ -347,30 +467,33 @@ export function declarePiledriverGarbageCollector(options: {
     let compareAndSetAttempts = 0;
     let compareAndSetConflicts = 0;
     while (true) {
-      const existing = await metadataStore.get(key);
+      const existing = await readReferenceMetadata(key, requiresSeq);
       if (existing.buffer === null) {
-        // No metadata means the object predates this GC generation. Legacy objects are
-        // intentionally immortal, including when newly tracked objects reference them.
-        return {
-          seq: requiresSeq,
-          becameZero: false,
-          eligibleAtMillis: dereferencedAtMillis ?? 0,
-          legacyImmortal: true,
-          compareAndSetAttempts,
-          compareAndSetConflicts,
-        };
+        if (missingMetadataBehavior === "legacy-immortal") {
+          return {
+            seq: requiresSeq,
+            becameZero: false,
+            eligibleAtMillis: dereferencedAtMillis ?? 0,
+            legacyImmortal: true,
+            compareAndSetAttempts,
+            compareAndSetConflicts,
+          };
+        }
+        throw new Error(`Piledriver GC cannot decrement heap object ${encodeBase64(new Uint8Array(key))} without reference metadata`);
       }
       const metadata = parseReferenceMetadata(existing.buffer);
       if (metadata.generation !== readyGeneration()) {
-        // A partial initialization from an abandoned generation is also fail-safe immortal.
-        return {
-          seq: requiresSeq,
-          becameZero: false,
-          eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis,
-          legacyImmortal: true,
-          compareAndSetAttempts,
-          compareAndSetConflicts,
-        };
+        if (missingMetadataBehavior === "legacy-immortal") {
+          return {
+            seq: requiresSeq,
+            becameZero: false,
+            eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis,
+            legacyImmortal: true,
+            compareAndSetAttempts,
+            compareAndSetConflicts,
+          };
+        }
+        throw new Error(`Piledriver GC reference metadata belongs to an inactive generation for heap object ${encodeBase64(new Uint8Array(key))}`);
       }
       // The restart cutoff predates this process, so a claimed object was last dereferenced
       // before any live handle in this process could observe it. Reaching this means that
@@ -432,42 +555,221 @@ export function declarePiledriverGarbageCollector(options: {
     }
   };
 
-  const changeSerializedReferences = async (
-    buffer: ArrayBuffer,
-    direction: 1 | -1,
+  const changeSerializedReferenceDeltas = async (
+    deltas: Iterable<{ key: ArrayBuffer, count: number }>,
     dereferencedAtMillis: number | null,
     requiresSeq: DatabaseSeq,
   ) => {
-    let currentSeq = requiresSeq;
-    const becameZero: Array<{ key: ArrayBuffer, eligibleAtMillis: number }> = [];
-    for (const { key, count } of aggregateKeys(serializedHeapReferenceKeys(buffer)).values()) {
-      const changed = await changeReferenceCount(key, direction * count, dereferencedAtMillis, currentSeq);
-      currentSeq = changed.seq;
-      if (changed.becameZero) becameZero.push({ key, eligibleAtMillis: changed.eligibleAtMillis });
+    const pending = [...deltas];
+    const createdAtMillis = Math.max(Date.now(), options.processStartedAtMillis);
+    const changes: Array<{
+      key: ArrayBuffer,
+      becameZero: boolean,
+      stoppedBeingZero: boolean,
+      previousEligibleAtMillis: number,
+      eligibleAtMillis: number,
+    }> = [];
+    const metadataSequences: DatabaseSeq[] = [requiresSeq];
+    while (pending.length > 0) {
+      const reads = await Promise.all(
+        pending.map(async delta => ({
+          ...delta,
+          existing: await readReferenceMetadata(delta.key, requiresSeq),
+        })),
+      );
+      const retry: typeof pending = [];
+      const newMetadataEntries: Array<{ key: ArrayBuffer, value: ArrayBuffer, delta: number }> = [];
+      const compareAndSetEntries: Array<{
+        key: ArrayBuffer,
+        compare: ArrayBuffer,
+        value: ArrayBuffer,
+        delta: number,
+        previousEligibleAtMillis: number,
+        eligibleAtMillis: number,
+        becameZero: boolean,
+        stoppedBeingZero: boolean,
+      }> = [];
+      for (const { key, count, existing } of reads) {
+        if (existing.buffer === null) {
+          if (missingMetadataBehavior === "legacy-immortal") {
+            changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: dereferencedAtMillis ?? 0, eligibleAtMillis: dereferencedAtMillis ?? 0 });
+            continue;
+          }
+          if (count < 0) {
+            throw new Error(`Piledriver GC cannot decrement heap object ${encodeBase64(new Uint8Array(key))} without reference metadata`);
+          }
+          // A missing entry can only be a newly inserted object whose reserved key is not yet
+          // reachable. Compare against absence below: concurrent first edges must not overwrite
+          // each other's counts, so every loser retries through the normal increment path.
+          newMetadataEntries.push({
+            key,
+            value: encodeJson({
+              ...newMetadata(readyGeneration(), createdAtMillis),
+              referenceCount: count,
+            }),
+            delta: count,
+          });
+          continue;
+        }
+        const metadata = parseReferenceMetadata(existing.buffer);
+        if (metadata.generation !== readyGeneration()) {
+          if (missingMetadataBehavior === "legacy-immortal") {
+            changes.push({ key, becameZero: false, stoppedBeingZero: false, previousEligibleAtMillis: metadata.createdAtMillis, eligibleAtMillis: dereferencedAtMillis ?? metadata.createdAtMillis });
+            continue;
+          }
+          throw new Error(`Piledriver GC reference metadata belongs to an inactive generation for heap object ${encodeBase64(new Uint8Array(key))}`);
+        }
+        if (metadata.deletion !== null) throw new Error("Piledriver GC attempted to reference an object that is being deleted");
+        const nextReferenceCount = metadata.referenceCount + count;
+        if (!Number.isSafeInteger(nextReferenceCount) || nextReferenceCount < 0) {
+          throw new Error(`Piledriver GC reference count would become invalid for heap object ${encodeBase64(new Uint8Array(key))}`);
+        }
+        const nextLastDereferencedAtMillis = dereferencedAtMillis === null
+          ? metadata.lastDereferencedAtMillis
+          : Math.max(metadata.lastDereferencedAtMillis ?? 0, dereferencedAtMillis);
+        const previousEligibleAtMillis = metadata.lastDereferencedAtMillis ?? metadata.createdAtMillis;
+        const replacement: ReferenceMetadata = {
+          ...metadata,
+          referenceCount: nextReferenceCount,
+          lastDereferencedAtMillis: nextLastDereferencedAtMillis,
+        };
+        compareAndSetEntries.push({
+          key,
+          compare: existing.buffer,
+          value: encodeJson(replacement),
+          delta: count,
+          previousEligibleAtMillis,
+          eligibleAtMillis: nextLastDereferencedAtMillis ?? metadata.createdAtMillis,
+          becameZero: metadata.referenceCount !== 0 && nextReferenceCount === 0,
+          stoppedBeingZero: metadata.referenceCount === 0 && nextReferenceCount !== 0,
+        });
+      }
+      const newMetadataWrite = newMetadataEntries.length === 0
+        ? null
+        : metadataStore.compareAndSetAll(
+          newMetadataEntries.map(({ key, value }) => ({ key, compare: null, value })),
+          { requiresSeq },
+        );
+      const compareAndSetWrite = compareAndSetEntries.length === 0
+        ? null
+        : metadataStore.compareAndSetAll(
+          compareAndSetEntries.map(({ key, compare, value }) => ({ key, compare, value })),
+          { requiresSeq },
+        );
+      const [newMetadataResult, compareAndSetResult] = await Promise.all([newMetadataWrite, compareAndSetWrite]);
+      if (newMetadataResult !== null) {
+        metadataSequences.push(newMetadataResult.seq);
+        for (const [index, entry] of newMetadataEntries.entries()) {
+          if (newMetadataResult.results[index].wasSet === false) retry.push({ key: entry.key, count: entry.delta });
+        }
+      }
+      pending.length = 0;
+      if (compareAndSetResult === null) {
+        pending.push(...retry);
+        continue;
+      }
+      for (const [index, entry] of compareAndSetEntries.entries()) {
+        const changed = compareAndSetResult.results[index];
+        if (changed.wasSet === false) {
+          retry.push({ key: entry.key, count: entry.delta });
+          continue;
+        }
+        metadataSequences.push(changed.seq);
+        changes.push({
+          key: entry.key,
+          becameZero: entry.becameZero,
+          stoppedBeingZero: entry.stoppedBeingZero,
+          previousEligibleAtMillis: entry.previousEligibleAtMillis,
+          eligibleAtMillis: entry.eligibleAtMillis,
+        });
+      }
+      pending.push(...retry);
     }
-    return { seq: currentSeq, becameZero };
+    const becameZero = changes.filter(change => change.becameZero);
+    const stoppedBeingZero = changes.filter(change => change.stoppedBeingZero);
+    const [candidateWrites, candidateDeletes] = await Promise.all([
+      becameZero.length === 0
+        ? Promise.resolve({ seq: requiresSeq })
+        : candidateStore.setAll(
+          becameZero.map(({ key, eligibleAtMillis }) => ({
+            key: candidateKey(key, eligibleAtMillis),
+            value: new ArrayBuffer(0),
+          })),
+          { requiresSeq: combineSeqsDeduped(metadataSequences) },
+        ),
+      stoppedBeingZero.length === 0
+        ? Promise.resolve({ seq: requiresSeq })
+        : candidateStore.deleteAll(
+          // The delete key must use the timestamp that was used when the candidate was written.
+          stoppedBeingZero.map(({ key, previousEligibleAtMillis }) => candidateKey(key, previousEligibleAtMillis)),
+          { requiresSeq: combineSeqsDeduped(metadataSequences) },
+        ),
+    ]);
+    return {
+      seq: combineSeqsDeduped([
+        requiresSeq,
+        ...metadataSequences,
+        candidateWrites.seq,
+        candidateDeletes.seq,
+      ]),
+      becameZero: becameZero.map(({ key, eligibleAtMillis }) => ({ key, eligibleAtMillis })),
+    };
   };
 
-  const recordHeapObjectCreation = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+  const recordHeapObjectCreations = async (entries: Array<{ key: ArrayBuffer, requiresSeq: DatabaseSeq }>) => {
     await initialize();
+    if (entries.length === 0) return { seq: options.lowLevelDb.initialSeq };
     // Clamp backward clock jumps to the process start. Every valid collection cutoff predates
     // that barrier, so a newly created object can never accidentally become eligible.
     const createdAtMillis = Math.max(Date.now(), options.processStartedAtMillis);
     const metadata = newMetadata(readyGeneration(), createdAtMillis);
-    const metadataWrite = await metadataStore.setAll([{ key, value: encodeJson(metadata) }], { requiresSeq });
-    const candidateWrite = await candidateStore.setAll([{ key: candidateKey(key, createdAtMillis), value: new ArrayBuffer(0) }], { requiresSeq: metadataWrite.seq });
+    // Explicit registration before positive edges leaves a collectable zero-reference candidate
+    // when publication is interrupted, instead of an untracked leak.
+    const metadataWrite = await metadataStore.setAll(
+      entries.map(({ key }) => ({ key, value: encodeJson(metadata) })),
+      { requiresSeq: combineSeqsDeduped(entries.map(entry => entry.requiresSeq)) },
+    );
+    const candidateWrite = await candidateStore.setAll(
+      entries.map(({ key }) => ({ key: candidateKey(key, createdAtMillis), value: new ArrayBuffer(0) })),
+      { requiresSeq: metadataWrite.seq },
+    );
     return { seq: candidateWrite.seq };
   };
 
-  const beforeSerializedObjectBecomesVisible = async (buffer: ArrayBuffer, requiresSeq: DatabaseSeq) => {
+  const beforeSerializedHeapObjectsBecomeVisible = async (buffers: ArrayBuffer[], requiresSeq: DatabaseSeq) => {
     await initialize();
-    return await changeSerializedReferences(buffer, 1, null, requiresSeq);
+    return await changeSerializedReferenceDeltas(
+      aggregateKeys(buffers.flatMap(buffer => serializedHeapReferenceKeys(buffer))).values(),
+      null,
+      requiresSeq,
+    );
   };
 
-  const afterSerializedObjectBecameInvisible = async (buffer: ArrayBuffer, dereferencedAtMillis: number, requiresSeq: DatabaseSeq) => {
+  const beforeSerializedObjectBecomesVisible = async (
+    buffer: ArrayBuffer,
+    requiresSeq: DatabaseSeq,
+  ) => {
+    await initialize();
+    // Increments must be available before the buffer referencing them is visible, so a crash can never
+    // expose a root whose children are still eligible for collection.
+    return await changeSerializedReferenceDeltas(aggregateSerializedReferences(buffer).values(), null, requiresSeq);
+  };
+
+  const afterSerializedObjectBecameInvisible = async (
+    buffer: ArrayBuffer,
+    dereferencedAtMillis: number,
+    requiresSeq: DatabaseSeq,
+  ) => {
     await initialize();
     parseNonNegativeInteger(dereferencedAtMillis, "dereferencedAtMillis");
-    return await changeSerializedReferences(buffer, -1, dereferencedAtMillis, requiresSeq);
+    // The mirror image of the increment ordering: decrements are applied only once the replacement is
+    // visible. A crash in between leaks an over-counted object, but can never free one that the visible
+    // root still reaches.
+    return await changeSerializedReferenceDeltas(
+      [...aggregateSerializedReferences(buffer).values()].map(({ key, count }) => ({ key, count: -count })),
+      dereferencedAtMillis,
+      requiresSeq,
+    );
   };
 
   const claimDeletion = async (key: ArrayBuffer, existingBuffer: ArrayBuffer, metadata: ReferenceMetadata, totalReferences: number) => {
@@ -478,8 +780,9 @@ export function declarePiledriverGarbageCollector(options: {
     return await replaceMetadata(key, existingBuffer, replacement, options.lowLevelDb.initialSeq);
   };
 
-  const advanceDeletion = async (key: ArrayBuffer, expectedIndex: number) => {
+  const advanceDeletion = async (key: ArrayBuffer, expectedIndex: number, requiresSeq: DatabaseSeq) => {
     let compareAndSetConflicts = 0;
+    await options.lowLevelDb.waitUntilAvailable(requiresSeq);
     while (true) {
       const existing = await metadataStore.get(key);
       if (existing.buffer === null) throw new Error("Piledriver GC deletion metadata disappeared");
@@ -728,7 +1031,7 @@ export function declarePiledriverGarbageCollector(options: {
             continue;
           }
           recordMutation(claimSeq);
-          metadataRead = await metadataStore.get(key);
+          metadataRead = await readReferenceMetadata(key, latestMutationSeq);
           if (metadataRead.buffer === null) throw new Error("Piledriver GC deletion claim disappeared");
           metadata = parseReferenceMetadata(metadataRead.buffer);
         } else {
@@ -748,7 +1051,7 @@ export function declarePiledriverGarbageCollector(options: {
         for (let referenceIndex = deletion.nextReferenceIndex; referenceIndex < deletion.totalReferences; referenceIndex++) {
           // Persist progress first. A crash between this write and the decrement can leak one
           // reference, but can never undercount and delete live data when the job is resumed.
-          const progress = await advanceDeletion(key, referenceIndex);
+          const progress = await advanceDeletion(key, referenceIndex, latestMutationSeq);
           recordMutation(progress.seq);
           deletionProgressCompareAndSetConflicts += progress.compareAndSetConflicts;
           metadata = progress.metadata;
@@ -901,7 +1204,8 @@ export function declarePiledriverGarbageCollector(options: {
 
   return {
     initialize,
-    recordHeapObjectCreation,
+    recordHeapObjectCreations,
+    beforeSerializedHeapObjectsBecomeVisible,
     beforeSerializedObjectBecomesVisible,
     afterSerializedObjectBecameInvisible,
     collectGarbage,

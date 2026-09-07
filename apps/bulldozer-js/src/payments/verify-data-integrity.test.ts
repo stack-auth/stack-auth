@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { declareBulldozerDatabase } from "../databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implementations/in-memory.js";
-import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../databases/piledriver/implementations/base.js";
+import { declareInMemoryPiledriverDatabase } from "../databases/piledriver/implementations/in-memory.js";
 import { handleVerifyDataIntegrityRequest, verifyDataIntegrity } from "./verify-data-integrity.js";
 
 const rootKey = new TextEncoder().encode("bulldozer-database-root").buffer;
 
 async function createDatabase() {
   const db = declareBulldozerDatabase(
-    declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())),
+    declareBasePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())),
     { migrations: [] },
   );
   await db.applyRemainingMigrations();
@@ -34,6 +35,28 @@ async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, s
 }
 
 describe("Piledriver data-integrity verification", () => {
+  it("skips stored-form checks when the backend does not expose serialized access", async () => {
+    const db = declareBulldozerDatabase(
+      declareInMemoryPiledriverDatabase(crypto.randomUUID()),
+      { migrations: [] },
+    );
+    await db.applyRemainingMigrations();
+
+    await expect(verifyDataIntegrity(db, { step_count: 1 })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      done: true,
+      next_cursor: null,
+      steps_taken: 0,
+      errors: [],
+      errors_truncated: false,
+      skipped_checks: [{
+        phase: "root",
+        code: "serialized_access_unavailable",
+        message: expect.any(String),
+      }],
+    }));
+  });
+
   it("maps malformed requests and cursors to bad requests", async () => {
     const expectBadRequest = async (body: unknown) => {
       try {
@@ -61,7 +84,7 @@ describe("Piledriver data-integrity verification", () => {
 
   it("rejects a continuation created by another process", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = declareBasePiledriverDatabase(lowLevel);
     const db = declareBulldozerDatabase(piledriver, { migrations: [] });
     await db.applyRemainingMigrations();
     const [heapKey] = (await lowLevel.declareKvDump("heap").insertAll([
@@ -91,7 +114,7 @@ describe("Piledriver data-integrity verification", () => {
 
   it("reports a dangling reference from the pinned root", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = declareBasePiledriverDatabase(lowLevel);
     const db = declareBulldozerDatabase(piledriver, { migrations: [] });
     await db.applyRemainingMigrations();
     await lowLevel.declareKvStore("root").setAll([{
@@ -104,7 +127,7 @@ describe("Piledriver data-integrity verification", () => {
 
   it("reports malformed heap entries as findings", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = declareBasePiledriverDatabase(lowLevel);
     const db = declareBulldozerDatabase(piledriver, { migrations: [] });
     await db.applyRemainingMigrations();
     await lowLevel.declareKvDump("heap").insertAll([new Uint8Array([0xff]).buffer]);
@@ -114,7 +137,7 @@ describe("Piledriver data-integrity verification", () => {
 
   it("reports malformed pinned root bytes as a finding", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = declareBasePiledriverDatabase(lowLevel);
     const db = declareBulldozerDatabase(piledriver, { migrations: [] });
     await db.applyRemainingMigrations();
     await lowLevel.declareKvStore("root").setAll([{

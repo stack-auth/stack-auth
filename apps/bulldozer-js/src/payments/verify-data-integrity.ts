@@ -182,12 +182,29 @@ export async function verifyDataIntegrity(
     if (!addIssue(errors, issue)) errorsTruncated = true;
   };
   const piledriverDatabase = bulldozerDb.getPiledriverDatabase();
+  const serializedFormAccess = piledriverDatabase.getSerializedFormAccess?.();
+  if (serializedFormAccess === undefined) {
+    skippedChecks.push({
+      phase: "root",
+      code: "serialized_access_unavailable",
+      message: "The Piledriver backend does not expose stored-form access, so serialized integrity checks were skipped.",
+    });
+    return {
+      success: true,
+      done: true,
+      next_cursor: null,
+      steps_taken: 0,
+      errors,
+      errors_truncated: errorsTruncated,
+      skipped_checks: skippedChecks,
+    };
+  }
   // A pinned root can outlive the process that created the cursor and be collected after restart,
   // so the GC process-start timestamp is the identity that makes a continuation safe to resume.
   const processStartedAtMillis = bulldozerDb.getPiledriverGarbageCollectionProcessStartedAtMillis();
   let cursor: VerificationCursor;
   if (request.continue === undefined) {
-    const root = await piledriverDatabase.getSerializedRootObject(rootKey);
+    const root = await serializedFormAccess.getSerializedRootObject(rootKey);
     cursor = {
       version: CURSOR_VERSION,
       processStartedAtMillis,
@@ -233,7 +250,7 @@ export async function verifyDataIntegrity(
     if (cursor.phase === "root") {
       if (cursor.rootReferenceIndex < rootReferences.length) {
         const reference = rootReferences[cursor.rootReferenceIndex];
-        const heapObject = await piledriverDatabase.getSerializedHeapObject(keyBytes(reference));
+        const heapObject = await serializedFormAccess.getSerializedHeapObject(keyBytes(reference));
         if (heapObject.buffer === null) {
           recordIssue({
             phase: "root",
@@ -246,7 +263,7 @@ export async function verifyDataIntegrity(
         remaining--;
       } else if (!cursor.rootDeserialized) {
         try {
-          await piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq);
+          await serializedFormAccess.deserializeSerializedObject(rootBuffer, rootSeq);
         } catch (error) {
           if (error instanceof InvalidPiledriverSerializedObjectError) {
             recordIssue({ phase: "root", code: "invalid_root", message: "The pinned root could not be deserialized" });
@@ -260,7 +277,7 @@ export async function verifyDataIntegrity(
         cursor.phase = "heap-scan";
       }
     } else {
-      const page = await piledriverDatabase.listHeapEntries({
+      const page = await serializedFormAccess.listHeapEntries({
         ...(cursor.afterHeapKeyBase64 === null ? {} : { startAfter: keyBytes(cursor.afterHeapKeyBase64) }),
         limit: Math.min(HEAP_PAGE_SIZE, remaining),
       });
@@ -276,7 +293,7 @@ export async function verifyDataIntegrity(
             const references = collectSerializedHeapReferences(serializedValue);
             let allReferencesPresent = true;
             for (const reference of references) {
-              const referenced = await piledriverDatabase.getSerializedHeapObject(keyBytes(reference));
+              const referenced = await serializedFormAccess.getSerializedHeapObject(keyBytes(reference));
               if (referenced.buffer === null) {
                 allReferencesPresent = false;
                 recordIssue({
@@ -287,7 +304,7 @@ export async function verifyDataIntegrity(
                 });
               }
             }
-            if (allReferencesPresent) await piledriverDatabase.deserializeSerializedObject(entry.value);
+            if (allReferencesPresent) await serializedFormAccess.deserializeSerializedObject(entry.value);
           } catch (error) {
             if (error instanceof InvalidPiledriverSerializedObjectError) {
               recordIssue({ phase: "heap-scan", code: "invalid_heap_entry", message: "A heap entry could not be deserialized", context: { key: entryKey } });

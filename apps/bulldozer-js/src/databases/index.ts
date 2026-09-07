@@ -20,10 +20,18 @@ export function deserializeDatabaseSeq(value: string): DatabaseSeq {
   if (!Array.isArray(parsed) || !parsed.every(item => typeof item === "string" || (Number.isFinite(item) && !Object.is(item, -0)))) {
     throw new Error("Invalid database sequence");
   }
-  // The validation above establishes the finite-numbers-and-strings contract represented by DatabaseSeq.
-  return parsed as unknown as DatabaseSeq;
+  return createDatabaseSeq(...parsed);
 }
 
+class ConcreteDatabaseSeq extends Array<string | number> {
+  readonly __brand: "hexclave-low-level-kv-store-seq" = "hexclave-low-level-kv-store-seq";
+}
+
+export function createDatabaseSeq(...parts: readonly (string | number)[]): DatabaseSeq {
+  const result = new ConcreteDatabaseSeq();
+  result.push(...parts);
+  return result;
+}
 export type Database = {
   getDebugInfo(): any,
   /**
@@ -43,13 +51,17 @@ export type Database = {
    */
   waitUntilDurable(seq: DatabaseSeq): Promise<void>,
   /**
-   * Returns a promise that resolves once it is guaranteed that the given seq is available to all read replicas AND
-   * durable.
+   * Returns a promise that resolves once it is guaranteed that the given seq is available to all read replicas.
    *
-   * Implicitly implies both `waitUntilAvailable` and `waitUntilDurable`. This is the strongest guarantee that can be
-   * achieved, but incurs significantly higher latency.
+   * This does NOT guarantee durability; a coordinated infrastructure failure may still lose the replicated write.
    */
   waitUntilReplicated(seq: DatabaseSeq): Promise<void>,
+  /**
+   * Returns a promise that resolves once the given seq is both replicated and durable.
+   *
+   * This is the strongest guarantee and incurs the latency of both independent barriers.
+   */
+  waitUntilConsistent(seq: DatabaseSeq): Promise<void>,
   combineSeqs(...seqs: DatabaseSeq[]): DatabaseSeq,
   /**
    * Drains pending writes and releases resources. Calls are idempotent.

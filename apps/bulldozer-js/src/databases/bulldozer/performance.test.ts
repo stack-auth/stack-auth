@@ -6,7 +6,9 @@ import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in
 import { declareInstantAvailabilityLowLevelDatabase } from "../low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../piledriver/index.js";
+import { declareBasePiledriverDatabase } from "../piledriver/implementations/base.js";
+import { declareBreezyPiledriverDatabase } from "../piledriver/implementations/breezy/index.js";
+import type { PiledriverObject } from "../piledriver/index.js";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   declareBulldozerDatabase,
@@ -62,6 +64,8 @@ const lmdbTempPaths: string[] = [];
 const databases: PerfDatabase[] = [];
 const perfBackend = process.env.BULLDOZER_PERF_BACKEND ?? "lmdb-instant";
 const perfSnapshotMode = process.env.BULLDOZER_PERF_SNAPSHOT_MODE ?? "plain";
+const piledriverImplementation = process.env.STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION ?? "base";
+if (piledriverImplementation !== "base" && piledriverImplementation !== "breezy") throw new Error("STACK_BULLDOZER_PILEDRIVER_IMPLEMENTATION must be base or breezy");
 const emptyChanges = (): TableChanges => ({ addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] });
 const trackDatabase = (db: PerfDatabase) => {
   databases.push(db);
@@ -85,17 +89,24 @@ const newLowLevelDb = () => {
   }
   return declareInMemoryLowLevelDatabase(crypto.randomUUID());
 };
+const newPiledriverDb = () => {
+  if (piledriverImplementation === "base") return declareBasePiledriverDatabase(newLowLevelDb());
+  if (perfBackend !== "lmdb") throw new Error("Breezy requires the lmdb performance backend");
+  const path = mkdtempSync(join(tmpdir(), "bulldozer-perf-lmdb-"));
+  lmdbTempPaths.push(path);
+  return declareBreezyPiledriverDatabase({ path, dbId: crypto.randomUUID() });
+};
 afterAll(async () => {
   // An unclosed LMDB environment keeps native handles alive, preventing Vitest's worker and main process from exiting; remove its mapped directory only after closing it.
   for (const db of databases.reverse()) await db.close();
   for (const path of lmdbTempPaths) rmSync(path, { recursive: true, force: true });
 });
 const newDb = (migrations: Migration) =>
-  trackDatabase(declareBulldozerDatabase(declarePiledriverDatabase(newLowLevelDb()), { migrations }));
+  trackDatabase(declareBulldozerDatabase(newPiledriverDb(), { migrations }));
 const writeSnapshot = async (db: PerfDatabase, updateSnapshot: SnapshotUpdater) =>
   perfSnapshotMode === "plain"
     ? await db.withSnapshot(updateSnapshot)
-    : await db.withSnapshotReplicated(updateSnapshot);
+    : await db.withSnapshotConsistent(updateSnapshot);
 async function initializedSnapshot(migrations: Migration) {
   const db = newDb(migrations);
   await db.applyRemainingMigrations();
@@ -192,8 +203,7 @@ async function collectRows(snapshot: Snapshot, tableId: string, groupKey: Piledr
 }
 
 async function createPrefilledOldCompatibleBase(rowCount: number) {
-  const lowLevel = newLowLevelDb();
-  const piledriver = declarePiledriverDatabase(lowLevel);
+  const piledriver = newPiledriverDb();
   const baseMigration: Migration[number] = [
     { type: "initTable", tableId: "users", table: defineStoredTable(), inputTables: {} },
     { type: "initTable", tableId: "rules", table: defineStoredTable(), inputTables: {} },
@@ -815,7 +825,8 @@ describe("Bulldozer old-compatible performance", () => {
         groupKeyExtractor: async row => (row.rowData as { bucket: string }).bucket,
         groupKeyComparator: (a, b) => stringCompare(String(a), String(b)),
       }), inputTables: { input: "mapped" } },
-    ], "groupedByBucket");
+      { type: "initTable", tableId: "groupedByBucketReadModel", table: defineMaterializeTable(), inputTables: { input: "groupedByBucket" } },
+    ], "groupedByBucketReadModel");
 
     process.stdout.write(`\n[bulldozer-perf-new] slowdown factor (baseline/composed): ${(baselineOps / composedOps).toFixed(2)}x\n`);
     expect(baselineOps).toBeGreaterThan(0);
@@ -871,8 +882,7 @@ describe("Bulldozer old-compatible performance", () => {
 
   it("regression: concat queries stay fast after initializing grouped inputs", async () => {
     const rowCount = Math.min(1024, Math.max(...oldCompatibleRowCounts));
-    const lowLevel = newLowLevelDb();
-    const piledriver = declarePiledriverDatabase(lowLevel);
+    const piledriver = newPiledriverDb();
     const baseMigration: Migration[number] = [
       { type: "initTable", tableId: "usersA", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "usersB", table: defineStoredTable(), inputTables: {} },
@@ -898,12 +908,13 @@ describe("Bulldozer old-compatible performance", () => {
         groupKeyComparator: (a, b) => stringCompare(String(a), String(b)),
       }), inputTables: { input: "usersB" } },
       { type: "initTable", tableId: "concatenated", table: defineConcatTable(), inputTables: { a: "groupedA", b: "groupedB" } },
+      { type: "initTable", tableId: "concatenatedReadModel", table: defineMaterializeTable(), inputTables: { input: "concatenated" } },
     ];
     const dbV2 = trackDatabase(declareBulldozerDatabase(piledriver, { migrations: [baseMigration, derivedMigration] }));
     const init = await timed(async () => await dbV2.applyRemainingMigrations());
     logOldCompatibleMetric("virtual concat init equivalent", init.durationMs);
     const snapshot = (await dbV2.getSnapshot()).snapshot;
-    const count = await timed(async () => await countRows(snapshot, "concatenated"));
+    const count = await timed(async () => await countRows(snapshot, "concatenatedReadModel"));
     logOldCompatibleMetric("virtual concat count query", count.durationMs, `; rows=${count.value}`);
 
     expect(count.value).toBe(rowCount * 2);
@@ -960,9 +971,7 @@ describe("Bulldozer old-compatible performance", () => {
       const init = await timed(async () => await db.applyRemainingMigrations());
       logOldCompatibleMetric(derived.label, init.durationMs);
     }
-
-    snapshot = (await db.getSnapshot()).snapshot;
-    const countLabels = [
+    const readModelInputs = [
       "groupedByTeam",
       "mappedTwice",
       "groupedByBucket",
@@ -970,6 +979,20 @@ describe("Bulldozer old-compatible performance", () => {
       "concatenatedByTeam",
       "expandedByTeam",
       "sortedHighValueByTeam",
+    ];
+    migrations = [...migrations, readModelInputs.map(tableId => ({
+      type: "initTable" as const,
+      tableId: `${tableId}ReadModel`,
+      table: defineMaterializeTable(),
+      inputTables: { input: tableId },
+    }))];
+    db = declareBulldozerDatabase(fixture.piledriver, { migrations });
+    const readModelInit = await timed(async () => await db.applyRemainingMigrations());
+    logOldCompatibleMetric("load init explicit read models", readModelInit.durationMs);
+
+    snapshot = (await db.getSnapshot()).snapshot;
+    const countLabels = [
+      ...readModelInputs.map(tableId => `${tableId}ReadModel`),
       "foldedHighValueByTeam",
       "timedExposureByTeam",
       "leftJoinedByTeam",
@@ -979,16 +1002,16 @@ describe("Bulldozer old-compatible performance", () => {
     ];
     const derivedCounts = await timed(async () => await Promise.all(countLabels.map(async tableId => [tableId, await countRows(snapshot, tableId)] as const)));
     logOldCompatibleMetric("load count derived tables", derivedCounts.durationMs, `; ${derivedCounts.value.map(([tableId, count]) => `${tableId}=${count}`).join(", ")}`);
-    expect(Object.fromEntries(derivedCounts.value).groupedByTeam).toBe(rowCount - 1);
-    expect(Object.fromEntries(derivedCounts.value).expandedByTeam).toBe((rowCount - 1) * 2);
+    expect(Object.fromEntries(derivedCounts.value).groupedByTeamReadModel).toBe(rowCount - 1);
+    expect(Object.fromEntries(derivedCounts.value).expandedByTeamReadModel).toBe((rowCount - 1) * 2);
 
-    const groupedSubset = await timed(async () => await collectRows(snapshot, "groupedByTeam", "beta", { limit: Math.min(100, rowCount) }));
+    const groupedSubset = await timed(async () => await collectRows(snapshot, "groupedByTeamReadModel", "beta", { limit: Math.min(100, rowCount) }));
     logOldCompatibleMetric("load iterate groupedByTeam subset from start", groupedSubset.durationMs, `; rows=${groupedSubset.value.length}`);
     expect(groupedSubset.value.length).toBeGreaterThan(0);
 
-    const sortedSubsetFromStart = await timed(async () => await collectRows(snapshot, "sortedHighValueByTeam", "beta", { gte: 700, limit: Math.min(100, rowCount) }));
+    const sortedSubsetFromStart = await timed(async () => await collectRows(snapshot, "sortedHighValueByTeamReadModel", "beta", { gte: 700, limit: Math.min(100, rowCount) }));
     logOldCompatibleMetric("load iterate sortedHighValueByTeam subset from start", sortedSubsetFromStart.durationMs, `; rows=${sortedSubsetFromStart.value.length}`);
-    const sortedSubsetFromSortKey = await timed(async () => await collectRows(snapshot, "sortedHighValueByTeam", "beta", { gte: 900, limit: Math.min(100, rowCount), reverse: true }));
+    const sortedSubsetFromSortKey = await timed(async () => await collectRows(snapshot, "sortedHighValueByTeamReadModel", "beta", { gte: 900, limit: Math.min(100, rowCount), reverse: true }));
     logOldCompatibleMetric("load iterate sortedHighValueByTeam subset from sort-key cursor", sortedSubsetFromSortKey.durationMs, `; rows=${sortedSubsetFromSortKey.value.length}`);
 
     const deltaMutation = await timed(async () => {
@@ -996,8 +1019,8 @@ describe("Bulldozer old-compatible performance", () => {
     });
     logOldCompatibleMetric("load point mutation through derived schema", deltaMutation.durationMs);
     snapshot = (await db.getSnapshot()).snapshot;
-    expect((await collectRows(snapshot, "groupedByTeam", "delta")).some(row => row.rowIdentifier === "seed-100000")).toBe(true);
-    expect(await collectRows(snapshot, "expandedByTeam", "delta")).toHaveLength(2);
+    expect((await collectRows(snapshot, "groupedByTeamReadModel", "delta")).some(row => row.rowIdentifier === "seed-100000")).toBe(true);
+    expect(await collectRows(snapshot, "expandedByTeamReadModel", "delta")).toHaveLength(2);
     expect(await collectRows(snapshot, "leftJoinedByTeam", "delta")).toHaveLength(1);
   }, 120_000);
 });

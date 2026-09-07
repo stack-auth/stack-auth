@@ -14,9 +14,11 @@ import { isBulldozerRequestAuthorized } from "./auth.js";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
-import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
+import { declareLmdbLowLevelDatabase, getLmdbDiagnostics } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
-import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import { declareBasePiledriverDatabase } from "./databases/piledriver/implementations/base.js";
+import { declareBufferedPiledriverDatabase } from "./databases/piledriver/implementations/buffered.js";
+import type { PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
 import { parseManualTransactionsListQuery } from "./manual-transactions-http.js";
@@ -76,10 +78,15 @@ function createLowLevelDatabase(): LowLevelDatabase {
   }));
 }
 
+const basePiledriver = declareBasePiledriverDatabase(createLowLevelDatabase(), {
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+});
+// Buffering keeps availability instant while durability/replication waits for the wrapped root write;
+// it is worthwhile for write-lock occupancy and throughput, not per-call latency.
+const bufferedPiledriverEnabled = process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_BUFFERED_PILEDRIVER !== "1";
+const piledriver = bufferedPiledriverEnabled ? declareBufferedPiledriverDatabase(basePiledriver) : basePiledriver;
 const bulldozerDb = declareBulldozerDatabase(
-  declarePiledriverDatabase(createLowLevelDatabase(), {
-    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-  }),
+  piledriver,
   { migrations: schema.migrations },
 );
 (globalThis as any).bulldozerDb = bulldozerDb;
@@ -447,8 +454,8 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
   try {
-    // Replicated, so that a caller reading right after this write doesn't see the pre-write snapshot root.
-    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
+    // Consistent, so subsequent readers see the write and it survives a coordinated failure.
+    await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
       newRowData: options.rowData as unknown as PiledriverObject,
@@ -511,7 +518,7 @@ async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: st
     return { rowIdentifier: readStringField(rowData, idField), newRowData: rowData as unknown as PiledriverObject };
   });
   try {
-    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+    await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
   } catch (error) {
     // A batch is one cascade, so a cascade-phase failure can't be pinned to a single row.
     // Attach the table + the batch's row identifiers (no rowData here, to keep batch events small).
@@ -834,6 +841,7 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
         type: mapLedgerTransactionTypeToApiType(listedRow.type as LedgerTransactionType),
         customer_type: listedRow.customerType,
         customer_id: listedRow.customerId,
+        renewal_target_subscription_id: listedRow.renewalTargetSubscriptionId ?? null,
         entries: listedRow.entries.flatMap(entry => {
           const mapped = mapLedgerEntry(entry);
           return mapped === null ? [] : [mapped];
@@ -973,6 +981,7 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .get("/diagnostics", () => getLmdbDiagnostics() ?? { available: false })
   .get("/v1/manual-transactions", ({ query }) => handler("list-manual-transactions", async () => {
     // Cross-instance export surface: backend pages this to back up refunds into Prisma.
     const { limit, cursor } = parseManualTransactionsListQuery(query);
@@ -1153,6 +1162,7 @@ const startupFields = {
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  bufferedPiledriverEnabled,
   gcExposed: globalThis.gc !== undefined,
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
@@ -1182,7 +1192,7 @@ runAsynchronously(async () => {
       const tickStartedAt = performance.now();
       try {
         lastTickMillis = Math.max(Date.now(), lastTickMillis);
-        await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
+        await bulldozerDb.withSnapshotConsistent(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
       } catch (error) {
         logBulldozerService("tick-loop-error", {
           elapsedMs: performance.now() - tickStartedAt,

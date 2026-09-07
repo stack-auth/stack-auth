@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { declareInMemoryLowLevelDatabase } from "./in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./instant-availability.js";
 
 const textEncoder = new TextEncoder();
@@ -48,7 +49,7 @@ function createSlowSetDatabase() {
     async deleteAll() {
       throw new Error("not implemented");
     },
-    async compareAndSet() {
+    async compareAndSetAll() {
       throw new Error("not implemented");
     },
   };
@@ -74,6 +75,9 @@ function createSlowSetDatabase() {
       await seqToPromise.get(seq);
     },
     async waitUntilReplicated(seq) {
+      await seqToPromise.get(seq);
+    },
+    async waitUntilConsistent(seq) {
       await seqToPromise.get(seq);
     },
     combineSeqs(...seqs) {
@@ -135,24 +139,31 @@ function createReorderingSetDatabase() {
       const seq = ["reordering", crypto.randomUUID()] as unknown as DatabaseSeq;
       underlyingSeqs.push(seq);
       let resolveSet!: () => void;
-      const committedPromise = new Promise<void>(resolve => {
+      let rejectSet!: (error: unknown) => void;
+      const committedPromise = new Promise<void>((resolve, reject) => {
         resolveSet = resolve;
+        rejectSet = reject;
       });
       seqToPromise.set(seq, committedPromise);
+      const commit = () => {
+        for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
+        resolveSet();
+      };
       if (setCallCount === 1) {
         firstSetStartedResolve!();
-        await new Promise<void>(resolve => {
-          releaseFirstSet = resolve;
-        });
+        releaseFirstSet = commit;
+      } else {
+        const requiresSeq = setOptions?.requiresSeq ?? initialSeq;
+        const prerequisite = seqToPromise.get(requiresSeq);
+        if (prerequisite === undefined) throw new Error("Missing prerequisite sequence in reordering test backend");
+        prerequisite.then(commit, rejectSet).catch(rejectSet);
       }
-      for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
-      resolveSet();
       return { seq };
     },
     async deleteAll() {
       throw new Error("not implemented");
     },
-    async compareAndSet() {
+    async compareAndSetAll() {
       throw new Error("not implemented");
     },
   };
@@ -171,6 +182,9 @@ function createReorderingSetDatabase() {
       await seqToPromise.get(seq);
     },
     async waitUntilReplicated(seq) {
+      await seqToPromise.get(seq);
+    },
+    async waitUntilConsistent(seq) {
       await seqToPromise.get(seq);
     },
     combineSeqs(...seqs) {
@@ -206,7 +220,11 @@ function createDelayedSetImmediateInsertDatabase() {
     releaseSet = resolve;
   });
   const seqToPromise = new Map<DatabaseSeq, Promise<void>>([[initialSeq, Promise.resolve()]]);
+  let nextDumpKey = 0;
   const store: LowLevelKvStore & LowLevelKvDump = {
+    reserveKeys(count) {
+      return Array.from({ length: count }, () => buffer(`inserted-${nextDumpKey++}`));
+    },
     async get(key) {
       return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
     },
@@ -239,14 +257,14 @@ function createDelayedSetImmediateInsertDatabase() {
       return { seq };
     },
     async insertAll(values, options) {
-      const keys = values.map((_, index) => buffer(`inserted-${index}`));
+      const keys = options?.keys ?? store.reserveKeys(values.length);
       await seqToPromise.get(options?.requiresSeq ?? initialSeq);
       for (const [index, key] of keys.entries()) committed.set(text(key)!, values[index].slice(0));
       const seq = ["delayed-set", "insert"] as unknown as DatabaseSeq;
       seqToPromise.set(seq, Promise.resolve());
       return { keys, seq };
     },
-    async compareAndSet() {
+    async compareAndSetAll() {
       throw new Error("not implemented");
     },
   };
@@ -257,6 +275,7 @@ function createDelayedSetImmediateInsertDatabase() {
     waitUntilAvailable: async seq => await seqToPromise.get(seq),
     waitUntilDurable: async seq => await seqToPromise.get(seq),
     waitUntilReplicated: async seq => await seqToPromise.get(seq),
+    waitUntilConsistent: async seq => await seqToPromise.get(seq),
     combineSeqs: (...seqs) => seqs[seqs.length - 1] ?? initialSeq,
     close: async () => {},
     initialSeq,
@@ -317,7 +336,8 @@ describe("instant-availability low-level database", () => {
     await store.deleteAll([buffer("earlier")]);
     await delayed.waitForSetStarted();
 
-    const insert = store.insertAll([buffer("insert")]);
+    const reservedKeys = store.reserveKeys(1);
+    const insert = store.insertAll([buffer("insert")], { keys: reservedKeys });
     const listing = store.listEntries();
     let listed = false;
     const listedResult = listing.then(result => {
@@ -328,7 +348,7 @@ describe("instant-availability low-level database", () => {
     expect(listed).toBe(false);
 
     delayed.releaseSet();
-    await insert;
+    expect((await insert).keys).toEqual(reservedKeys);
     expect((await listedResult).entries.map(entry => [text(entry.key), text(entry.value)])).toEqual([["inserted-0", "insert"]]);
   });
 
@@ -402,31 +422,48 @@ describe("instant-availability low-level database", () => {
     await expect(store.setAll([{ key: buffer("late"), value: buffer("rejected") }])).rejects.toThrow("closing");
   });
 
-  it("only allows a single winner for concurrent compareAndSet on the same key", async () => {
-    const slow = createSlowSetDatabase();
-    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-test" });
+  it("only allows a single winner for concurrent compareAndSetAll on the same key", async () => {
+    const db = declareInstantAvailabilityLowLevelDatabase(
+      declareInMemoryLowLevelDatabase(crypto.randomUUID()),
+      { dbId: "instant-test" },
+    );
     const store = db.declareKvStore("store");
 
     // Seed the key so both racers observe the same starting value from the in-memory cache.
     await store.setAll([{ key: buffer("key"), value: buffer("start") }]);
 
-    // Launch both compare-and-sets concurrently. The read+compare must be gated together with
+    // Launch both one-entry compare-and-sets concurrently. The read+compare must be gated together with
     // the write, so exactly one of them may observe "start" and win — the other must lose.
     const [first, second] = await Promise.all([
-      store.compareAndSet(buffer("key"), buffer("start"), buffer("a")),
-      store.compareAndSet(buffer("key"), buffer("start"), buffer("b")),
+      store.compareAndSetAll([{ key: buffer("key"), compare: buffer("start"), value: buffer("a") }]),
+      store.compareAndSetAll([{ key: buffer("key"), compare: buffer("start"), value: buffer("b") }]),
     ]);
 
-    const winners = [first, second].filter(result => result.wasSet);
-    const losers = [first, second].filter(result => !result.wasSet);
+    const results = [first.results[0], second.results[0]];
+    const winners = results.filter(result => result.wasSet);
+    const losers = results.filter(result => !result.wasSet);
     expect(winners).toHaveLength(1);
     expect(losers).toHaveLength(1);
     expect(losers[0].seq).toBeNull();
-    // Only the winner's write should have reached the wrapped store (plus the seed set).
-    expect(slow.setCallCount()).toBe(2);
 
     // The stored value must reflect the single winner.
-    expect(text((await store.get(buffer("key"))).buffer)).toBe(first.wasSet ? "a" : "b");
+    expect(text((await store.get(buffer("key"))).buffer)).toBe(first.results[0].wasSet ? "a" : "b");
+  });
+
+  it("atomically compares against absence across instant-availability instances", async () => {
+    const underlying = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const first = declareInstantAvailabilityLowLevelDatabase(underlying, { dbId: "instant-first" });
+    const second = declareInstantAvailabilityLowLevelDatabase(underlying, { dbId: "instant-second" });
+    const firstStore = first.declareKvStore("store");
+    const secondStore = second.declareKvStore("store");
+
+    const [firstResult, secondResult] = await Promise.all([
+      firstStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("first") }]),
+      secondStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("second") }]),
+    ]);
+
+    expect([firstResult.results[0].wasSet, secondResult.results[0].wasSet].filter(Boolean)).toHaveLength(1);
+    expect(["first", "second"]).toContain(text((await underlying.declareKvStore("store").get(buffer("key"))).buffer));
   });
 
   it("preserves instant-seq order when a prior underlying write is delayed", async () => {

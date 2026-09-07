@@ -125,21 +125,97 @@ describe("LMDB low-level database", () => {
     }
   });
 
-  it("supports compareAndSet without advancing seq on failed comparisons", async () => {
+  it("drains in-flight reads before closing and rejects reads after close starts", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({
+      path,
+      dbId: "read-close",
+      simulateReadMissDelayMs: 25,
+    });
+    try {
+      const store = db.declareKvStore("store");
+      const write = await store.setAll([{ key: buffer("key"), value: buffer("value") }]);
+      await db.waitUntilDurable(write.seq);
+
+      const read = store.get(buffer("key"));
+      const closing = db.close();
+
+      await expect(store.get(buffer("key"))).rejects.toThrow("LMDB database is closing");
+      await expect(read).resolves.toMatchObject({ buffer: buffer("value") });
+      await expect(closing).resolves.toBeUndefined();
+    } finally {
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for all reads before surfacing a read failure from close", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({
+      path,
+      dbId: "read-close-rejection",
+      simulateReadMissDelayMs: 25,
+    });
+    try {
+      const store = db.declareKvStore("store");
+      const write = await store.setAll([{ key: buffer("key"), value: buffer("value") }]);
+      await db.waitUntilDurable(write.seq);
+
+      let pendingReadResolved = false;
+      const pendingRead = store.get(buffer("key")).then(result => {
+        pendingReadResolved = true;
+        return result;
+      });
+      const rejectedRead = store.listEntries({ limit: 0 });
+      const rejectedReadError = rejectedRead.then(() => null, error => error);
+      const closing = db.close();
+
+      await expect(closing).rejects.toThrow("KV store list limit must be a positive integer");
+      expect(pendingReadResolved).toBe(true);
+      await expect(pendingRead).resolves.toMatchObject({ buffer: buffer("value") });
+      expect(await rejectedReadError).toMatchObject({ message: "KV store list limit must be a positive integer" });
+    } finally {
+      await expect(db.close()).rejects.toThrow("KV store list limit must be a positive integer");
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("supports compareAndSetAll without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {
       const db = declareLmdbLowLevelDatabase({ path, dbId: "cas" });
       const store = db.declareKvStore("store");
       const first = await store.setAll([{ key: buffer("key"), value: buffer("old") }]);
-      const failed = await store.compareAndSet(buffer("key"), buffer("wrong"), buffer("new"));
-      expect(failed).toEqual({ wasSet: false, seq: null });
+      const failed = await store.compareAndSetAll([{ key: buffer("key"), compare: buffer("wrong"), value: buffer("new") }]);
+      expect(failed.results).toEqual([{ wasSet: false, seq: null }]);
+      expect(failed.seq).toBe(db.initialSeq);
       expect(text((await store.get(buffer("key"))).buffer)).toBe("old");
 
-      const succeeded = await store.compareAndSet(buffer("key"), buffer("old"), buffer("new"), { requiresSeq: first.seq });
-      expect(succeeded.wasSet).toBe(true);
-      if (succeeded.seq) await db.waitUntilReplicated(succeeded.seq);
+      const succeeded = await store.compareAndSetAll([{ key: buffer("key"), compare: buffer("old"), value: buffer("new") }], { requiresSeq: first.seq });
+      expect(succeeded.results).toEqual([{ wasSet: true, seq: succeeded.seq }]);
+      await db.waitUntilConsistent(succeeded.seq);
       expect(text((await store.get(buffer("key"))).buffer)).toBe("new");
     } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("atomically compares against a missing key across database instances", async () => {
+    const path = await tempLmdbPath();
+    const first = declareLmdbLowLevelDatabase({ path, dbId: "cas-missing" });
+    const second = declareLmdbLowLevelDatabase({ path, dbId: "cas-missing" });
+    try {
+      const firstStore = first.declareKvStore("store");
+      const secondStore = second.declareKvStore("store");
+      const [firstResult, secondResult] = await Promise.all([
+        firstStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("first") }]),
+        secondStore.compareAndSetAll([{ key: buffer("key"), compare: null, value: buffer("second") }]),
+      ]);
+
+      expect([firstResult.results[0].wasSet, secondResult.results[0].wasSet].filter(Boolean)).toHaveLength(1);
+      expect(["first", "second"]).toContain(text((await firstStore.get(buffer("key"))).buffer));
+    } finally {
+      await Promise.all([first.close(), second.close()]);
       await rm(path, { recursive: true, force: true });
     }
   });
@@ -266,11 +342,14 @@ describe("LMDB low-level database", () => {
       expect(text((await store.get(buffer("a"))).buffer)).toBe(null);
       expect(text((await store.get(buffer("b"))).buffer)).toBe(null);
 
-      const inserted = await dump.insertAll([buffer("first"), buffer("second")]);
+      const reservedKeys = dump.reserveKeys(2);
+      const inserted = await dump.insertAll([buffer("first"), buffer("second")], { keys: reservedKeys });
       await db.waitUntilAvailable(inserted.seq);
-      expect(inserted.keys).toHaveLength(2);
+      expect(inserted.keys).toEqual(reservedKeys);
       expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
       expect(text((await dump.get(inserted.keys[1])).buffer)).toBe("second");
+      await expect(dump.insertAll([buffer("missing-key")], { keys: [] })).rejects.toThrow("exactly one key per value");
+      expect(() => dump.reserveKeys(-1)).toThrow("non-negative safe integer");
     } finally {
       await rm(path, { recursive: true, force: true });
     }
