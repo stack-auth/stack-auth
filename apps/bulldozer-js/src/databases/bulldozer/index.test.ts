@@ -269,6 +269,49 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     ]);
   });
 
+  it("orders and paginates concat groups using the shared input ordering", async () => {
+    const compareGroupKeys = (a: PiledriverObject, b: PiledriverObject) => stringCompare(JSON.stringify(a), JSON.stringify(b));
+    const groupBy = declareGroupByTable({
+      groupKeyExtractor: async row => Number(row.rowData),
+      groupKeyComparator: compareGroupKeys,
+    });
+    let snapshot = await initializedSnapshot(backend, [[
+      { type: "initTable", tableId: "storeA", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "storeB", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "groupsA", table: groupBy, inputTables: { input: "storeA" } },
+      { type: "initTable", tableId: "groupsB", table: groupBy, inputTables: { input: "storeB" } },
+      { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "groupsA", b: "groupsB" } },
+    ]]);
+
+    snapshot = await set(snapshot, "storeA", "a1", 1);
+    snapshot = await set(snapshot, "storeA", "a3", 3);
+    snapshot = await set(snapshot, "storeA", "a4", 4);
+    snapshot = await set(snapshot, "storeB", "b2", 2);
+    snapshot = await set(snapshot, "storeB", "b4", 4);
+
+    const listGroups = async (range: Record<string, PiledriverObject> = {}) =>
+      await collect(snapshot.listGroups({ tableId: "concat", range }));
+    const lastGroupKey = (groups: { groupKey: PiledriverObject }[]) => {
+      const group = groups.at(-1);
+      if (group === undefined) throw new Error("Expected a non-empty group page");
+      return group.groupKey;
+    };
+    const full = await listGroups();
+    expect(full).toEqual([{ groupKey: 1 }, { groupKey: 2 }, { groupKey: 3 }, { groupKey: 4 }]);
+    expect(full.filter(group => group.groupKey === 4)).toHaveLength(1);
+    expect(await listGroups({ limit: 3 })).toEqual(full.slice(0, 3));
+
+    const firstPage = await listGroups({ limit: 2 });
+    const secondPage = await listGroups({ gt: lastGroupKey(firstPage), limit: 2 });
+    expect([...firstPage, ...secondPage]).toEqual(full);
+
+    const reverseFull = await listGroups({ reverse: true });
+    expect(reverseFull).toEqual([...full].reverse());
+    const reverseFirstPage = await listGroups({ reverse: true, limit: 2 });
+    const reverseSecondPage = await listGroups({ reverse: true, lt: lastGroupKey(reverseFirstPage), limit: 2 });
+    expect([...reverseFirstPage, ...reverseSecondPage]).toEqual(reverseFull);
+  });
+
   it("left joins rows by derived keys and updates when either side changes", async () => {
     const join = declareLeftJoinTable({
       leftJoinKeyExtractor: async row => (row.rowData as { key: string }).key,
