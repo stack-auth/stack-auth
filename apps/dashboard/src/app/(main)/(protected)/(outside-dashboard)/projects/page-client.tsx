@@ -14,6 +14,7 @@ import { isPaidPlan } from "@hexclave/shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { groupBy } from "@hexclave/shared/dist/utils/arrays";
 import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { ReadonlyJson } from "@hexclave/shared/dist/utils/json";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useQueryState } from "@hexclave/shared/dist/utils/react";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -61,11 +62,17 @@ function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingSt
   return typeof value === "string" && PROJECT_ONBOARDING_STATUSES.some((status) => status === value);
 }
 
-function getClientMetadataWithNewDashboardPreference(clientMetadata: unknown) {
+type ReadonlyJsonObject = { readonly [key: string]: ReadonlyJson };
+
+function isReadonlyJsonObject(value: ReadonlyJson): value is ReadonlyJsonObject {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function getClientMetadataWithNewDashboardPreference(clientMetadata: ReadonlyJson | undefined): ReadonlyJsonObject {
   if (clientMetadata == null) {
     return { prefersNewDashboard: true };
   }
-  if (typeof clientMetadata !== "object" || Array.isArray(clientMetadata)) {
+  if (!isReadonlyJsonObject(clientMetadata)) {
     throw new Error("The current user's client metadata must be a JSON object before setting the dashboard preference.");
   }
   return {
@@ -75,8 +82,8 @@ function getClientMetadataWithNewDashboardPreference(clientMetadata: unknown) {
 }
 
 async function setNewDashboardPreference(
-  clientMetadata: unknown,
-  updateClientMetadata: (clientMetadata: object) => Promise<void>,
+  clientMetadata: ReadonlyJson | undefined,
+  updateClientMetadata: (clientMetadata: ReadonlyJsonObject) => Promise<void>,
 ) {
   await updateClientMetadata(getClientMetadataWithNewDashboardPreference(clientMetadata));
 }
