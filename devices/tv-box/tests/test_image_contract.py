@@ -22,6 +22,7 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("--health-file=", launcher)
         self.assertNotIn("--remote-debugging", launcher)
         supervisor = (ROOT / "src/hexclave_tv_box/kiosk_supervisor.py").read_text(encoding="utf-8")
+        self.assertIn('"--platform=wl"', supervisor)
         self.assertIn('"--webprocess-failure=exit"', supervisor)
         self.assertIn('"--enable-write-console-messages-to-stdout=false"', supervisor)
         self.assertNotIn("--remote-debugging", supervisor)
@@ -32,7 +33,12 @@ class ImageContractTests(unittest.TestCase):
         kiosk = (ROOTFS / "etc/systemd/system/hexclave-tv-box-kiosk.service").read_text(encoding="utf-8")
         self.assertIn("Restart=always", kiosk)
         self.assertIn("StartLimitAction=reboot", kiosk)
-        self.assertIn("RuntimeDirectory=hexclave-tv-box-browser-cache", kiosk)
+        self.assertIn("RuntimeDirectory=hexclave-tv-box-wayland hexclave-tv-box-browser-cache", kiosk)
+        self.assertIn("Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland", kiosk)
+        self.assertIn(
+            "ReadWritePaths=/run/hexclave-tv-box-wayland /run/hexclave-tv-box-browser-cache",
+            kiosk,
+        )
         self.assertIn("Conflicts=getty@tty1.service hexclave-tv-box-setup-display.service", kiosk)
         self.assertIn("Wants=dbus.socket systemd-logind.service", kiosk)
         self.assertIn("StandardInput=tty-fail", kiosk)
@@ -226,7 +232,12 @@ class ImageContractTests(unittest.TestCase):
                         if path == "etc/hexclave-tv-box-release"
                         else "hexclave_tv_box.kiosk_supervisor\n"
                         if path == "usr/lib/hexclave-tv-box/kiosk-launch"
-                        else "Environment=WLR_LIBINPUT_NO_DEVICES=1\n"
+                        else '"--platform=wl"\n'
+                        if path == "usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py"
+                        else (
+                            "Environment=WLR_LIBINPUT_NO_DEVICES=1\n"
+                            "Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland\n"
+                        )
                         if path == "etc/systemd/system/hexclave-tv-box-kiosk.service"
                         else "fixture\n"
                     ),

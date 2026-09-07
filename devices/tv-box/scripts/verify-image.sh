@@ -22,8 +22,16 @@ grep -qxF 'Environment=WLR_LIBINPUT_NO_DEVICES=1' "$rootfs/etc/systemd/system/he
   printf '%s\n' 'Image kiosk does not declare no-input Cage operation.' >&2
   exit 1
 }
+grep -qxF 'Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland' "$rootfs/etc/systemd/system/hexclave-tv-box-kiosk.service" || {
+  printf '%s\n' 'Image kiosk does not declare its private Wayland runtime directory.' >&2
+  exit 1
+}
 grep -qF 'hexclave_tv_box.kiosk_supervisor' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
   printf '%s\n' 'Image kiosk does not launch the renderer supervisor.' >&2
+  exit 1
+}
+grep -qF '"--platform=wl"' "$rootfs/usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py" || {
+  printf '%s\n' 'Image kiosk does not pin Cog to the Cage Wayland platform.' >&2
   exit 1
 }
 if find "$rootfs/usr/lib/python3/dist-packages/hexclave_tv_box" -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -quit | grep -q .; then

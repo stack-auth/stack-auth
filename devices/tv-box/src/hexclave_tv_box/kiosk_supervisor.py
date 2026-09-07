@@ -229,6 +229,7 @@ def main() -> None:
             "/usr/bin/cage",
             "--",
             "/usr/bin/cog",
+            "--platform=wl",
             f"--cookie-jar=sqlite:{arguments.cookie_jar}",
             "--webprocess-failure=exit",
             "--enable-write-console-messages-to-stdout=false",

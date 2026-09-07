@@ -25,11 +25,14 @@ UtmpMode=user
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
-RuntimeDirectory=hexclave-tv-box-browser-cache
+RuntimeDirectory=hexclave-tv-box-wayland hexclave-tv-box-browser-cache
 RuntimeDirectoryMode=0700
 # A shipped TV Box deliberately has no keyboard or mouse. Cage otherwise
 # waits for a libinput device instead of launching its single Cog client.
 Environment=WLR_LIBINPUT_NO_DEVICES=1
+# Do not rely on an implicit PAM environment for the compositor socket. Cage
+# and Cog both require the same private, writable Wayland runtime directory.
+Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/lib/hexclave-tv-box/kiosk-launch
 ExecStartPost=+/usr/bin/chvt 1
@@ -43,7 +46,7 @@ PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
 ReadOnlyPaths=/run/hexclave-tv-box
-ReadWritePaths=/run/hexclave-tv-box-browser-cache /var/lib/hexclave-tv-box/browser
+ReadWritePaths=/run/hexclave-tv-box-wayland /run/hexclave-tv-box-browser-cache /var/lib/hexclave-tv-box/browser
 
 [Install]
 WantedBy=multi-user.target
