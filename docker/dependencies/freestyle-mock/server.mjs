@@ -37,6 +37,22 @@ if (
   throw new Error("HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT must be an integer from 1 to 32");
 }
 const MAX_JOBS_PER_RUNTIME = 50;
+const MAX_JOBS_PER_RESIDENT_RUNNER = 200;
+const configuredMaxResidentRunners =
+  process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_RESIDENT_RUNNERS;
+const MAX_RESIDENT_RUNNERS_PER_RUNTIME =
+  configuredMaxResidentRunners == null
+    ? 4
+    : Number(configuredMaxResidentRunners);
+if (
+  !Number.isInteger(MAX_RESIDENT_RUNNERS_PER_RUNTIME) ||
+  MAX_RESIDENT_RUNNERS_PER_RUNTIME < 1 ||
+  MAX_RESIDENT_RUNNERS_PER_RUNTIME > 16
+) {
+  throw new Error(
+    "HEXCLAVE_FREESTYLE_MOCK_MAX_RESIDENT_RUNNERS must be an integer from 1 to 16",
+  );
+}
 const DEFAULT_MAX_NON_DEFAULT_RUNTIMES = 3;
 const configuredMaxNonDefaultRuntimes =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_NON_DEFAULT_RUNTIMES;
@@ -79,6 +95,11 @@ const MODULE_CACHE_DIR =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MODULE_CACHE_DIR || "/app/module-cache";
 const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
 const USER_MODULE_DIR = "/tmp/freestyle-jobs";
+const RESULT_PREFIX = `__HEXCLAVE_MOCK_RESULT_${randomUUID()}__`;
+const RESIDENT_RUNNER_READY_PREFIX =
+  `__HEXCLAVE_MOCK_RESIDENT_READY_${randomUUID()}__`;
+const RESIDENT_RUNNER_RESULT_PREFIX =
+  `__HEXCLAVE_MOCK_RESIDENT_RESULT_${randomUUID()}__`;
 const BRIDGE_ENABLED =
   process.env.HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED === "true";
 const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81";
@@ -224,13 +245,25 @@ function isDeadRuntimeError(error) {
   }
   const message = formatError(error).toLowerCase();
   return (
-    message.includes("resident runner exited before completing request") ||
-    message.includes("resident runner is not running") ||
     message.includes("sidecar protocol stream ended") ||
     message.includes("sidecar exited with code") ||
     message.includes("unknown sidecar vm") ||
     message.includes("no such process")
   );
+}
+
+function isDeadRunnerError(error) {
+  const message = formatError(error).toLowerCase();
+  return (
+    message.includes("resident runner exited before completing request") ||
+    message.includes("resident runner is not running")
+  );
+}
+
+function isResidentRunnerTimeout(error) {
+  return formatError(error)
+    .toLowerCase()
+    .includes("resident runner timed out after");
 }
 
 // @secure-exec/core has a fire-and-forget proc.kill() path without a catch for
@@ -690,6 +723,10 @@ class RuntimeCache {
       lastUsed: performance.now(),
       retiring: false,
       disposePromise: null,
+      idleRunners: [],
+      runnerCount: 0,
+      runnerWaiters: [],
+      runners: new Set(),
     };
     this.entries.set(dependency.hash, entry);
     return entry;
@@ -703,6 +740,7 @@ class RuntimeCache {
     if (entry.disposePromise) return;
     entry.disposePromise = (async () => {
       try {
+        await this.disposeRunners(entry);
         await entry.runtime.dispose();
       } catch (error) {
         logInternalError("dispose detached runtime", error);
@@ -714,6 +752,23 @@ class RuntimeCache {
         }
       }
     })();
+  }
+
+  async disposeRunners(entry) {
+    entry.idleRunners = [];
+    entry.runnerCount = 0;
+    for (const waiter of entry.runnerWaiters.splice(0)) {
+      waiter.resolve();
+    }
+    const runners = [...entry.runners];
+    entry.runners.clear();
+    await Promise.all(
+      runners.map((runner) =>
+        runner.dispose().catch((error) => {
+          logInternalError("dispose resident runner", error);
+        }),
+      ),
+    );
   }
 
   detach(entry) {
@@ -748,6 +803,7 @@ class RuntimeCache {
     if (!candidate) return false;
     this.entries.delete(candidate.hash);
     try {
+      await this.disposeRunners(candidate);
       await candidate.runtime.dispose();
     } catch (error) {
       logInternalError("dispose evicted runtime", error);
@@ -770,6 +826,63 @@ class RuntimeCache {
 
   retire(entry) {
     this.detach(entry);
+  }
+
+  // Every one-shot job pays roughly 1.4s to start a guest process and load
+  // react-email/tailwind. Resident processes trade per-job module-state
+  // isolation for speed; this mock is used by development and CI only, while
+  // production uses real Freestyle VMs.
+  async acquireRunner(entry, signal) {
+    for (;;) {
+      const runner = entry.idleRunners.pop();
+      if (runner) return runner;
+      if (entry.runnerCount < MAX_RESIDENT_RUNNERS_PER_RUNTIME) {
+        entry.runnerCount++;
+        try {
+          const created = await PersistentResidentRunner.create(entry.runtime);
+          created.jobsHandled = 0;
+          entry.runners.add(created);
+          return created;
+        } catch (error) {
+          entry.runnerCount--;
+          const waiter = entry.runnerWaiters.shift();
+          waiter?.resolve();
+          throw error;
+        }
+      }
+      const waiter = {};
+      const waiterPromise = new Promise((resolve) => {
+        waiter.resolve = resolve;
+        entry.runnerWaiters.push(waiter);
+      });
+      try {
+        return await awaitAbort(waiterPromise, signal);
+      } catch (error) {
+        const index = entry.runnerWaiters.indexOf(waiter);
+        if (index >= 0) entry.runnerWaiters.splice(index, 1);
+        throw error;
+      }
+    }
+  }
+
+  async releaseRunner(entry, runner, { healthy }) {
+    if (
+      healthy &&
+      !entry.retiring &&
+      runner.jobsHandled < MAX_JOBS_PER_RESIDENT_RUNNER
+    ) {
+      const waiter = entry.runnerWaiters.shift();
+      if (waiter) waiter.resolve(runner);
+      else entry.idleRunners.push(runner);
+      return;
+    }
+    entry.runners.delete(runner);
+    entry.runnerCount--;
+    await runner.dispose().catch((error) => {
+      logInternalError("dispose resident runner", error);
+    });
+    const waiter = entry.runnerWaiters.shift();
+    waiter?.resolve();
   }
 
   hasSingleDrainingGeneration(hash) {
@@ -1031,59 +1144,73 @@ Object.defineProperty(globalThis, "fetch", {
 `
     : "";
   return `
-const logs = [];
-const MAX_LOG_ENTRIES = 1000;
-const MAX_LOG_MESSAGE_BYTES = 64 * 1024;
-let logBytes = 0;
-const inspectValue = (value) => {
-  try {
-    return JSON.stringify(value, (_, nested) =>
-      typeof nested === "bigint" ? nested.toString() + "n" : nested,
-    ) ?? String(value);
-  } catch {
-    try { return Object.prototype.toString.call(value); } catch { return "<uninspectable>"; }
-  }
-};
-// Guest code can forge or suppress these logs; they are untrusted data.
-for (const type of ["log", "info", "warn", "error", "debug"]) {
-  const original = console[type];
-  console[type] = (...args) => {
-    if (logs.length < MAX_LOG_ENTRIES) {
-      const values = [];
-      for (const arg of args) values.push(inspectValue(arg));
-      let message = values.join(" ");
-      const encoder = new TextEncoder();
-      let encoded = encoder.encode(message);
-      if (encoded.byteLength > MAX_LOG_MESSAGE_BYTES) {
-        const marker = " [log truncated]";
-        const budget = MAX_LOG_MESSAGE_BYTES - encoder.encode(marker).byteLength;
-        let truncated = new TextDecoder().decode(encoded.subarray(0, budget));
-        while (encoder.encode(truncated).byteLength > budget) {
-          truncated = truncated.slice(0, -1);
-        }
-        message = truncated + marker;
-        encoded = encoder.encode(message);
-      }
-      const messageBytes = encoded.byteLength;
-      if (logBytes + messageBytes <= ${MAX_RESULT_BYTES}) {
-        logs.push({ message, type });
-        logBytes += messageBytes;
-      }
-    }
-    original(...args);
+if (!globalThis.__hexclaveMockPrelude) {
+  const prelude = {
+    logs: [],
+    logBytes: 0,
   };
-}
+  const MAX_LOG_ENTRIES = 1000;
+  const MAX_LOG_MESSAGE_BYTES = 64 * 1024;
+  const inspectValue = (value) => {
+    try {
+      return JSON.stringify(value, (_, nested) =>
+        typeof nested === "bigint" ? nested.toString() + "n" : nested,
+      ) ?? String(value);
+    } catch {
+      try { return Object.prototype.toString.call(value); } catch { return "<uninspectable>"; }
+    }
+  };
+  // Guest code can forge or suppress these logs; they are untrusted data.
+  for (const type of ["log", "info", "warn", "error", "debug"]) {
+    const original = console[type];
+    console[type] = (...args) => {
+      if (globalThis.__hexclaveMockPrelude.logs.length < MAX_LOG_ENTRIES) {
+        const values = [];
+        for (const arg of args) values.push(inspectValue(arg));
+        let message = values.join(" ");
+        const encoder = new TextEncoder();
+        let encoded = encoder.encode(message);
+        if (encoded.byteLength > MAX_LOG_MESSAGE_BYTES) {
+          const marker = " [log truncated]";
+          const budget = MAX_LOG_MESSAGE_BYTES - encoder.encode(marker).byteLength;
+          let truncated = new TextDecoder().decode(encoded.subarray(0, budget));
+          while (encoder.encode(truncated).byteLength > budget) {
+            truncated = truncated.slice(0, -1);
+          }
+          message = truncated + marker;
+          encoded = encoder.encode(message);
+        }
+        const messageBytes = encoded.byteLength;
+        if (
+          globalThis.__hexclaveMockPrelude.logBytes + messageBytes <=
+          ${MAX_RESULT_BYTES}
+        ) {
+          globalThis.__hexclaveMockPrelude.logs.push({ message, type });
+          globalThis.__hexclaveMockPrelude.logBytes += messageBytes;
+        }
+      }
+      original(...args);
+    };
+  }
 ${bridgeSource}
+  globalThis.__hexclaveMockPrelude = prelude;
+}
+globalThis.__hexclaveMockPrelude.logs = [];
+globalThis.__hexclaveMockPrelude.logBytes = 0;
 try {
   const userModule = await import(${JSON.stringify(userModulePath)});
   const exported = userModule.default ?? userModule;
   const result = await (typeof exported === "function" ? exported() : exported);
-  globalThis.__return({ status: "ok", result, logs });
+  globalThis.__return({
+    status: "ok",
+    result,
+    logs: globalThis.__hexclaveMockPrelude.logs,
+  });
 } catch (error) {
   globalThis.__return({
     status: "error",
     error: error?.message || String(error),
-    logs,
+    logs: globalThis.__hexclaveMockPrelude.logs,
   });
 } finally {
   try {
@@ -1092,6 +1219,208 @@ try {
   } catch {}
 }
 `;
+}
+
+function makeRuntimePrelude() {
+  const wrapper = makeWrapper("/unused/user.mjs", "/unused");
+  const bodyMarker = "\ntry {\n";
+  const bodyIndex = wrapper.indexOf(bodyMarker);
+  if (bodyIndex < 0) {
+    throw new Error("Runtime prelude marker is missing");
+  }
+  return wrapper.slice(0, bodyIndex);
+}
+
+function makeResidentJobModule(userModulePath, userModuleDir) {
+  return `
+${makeRuntimePrelude()}
+globalThis.__hexclaveMockPrelude.logs = [];
+globalThis.__hexclaveMockPrelude.logBytes = 0;
+const emit = (payload) =>
+  process.stdout.write(
+    ${JSON.stringify(RESULT_PREFIX)} + JSON.stringify(payload) + "\\n",
+  );
+try {
+  const userModule = await import(${JSON.stringify(userModulePath)});
+  const exported = userModule.default ?? userModule;
+  const result = await (typeof exported === "function" ? exported() : exported);
+  emit({
+    status: "ok",
+    result,
+    logs: globalThis.__hexclaveMockPrelude.logs,
+  });
+} catch (error) {
+  emit({
+    status: "error",
+    error: error?.message || String(error),
+    logs: globalThis.__hexclaveMockPrelude.logs,
+  });
+} finally {
+  try {
+    const fs = process.getBuiltinModule("node:fs/promises");
+    await fs.rm(${JSON.stringify(userModuleDir)}, { recursive: true, force: true });
+  } catch {}
+}
+`;
+}
+
+const RESIDENT_RUNNER_SOURCE = `
+import { createInterface } from "node:readline";
+
+const readyPrefix = ${JSON.stringify(RESIDENT_RUNNER_READY_PREFIX)};
+const resultPrefix = ${JSON.stringify(RESIDENT_RUNNER_RESULT_PREFIX)};
+const fs = process.getBuiltinModule("node:fs/promises");
+
+process.stdout.write(readyPrefix + "\\n");
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+for await (const line of rl) {
+  let request;
+  try {
+    request = JSON.parse(line);
+    await import(request.path);
+    await fs.rm(request.path, { force: true });
+    process.stdout.write(
+      resultPrefix +
+        JSON.stringify({ id: request.id, exitCode: 0, stderr: "" }) +
+        "\\n",
+    );
+  } catch (error) {
+    if (request?.path) {
+      await fs.rm(request.path, { force: true }).catch(() => {});
+    }
+    process.stdout.write(
+      resultPrefix +
+        JSON.stringify({
+          id: request?.id,
+          exitCode: 1,
+          stderr: error instanceof Error ? error.stack || error.message : String(error),
+        }) +
+        "\\n",
+    );
+  }
+}
+`;
+
+class PersistentResidentRunner {
+  constructor(runtime) {
+    this.runtime = runtime;
+    this.process = null;
+    this.stdoutBuffer = "";
+    this.active = null;
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+  }
+
+  static async create(runtime) {
+    const runner = new PersistentResidentRunner(runtime);
+    runner.process = await runtime.spawn(RESIDENT_RUNNER_SOURCE, {
+      onStdout: (chunk) => runner.handleStdout(chunk),
+      onStderr: (chunk) => runner.handleStderr(chunk),
+    });
+    runner.process.wait().then(
+      (exitCode) => {
+        const error = new Error(
+          `resident runner exited before completing request: ${exitCode}`,
+        );
+        runner.rejectReady(error);
+        runner.active?.reject(error);
+        runner.active = null;
+      },
+      (error) => {
+        const normalized =
+          error instanceof Error ? error : new Error(String(error));
+        runner.rejectReady(normalized);
+        runner.active?.reject(normalized);
+        runner.active = null;
+      },
+    );
+    await runner.readyPromise;
+    return runner;
+  }
+
+  async exec(code, { timeout } = {}) {
+    await this.readyPromise;
+    if (!this.process) {
+      throw new Error("resident runner is not running");
+    }
+    if (this.active) {
+      throw new Error("resident runner supports one in-flight exec");
+    }
+    const id = randomUUID();
+    const path = `/tmp/freestyle-resident-jobs/${id}.mjs`;
+    await this.runtime.writeFile(path, code);
+    const process = this.process;
+    return new Promise((resolve, reject) => {
+      const active = {
+        id,
+        stdout: [],
+        stderr: [],
+        resolve,
+        reject,
+        timer: undefined,
+      };
+      if (timeout !== undefined) {
+        active.timer = setTimeout(() => {
+          process.kill("SIGKILL");
+          this.active = null;
+          reject(new Error(`resident runner timed out after ${timeout}ms`));
+        }, timeout);
+      }
+      this.active = active;
+      process.writeStdin(`${JSON.stringify({ id, path })}\n`);
+    });
+  }
+
+  async dispose() {
+    const process = this.process;
+    this.process = null;
+    this.active = null;
+    if (!process) return;
+    process.kill("SIGTERM");
+    await process.wait().catch(() => {});
+  }
+
+  handleStdout(chunk) {
+    this.stdoutBuffer += new TextDecoder().decode(chunk);
+    for (;;) {
+      const newlineIndex = this.stdoutBuffer.indexOf("\n");
+      if (newlineIndex < 0) return;
+      const line = this.stdoutBuffer.slice(0, newlineIndex);
+      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
+      if (line === RESIDENT_RUNNER_READY_PREFIX) {
+        this.resolveReady();
+        continue;
+      }
+      if (!line.startsWith(RESIDENT_RUNNER_RESULT_PREFIX)) {
+        this.active?.stdout.push(`${line}\n`);
+        continue;
+      }
+      const active = this.active;
+      if (!active) continue;
+      let result;
+      try {
+        result = JSON.parse(line.slice(RESIDENT_RUNNER_RESULT_PREFIX.length));
+      } catch (error) {
+        active.reject(error);
+        this.active = null;
+        continue;
+      }
+      if (result.id !== active.id) continue;
+      clearTimeout(active.timer);
+      this.active = null;
+      active.resolve({
+        stdout: active.stdout.join(""),
+        stderr: active.stderr.join("") + result.stderr,
+        exitCode: result.exitCode,
+      });
+    }
+  }
+
+  handleStderr(chunk) {
+    this.active?.stderr.push(new TextDecoder().decode(chunk));
+  }
 }
 
 async function hostFetch(input) {
@@ -1167,53 +1496,140 @@ async function cleanupGuestFiles(runtime, userModuleDir) {
   return null;
 }
 
-async function executeScript(runtime, job) {
+async function executeScript(entry, job) {
+  const runtime = entry.runtime;
   const userModuleDir = `${USER_MODULE_DIR}/${randomUUID()}`;
   const userModulePath = `${userModuleDir}/user.mjs`;
   await runtime.writeFile(userModulePath, job.script);
-  let result;
+  const failed = () => ({
+    statusCode: 500,
+    payload: {
+      error: "Script execution failed",
+      logs: logsFromOutput(job.output),
+    },
+  });
+  const envVars = job.config.envVars || {};
+  if (Object.keys(envVars).length > 0) {
+    let result;
+    try {
+      result = await runtime.run(makeWrapper(userModulePath, userModuleDir), {
+        env: envVars,
+        timeout: job.timeoutMs,
+        signal: job.controller.signal,
+        onStdout: (chunk) => appendOutput(job.output, "stdout", chunk),
+        onStderr: (chunk) => appendOutput(job.output, "stderr", chunk),
+      });
+    } catch (error) {
+      logInternalError("secure-exec execution", error);
+      if (isDeadRuntimeError(error)) throw error;
+      return failed();
+    } finally {
+      job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
+    }
+    if (result.exitCode !== 0 || result.value === undefined) {
+      logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
+      return failed();
+    }
+    if (result.value.status === "error") {
+      return {
+        statusCode: 500,
+        payload: { error: result.value.error, logs: result.value.logs },
+      };
+    }
+    return {
+      statusCode: 200,
+      payload: {
+        result: truncateResult(result.value.result),
+        logs: result.value.logs,
+      },
+    };
+  }
+
+  job.resident = true;
+  let runner;
   try {
-    result = await runtime.run(makeWrapper(userModulePath, userModuleDir), {
-      env: job.config.envVars || {},
-      timeout: job.timeoutMs,
-      signal: job.controller.signal,
-      onStdout: (chunk) => appendOutput(job.output, "stdout", chunk),
-      onStderr: (chunk) => appendOutput(job.output, "stderr", chunk),
-    });
+    runner = await runtimeCache.acquireRunner(entry, job.controller.signal);
   } catch (error) {
-    logInternalError("secure-exec execution", error);
-    if (isDeadRuntimeError(error)) throw error;
-    return {
-      statusCode: 500,
-      payload: {
-        error: "Script execution failed",
-        logs: logsFromOutput(job.output),
-      },
-    };
-  } finally {
     job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
+    if (isDeadRuntimeError(error)) throw error;
+    return failed();
   }
-  if (result.exitCode !== 0 || result.value === undefined) {
-    logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
+  job.runner = runner;
+  let result;
+  let payload;
+  let payloadParsed = false;
+  const onAbort = () => {
+    runner.dispose().catch((error) => {
+      logInternalError("dispose aborted resident runner", error);
+    });
+  };
+  job.controller.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    result = await runner.exec(
+      makeResidentJobModule(userModulePath, userModuleDir),
+      { timeout: job.timeoutMs },
+    );
+  } catch (error) {
+    logInternalError("secure-exec resident execution", error);
+    await runtimeCache.releaseRunner(entry, runner, { healthy: false });
+    job.runner = null;
+    job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
+    if (isDeadRuntimeError(error) && !isDeadRunnerError(error)) throw error;
+    if (isResidentRunnerTimeout(error)) {
+      return {
+        statusCode: 500,
+        payload: {
+          error: "Script execution timed out",
+          logs: logsFromOutput(job.output),
+        },
+      };
+    }
+    return failed();
+  } finally {
+    job.controller.signal.removeEventListener("abort", onAbort);
+  }
+
+  const stdoutLines = result.stdout.split(/\r?\n/);
+  for (const [index, line] of stdoutLines.entries()) {
+    if (line.startsWith(RESULT_PREFIX)) {
+      if (payloadParsed) {
+        payloadParsed = false;
+        payload = undefined;
+        break;
+      }
+      try {
+        payload = JSON.parse(line.slice(RESULT_PREFIX.length));
+        payloadParsed =
+          payload !== null && typeof payload === "object";
+      } catch (error) {
+        logInternalError("parse resident result", error);
+      }
+    } else if (index < stdoutLines.length - 1 || line !== "") {
+      appendOutputText(job.output, "stdout", line + "\n");
+    }
+  }
+  appendOutputText(job.output, "stderr", result.stderr);
+
+  const healthy = result.exitCode === 0 && payloadParsed;
+  runner.jobsHandled++;
+  await runtimeCache.releaseRunner(entry, runner, { healthy });
+  job.runner = null;
+  if (!healthy) {
+    logInternalError("secure-exec resident nonzero exit", result.exitCode);
+    job.cleanupError = await cleanupGuestFiles(runtime, userModuleDir);
+    return failed();
+  }
+  if (payload.status === "error") {
     return {
       statusCode: 500,
-      payload: {
-        error: "Script execution failed",
-        logs: logsFromOutput(job.output),
-      },
-    };
-  }
-  if (result.value.status === "error") {
-    return {
-      statusCode: 500,
-      payload: { error: result.value.error, logs: result.value.logs },
+      payload: { error: payload.error, logs: payload.logs },
     };
   }
   return {
     statusCode: 200,
     payload: {
-      result: truncateResult(result.value.result),
-      logs: result.value.logs,
+      result: truncateResult(payload.result),
+      logs: payload.logs,
     },
   };
 }
@@ -1236,6 +1652,8 @@ class JobQueue {
         controller: new AbortController(),
         output: createOutput(),
         entry: null,
+        runner: null,
+        resident: false,
         cleanupError: null,
         timer: null,
         settled: false,
@@ -1271,7 +1689,13 @@ class JobQueue {
 
   armExecutionTimeout(job) {
     job.timer = setTimeout(() => {
-      if (job.entry) this.runtimeCache.retire(job.entry);
+      if (job.runner) {
+        job.runner.dispose().catch((error) => {
+          logInternalError("dispose timed-out resident runner", error);
+        });
+      } else if (!job.resident && job.entry) {
+        this.runtimeCache.retire(job.entry);
+      }
       job.controller.abort(new Error("Execution timed out"));
       this.settle(job, {
         statusCode: 500,
@@ -1328,7 +1752,7 @@ class JobQueue {
       job.entry = entry;
       if (job.timer) clearTimeout(job.timer);
       this.armExecutionTimeout(job);
-      return await executeScript(entry.runtime, job);
+      return await executeScript(entry, job);
     } catch (error) {
       executionError = error;
       throw error;
@@ -1420,4 +1844,26 @@ server.listen(PORT, () => {
       BRIDGE_ENABLED ? BRIDGED_ORIGINS.join(",") : "disabled"
     })`,
   );
+  const warmupStartedAt = performance.now();
+  jobQueue
+    .submit(
+      `export default async () => {
+        await import("@react-email/components");
+        await import("react-dom/server");
+        return true;
+      }`,
+      { nodeModules: {} },
+      DEFAULT_TIMEOUT_MS,
+    )
+    .then((result) => {
+      if (result.statusCode !== 200) {
+        throw new Error(result.payload.error || "Warm-up failed");
+      }
+      console.log(
+        `freestyle-mock warm-up done in ${Math.round(
+          performance.now() - warmupStartedAt,
+        )}ms`,
+      );
+    })
+    .catch((error) => logInternalError("warm-up", error));
 });
