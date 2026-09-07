@@ -36,7 +36,10 @@ if (
 ) {
   throw new Error("HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT must be an integer from 1 to 32");
 }
-const MAX_JOBS_PER_RUNTIME = 50;
+// Resident runners now provide the per-job process isolation. The VM only
+// accumulates temporary job directories, which each job removes, so recycling
+// it every 50 jobs would add unnecessary cold restarts.
+const MAX_JOBS_PER_RUNTIME = 500;
 const MAX_JOBS_PER_RESIDENT_RUNNER = 200;
 const configuredMaxResidentRunners =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_RESIDENT_RUNNERS;
@@ -714,6 +717,7 @@ class RuntimeCache {
         },
       };
     }
+    const runtimeStartedAt = performance.now();
     const runtime = await NodeRuntime.create(options);
     const entry = {
       hash: dependency.hash,
@@ -732,7 +736,32 @@ class RuntimeCache {
       runners: new Set(),
     };
     this.entries.set(dependency.hash, entry);
-    return entry;
+    const warmRunnerCount = dependency.isDefault
+      ? MAX_RESIDENT_RUNNERS_PER_RUNTIME
+      : 1;
+    const runnerCreations = Array.from({ length: warmRunnerCount }, () =>
+      this.createRunner(entry),
+    );
+    try {
+      const warmRunners = await Promise.all(runnerCreations);
+      entry.idleRunners.push(...warmRunners);
+      console.log(
+        `freestyle-mock runtime ${entry.hash} ready with ${
+          warmRunners.length
+        } warm runners in ${Math.round(
+          performance.now() - runtimeStartedAt,
+        )}ms`,
+      );
+      return entry;
+    } catch (error) {
+      await Promise.allSettled(runnerCreations);
+      this.entries.delete(dependency.hash);
+      await this.disposeRunners(entry);
+      await runtime.dispose().catch((disposeError) => {
+        logInternalError("dispose failed runtime", disposeError);
+      });
+      throw error;
+    }
   }
 
   evict(entry) {
@@ -840,30 +869,7 @@ class RuntimeCache {
       const runner = entry.idleRunners.pop();
       if (runner) return runner;
       if (entry.runnerCount < MAX_RESIDENT_RUNNERS_PER_RUNTIME) {
-        entry.runnerCount++;
-        try {
-          const created = await PersistentResidentRunner.create(entry.runtime, {
-            warmupImports: [
-              ...entry.nodeModules.keys(),
-              "react-dom/server",
-            ],
-            onExit: (runner) => this.removeRunner(entry, runner),
-          });
-          created.jobsHandled = 0;
-          entry.runners.add(created);
-          if (created.exited) {
-            this.removeRunner(entry, created);
-            throw new Error("resident runner exited before completing request");
-          }
-          return created;
-        } catch (error) {
-          if (entry.runnerCount > entry.runners.size) {
-            entry.runnerCount--;
-          }
-          const waiter = entry.runnerWaiters.shift();
-          waiter?.resolve();
-          throw error;
-        }
+        return await this.createRunner(entry);
       }
       const waiter = {};
       const waiterPromise = new Promise((resolve) => {
@@ -877,6 +883,30 @@ class RuntimeCache {
         if (index >= 0) entry.runnerWaiters.splice(index, 1);
         throw error;
       }
+    }
+  }
+
+  async createRunner(entry) {
+    entry.runnerCount++;
+    try {
+      const created = await PersistentResidentRunner.create(entry.runtime, {
+        warmupImports: [...entry.nodeModules.keys(), "react-dom/server"],
+        onExit: (runner) => this.removeRunner(entry, runner),
+      });
+      created.jobsHandled = 0;
+      entry.runners.add(created);
+      if (created.exited) {
+        this.removeRunner(entry, created);
+        throw new Error("resident runner exited before completing request");
+      }
+      return created;
+    } catch (error) {
+      if (entry.runnerCount > entry.runners.size) {
+        entry.runnerCount--;
+      }
+      const waiter = entry.runnerWaiters.shift();
+      waiter?.resolve();
+      throw error;
     }
   }
 
@@ -1808,14 +1838,6 @@ const defaultEntry = await runtimeCache.acquire({
   nodeModules: defaultNodeModules,
 });
 runtimeCache.release(defaultEntry);
-const defaultRunnerStartedAt = performance.now();
-const defaultRunner = await runtimeCache.acquireRunner(defaultEntry);
-await runtimeCache.releaseRunner(defaultEntry, defaultRunner, { healthy: true });
-console.log(
-  `freestyle-mock default runner ready in ${Math.round(
-    performance.now() - defaultRunnerStartedAt,
-  )}ms`,
-);
 
 const server = createServer(async (request, response) => {
   const requestStartedAt = performance.now();
