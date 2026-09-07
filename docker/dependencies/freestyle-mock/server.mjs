@@ -568,6 +568,7 @@ class DependencyCache {
         hash: "default",
         nodeModulesPath: DEFAULT_NODE_MODULES_DIR,
         isDefault: true,
+        nodeModules: defaultNodeModules,
         release: () => {},
       };
     }
@@ -605,6 +606,7 @@ class DependencyCache {
       hash,
       nodeModulesPath,
       isDefault: false,
+      nodeModules: new Map(Object.entries(normalized)),
       release: () => {
         if (released) return;
         released = true;
@@ -717,6 +719,7 @@ class RuntimeCache {
       hash: dependency.hash,
       isDefault: dependency.isDefault,
       nodeModulesPath: dependency.nodeModulesPath,
+      nodeModules: dependency.nodeModules,
       runtime,
       activeJobs: 0,
       jobsHandled: 0,
@@ -756,12 +759,12 @@ class RuntimeCache {
 
   async disposeRunners(entry) {
     entry.idleRunners = [];
-    entry.runnerCount = 0;
     for (const waiter of entry.runnerWaiters.splice(0)) {
       waiter.resolve();
     }
     const runners = [...entry.runners];
     entry.runners.clear();
+    entry.runnerCount = 0;
     await Promise.all(
       runners.map((runner) =>
         runner.dispose().catch((error) => {
@@ -839,12 +842,24 @@ class RuntimeCache {
       if (entry.runnerCount < MAX_RESIDENT_RUNNERS_PER_RUNTIME) {
         entry.runnerCount++;
         try {
-          const created = await PersistentResidentRunner.create(entry.runtime);
+          const created = await PersistentResidentRunner.create(entry.runtime, {
+            warmupImports: [
+              ...entry.nodeModules.keys(),
+              "react-dom/server",
+            ],
+            onExit: (runner) => this.removeRunner(entry, runner),
+          });
           created.jobsHandled = 0;
           entry.runners.add(created);
+          if (created.exited) {
+            this.removeRunner(entry, created);
+            throw new Error("resident runner exited before completing request");
+          }
           return created;
         } catch (error) {
-          entry.runnerCount--;
+          if (entry.runnerCount > entry.runners.size) {
+            entry.runnerCount--;
+          }
           const waiter = entry.runnerWaiters.shift();
           waiter?.resolve();
           throw error;
@@ -876,13 +891,23 @@ class RuntimeCache {
       else entry.idleRunners.push(runner);
       return;
     }
-    entry.runners.delete(runner);
-    entry.runnerCount--;
+    const removed = this.removeRunner(entry, runner);
+    if (!removed) return;
     await runner.dispose().catch((error) => {
       logInternalError("dispose resident runner", error);
     });
     const waiter = entry.runnerWaiters.shift();
     waiter?.resolve();
+  }
+
+  removeRunner(entry, runner) {
+    const index = entry.idleRunners.indexOf(runner);
+    if (index >= 0) entry.idleRunners.splice(index, 1);
+    if (!entry.runners.delete(runner)) return false;
+    entry.runnerCount--;
+    const waiter = entry.runnerWaiters.shift();
+    waiter?.resolve();
+    return true;
   }
 
   hasSingleDrainingGeneration(hash) {
@@ -998,7 +1023,7 @@ try {
 `;
 }
 
-function makeWrapper(userModulePath, userModuleDir) {
+function makePreludeSource() {
   const bridgeSource = BRIDGE_ENABLED
     ? `
 const bridgedOrigins = ${JSON.stringify(BRIDGED_ORIGINS)};
@@ -1195,19 +1220,24 @@ if (!globalThis.__hexclaveMockPrelude) {
 ${bridgeSource}
   globalThis.__hexclaveMockPrelude = prelude;
 }
+`;
+}
+
+function makeJobBody({ userModulePath, userModuleDir, emitExpression }) {
+  return `
 globalThis.__hexclaveMockPrelude.logs = [];
 globalThis.__hexclaveMockPrelude.logBytes = 0;
 try {
   const userModule = await import(${JSON.stringify(userModulePath)});
   const exported = userModule.default ?? userModule;
   const result = await (typeof exported === "function" ? exported() : exported);
-  globalThis.__return({
+  ${emitExpression}({
     status: "ok",
     result,
     logs: globalThis.__hexclaveMockPrelude.logs,
   });
 } catch (error) {
-  globalThis.__return({
+  ${emitExpression}({
     status: "error",
     error: error?.message || String(error),
     logs: globalThis.__hexclaveMockPrelude.logs,
@@ -1221,56 +1251,41 @@ try {
 `;
 }
 
-function makeRuntimePrelude() {
-  const wrapper = makeWrapper("/unused/user.mjs", "/unused");
-  const bodyMarker = "\ntry {\n";
-  const bodyIndex = wrapper.indexOf(bodyMarker);
-  if (bodyIndex < 0) {
-    throw new Error("Runtime prelude marker is missing");
-  }
-  return wrapper.slice(0, bodyIndex);
+function makeWrapper(userModulePath, userModuleDir) {
+  return `${makePreludeSource()}${makeJobBody({
+    userModulePath,
+    userModuleDir,
+    emitExpression: "globalThis.__return",
+  })}`;
 }
 
 function makeResidentJobModule(userModulePath, userModuleDir) {
-  return `
-${makeRuntimePrelude()}
-globalThis.__hexclaveMockPrelude.logs = [];
-globalThis.__hexclaveMockPrelude.logBytes = 0;
+  return `${makePreludeSource()}
 const emit = (payload) =>
   process.stdout.write(
     ${JSON.stringify(RESULT_PREFIX)} + JSON.stringify(payload) + "\\n",
   );
-try {
-  const userModule = await import(${JSON.stringify(userModulePath)});
-  const exported = userModule.default ?? userModule;
-  const result = await (typeof exported === "function" ? exported() : exported);
-  emit({
-    status: "ok",
-    result,
-    logs: globalThis.__hexclaveMockPrelude.logs,
-  });
-} catch (error) {
-  emit({
-    status: "error",
-    error: error?.message || String(error),
-    logs: globalThis.__hexclaveMockPrelude.logs,
-  });
-} finally {
-  try {
-    const fs = process.getBuiltinModule("node:fs/promises");
-    await fs.rm(${JSON.stringify(userModuleDir)}, { recursive: true, force: true });
-  } catch {}
-}
-`;
+${makeJobBody({
+  userModulePath,
+  userModuleDir,
+  emitExpression: "emit",
+})}`;
 }
 
-const RESIDENT_RUNNER_SOURCE = `
+function makeResidentRunnerSource(warmupImports) {
+  return `
 import { createInterface } from "node:readline";
 
 const readyPrefix = ${JSON.stringify(RESIDENT_RUNNER_READY_PREFIX)};
 const resultPrefix = ${JSON.stringify(RESIDENT_RUNNER_RESULT_PREFIX)};
+const warmupImports = ${JSON.stringify(warmupImports)};
 const fs = process.getBuiltinModule("node:fs/promises");
 
+for (const specifier of warmupImports) {
+  try {
+    await import(specifier);
+  } catch {}
+}
 process.stdout.write(readyPrefix + "\\n");
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of rl) {
@@ -1300,11 +1315,14 @@ for await (const line of rl) {
   }
 }
 `;
+}
 
 class PersistentResidentRunner {
-  constructor(runtime) {
+  constructor(runtime, onExit) {
     this.runtime = runtime;
+    this.onExit = onExit;
     this.process = null;
+    this.exited = false;
     this.stdoutBuffer = "";
     this.active = null;
     this.readyPromise = new Promise((resolve, reject) => {
@@ -1313,27 +1331,34 @@ class PersistentResidentRunner {
     });
   }
 
-  static async create(runtime) {
-    const runner = new PersistentResidentRunner(runtime);
-    runner.process = await runtime.spawn(RESIDENT_RUNNER_SOURCE, {
+  static async create(runtime, { warmupImports, onExit }) {
+    const runner = new PersistentResidentRunner(runtime, onExit);
+    runner.process = await runtime.spawn(
+      makeResidentRunnerSource(warmupImports),
+      {
       onStdout: (chunk) => runner.handleStdout(chunk),
       onStderr: (chunk) => runner.handleStderr(chunk),
-    });
+      },
+    );
     runner.process.wait().then(
       (exitCode) => {
+        runner.exited = true;
         const error = new Error(
           `resident runner exited before completing request: ${exitCode}`,
         );
         runner.rejectReady(error);
         runner.active?.reject(error);
         runner.active = null;
+        runner.onExit?.(runner);
       },
       (error) => {
+        runner.exited = true;
         const normalized =
           error instanceof Error ? error : new Error(String(error));
         runner.rejectReady(normalized);
         runner.active?.reject(normalized);
         runner.active = null;
+        runner.onExit?.(runner);
       },
     );
     await runner.readyPromise;
@@ -1780,8 +1805,17 @@ const defaultEntry = await runtimeCache.acquire({
   hash: "default",
   isDefault: true,
   nodeModulesPath: DEFAULT_NODE_MODULES_DIR,
+  nodeModules: defaultNodeModules,
 });
 runtimeCache.release(defaultEntry);
+const defaultRunnerStartedAt = performance.now();
+const defaultRunner = await runtimeCache.acquireRunner(defaultEntry);
+await runtimeCache.releaseRunner(defaultEntry, defaultRunner, { healthy: true });
+console.log(
+  `freestyle-mock default runner ready in ${Math.round(
+    performance.now() - defaultRunnerStartedAt,
+  )}ms`,
+);
 
 const server = createServer(async (request, response) => {
   const requestStartedAt = performance.now();
@@ -1844,26 +1878,4 @@ server.listen(PORT, () => {
       BRIDGE_ENABLED ? BRIDGED_ORIGINS.join(",") : "disabled"
     })`,
   );
-  const warmupStartedAt = performance.now();
-  jobQueue
-    .submit(
-      `export default async () => {
-        await import("@react-email/components");
-        await import("react-dom/server");
-        return true;
-      }`,
-      { nodeModules: {} },
-      DEFAULT_TIMEOUT_MS,
-    )
-    .then((result) => {
-      if (result.statusCode !== 200) {
-        throw new Error(result.payload.error || "Warm-up failed");
-      }
-      console.log(
-        `freestyle-mock warm-up done in ${Math.round(
-          performance.now() - warmupStartedAt,
-        )}ms`,
-      );
-    })
-    .catch((error) => logInternalError("warm-up", error));
 });
