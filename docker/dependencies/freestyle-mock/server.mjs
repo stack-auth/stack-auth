@@ -745,6 +745,8 @@ class RuntimeCache {
     try {
       const warmRunners = await Promise.all(runnerCreations);
       entry.idleRunners.push(...warmRunners);
+      // The entry is visible during warmup, so wake waiters to retry now.
+      for (const waiter of entry.runnerWaiters.splice(0)) waiter.resolve();
       console.log(
         `freestyle-mock runtime ${entry.hash} ready with ${
           warmRunners.length
@@ -877,7 +879,10 @@ class RuntimeCache {
         entry.runnerWaiters.push(waiter);
       });
       try {
-        return await awaitAbort(waiterPromise, signal);
+        // A released runner is handed off directly; other wakeups only mean
+        // capacity changed, so retry the idle/create checks above.
+        const handoff = await awaitAbort(waiterPromise, signal);
+        if (handoff) return handoff;
       } catch (error) {
         const index = entry.runnerWaiters.indexOf(waiter);
         if (index >= 0) entry.runnerWaiters.splice(index, 1);
@@ -1354,6 +1359,8 @@ class PersistentResidentRunner {
     this.process = null;
     this.exited = false;
     this.stdoutBuffer = "";
+    this.stdoutDecoder = new TextDecoder();
+    this.stderrDecoder = new TextDecoder();
     this.active = null;
     this.readyPromise = new Promise((resolve, reject) => {
       this.resolveReady = resolve;
@@ -1438,7 +1445,7 @@ class PersistentResidentRunner {
   }
 
   handleStdout(chunk) {
-    this.stdoutBuffer += new TextDecoder().decode(chunk);
+    this.stdoutBuffer += this.stdoutDecoder.decode(chunk, { stream: true });
     for (;;) {
       const newlineIndex = this.stdoutBuffer.indexOf("\n");
       if (newlineIndex < 0) return;
@@ -1474,7 +1481,9 @@ class PersistentResidentRunner {
   }
 
   handleStderr(chunk) {
-    this.active?.stderr.push(new TextDecoder().decode(chunk));
+    this.active?.stderr.push(
+      this.stderrDecoder.decode(chunk, { stream: true }),
+    );
   }
 }
 
