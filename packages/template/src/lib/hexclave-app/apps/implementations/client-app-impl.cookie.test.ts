@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { encodeBase32 } from "@hexclave/shared/dist/utils/bytes";
 import { getTrustedParentDomain } from "@hexclave/shared/dist/utils/redirect-urls";
 import { TextEncoder } from "util";
+import type { CookieHelper } from "../../../cookie";
 import { StackClientApp } from "../interfaces/client-app";
 
 const serverCookieState = vi.hoisted(() => ({
@@ -22,6 +23,7 @@ vi.mock("../../../cookie", () => {
     }
   };
   const helper = {
+    identity: {},
     get: (name: string) => serverCookieState.values.get(name) ?? null,
     getAll,
     set: (name: string, value: string) => setOrDelete(name, value),
@@ -69,7 +71,8 @@ describe("StackClientApp custom refresh cookie updates", () => {
       return domain === "_.example.com" ? "example.com" : null;
     });
     const getOrCreateTokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore");
-    const cookieHelper = {
+    const cookieHelper: CookieHelper = {
+      identity: {},
       get: (name: string) => serverCookieState.values.get(name) ?? null,
       getAll: () => Object.fromEntries(serverCookieState.values),
       set: (name: string, value: string) => serverCookieState.values.set(name, value),
@@ -131,7 +134,8 @@ describe("StackClientApp custom refresh cookie updates", () => {
       return domain === "_.example.com" ? "example.com" : null;
     });
     const getOrCreateTokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore");
-    const cookieHelper = {
+    const cookieHelper: CookieHelper = {
+      identity: {},
       get: (name: string) => serverCookieState.values.get(name) ?? null,
       getAll: () => Object.fromEntries(serverCookieState.values),
       set: (name: string, value: string) => serverCookieState.values.set(name, value),
