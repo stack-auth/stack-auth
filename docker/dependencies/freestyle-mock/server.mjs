@@ -1479,6 +1479,9 @@ class PersistentResidentRunner {
       if (result.id !== active.id) continue;
       clearTimeout(active.timer);
       this.active = null;
+      // Flush bytes of a multi-byte char split at the last stderr chunk so
+      // they don't leak into the next job.
+      active.stderr.push(this.stderrDecoder.decode());
       active.resolve({
         stdout: active.stdout.join(""),
         stderr: active.stderr.join("") + result.stderr,
