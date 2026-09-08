@@ -48,6 +48,11 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
   // maps to a retryable 409 turns contention into an answer the caller can act on.
   const startedAt = performance.now();
   let contentionLogged = false;
+  const logAcquiredAfterContention = (): void => {
+    if (contentionLogged) {
+      console.warn(`marshal lease acquired for ${JSON.stringify(key)} after ${Math.round(performance.now() - startedAt)}ms following contention`);
+    }
+  };
   const deadline = Date.now() + timings.acquireTimeoutMs;
   for (;;) {
     const now = Date.now();
@@ -56,10 +61,12 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
     if (current === null) {
       const etag = await createReconciliationLease(ns, key, desired);
       if (etag !== null) {
-        if (contentionLogged) {
-          console.warn(`marshal lease acquired for ${JSON.stringify(key)} after ${Math.round(performance.now() - startedAt)}ms following contention`);
-        }
+        logAcquiredAfterContention();
         return { etag, value: desired };
+      }
+      if (!contentionLogged) {
+        console.warn(`lost conditional lease write for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: another marshal replica created the lease first`);
+        contentionLogged = true;
       }
     } else if (current.value.expires_at_millis + timings.takeoverGraceMs <= now) {
       // Conditional replacement is the distributed arbiter: exactly one Marshal replica can
@@ -67,10 +74,12 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
       // previous owner could have started immediately before its last confirmed expiry.
       const etag = await replaceReconciliationLease(ns, key, desired, current.etag);
       if (etag !== null) {
-        if (contentionLogged) {
-          console.warn(`marshal lease acquired for ${JSON.stringify(key)} after ${Math.round(performance.now() - startedAt)}ms following contention`);
-        }
+        logAcquiredAfterContention();
         return { etag, value: desired };
+      }
+      if (!contentionLogged) {
+        console.warn(`lost conditional lease write for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: another marshal replica took over the lease first`);
+        contentionLogged = true;
       }
     } else if (!contentionLogged) {
       console.warn(`contended marshal lease for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: holder ${current.value.owner_id}, expires in ${current.value.expires_at_millis - now}ms; takeover grace ${timings.takeoverGraceMs}ms`);
