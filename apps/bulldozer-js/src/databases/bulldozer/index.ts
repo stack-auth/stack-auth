@@ -1804,7 +1804,6 @@ export function defineConcatTable(): BulldozerTableImplementation {
       let yielded = 0;
       const inputRange = { ...range, limit: undefined };
       const keys = inputKeys(inputTables);
-      if (keys.length === 0) throw new Error("Concat table must have at least one input");
       const comparatorInputKey = keys.at(0);
       if (comparatorInputKey === undefined) throw new Error("Concat table must have at least one input");
       const compareTotal = (a: PiledriverObject, b: PiledriverObject) =>
