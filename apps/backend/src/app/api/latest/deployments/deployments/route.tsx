@@ -287,6 +287,7 @@ export const POST = createSmartRouteHandler({
     const deployment = await retryTransaction(prisma, async (transaction) => {
       return await createDeployment(transaction, auth.tenancy, {
         sourceRowId: source.id,
+        runtime: runtimeFromStored(source.runtime),
         triggeredBy: body.triggered_by ?? auth.type,
         plannedServiceIds,
         sourceManifest: parseSourceManifest(body.source_manifest),

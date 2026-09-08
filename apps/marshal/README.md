@@ -69,6 +69,11 @@ runtime other than the namespace's pin is refused with a 409 unless the namespac
 services, in which case the pin moves. Both mocks (`fly-mock` on port-prefix 48, `gcp-mock`
 on 49) run side by side locally, and `MARSHAL_BUILDER=mock` covers either runtime.
 
+The Hexclave backend imposes a stricter rule for the internal GCP beta: the first deployment
+attempt fixes the project runtime, including failed attempts and deployments whose services
+were later removed. Choose the version before deploying; use a new project to test another
+runtime. Existing projects can keep deploying on their selected runtime.
+
 ## GCP tenancy and lifecycle
 
 Marshal follows Google's [Cloud Run multi-tenant guidance](https://docs.cloud.google.com/run/docs/securing/multi-tenant): every namespace receives a dedicated GCP project. The project is the tenant security, quota, billing-attribution, monitoring, and deletion boundary. Put these projects in a folder reserved for untrusted tenant workloads; do not place first-party control-plane services in that folder.

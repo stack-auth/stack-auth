@@ -739,16 +739,15 @@ export type SyncSourceServicesResult = {
  * repositories deploy into one project.
  */
 /**
- * The runtime a project's services run on: that of any source that has ever provisioned a
- * service, else that of any source that holds services, else the default. Every source of a
- * project agrees (enforced below), so the first one found answers for all.
+ * Deployment history fixes the runtime, including after failed attempts and service removal.
+ * Before the first attempt, use a source with definitions, or the default for an empty project.
  */
 export async function deploymentRuntimeForProject(prisma: PrismaClientTransaction, tenancy: Tenancy): Promise<DeploymentRuntime> {
-  const provisioned = await prisma.deploymentService.findFirst({
-    where: { tenancyId: tenancy.id, provisionedAt: { not: null } },
-    select: { source: { select: { runtime: true } } },
+  const deployedSource = await prisma.deploymentSource.findFirst({
+    where: { tenancyId: tenancy.id, deployments: { some: {} } },
+    select: { runtime: true },
   });
-  if (provisioned !== null) return runtimeFromStored(provisioned.source.runtime);
+  if (deployedSource !== null) return runtimeFromStored(deployedSource.runtime);
   const anySource = await prisma.deploymentSource.findFirst({
     where: { tenancyId: tenancy.id, services: { some: {} } },
     select: { runtime: true },
@@ -757,37 +756,18 @@ export async function deploymentRuntimeForProject(prisma: PrismaClientTransactio
 }
 
 /**
- * A sync may not put a source on a runtime other than the one the project's PROVISIONED
- * services run on. Services share a private network and resolve each other's addresses,
- * neither of which can span providers — and a service that already exists on one runtime
- * would be orphaned there, still running and still billed, by an apply on the other.
- *
- * Only provisioned services pin the project: a project whose services have never reached
- * the runtime (synced but not deployed, or deployed and since torn down) may change its
- * mind, which is what lets our own test projects move between runtimes by removing every
- * service, deploying, and changing `version`. Marshal enforces the same rule on its own
- * namespace pin, for callers that do not come through here.
+ * Deployment history pins the runtime even after services are removed or an attempt fails:
+ * a failed attempt can still leave provider resources behind. Do not infer emptiness from
+ * current services. Both sync and deployment creation call this inside serializable
+ * transactions so a first deployment cannot race a runtime change or another source.
  */
-async function assertRuntimeAgreesWithProject(prisma: PrismaClientTransaction, tenancy: Tenancy, source: { id: string, sourceId: string }, runtime: DeploymentRuntime, declaredServiceIds: ReadonlySet<string>): Promise<void> {
-  const provisioned = await prisma.deploymentService.findMany({
-    where: { tenancyId: tenancy.id, provisionedAt: { not: null } },
-    select: { serviceId: true, sourceRowId: true, source: { select: { sourceId: true, runtime: true } } },
+async function assertRuntimeAgreesWithProject(prisma: PrismaClientTransaction, tenancy: Tenancy, runtime: DeploymentRuntime): Promise<void> {
+  const conflicting = await prisma.deploymentSource.findFirst({
+    where: { tenancyId: tenancy.id, runtime: { not: runtime }, deployments: { some: {} } },
+    select: { runtime: true },
   });
-  const conflicting = provisioned
-    // A service of THIS source that the sync no longer declares is torn down by the sync
-    // itself, so it is not one the new runtime would orphan.
-    .filter((row) => !(row.sourceRowId === source.id && !declaredServiceIds.has(row.serviceId)))
-    .filter((row) => runtimeFromStored(row.source.runtime) !== runtime);
-  if (conflicting.length === 0) return;
-  const ownConflicts = conflicting.filter((row) => row.sourceRowId === source.id).map((row) => row.serviceId).sort(stringCompare);
-  const otherSources = [...new Set(conflicting.filter((row) => row.sourceRowId !== source.id).map((row) => row.source.sourceId))].sort(stringCompare);
-  const current = runtimeFromStored(conflicting[0].source.runtime);
-  throw new StatusError(400, [
-    `This project's services run on the ${JSON.stringify(current)} runtime, and this deploy file selects ${JSON.stringify(runtime)}. A project runs on one runtime: its services share a private network, which cannot span runtimes.`,
-    ...(ownConflicts.length > 0 ? [`Services of this deploy file already running there: ${planGateServiceList(ownConflicts, 5)}.`] : []),
-    ...(otherSources.length > 0 ? [`Other deploy files with services running there: ${otherSources.map((id) => `\`${id}\``).join(", ")}.`] : []),
-    "To change the runtime, remove every service from the project (deploy each deploy file with none declared), then deploy again with the new `version`.",
-  ].join("\n"));
+  if (conflicting === null) return;
+  throw new StatusError(400, `This project has deployment history on the ${JSON.stringify(conflicting.runtime)} runtime and cannot change to ${JSON.stringify(runtime)}. Create a new project to test another runtime.`);
 }
 
 export async function syncSourceServices(
@@ -799,7 +779,7 @@ export async function syncSourceServices(
   builder?: DeploymentBuilderDefinition | undefined,
   runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME,
 ): Promise<SyncSourceServicesResult> {
-  await assertRuntimeAgreesWithProject(prisma, tenancy, source, runtime, new Set(Object.keys(services)));
+  await assertRuntimeAgreesWithProject(prisma, tenancy, runtime);
   // The builder and the runtime belong to the SOURCE, and they are written here
   // rather than in their own call so they land inside the same transaction — and
   // so the same fence — as the definitions they were authored beside. An
@@ -1561,6 +1541,7 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
  */
 export async function createDeployment(prisma: PrismaClientTransaction, tenancy: Tenancy, options: {
   sourceRowId: string,
+  runtime: DeploymentRuntime,
   triggeredBy: string,
   plannedServiceIds: string[],
   // What the client packaged, or null when it packaged nothing (an all-prebuilt
@@ -1568,6 +1549,16 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
   // building the tarball, and re-deriving it would mean inflating the archive.
   sourceManifest?: DeploymentSourceManifest | null,
 }): Promise<{ id: string, number: number }> {
+  const source = await prisma.deploymentSource.findUniqueOrThrow({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: options.sourceRowId } },
+    select: { runtime: true },
+  });
+  // The route read the source before entering this transaction. Reject a concurrent sync
+  // rather than recording history on one runtime and starting the captured spec on another.
+  if (source.runtime !== options.runtime) {
+    throw new StatusError(409, "The deployment source's runtime changed. Sync its definitions and retry the deployment.");
+  }
+  await assertRuntimeAgreesWithProject(prisma, tenancy, options.runtime);
   const latest = await prisma.deployment.findFirst({
     where: { tenancyId: tenancy.id },
     orderBy: { number: "desc" },
