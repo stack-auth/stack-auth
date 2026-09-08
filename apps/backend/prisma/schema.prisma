@@ -2023,6 +2023,39 @@ model DeploymentSourceUpload {
 }
 
 
+// Platform-wide (cross-tenant) switches for the Deployments app.
+//
+// A singleton: one row for the whole Hexclave instance, matching
+// ExternalDbSyncMetadata's shape. Not per-project and not per-tenancy — this is
+// the operator's control over the alpha as a whole, and a per-project override
+// is deliberately not modelled until something needs one.
+//
+// Its own table rather than a column on ExternalDbSyncMetadata: the two features
+// share nothing but the singleton pattern, and a deployments switch living in a
+// table named after the DB-sync pipeline is exactly the confusion an emergency
+// switch must not cause.
+//
+// Every column defaults to today's behaviour, and a MISSING row reads as those
+// defaults (see getDeploymentsPlatformConfig) — so this table needs no backfill
+// and there is no window in which deploys are off because nobody has written to
+// it yet.
+model DeploymentsPlatformConfig {
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  singleton BooleanTrue @unique @default(TRUE)
+
+  // The emergency fusebox. False = no NEW deployment may be created anywhere on
+  // this instance: the deploy and upload routes refuse with a 503. Deliberately
+  // narrow — deployments already in flight run to completion, status and logs
+  // stay readable, and tearing services down keeps working, because an operator
+  // flipping this during an incident needs those more than ever.
+  deploymentsEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
 // ─── Workflows ──────────────────────────────────────────────────────────────
 //
 // Durable, event-triggered workflows (Hexclave Workflows v1). All tables are

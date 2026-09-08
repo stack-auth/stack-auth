@@ -41,12 +41,14 @@
 
 import { getPlanIdForProjectOrNull } from "@/lib/plan-entitlements";
 import { Tenancy } from "@/lib/tenancies";
-import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
+import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
 import {
   DEFAULT_BUILDER_MEMORY,
   DEFAULT_SERVERLESS_MEMORY,
+  FREE_PLAN_MAX_VOLUMES_PER_PROJECT,
+  FREE_PLAN_MAX_VOLUME_SIZE_GB,
   DEPLOYMENT_CONNECTION_VALUE_REGEX,
   DEPLOYMENT_ENV_VAR_KEY_REGEX,
   DeploymentBuilderDefinition,
@@ -282,7 +284,7 @@ export async function getServiceVolume(prisma: PrismaClientTransaction, tenancy:
 }
 
 /**
- * The Free plan's deployment entitlements. Two rules, one plan read.
+ * The Free plan's deployment entitlements. Three rules, one plan read.
  *
  * A `server` is paid-only, whatever its `minInstances`. A server is a VM that
  * runs from the moment it is applied until the service is torn down: GCP offers
@@ -310,9 +312,27 @@ export async function getServiceVolume(prisma: PrismaClientTransaction, tenancy:
  *     a team could sync while paid, downgrade, and keep deploying always-on
  *     machines with the old sync id.
  *
- * `persistentVolumes` is deliberately NOT gated: disks are available on every
- * plan for now. That is a pricing decision, not an oversight. In practice only
- * a `server` may hold one, so the type gate above already reserves them.
+ * `persistentVolumes` ARE gated, by count and by size: a Free project may hold
+ * FREE_PLAN_MAX_VOLUMES_PER_PROJECT disk(s) of at most
+ * FREE_PLAN_MAX_VOLUME_SIZE_GB GB each.
+ *
+ * This used to read "only a `server` may hold a disk, so the type gate above
+ * already reserves them". That was true when GCP was the only runtime. It is
+ * not true now: `serverIsPaidOnly` is GCP-only, so on Fly — the DEFAULT runtime
+ * — a `server` with an explicit `minInstances: 0` passes every other rule here
+ * and may mount a disk, which left disks ungated on the runtime most projects
+ * actually use.
+ *
+ * Disks need their own rule rather than leaning on a compute gate because they
+ * are the one resource that keeps billing after the project stops using it. A
+ * suspended machine costs nothing; a provisioned volume bills on its size
+ * whether or not anything mounts it, and tearing a service down DETACHES its
+ * disk instead of destroying it (see deleteService in the Fly provider), so an
+ * abandoned volume outlives the service that created it.
+ *
+ * That is also why the count is over the PROJECT's stored volume rows rather
+ * than over the services in front of us: unmounted disks are exactly the ones a
+ * definition-only count would miss, and they cost the same as mounted ones.
  *
  * FUTURE: this gates new DEPLOYS, not machines already running. A team can
  * subscribe, deploy always-on services, cancel, and keep those machines
@@ -325,6 +345,13 @@ export async function assertServicesAllowedByPlan(
   services: Record<string, DeploymentServiceDefinition>,
   builder?: DeploymentBuilderDefinition | undefined,
   runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME,
+  // The deploy file these services belong to (`deploymentGroupId`), needed only
+  // by the volume count: a disk this very call is re-declaring already has a row,
+  // and counting the row AND the declaration would refuse every re-deploy of a
+  // project's one legitimate volume. Optional so a caller with no source in hand
+  // still gets every other rule; it then counts conservatively (every stored row
+  // is treated as a disk this call is not re-declaring).
+  sourceId?: string | undefined,
 ): Promise<void> {
   const entries = Object.entries(services);
 
@@ -385,16 +412,78 @@ export async function assertServicesAllowedByPlan(
   // The size itself, not a flag: the message quotes it, and carrying the value
   // rather than a boolean is what keeps the two in step.
   const oversizedBuilderMemory = builder?.memory !== undefined && builder.memory !== DEFAULT_BUILDER_MEMORY ? builder.memory : null;
-  if (serverServices.length === 0 && alwaysOnServices.length === 0 && oversizedServices.length === 0 && oversizedBuilderMemory === null) return;
+  // Every disk this call declares. Read through singleVolume so it sees exactly
+  // what the sync will store — a service may hold at most one, so this is one
+  // entry per service that asks for a disk at all.
+  const declaredVolumes = entries
+    .flatMap(([serviceId, definition]) => {
+      const volume = singleVolume(definition);
+      return volume === null ? [] : [{ serviceId, volumeId: volume.volumeId, sizeGb: volume.sizeGb }];
+    })
+    .sort((a, b) => stringCompare(a.serviceId, b.serviceId));
+  const oversizedVolumes = declaredVolumes.filter((volume) => volume.sizeGb > FREE_PLAN_MAX_VOLUME_SIZE_GB);
+  if (
+    serverServices.length === 0
+    && alwaysOnServices.length === 0
+    && oversizedServices.length === 0
+    && oversizedBuilderMemory === null
+    // Declaring a disk at all is enough to need the plan read: how many the
+    // project already holds is a question only the Free branch below can answer.
+    && declaredVolumes.length === 0
+  ) return;
 
   // Null = this project isn't plan-gated at all (self-hosted, or plan limits
   // disabled) or the plan couldn't be read. All of those must fail open —
   // deploying can't depend on the billing store being reachable.
   if (await getPlanIdForProjectOrNull(tenancy.project) !== "free") return;
 
+  // How many disks this project would hold once this call lands. Stored rows
+  // rather than declarations, plus the declarations that have no row yet: a
+  // volume row outlives the service that mounted it (removing a service detaches
+  // its disk, it does not destroy it), so the rows ARE the disks Fly is billing
+  // for, mounted or not.
+  //
+  // Not transactional — the sync's own transaction opens after this returns, so
+  // two concurrent syncs could each see room for the last disk. Deliberately
+  // accepted, exactly as assertGlobalDeploymentCapacity accepts it: the window
+  // is one extra disk on one project, and closing it would mean holding a
+  // serializable transaction across the whole plan read.
+  const existingVolumes = declaredVolumes.length === 0 ? [] : await (async () => {
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    return await prisma.deploymentVolume.findMany({
+      where: { tenancyId: tenancy.id },
+      select: { volumeId: true, sizeGb: true, serviceId: true, source: { select: { sourceId: true } } },
+    });
+  })();
+  // A declared volume that already has a row is the SAME disk, not a second one.
+  // Identity is (source, volumeId), which is what the row is unique on.
+  const newVolumes = declaredVolumes.filter((declared) => !existingVolumes.some(
+    (row) => sourceId !== undefined && row.source.sourceId === sourceId && row.volumeId === declared.volumeId,
+  ));
+  const totalVolumes = existingVolumes.length + newVolumes.length;
+  const volumeCountExceeded = declaredVolumes.length > 0 && totalVolumes > FREE_PLAN_MAX_VOLUMES_PER_PROJECT;
+  // A disk within BOTH caps is the one way to reach here with nothing to say: the
+  // early return above lets any declared volume through so the count can be read,
+  // and a Free project's one legitimate disk then breaks no rule. Without this
+  // the throw below would raise an empty 400 on a perfectly valid deploy.
+  if (
+    serverServices.length === 0
+    && alwaysOnServices.length === 0
+    && oversizedServices.length === 0
+    && oversizedBuilderMemory === null
+    && oversizedVolumes.length === 0
+    && !volumeCountExceeded
+  ) return;
+
   // Both sections can fire at once, and the CLI truncates the whole message at
   // 1000 chars — so name fewer services when there are two remedies to fit.
-  const sections = [serverServices.length > 0, alwaysOnServices.length > 0, oversizedServices.length > 0].filter(Boolean).length;
+  const sections = [
+    serverServices.length > 0,
+    alwaysOnServices.length > 0,
+    oversizedServices.length > 0,
+    oversizedVolumes.length > 0,
+    volumeCountExceeded,
+  ].filter(Boolean).length;
   const cap = sections > 1 ? 3 : 5;
   const lines: string[] = [];
   if (serverServices.length > 0) {
@@ -436,6 +525,45 @@ export async function assertServicesAllowedByPlan(
       "Either:",
       "  - drop `memory` from `builder`; or",
       "  - upgrade your plan at https://app.hexclave.com to build on a bigger machine.",
+    );
+  }
+  if (oversizedVolumes.length > 0) {
+    if (lines.length > 0) lines.push("");
+    const biggest = [...oversizedVolumes].sort((a, b) => b.sizeGb - a.sizeGb || stringCompare(a.serviceId, b.serviceId))[0];
+    lines.push(
+      `Persistent volumes larger than ${FREE_PLAN_MAX_VOLUME_SIZE_GB}GB are not available on the Free plan, but ${oversizedVolumes.length === 1 ? `service ${planGateServiceList(oversizedVolumes.map((volume) => volume.serviceId), cap)} asks` : `services ${planGateServiceList(oversizedVolumes.map((volume) => volume.serviceId), cap)} ask`} for ${oversizedVolumes.length === 1 ? `a ${biggest.sizeGb}GB disk` : `up to ${biggest.sizeGb}GB`}.`,
+      "",
+      // A disk bills on the size it was PROVISIONED at, for as long as it exists,
+      // so "shrink it later" is not a remedy we can offer: volumes are grow-only.
+      "A volume is billed on its size for as long as it exists, and volumes are grow-only — a disk created at this size cannot be made smaller later. Either:",
+      `  - set \`sizeGb\` to ${FREE_PLAN_MAX_VOLUME_SIZE_GB} or less; or`,
+      "  - upgrade your plan at https://app.hexclave.com to use larger disks.",
+    );
+  }
+  if (volumeCountExceeded) {
+    if (lines.length > 0) lines.push("");
+    // Disks nothing mounts AND this call is not re-attaching — an unmounted disk
+    // is invisible in the deploy file, so the count reads as the platform
+    // miscounting unless the message names it. A row this very sync re-declares
+    // is detached only for the instant before it is written back, so it is
+    // excluded rather than reported as abandoned.
+    const unmounted = existingVolumes.filter((row) => row.serviceId === null && !declaredVolumes.some(
+      (declared) => sourceId !== undefined && row.source.sourceId === sourceId && row.volumeId === declared.volumeId,
+    ));
+    lines.push(
+      `The Free plan allows ${FREE_PLAN_MAX_VOLUMES_PER_PROJECT} persistent volume per project, but this project would hold ${totalVolumes}.`,
+      "",
+    );
+    if (unmounted.length > 0) {
+      lines.push(
+        `${unmounted.length === 1 ? "One of them is a disk" : `${unmounted.length} of them are disks`} no service currently mounts: removing a service from a deploy file keeps its volume, so it still exists and is still counted. Contact support to delete ${unmounted.length === 1 ? "it" : "them"}.`,
+        "",
+      );
+    }
+    lines.push(
+      "Either:",
+      `  - hold at most ${FREE_PLAN_MAX_VOLUMES_PER_PROJECT} \`persistentVolumes\` disk, and keep other state in a database or object storage; or`,
+      "  - upgrade your plan at https://app.hexclave.com to run more disks.",
     );
   }
   throw new StatusError(400, lines.join("\n"));

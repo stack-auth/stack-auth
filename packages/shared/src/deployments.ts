@@ -737,6 +737,23 @@ export const MAX_VOLUME_SIZE_GB = 500;
 // more than one mount.
 export const MAX_PERSISTENT_VOLUMES_PER_SERVICE = 1;
 
+// The Free plan's disk entitlement: how many persistent volumes one project may
+// hold in total, and how large each of them may be.
+//
+// Volumes are the one deployment resource that keeps costing after the project
+// stops using it. A suspended machine bills nothing; a provisioned disk bills on
+// its size whether or not anything mounts it, and tearing a service down
+// DETACHES its disk rather than destroying it (see the Fly provider's
+// deleteService), so an abandoned volume outlives the service that made it.
+// That is why disks are capped on Free by count and size rather than left to
+// the always-on gate, which only ever reaches running machines.
+//
+// Counted per PROJECT rather than per service: MAX_PERSISTENT_VOLUMES_PER_SERVICE
+// already holds a service to one disk, so a per-service cap would bound nothing
+// a second service could not simply ask for again.
+export const FREE_PLAN_MAX_VOLUMES_PER_PROJECT = 1;
+export const FREE_PLAN_MAX_VOLUME_SIZE_GB = 10;
+
 // Volume ids become Fly volume names (see appVolumeName in Marshal), which are
 // alphanumeric + underscore and at most 30 characters. The id is capped at 26
 // so a 4-character prefix still fits, and lowercased so two ids cannot differ

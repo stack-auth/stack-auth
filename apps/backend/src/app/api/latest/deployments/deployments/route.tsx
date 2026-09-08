@@ -1,5 +1,6 @@
 import { assertGlobalDeploymentCapacity, assertServicesAllowedByPlan, createDeployment, definitionFromServiceRow, deploymentToApiShape, encryptDeploymentRedactionSecrets, getServiceVolume, isTerminalDeploymentStatus, refreshDeploymentFromMarshal, resolveEnvVars, startDeployment } from "@/lib/deployments";
 import { getMarshalDeploymentsConfigOrNull } from "@/lib/deployments/marshal-client";
+import { assertDeploymentsEnabled } from "@/lib/deployments/platform-config";
 import { runtimeFromStored } from "@/lib/deployments/runtime";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -144,6 +145,11 @@ export const POST = createSmartRouteHandler({
     if (getMarshalDeploymentsConfigOrNull() == null) {
       throw new StatusError(400, "Deploy is not configured on this Hexclave instance. Configure HEXCLAVE_MARSHAL_API_KEY (and HEXCLAVE_MARSHAL_URL) first.");
     }
+    // The operator's fusebox, checked here for the same reason as the line
+    // above: it must refuse before this request consumes the upload. Unlike the
+    // capacity guard below it does not care what this deploy would provision —
+    // "off" means no new deployment at all.
+    await assertDeploymentsEnabled();
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const plannedServiceIds = body.levels.flat();
@@ -212,6 +218,7 @@ export const POST = createSmartRouteHandler({
       Object.fromEntries(definitionsByServiceId),
       source.builderMemoryMb === null ? undefined : { memory: deploymentMemoryFromMb(source.builderMemoryMb) ?? undefined },
       runtimeFromStored(source.runtime),
+      source.sourceId,
     );
 
     // Platform capacity, before the upload is consumed and before anything is
