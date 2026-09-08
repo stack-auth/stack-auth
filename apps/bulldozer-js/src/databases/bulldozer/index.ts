@@ -1815,13 +1815,7 @@ export function defineConcatTable(): BulldozerTableImplementation {
         previousGroupKey: PiledriverObject | undefined,
         done: boolean,
       };
-      const states: InputState[] = keys.map(inputTableKey => ({
-        inputTableKey,
-        iterator: inputTables[inputTableKey].listGroups({ range: inputRange })[Symbol.asyncIterator](),
-        current: undefined,
-        previousGroupKey: undefined,
-        done: false,
-      }));
+      const states: InputState[] = [];
       const advance = async (state: InputState) => {
         const next = await state.iterator.next();
         if (next.done) {
@@ -1842,6 +1836,15 @@ export function defineConcatTable(): BulldozerTableImplementation {
         state.current = next.value;
       };
       try {
+        for (const inputTableKey of keys) {
+          states.push({
+            inputTableKey,
+            iterator: inputTables[inputTableKey].listGroups({ range: inputRange })[Symbol.asyncIterator](),
+            current: undefined,
+            previousGroupKey: undefined,
+            done: false,
+          });
+        }
         await Promise.all(states.map(advance));
         let previousCanonicalKey: string | undefined;
         for (;;) {

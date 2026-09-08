@@ -344,6 +344,61 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     expect(closed).toBe(true);
   });
 
+  it("closes acquired concat iterators when a later input fails during acquisition", async () => {
+    let closed = false;
+    const stored = defineStoredTable();
+    const tracked = {
+      ...stored,
+      listGroups(options: Parameters<typeof stored.listGroups>[0]) {
+        const groups = (async function* () {
+          try {
+            for await (const group of stored.listGroups(options)) yield group;
+          } finally {
+            closed = true;
+          }
+        })();
+        let firstResult: ReturnType<typeof groups.next> | undefined = groups.next();
+        return {
+          [Symbol.asyncIterator]() {
+            return {
+              async next() {
+                if (firstResult !== undefined) {
+                  const result = firstResult;
+                  firstResult = undefined;
+                  return await result;
+                }
+                return await groups.next();
+              },
+              async return() {
+                return await groups.return();
+              },
+            };
+          },
+        };
+      },
+    };
+    let shouldThrow = false;
+    const throwingStored = defineStoredTable();
+    const throwing = {
+      ...throwingStored,
+      listGroups(options: Parameters<typeof throwingStored.listGroups>[0]) {
+        if (shouldThrow) throw new Error("concat input acquisition failed");
+        return throwingStored.listGroups(options);
+      },
+    };
+    let snapshot = await initializedSnapshot(backend, [[
+      { type: "initTable", tableId: "tracked", table: tracked, inputTables: {} },
+      { type: "initTable", tableId: "throwing", table: throwing, inputTables: {} },
+      { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "tracked", z: "throwing" } },
+    ]]);
+    snapshot = await set(snapshot, "tracked", "row", "value");
+    shouldThrow = true;
+    closed = false;
+
+    await expect(collect(snapshot.listGroups({ tableId: "concat", range: {} }))).rejects.toThrow("concat input acquisition failed");
+    expect(closed).toBe(true);
+  });
+
   it("left joins rows by derived keys and updates when either side changes", async () => {
     const join = declareLeftJoinTable({
       leftJoinKeyExtractor: async row => (row.rowData as { key: string }).key,
