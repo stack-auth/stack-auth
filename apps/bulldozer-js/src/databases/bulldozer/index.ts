@@ -1805,6 +1805,8 @@ export function defineConcatTable(): BulldozerTableImplementation {
       const inputRange = { ...range, limit: undefined };
       const keys = inputKeys(inputTables);
       if (keys.length === 0) throw new Error("Concat table must have at least one input");
+      const comparatorInputKey = keys.at(0);
+      if (comparatorInputKey === undefined) throw new Error("Concat table must have at least one input");
       const compareTotal = (a: PiledriverObject, b: PiledriverObject) =>
         compareGroupKeysOf(inputTables, keys, a, b) || compareStrings(canonicalGroupKeyString(a), canonicalGroupKeyString(b));
       type InputState = {
@@ -1812,57 +1814,68 @@ export function defineConcatTable(): BulldozerTableImplementation {
         iterator: AsyncIterator<{ groupKey: PiledriverObject }>,
         current: { groupKey: PiledriverObject } | undefined,
         previousGroupKey: PiledriverObject | undefined,
+        done: boolean,
       };
       const states: InputState[] = keys.map(inputTableKey => ({
         inputTableKey,
         iterator: inputTables[inputTableKey].listGroups({ range: inputRange })[Symbol.asyncIterator](),
         current: undefined,
         previousGroupKey: undefined,
+        done: false,
       }));
       const advance = async (state: InputState) => {
         const next = await state.iterator.next();
         if (next.done) {
+          state.done = true;
           state.current = undefined;
           return;
         }
+        state.done = false;
         if (
           state.previousGroupKey !== undefined
           && (range.reverse
             ? compareTotal(state.previousGroupKey, next.value.groupKey) < 0
             : compareTotal(state.previousGroupKey, next.value.groupKey) > 0)
         ) {
-          throw new Error(`Concat input table ${state.inputTableKey} yielded groups out of order`);
+          throw new Error(`Concat input table ${state.inputTableKey} yielded group keys out of order according to input table ${comparatorInputKey}'s comparator. Concat requires all of its inputs to agree on group key ordering, because it pushes group range bounds down into each input.`);
         }
         state.previousGroupKey = next.value.groupKey;
         state.current = next.value;
       };
-      await Promise.all(states.map(advance));
-      let previousCanonicalKey: string | undefined;
-      for (;;) {
-        let selected: { state: InputState, groupKey: PiledriverObject } | undefined;
-        for (const state of states) {
-          const current = state.current;
-          if (current === undefined) continue;
-          if (
-            selected === undefined
-            || (range.reverse
-              ? compareTotal(current.groupKey, selected.groupKey) > 0
-              : compareTotal(current.groupKey, selected.groupKey) < 0)
-          ) {
-            selected = { state, groupKey: current.groupKey };
+      try {
+        await Promise.all(states.map(advance));
+        let previousCanonicalKey: string | undefined;
+        for (;;) {
+          let selected: { state: InputState, groupKey: PiledriverObject } | undefined;
+          for (const state of states) {
+            const current = state.current;
+            if (current === undefined) continue;
+            if (
+              selected === undefined
+              || (range.reverse
+                ? compareTotal(current.groupKey, selected.groupKey) > 0
+                : compareTotal(current.groupKey, selected.groupKey) < 0)
+            ) {
+              selected = { state, groupKey: current.groupKey };
+            }
           }
+          if (selected === undefined) return;
+          // Equal group keys are adjacent in the merged stream (the canonical-string tie-break makes
+          // the order total), so comparing against the previously yielded key is enough to dedupe
+          // groups that several inputs share — no set of all seen keys needed.
+          const canonicalKey = canonicalGroupKeyString(selected.groupKey);
+          if (canonicalKey !== previousCanonicalKey) {
+            previousCanonicalKey = canonicalKey;
+            yield { groupKey: selected.groupKey };
+            if (range.limit !== undefined && ++yielded >= range.limit) return;
+          }
+          await advance(selected.state);
         }
-        if (selected === undefined) return;
-        // Equal group keys are adjacent in the merged stream (the canonical-string tie-break makes
-        // the order total), so comparing against the previously yielded key is enough to dedupe
-        // groups that several inputs share — no set of all seen keys needed.
-        const canonicalKey = canonicalGroupKeyString(selected.groupKey);
-        if (canonicalKey !== previousCanonicalKey) {
-          previousCanonicalKey = canonicalKey;
-          yield { groupKey: selected.groupKey };
-          if (range.limit !== undefined && ++yielded >= range.limit) return;
-        }
-        await advance(selected.state);
+      } finally {
+        // Manual async-iterator use does not provide for-await's automatic cleanup on early return.
+        await Promise.all(states.map(async state => {
+          if (!state.done) await state.iterator.return?.(undefined);
+        }));
       }
     },
     async * listRowsInGroup({ inputTables, groupKey, range }) {
