@@ -5,7 +5,7 @@ import { clearToasts, Toaster } from "@/components/ui";
 import { getTvBuiltInProfile, type TvDisplayResource, type TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPairingFailureNotice, TvDisplayManagement } from "./display-management";
+import { formatTvDisplayPairingCode, getPairingFailureNotice, TvDisplayManagement } from "./display-management";
 
 const display: TvDisplayResource = {
   id: "3af6ca2f-20eb-4c6b-a8b2-8f93d940f037",
@@ -52,6 +52,12 @@ afterEach(() => {
 });
 
 describe("TV display pairing feedback", () => {
+  it("formats typed and pasted pairing codes consistently", () => {
+    expect(formatTvDisplayPairingCode("abcd")).toBe("ABCD");
+    expect(formatTvDisplayPairingCode("abcde")).toBe("ABCD-E");
+    expect(formatTvDisplayPairingCode("abcd efgh extra")).toBe("ABCD-EFGH");
+  });
+
   it("recognizes a retried rate-limit failure without exposing its diagnostics", () => {
     const notice = getPairingFailureNotice(new AggregateError([
       new Error("Rate limited, no retry-after header received"),
@@ -98,7 +104,8 @@ describe("TV display pairing feedback", () => {
     renderManagement(adminApp);
 
     await waitFor(() => expect(screen.getByText("No Displays Paired Yet")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "ABCD-EFGH" } });
+    fireEvent.change(screen.getByLabelText("Pairing code"), { target: { value: "abcd efgh" } });
+    expect(screen.getByDisplayValue("ABCD-EFGH")).toBeTruthy();
     const pairButton = screen.getByRole("button", { name: "Pair Display" });
     fireEvent.click(pairButton);
     fireEvent.click(pairButton);
