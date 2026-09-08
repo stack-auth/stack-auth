@@ -388,6 +388,9 @@ export class ComputeClient {
   async applyInstance(spec: ComputeInstanceSpec): Promise<ComputeInstance> {
     const existing = await this.getInstance(spec.name);
     if (existing !== null && existing.revision === spec.revision && (existing.status === "RUNNING" || existing.status === "STAGING")) {
+      // TODO: require container startup readiness before reusing a matching VM, and recover
+      // failed startups or keep reporting failure. VM RUNNING/STAGING does not mean the
+      // container started; retrying the same spec can otherwise report a false success.
       const output = await this.getSerialOutput(spec.name);
       return { ...existing, imageRef: imageRefFromSerialOutput(output) };
     }

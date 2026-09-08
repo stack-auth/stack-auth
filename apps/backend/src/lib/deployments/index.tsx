@@ -315,6 +315,9 @@ export function assertAlwaysOnMemoryCapacity(services: Iterable<{
  * rows so a concurrent sync cannot hide the size of the spec this request will apply.
  */
 async function assertProjectDeploymentConstraints(prisma: PrismaClientTransaction, tenancy: Tenancy, overrides: ReadonlyMap<string, DeploymentServiceDefinition> = new Map(), runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): Promise<void> {
+  // TODO: retain applied/in-flight memory reservations until downsizing or teardown succeeds.
+  // Sync updates every definition, but a --service-id deploy only applies one service;
+  // desired-state accounting alone can release capacity still held by another service.
   const rows = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
     include: { source: { select: { runtime: true } } },

@@ -126,6 +126,10 @@ export async function applyRuntimeService(stored: StoredSpec, image: string, env
   const context = await tenantContext(stored.ns);
   await lease.assertOwned();
   if (stored.spec.config.type === "serverless") {
+    // TODO: validate GCP port support before saving desired state or deleting resources.
+    // The shared schema accepts TCP/multi-port specs that Cloud Run cannot serve; checking
+    // soleHttpPort after deletion can remove a working server before rejecting its replacement.
+    // Also reject public multi-port servers until the gateway can expose every declared port.
     // A type change must not leave the former persistent-server resources serving an old
     // revision. The disk intentionally survives, but its VM and public gateway do not.
     await context.cloudRun.delete(gatewayName(config.envId, stored.ns, stored.key));
