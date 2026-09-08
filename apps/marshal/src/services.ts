@@ -48,6 +48,7 @@ const DEPLOYMENT_ADVANCE_TIMINGS = {
   takeoverGraceMs: RECONCILIATION_TAKEOVER_GRACE_MS,
   acquireTimeoutMs: 1000,
 };
+const SLOW_APPLY_LOG_MS = 10_000;
 const NAMESPACE_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 // upload_id flows into an S3 object key (uploads/<ns>/<id>.tar.gz); validate it so a
 // path-traversal id can't escape the prefix. The backend mints these as randomUUIDs.
@@ -1579,6 +1580,7 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
     }
     await lease.assertOwned();
     let state: DeploymentServiceState;
+    const startedAt = performance.now();
     try {
       const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownTargets });
       state = deploymentStateForApply(next.service_key, image, applied);
@@ -1587,6 +1589,11 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
       // Same as applyServiceSpecWithLease: log the real error, store only text we wrote.
       console.error(`deployment ${deployment.id}: applying service ${next.service_key} failed`, error);
       state = { service_key: next.service_key, status: "failed", revision: null, url: null, image, error: truncateError(applyErrorMessage(error)) };
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > SLOW_APPLY_LOG_MS) {
+        console.warn(`deployment ${deployment.id}: applying service ${next.service_key} took ${Math.round(elapsed)}ms`);
+      }
     }
     const updated: StoredDeployment = { ...deployment, services: { ...deployment.services, [next.service_key]: state } };
     if (state.status === "failed") {

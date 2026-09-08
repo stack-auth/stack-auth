@@ -125,6 +125,27 @@ describe("service reconciliation lease", () => {
       contendedPollMs: 2,
       takeoverGraceMs: 10,
       acquireTimeoutMs: 30,
-    })).rejects.toThrow(ReconciliationLeaseLostError);
+    })).rejects.toThrow(/holder live-owner/);
+  });
+
+  it("logs when a contended lease is acquired after the owner expires", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stored = {
+      value: { owner_id: "expiring-owner", expires_at_millis: Date.now() + 30 },
+      etag: String(nextEtag++),
+    };
+    try {
+      await withReconciliationLease("ns", "web", async () => {}, {
+        durationMs: 1000,
+        renewIntervalMs: 500,
+        contendedPollMs: 2,
+        takeoverGraceMs: 0,
+        acquireTimeoutMs: 2000,
+      });
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/contended/));
+      expect(warn.mock.calls.some(([message]) => typeof message === "string" && /acquired .* after \d+ms/.test(message))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
