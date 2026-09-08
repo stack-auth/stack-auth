@@ -246,6 +246,30 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   return res;
 }
 
+export async function niceInternalToolFetch(url: string | URL, options?: Omit<NiceRequestInit, "body" | "headers"> & {
+  body?: unknown,
+  headers?: Record<string, string | undefined>,
+}): Promise<NiceResponse> {
+  const { body, headers, ...otherOptions } = options ?? {};
+  const fullUrl = new URL(url, localhostUrl("41"));
+  if (fullUrl.origin !== new URL(localhostUrl("41")).origin) {
+    throw new HexclaveAssertionError(`Invalid niceInternalToolFetch origin: ${fullUrl.origin}`);
+  }
+  const userAuth = backendContext.value.userAuth;
+  return await niceFetch(fullUrl, {
+    ...otherOptions,
+    ...body !== undefined ? { body: JSON.stringify(body) } : {},
+    headers: filterUndefined({
+      "content-type": body !== undefined ? "application/json" : undefined,
+      "x-stack-auth": JSON.stringify({
+        accessToken: userAuth?.accessToken ?? null,
+        refreshToken: userAuth?.refreshToken ?? null,
+      }),
+      ...headers,
+    }),
+  });
+}
+
 
 /**
  * Creates a new mailbox with a different email address, and sets it as the current mailbox.
@@ -1839,8 +1863,19 @@ export namespace User {
     }
     return users;
   }
-}
 
+  export async function setClientReadOnlyMetadata(userId: string, metadata: Record<string, unknown>) {
+    const response = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "server",
+      body: {
+        client_read_only_metadata: metadata,
+      },
+    });
+    expect(response).toMatchObject({ status: 200 });
+    return response;
+  }
+}
 
 export namespace Webhook {
   export async function createProjectWithEndpoint() {
