@@ -22,6 +22,8 @@ LOGGER = logging.getLogger("hexclave-tv-box-kiosk")
 READINESS_TIMEOUT_SECONDS = 45
 LIVENESS_GRACE_SECONDS = 15
 POLL_SECONDS = 1
+RENDERER_EXIT_WAIT_SECONDS = 0.1
+RENDERER_EXIT_WAIT_ATTEMPTS = 40
 MAX_RENDERER_DIAGNOSTIC_LINES = 64
 MAX_RENDERER_DIAGNOSTIC_LINE_CHARACTERS = 512
 SENSITIVE_RENDERER_VALUE_PATTERN = re.compile(
@@ -149,11 +151,15 @@ def _health_value(state: str, health: RendererHealth | None = None) -> str:
     return f"{state}{suffix}\n"
 
 
-def _terminate_exact_tree(process: subprocess.Popen[bytes], process_reader: Callable[[], dict[int, ProcessInfo]]) -> None:
+def _terminate_exact_tree(
+    process: subprocess.Popen[bytes],
+    process_reader: Callable[[], dict[int, ProcessInfo]],
+) -> dict[int, str]:
     if process.poll() is not None:
-        return
+        return {}
     processes = process_reader()
     descendants = descendant_processes(processes, process.pid)
+    tracked_descendants = {pid: info.name for pid, info in descendants.items()}
     cog_processes = sorted(
         pid
         for pid, info in descendants.items()
@@ -168,14 +174,57 @@ def _terminate_exact_tree(process: subprocess.Popen[bytes], process_reader: Call
             os.kill(cog_processes[0], signal.SIGTERM)
         except ProcessLookupError:
             pass
-        return
+        return tracked_descendants
     # A missing or ambiguous Cog child cannot complete the normal lifecycle.
     # Stop only this exact Cage process; systemd's cgroup timeout remains the
     # bounded fallback for descendants that do not exit with it.
     try:
         process.terminate()
     except ProcessLookupError:
-        return
+        pass
+    return tracked_descendants
+
+
+def _wait_for_renderer_shutdown(
+    tracked_processes: Mapping[int, str],
+    process_reader: Callable[[], dict[int, ProcessInfo]],
+    sleeper: Callable[[float], None],
+    attempts: int = RENDERER_EXIT_WAIT_ATTEMPTS,
+) -> bool:
+    """Wait for the exact pre-signal renderer processes without following reparented children."""
+    if attempts < 0:
+        raise ValueError("Renderer shutdown attempts cannot be negative.")
+    for attempt in range(attempts + 1):
+        current = process_reader()
+        remaining = {
+            pid
+            for pid, name in tracked_processes.items()
+            if (process_info := current.get(pid)) is not None and process_info.name == name
+        }
+        if len(remaining) == 0:
+            return True
+        if attempt < attempts:
+            sleeper(RENDERER_EXIT_WAIT_SECONDS)
+    return False
+
+
+def _stop_renderer(
+    process: subprocess.Popen[bytes],
+    process_reader: Callable[[], dict[int, ProcessInfo]],
+    sleeper: Callable[[float], None],
+) -> None:
+    tracked_processes = _terminate_exact_tree(process, process_reader)
+    cage_exited = False
+    try:
+        process.wait(timeout=5)
+        cage_exited = True
+    except subprocess.TimeoutExpired:
+        pass
+    descendants_exited = _wait_for_renderer_shutdown(tracked_processes, process_reader, sleeper)
+    if not cage_exited or not descendants_exited:
+        # The unit uses KillMode=mixed, so systemd retains a bounded SIGKILL
+        # fallback for exactly this control group after the supervisor exits.
+        LOGGER.warning("kiosk-renderer-stop-timeout")
 
 
 def supervise(
@@ -243,11 +292,7 @@ def supervise(
         while True:
             if stopping:
                 publish_health("stopping")
-                _terminate_exact_tree(process, process_reader)
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    LOGGER.warning("kiosk-renderer-stop-timeout")
+                _stop_renderer(process, process_reader, sleeper)
                 return 0
 
             return_code = process.poll()
@@ -270,7 +315,7 @@ def supervise(
                 if now - started_at >= readiness_timeout:
                     LOGGER.error("kiosk-renderer-readiness-timeout %s", health.summary())
                     publish_health("failed-readiness", health)
-                    _terminate_exact_tree(process, process_reader)
+                    _stop_renderer(process, process_reader, sleeper)
                     report_renderer_failure()
                     return 1
             else:
@@ -281,7 +326,7 @@ def supervise(
                 if now - missing_since >= liveness_grace:
                     LOGGER.error("kiosk-renderer-liveness-timeout %s", health.summary())
                     publish_health("failed-liveness", health)
-                    _terminate_exact_tree(process, process_reader)
+                    _stop_renderer(process, process_reader, sleeper)
                     report_renderer_failure()
                     return 1
             sleeper(POLL_SECONDS)

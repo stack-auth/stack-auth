@@ -10,6 +10,7 @@ from unittest import mock
 from hexclave_tv_box.kiosk_supervisor import (
     ProcessInfo,
     _terminate_exact_tree,
+    _wait_for_renderer_shutdown,
     _sanitize_renderer_output,
     descendant_processes,
     renderer_health,
@@ -46,10 +47,16 @@ class KioskSupervisorTests(unittest.TestCase):
         }
 
         with mock.patch("hexclave_tv_box.kiosk_supervisor.os.kill") as kill:
-            _terminate_exact_tree(process, lambda: processes)
+            tracked = _terminate_exact_tree(process, lambda: processes)
 
         kill.assert_called_once_with(101, signal.SIGTERM)
         self.assertFalse(process.terminated)
+        self.assertEqual(tracked, {
+            101: "cog",
+            102: "WPENetworkProcess",
+            103: "bwrap",
+            104: "WPEWebProcess",
+        })
 
     def test_shutdown_falls_back_to_exact_cage_when_cog_is_missing(self) -> None:
         process = FakeProcess()
@@ -57,6 +64,37 @@ class KioskSupervisorTests(unittest.TestCase):
         _terminate_exact_tree(process, lambda: {100: ProcessInfo(90, "cage")})
 
         self.assertTrue(process.terminated)
+
+    def test_shutdown_waits_for_exact_renderer_processes_and_ignores_pid_reuse(self) -> None:
+        snapshots = iter((
+            {
+                101: ProcessInfo(100, "cog"),
+                102: ProcessInfo(101, "WPENetworkProcess"),
+            },
+            {
+                101: ProcessInfo(1, "unrelated"),
+            },
+        ))
+        sleeps: list[float] = []
+
+        self.assertTrue(_wait_for_renderer_shutdown(
+            {101: "cog", 102: "WPENetworkProcess"},
+            lambda: next(snapshots),
+            sleeps.append,
+            attempts=2,
+        ))
+        self.assertEqual(sleeps, [0.1])
+
+    def test_shutdown_wait_is_bounded_when_a_renderer_process_is_stuck(self) -> None:
+        sleeps: list[float] = []
+
+        self.assertFalse(_wait_for_renderer_shutdown(
+            {101: "cog"},
+            lambda: {101: ProcessInfo(1, "cog")},
+            sleeps.append,
+            attempts=2,
+        ))
+        self.assertEqual(sleeps, [0.1, 0.1])
 
     def test_renderer_diagnostics_are_bounded_and_suppress_sensitive_values(self) -> None:
         self.assertEqual(

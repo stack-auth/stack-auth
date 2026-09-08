@@ -40,7 +40,10 @@ ExecStartPost=+/usr/bin/chvt 1
 Restart=always
 RestartSec=2
 TimeoutStopSec=10
-KillMode=control-group
+# Send SIGTERM only to the supervisor so it can stop Cog first and wait for
+# WebKit's persistent-cookie flush. Any process still alive at the bounded
+# stop deadline is killed across this exact unit control group.
+KillMode=mixed
 SendSIGKILL=yes
 NoNewPrivileges=yes
 PrivateTmp=yes

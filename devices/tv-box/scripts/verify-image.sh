@@ -26,6 +26,10 @@ grep -qxF 'Environment=XDG_RUNTIME_DIR=/run/hexclave-tv-box-wayland' "$rootfs/et
   printf '%s\n' 'Image kiosk does not declare its private Wayland runtime directory.' >&2
   exit 1
 }
+grep -qxF 'KillMode=mixed' "$rootfs/etc/systemd/system/hexclave-tv-box-kiosk.service" || {
+  printf '%s\n' 'Image kiosk does not preserve supervised WebKit shutdown ordering.' >&2
+  exit 1
+}
 grep -qF 'hexclave_tv_box.kiosk_supervisor' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
   printf '%s\n' 'Image kiosk does not launch the renderer supervisor.' >&2
   exit 1
