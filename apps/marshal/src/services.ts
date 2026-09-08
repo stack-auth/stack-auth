@@ -953,13 +953,21 @@ async function specIsStillOwned(ns: string, key: string, etag: string): Promise<
 }
 
 export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, options?: { knownTargets?: Map<string, KnownTarget>, lease?: ReconciliationLeaseGuard }): Promise<ApplyResult> {
-  // A deployment already holds the lease for its whole source, so it passes its
-  // own rather than taking a second one per service — the lease is not
-  // re-entrant, and waiting on itself is a deadlock.
-  if (options?.lease !== undefined) {
-    return await applyServiceSpecWithLease(ns, key, spec, options.lease, options.knownTargets);
+  const startedAt = performance.now();
+  try {
+    // A deployment already holds the lease for its whole source, so it passes its
+    // own rather than taking a second one per service — the lease is not
+    // re-entrant, and waiting on itself is a deadlock.
+    if (options?.lease !== undefined) {
+      return await applyServiceSpecWithLease(ns, key, spec, options.lease, options.knownTargets);
+    }
+    return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, lease, options?.knownTargets));
+  } finally {
+    const elapsed = performance.now() - startedAt;
+    if (elapsed > SLOW_APPLY_LOG_MS) {
+      console.warn(`applying service ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)} took ${Math.round(elapsed)}ms`);
+    }
   }
-  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, lease, options?.knownTargets));
 }
 
 async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, lease: ReconciliationLeaseGuard, knownTargets?: Map<string, KnownTarget>): Promise<ApplyResult> {
@@ -1580,7 +1588,6 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
     }
     await lease.assertOwned();
     let state: DeploymentServiceState;
-    const startedAt = performance.now();
     try {
       const applied = await applyServiceSpec(ns, next.service_key, { ...target.spec, source: { image } }, { knownTargets });
       state = deploymentStateForApply(next.service_key, image, applied);
@@ -1589,11 +1596,6 @@ async function applyNextService(ns: string, deployment: StoredDeployment, lease:
       // Same as applyServiceSpecWithLease: log the real error, store only text we wrote.
       console.error(`deployment ${deployment.id}: applying service ${next.service_key} failed`, error);
       state = { service_key: next.service_key, status: "failed", revision: null, url: null, image, error: truncateError(applyErrorMessage(error)) };
-    } finally {
-      const elapsed = performance.now() - startedAt;
-      if (elapsed > SLOW_APPLY_LOG_MS) {
-        console.warn(`deployment ${deployment.id}: applying service ${next.service_key} took ${Math.round(elapsed)}ms`);
-      }
     }
     const updated: StoredDeployment = { ...deployment, services: { ...deployment.services, [next.service_key]: state } };
     if (state.status === "failed") {

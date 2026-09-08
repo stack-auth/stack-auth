@@ -13,7 +13,7 @@ vi.mock("./store.js", () => ({
     if (loseCreateOnce) {
       loseCreateOnce = false;
       stored = {
-        value: { owner_id: "racer", expires_at_millis: Date.now() + 30 },
+        value: { owner_id: "racer", expires_at_millis: Date.now() + 200 },
         etag: String(nextEtag++),
       };
       return null;
@@ -129,19 +129,21 @@ describe("service reconciliation lease", () => {
       value: { owner_id: "live-owner", expires_at_millis: Date.now() + 60_000 },
       etag: String(nextEtag++),
     };
-    await expect(withReconciliationLease("ns", "web", async () => "never runs", {
+    const promise = withReconciliationLease("ns", "web", async () => "never runs", {
       durationMs: 1000,
       renewIntervalMs: 500,
       contendedPollMs: 2,
       takeoverGraceMs: 10,
       acquireTimeoutMs: 30,
-    })).rejects.toThrow(/holder live-owner/);
+    });
+    await expect(promise).rejects.toBeInstanceOf(ReconciliationLeaseLostError);
+    await expect(promise).rejects.toThrow(/holder live-owner/);
   });
 
   it("logs when a contended lease is acquired after the owner expires", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stored = {
-      value: { owner_id: "expiring-owner", expires_at_millis: Date.now() + 30 },
+      value: { owner_id: "expiring-owner", expires_at_millis: Date.now() + 200 },
       etag: String(nextEtag++),
     };
     try {
