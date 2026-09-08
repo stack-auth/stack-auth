@@ -146,7 +146,10 @@ import.meta.vitest?.test("isValidHostnameWithWildcards", ({ expect }) => {
  * `wildcardUrlSchema` accepts for trusted domain base URLs (e.g. `*.example.com:4250`).
  */
 export function isValidHostWithWildcards(host: string) {
-  const portSeparatorIndex = host.lastIndexOf(':');
+  // Bracketed IPv6 literals contain colons themselves; only a colon after the closing bracket separates the port
+  const portSeparatorIndex = host.startsWith('[')
+    ? (host.includes(']:') ? host.lastIndexOf(':') : -1)
+    : host.lastIndexOf(':');
   if (portSeparatorIndex === -1) {
     return isValidHostnameWithWildcards(host);
   }
@@ -162,6 +165,8 @@ import.meta.vitest?.test("isValidHostWithWildcards", ({ expect }) => {
   expect(isValidHostWithWildcards("*.example.com:4250")).toBe(true);
   expect(isValidHostWithWildcards("*.*.ts.net:4250")).toBe(true);
   expect(isValidHostWithWildcards("**.example.com:8080")).toBe(true);
+  expect(isValidHostWithWildcards("[::1]")).toBe(true);
+  expect(isValidHostWithWildcards("[::1]:3000")).toBe(true);
 
   expect(isValidHostWithWildcards("")).toBe(false);
   expect(isValidHostWithWildcards("example.com:")).toBe(false);
@@ -172,6 +177,8 @@ import.meta.vitest?.test("isValidHostWithWildcards", ({ expect }) => {
   expect(isValidHostWithWildcards("example.com:4250/path")).toBe(false);
   expect(isValidHostWithWildcards("https://example.com:4250")).toBe(false);
   expect(isValidHostWithWildcards("*.example..com:4250")).toBe(false);
+  expect(isValidHostWithWildcards("[::1]:")).toBe(false);
+  expect(isValidHostWithWildcards("[::1]:abc")).toBe(false);
 });
 
 export function matchHostnamePattern(pattern: string, hostname: string): boolean {
