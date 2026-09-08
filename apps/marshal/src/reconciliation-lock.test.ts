@@ -12,6 +12,10 @@ vi.mock("./store.js", () => ({
     if (stored !== null) return null;
     if (loseCreateOnce) {
       loseCreateOnce = false;
+      stored = {
+        value: { owner_id: "racer", expires_at_millis: Date.now() + 30 },
+        etag: String(nextEtag++),
+      };
       return null;
     }
     const etag = String(nextEtag++);
@@ -167,6 +171,7 @@ describe("service reconciliation lease", () => {
         acquireTimeoutMs: 2000,
       });
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/lost conditional lease write/));
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/contended .* holder racer/));
       expect(warn.mock.calls.some(([message]) => typeof message === "string" && /acquired .* after \d+ms/.test(message))).toBe(true);
     } finally {
       warn.mockRestore();

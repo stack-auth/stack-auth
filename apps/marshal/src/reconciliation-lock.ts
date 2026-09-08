@@ -47,9 +47,10 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
   // same stuck lease stacks another loop in the process. Failing with the error app.ts already
   // maps to a retryable 409 turns contention into an answer the caller can act on.
   const startedAt = performance.now();
-  let contentionLogged = false;
+  let lostWriteLogged = false;
+  let holderLogged = false;
   const logAcquiredAfterContention = (): void => {
-    if (contentionLogged) {
+    if (lostWriteLogged || holderLogged) {
       console.warn(`marshal lease acquired for ${JSON.stringify(key)} after ${Math.round(performance.now() - startedAt)}ms following contention`);
     }
   };
@@ -64,9 +65,9 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
         logAcquiredAfterContention();
         return { etag, value: desired };
       }
-      if (!contentionLogged) {
+      if (!lostWriteLogged) {
         console.warn(`lost conditional lease write for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: another marshal replica created the lease first`);
-        contentionLogged = true;
+        lostWriteLogged = true;
       }
     } else if (current.value.expires_at_millis + timings.takeoverGraceMs <= now) {
       // Conditional replacement is the distributed arbiter: exactly one Marshal replica can
@@ -77,13 +78,13 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
         logAcquiredAfterContention();
         return { etag, value: desired };
       }
-      if (!contentionLogged) {
-        console.warn(`lost conditional lease write for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: another marshal replica took over the lease first`);
-        contentionLogged = true;
+      if (!lostWriteLogged) {
+        console.warn(`lost conditional lease write for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: the lease changed before this marshal replica could take it over`);
+        lostWriteLogged = true;
       }
-    } else if (!contentionLogged) {
+    } else if (!holderLogged) {
       console.warn(`contended marshal lease for ${JSON.stringify(key)} in namespace ${JSON.stringify(ns)}: holder ${current.value.owner_id}, expires in ${current.value.expires_at_millis - now}ms; takeover grace ${timings.takeoverGraceMs}ms`);
-      contentionLogged = true;
+      holderLogged = true;
     }
     if (Date.now() >= deadline) {
       const elapsed = Math.round(performance.now() - startedAt);
