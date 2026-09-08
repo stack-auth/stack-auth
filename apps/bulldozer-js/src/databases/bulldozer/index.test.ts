@@ -350,27 +350,15 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     const tracked = {
       ...stored,
       listGroups(options: Parameters<typeof stored.listGroups>[0]) {
-        const groups = (async function* () {
-          try {
-            for await (const group of stored.listGroups(options)) yield group;
-          } finally {
-            closed = true;
-          }
-        })();
-        let firstResult: ReturnType<typeof groups.next> | undefined = groups.next();
+        const inner = stored.listGroups(options)[Symbol.asyncIterator]();
         return {
           [Symbol.asyncIterator]() {
             return {
-              async next() {
-                if (firstResult !== undefined) {
-                  const result = firstResult;
-                  firstResult = undefined;
-                  return await result;
-                }
-                return await groups.next();
-              },
+              next: () => inner.next(),
               async return() {
-                return await groups.return();
+                closed = true;
+                const result = await inner.return?.();
+                return result ?? { done: true, value: undefined };
               },
             };
           },
