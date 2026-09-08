@@ -312,6 +312,38 @@ describe.each(["base", "in-memory"] as const)("Bulldozer (%s)", backend => {
     expect([...reverseFirstPage, ...reverseSecondPage]).toEqual(reverseFull);
   });
 
+  it("closes concat input group iterators when iteration ends early", async () => {
+    let closed = false;
+    const stored = defineStoredTable();
+    const tracked = {
+      ...stored,
+      async * listGroups(options: Parameters<typeof stored.listGroups>[0]) {
+        try {
+          for await (const group of stored.listGroups(options)) yield group;
+        } finally {
+          closed = true;
+        }
+      },
+    };
+    let snapshot = await initializedSnapshot(backend, [[
+      { type: "initTable", tableId: "tracked", table: tracked, inputTables: {} },
+      { type: "initTable", tableId: "other", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "tracked", b: "other" } },
+    ]]);
+    snapshot = await set(snapshot, "tracked", "row", "value");
+
+    closed = false;
+    expect(await collect(snapshot.listGroups({ tableId: "concat", range: { limit: 1 } }))).toEqual([{ groupKey: null }]);
+    expect(closed).toBe(true);
+
+    closed = false;
+    for await (const group of snapshot.listGroups({ tableId: "concat", range: {} })) {
+      expect(group).toEqual({ groupKey: null });
+      break;
+    }
+    expect(closed).toBe(true);
+  });
+
   it("left joins rows by derived keys and updates when either side changes", async () => {
     const join = declareLeftJoinTable({
       leftJoinKeyExtractor: async row => (row.rowData as { key: string }).key,
