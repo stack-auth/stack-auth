@@ -10,7 +10,7 @@ from unittest import mock
 
 from hexclave_tv_box.setup_portal import SetupPortalServer, SubmissionLimiter
 from hexclave_tv_box.kiosk_supervisor import ProcessInfo
-from hexclave_tv_box.support import ADMIN_CONFIRMATION, diagnostics, execute, factory_reset, forced_command_main, recent_service_logs, reset_pairing
+from hexclave_tv_box.support import ADMIN_CONFIRMATION, _sqlite_store_state, diagnostics, execute, factory_reset, forced_command_main, recent_service_logs, reset_pairing
 
 
 class PortalAndSupportTests(unittest.TestCase):
@@ -132,8 +132,24 @@ class PortalAndSupportTests(unittest.TestCase):
                 result = diagnostics()
         self.assertIn("device-id=public-device-id", result)
         self.assertIn("effective-renderer-url=https://pilot-box.trycloudflare.com/tv-box", result)
-        self.assertNotIn("cookie", result.casefold())
+        self.assertIn("browser-credential-store=missing", result)
         self.assertNotIn("password", result.casefold())
+
+    def test_browser_credential_diagnostic_reports_only_sqlite_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "cookies.sqlite"
+            self.assertEqual(_sqlite_store_state(store), "missing")
+            store.write_bytes(b"")
+            self.assertEqual(_sqlite_store_state(store), "empty")
+            store.write_bytes(b"not a credential database")
+            self.assertEqual(_sqlite_store_state(store), "invalid")
+            store.write_bytes(b"SQLite format 3\x00" + b"secret-must-not-be-read")
+            self.assertEqual(_sqlite_store_state(store), "present")
+            target = Path(directory) / "outside"
+            target.write_bytes(b"SQLite format 3\x00")
+            store.unlink()
+            store.symlink_to(target)
+            self.assertEqual(_sqlite_store_state(store), "invalid")
 
     def test_diagnostics_rejects_multiline_runtime_values(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

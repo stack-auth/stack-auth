@@ -4,8 +4,8 @@ set -eu
 url_file=/run/hexclave-tv-box/kiosk-url
 cookie_dir=/var/lib/hexclave-tv-box/browser
 cache_dir=/run/hexclave-tv-box-browser-cache
-data_dir=/run/hexclave-tv-box-browser-cache/data
-config_dir=/run/hexclave-tv-box-browser-cache/config
+data_dir="$cookie_dir/data"
+config_dir="$cookie_dir/config"
 timezone_file=/var/lib/hexclave-tv-box/identity/timezone
 wayland_runtime_dir=/run/hexclave-tv-box-wayland
 
@@ -56,6 +56,10 @@ export XDG_RUNTIME_DIR="$wayland_runtime_dir"
 # Keep WebKit's process sandbox enabled while declining the unused bus.
 unset DBUS_SESSION_BUS_ADDRESS
 export XDG_CACHE_HOME="$cache_dir"
+# WebKit derives its non-ephemeral network-session data directory from XDG.
+# Keep browser identity with the explicit cookie jar on the persistent state
+# partition; cache remains disposable under /run. Pairing/factory reset clears
+# this exact browser directory, so persistence never survives an explicit reset.
 export XDG_DATA_HOME="$data_dir"
 export XDG_CONFIG_HOME="$config_dir"
 url=$(tr -d '\r\n' < "$url_file")

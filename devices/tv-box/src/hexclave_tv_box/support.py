@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import socket
+import stat
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -23,6 +25,7 @@ SERVICES = (
 MAX_DIAGNOSTIC_FILE_BYTES = 2_048
 KIOSK_HEALTH_PATH = STATE_ROOT / "browser" / "kiosk-health"
 KIOSK_LOG_IDENTIFIER = "hexclave-tv-box-kiosk"
+SQLITE_HEADER = b"SQLite format 3\x00"
 
 
 def run(command: Sequence[str]) -> str:
@@ -51,6 +54,31 @@ def _diagnostic_file_value(path: Path) -> str:
     return lines[0]
 
 
+def _sqlite_store_state(path: Path) -> str:
+    """Report only structural state; never inspect or expose credential rows."""
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        return "missing"
+    except OSError as error:
+        return "invalid" if error.errno == errno.ELOOP else "unavailable"
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            return "invalid"
+        if metadata.st_size == 0:
+            return "empty"
+        header = os.read(descriptor, len(SQLITE_HEADER))
+    except OSError:
+        return "unavailable"
+    finally:
+        os.close(descriptor)
+    return "present" if header == SQLITE_HEADER else "invalid"
+
+
 def agent_request(request: dict[str, object], socket_path: Path = RUNTIME_ROOT / "control.sock") -> dict[str, object]:
     payload = json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n"
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -74,6 +102,7 @@ def diagnostics() -> str:
     # API token. Reporting the effective value distinguishes production from
     # an explicitly enabled test-image origin without broad shell access.
     lines.append(f"effective-renderer-url={_diagnostic_file_value(RUNTIME_ROOT / 'kiosk-url')}")
+    lines.append(f"browser-credential-store={_sqlite_store_state(STATE_ROOT / 'browser' / 'cookies.sqlite')}")
     checks: tuple[tuple[str, Sequence[str]], ...] = (
         ("uptime", ["uptime", "-p"]),
         ("memory", ["free", "-h"]),

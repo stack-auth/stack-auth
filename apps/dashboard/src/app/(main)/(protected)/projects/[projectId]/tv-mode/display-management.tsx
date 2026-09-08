@@ -28,6 +28,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const DISPLAY_REFRESH_INTERVAL_MS = 5_000;
 
+export function formatTvDisplayPairingCode(value: string): string {
+  const normalized = value.toUpperCase().replaceAll(/[^0-9A-Z]/g, "").slice(0, 8);
+  return normalized.length <= 4
+    ? normalized
+    : `${normalized.slice(0, 4)}-${normalized.slice(4)}`;
+}
+
 type ActionNotice = {
   variant: "success" | "error" | "info",
   title: string,
@@ -245,7 +252,7 @@ export function TvDisplayManagement({
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <label htmlFor="new-tv-display-code" className="text-xs font-medium text-foreground">Pairing Code</label>
-              <DesignInput id="new-tv-display-code" aria-label="Pairing code" value={pairingCode} onChange={(event) => setPairingCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH" size="lg" className="font-mono uppercase tracking-widest" />
+              <DesignInput id="new-tv-display-code" aria-label="Pairing code" value={pairingCode} onChange={(event) => setPairingCode(formatTvDisplayPairingCode(event.target.value))} placeholder="ABCD-EFGH" maxLength={9} size="lg" className="font-mono uppercase tracking-widest" />
             </div>
             <div className="space-y-2">
               <label htmlFor="new-tv-display-name" className="text-xs font-medium text-foreground">Display Name</label>

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import io
+import signal
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from hexclave_tv_box.kiosk_supervisor import (
     ProcessInfo,
+    _terminate_exact_tree,
     _sanitize_renderer_output,
     descendant_processes,
     renderer_health,
@@ -32,6 +35,29 @@ class FakeProcess:
 
 
 class KioskSupervisorTests(unittest.TestCase):
+    def test_graceful_shutdown_signals_only_cog_so_webkit_can_flush_state(self) -> None:
+        process = FakeProcess()
+        processes = {
+            100: ProcessInfo(90, "cage"),
+            101: ProcessInfo(100, "cog"),
+            102: ProcessInfo(101, "WPENetworkProcess"),
+            103: ProcessInfo(101, "bwrap"),
+            104: ProcessInfo(103, "WPEWebProcess"),
+        }
+
+        with mock.patch("hexclave_tv_box.kiosk_supervisor.os.kill") as kill:
+            _terminate_exact_tree(process, lambda: processes)
+
+        kill.assert_called_once_with(101, signal.SIGTERM)
+        self.assertFalse(process.terminated)
+
+    def test_shutdown_falls_back_to_exact_cage_when_cog_is_missing(self) -> None:
+        process = FakeProcess()
+
+        _terminate_exact_tree(process, lambda: {100: ProcessInfo(90, "cage")})
+
+        self.assertTrue(process.terminated)
+
     def test_renderer_diagnostics_are_bounded_and_suppress_sensitive_values(self) -> None:
         self.assertEqual(
             _sanitize_renderer_output(b"failed URL https://example.com/tv-box?code=secret#fragment\n"),
@@ -117,17 +143,19 @@ class KioskSupervisorTests(unittest.TestCase):
         times = iter((0.0, 0.0, 1.0, 17.0))
         with tempfile.TemporaryDirectory() as directory:
             health_file = Path(directory) / "health"
-            result = supervise(
-                ["cage", "--", "cog"],
-                health_path=health_file,
-                process_reader=process_reader,
-                monotonic=lambda: next(times),
-                sleeper=lambda _seconds: None,
-                process_factory=lambda _command, **_options: process,
-            )
+            with mock.patch("hexclave_tv_box.kiosk_supervisor.os.kill") as kill:
+                result = supervise(
+                    ["cage", "--", "cog"],
+                    health_path=health_file,
+                    process_reader=process_reader,
+                    monotonic=lambda: next(times),
+                    sleeper=lambda _seconds: None,
+                    process_factory=lambda _command, **_options: process,
+                )
 
             self.assertEqual(result, 1)
-            self.assertTrue(process.terminated)
+            kill.assert_called_once_with(101, signal.SIGTERM)
+            self.assertFalse(process.terminated)
             self.assertEqual(
                 health_file.read_text(encoding="utf-8"),
                 "failed-liveness cage=ready,cog=ready,web-process=missing\n",

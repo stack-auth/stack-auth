@@ -154,18 +154,24 @@ def _terminate_exact_tree(process: subprocess.Popen[bytes], process_reader: Call
         return
     processes = process_reader()
     descendants = descendant_processes(processes, process.pid)
-    # Stopping Cog first follows its normal lifecycle and lets Cage close its
-    # single surface cleanly. Any process that ignores SIGTERM remains inside
-    # the systemd cgroup and is covered by the unit's bounded SIGKILL fallback.
-    ordered = sorted(
-        descendants.items(),
-        key=lambda item: (item[1].name != "cog", item[1].name != "WPEWebProcess", item[0]),
+    cog_processes = sorted(
+        pid
+        for pid, info in descendants.items()
+        if info.name == "cog"
     )
-    for pid, _info in ordered:
+    if len(cog_processes) == 1:
+        # Cog owns the WebKit processes. Give it the first and only graceful
+        # signal so WebKit can flush persistent cookies before Cog closes its
+        # Cage surface. Signalling WPENetworkProcess independently races that
+        # write and can turn a routine service restart into lost pairing state.
         try:
-            os.kill(pid, signal.SIGTERM)
+            os.kill(cog_processes[0], signal.SIGTERM)
         except ProcessLookupError:
-            continue
+            pass
+        return
+    # A missing or ambiguous Cog child cannot complete the normal lifecycle.
+    # Stop only this exact Cage process; systemd's cgroup timeout remains the
+    # bounded fallback for descendants that do not exit with it.
     try:
         process.terminate()
     except ProcessLookupError:

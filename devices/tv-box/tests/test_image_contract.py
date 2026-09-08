@@ -12,12 +12,28 @@ ROOTFS = ROOT / "image" / "rootfs"
 
 
 class ImageContractTests(unittest.TestCase):
+    def test_setup_portal_only_shows_manual_network_fields_for_manual_entry(self) -> None:
+        setup_ui = ROOT / "setup-ui"
+        html = (setup_ui / "index.html").read_text(encoding="utf-8")
+        script = (setup_ui / "setup.js").read_text(encoding="utf-8")
+        styles = (setup_ui / "setup.css").read_text(encoding="utf-8")
+        self.assertIn('id="manual-name" hidden', html)
+        self.assertIn('id="manual-security" hidden', html)
+        self.assertIn('manualOption.textContent = "Enter another network…"', script)
+        self.assertIn("manualName.hidden = !manual", script)
+        self.assertIn("[hidden] { display: none !important; }", styles)
+
     def test_services_use_the_persistent_cookie_jar_and_production_url(self) -> None:
         launcher = (ROOTFS / "usr/lib/hexclave-tv-box/kiosk-launch").read_text(encoding="utf-8")
         self.assertIn("/var/lib/hexclave-tv-box/browser", launcher)
         self.assertIn("/run/hexclave-tv-box-browser-cache", launcher)
-        self.assertIn("XDG_DATA_HOME", launcher)
-        self.assertIn("XDG_CONFIG_HOME", launcher)
+        self.assertIn('data_dir="$cookie_dir/data"', launcher)
+        self.assertIn('config_dir="$cookie_dir/config"', launcher)
+        self.assertIn('export XDG_CACHE_HOME="$cache_dir"', launcher)
+        self.assertIn('export XDG_DATA_HOME="$data_dir"', launcher)
+        self.assertIn('export XDG_CONFIG_HOME="$config_dir"', launcher)
+        self.assertNotIn("data_dir=/run/", launcher)
+        self.assertNotIn("config_dir=/run/", launcher)
         self.assertIn("wayland_runtime_dir=/run/hexclave-tv-box-wayland", launcher)
         self.assertIn('export XDG_RUNTIME_DIR="$wayland_runtime_dir"', launcher)
         self.assertIn("unset DBUS_SESSION_BUS_ADDRESS", launcher)
