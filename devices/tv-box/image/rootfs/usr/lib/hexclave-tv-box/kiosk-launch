@@ -50,6 +50,11 @@ export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
 # service environment. Reassert the systemd-owned private directory here so
 # Cage never inherits a cleared or replaced XDG_RUNTIME_DIR from PAM.
 export XDG_RUNTIME_DIR="$wayland_runtime_dir"
+# pam_systemd may also publish a desktop session bus under /run/user/<uid>.
+# This appliance has no desktop session services, and WebKit otherwise tries
+# to expose that separate runtime tree through its bubblewrap D-Bus proxy.
+# Keep WebKit's process sandbox enabled while declining the unused bus.
+unset DBUS_SESSION_BUS_ADDRESS
 export XDG_CACHE_HOME="$cache_dir"
 export XDG_DATA_HOME="$data_dir"
 export XDG_CONFIG_HOME="$config_dir"

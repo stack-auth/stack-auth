@@ -20,6 +20,15 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn("XDG_CONFIG_HOME", launcher)
         self.assertIn("wayland_runtime_dir=/run/hexclave-tv-box-wayland", launcher)
         self.assertIn('export XDG_RUNTIME_DIR="$wayland_runtime_dir"', launcher)
+        self.assertIn("unset DBUS_SESSION_BUS_ADDRESS", launcher)
+        self.assertLess(
+            launcher.index('export XDG_RUNTIME_DIR="$wayland_runtime_dir"'),
+            launcher.index("unset DBUS_SESSION_BUS_ADDRESS"),
+        )
+        self.assertLess(
+            launcher.index("unset DBUS_SESSION_BUS_ADDRESS"),
+            launcher.index("exec /usr/bin/python3"),
+        )
         self.assertIn('stat -c %u "$wayland_runtime_dir"', launcher)
         self.assertIn('stat -c %a "$wayland_runtime_dir"', launcher)
         self.assertIn("hexclave_tv_box.kiosk_supervisor", launcher)
@@ -241,6 +250,7 @@ class ImageContractTests(unittest.TestCase):
                         else (
                             "wayland_runtime_dir=/run/hexclave-tv-box-wayland\n"
                             'export XDG_RUNTIME_DIR="$wayland_runtime_dir"\n'
+                            "unset DBUS_SESSION_BUS_ADDRESS\n"
                             "hexclave_tv_box.kiosk_supervisor\n"
                         )
                         if path == "usr/lib/hexclave-tv-box/kiosk-launch"

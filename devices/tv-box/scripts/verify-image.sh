@@ -38,6 +38,10 @@ grep -qxF 'export XDG_RUNTIME_DIR="$wayland_runtime_dir"' "$rootfs/usr/lib/hexcl
   printf '%s\n' 'Image kiosk launcher does not restore its Wayland runtime directory after PAM setup.' >&2
   exit 1
 }
+grep -qxF 'unset DBUS_SESSION_BUS_ADDRESS' "$rootfs/usr/lib/hexclave-tv-box/kiosk-launch" || {
+  printf '%s\n' 'Image kiosk launcher exposes an incompatible desktop session bus to WebKit.' >&2
+  exit 1
+}
 grep -qF '"--platform=wl"' "$rootfs/usr/lib/python3/dist-packages/hexclave_tv_box/kiosk_supervisor.py" || {
   printf '%s\n' 'Image kiosk does not pin Cog to the Cage Wayland platform.' >&2
   exit 1
