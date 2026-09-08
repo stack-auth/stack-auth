@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // applyServiceSpecWithLease does after reading config. Everything mocked here exists to let
 // execution reach that line, not to model the rest of the apply.
 
+const readSpec = vi.hoisted(() => vi.fn());
 const domainClaims = vi.hoisted(() => vi.fn(async (_ns: string, _key: string): Promise<string[]> => []));
 const domainClaim = vi.hoisted(() => vi.fn(async (hostname: string): Promise<{
   value: { hostname: string, ns: string, service_key: string, claimed_at_millis: number },
@@ -34,6 +35,7 @@ vi.mock("./reconciliation-lock.js", async (importOriginal) => ({
 
 vi.mock("./store.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./store.js")>(),
+  readSpec,
   listDomainClaimsForService: domainClaims,
   readDomainClaimVersioned: domainClaim,
 }));
@@ -128,4 +130,16 @@ describe("a spec write against a service that holds a domain", () => {
     expect(error).not.toBeNull();
     expect(String(error)).not.toMatch(/may not declare more than one port|need an HTTP port/);
   });
+});
+
+
+it("refuses a GCP type change with a domain before writing the desired spec", async () => {
+  domainClaims.mockResolvedValue(["app.example.com"]);
+  readSpec.mockResolvedValue({ spec: { config: { type: "server" } } });
+  await expect(apply({ "8080": { protocol: "http" } })).rejects.toThrow(/Detach all custom domains/);
+  readSpec.mockResolvedValue({ spec: { config: { type: "serverless" } } });
+  await expect(applyServiceSpec("namespace", "web", {
+    ...spec({ "8080": { protocol: "http" } }),
+    config: { ...spec({ "8080": { protocol: "http" } }).config, type: "server" },
+  })).rejects.toThrow(/Detach all custom domains/);
 });

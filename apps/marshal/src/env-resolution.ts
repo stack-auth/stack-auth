@@ -1,6 +1,7 @@
 // Resolves a spec's `{ ref }` env values against the addresses of the services they name.
 // Its own module because both the generic layer (services.ts) and a provider's domain flow
 // need it, and a provider must not import services.ts (which imports the providers).
+import { badRequest } from "./errors.js";
 import { providerForNamespace, type RuntimeAddress } from "./provider.js";
 import { soleHttpPort, standardPortsHolderFor } from "./spec-helpers.js";
 import { readSpec } from "./store.js";
@@ -71,6 +72,12 @@ export async function resolveEnv(ns: string, env: Record<string, EnvValue>, know
     // Truthiness, not an undefined check: TS types an optional capture group as
     // `string` even though it is undefined at run time when it did not match.
     const namedPort = namedPortText ? Number(namedPortText) : null;
+    const target = await targetOf(targetKey);
+    // The beta has no private run.app DNS/routing. Never return an address that sibling
+    // Cloud Run services cannot reach, including when this deploy changes visibility.
+    if (provider.kind === "gcp" && target?.type === "serverless" && !target.public) {
+      throw badRequest("References to private GCP serverless services are not supported in the internal beta. Use a public serverless service or a private server.");
+    }
     switch (outputKey) {
       case "hostname": {
         if (await targetOf(targetKey) === null) {

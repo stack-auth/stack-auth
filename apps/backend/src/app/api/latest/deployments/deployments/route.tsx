@@ -271,27 +271,31 @@ export const POST = createSmartRouteHandler({
       if (upload == null || upload.expiresAt < new Date()) {
         throw new StatusError(404, "Upload not found or expired. Create a new upload and try again.");
       }
-      // deleteMany (not delete) so a concurrent duplicate request loses the race
-      // with a clean 4xx instead of an unhandled P2025 500.
-      const consumed = await prisma.deploymentSourceUpload.deleteMany({
-        where: { tenancyId: auth.tenancy.id, id: body.upload_id },
-      });
-      if (consumed.count === 0) {
-        throw new StatusError(409, "This upload was already consumed by another deploy request.");
-      }
     }
 
     // SERIALIZABLE: the deployment number is `max + 1` within the tenancy, so
     // the read and the insert have to be atomic. The unique index makes the
     // residual race a retry rather than two deployments printing as "#47".
     const deployment = await retryTransaction(prisma, async (transaction) => {
-      return await createDeployment(transaction, auth.tenancy, {
+      const created = await createDeployment(transaction, auth.tenancy, {
         sourceRowId: source.id,
         runtime: runtimeFromStored(source.runtime),
+        definitions: definitionsByServiceId,
         triggeredBy: body.triggered_by ?? auth.type,
         plannedServiceIds,
         sourceManifest: parseSourceManifest(body.source_manifest),
       });
+      // Capacity/runtime checks and consuming the upload must commit together. A rejected
+      // reservation must leave the upload available for a retry, including transaction races.
+      if (upload !== null) {
+        const consumed = await transaction.deploymentSourceUpload.deleteMany({
+          where: { tenancyId: auth.tenancy.id, id: upload.id },
+        });
+        if (consumed.count === 0) {
+          throw new StatusError(409, "This upload was already consumed by another deploy request.");
+        }
+      }
+      return created;
     }, { level: "serializable" });
     await prisma.deployment.update({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: deployment.id } },

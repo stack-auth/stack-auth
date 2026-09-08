@@ -115,13 +115,15 @@ describe("url() resolution against a target being changed in the same deploy", (
     expect(resolved).toEqual({ ok: true, env: { A: `http://${dbIp}:9090`, B: `http://${dbIp}:8080` } });
   });
 
-  it("uses the deployed Cloud Run URI for private serverless references", async () => {
+  it("rejects private serverless references even when the mock exposes a URI", async () => {
     readSpec.mockResolvedValue(storedSpec(false, "serverless"));
-    runtimeAddress.mockResolvedValue({ hostname: "web-abc.a.run.app", platformUrl: null, internalUrl: "https://web-abc.a.run.app" });
-    const resolved = await resolveEnv("ns", {
-      HOST: { ref: "db.hostname" },
-      URL: { ref: "db.url:8080" },
-    }, new Map());
-    expect(resolved).toEqual({ ok: true, env: { HOST: "web-abc.a.run.app", URL: "https://web-abc.a.run.app" } });
+    for (const ref of ["db.hostname", "db.url:8080"]) {
+      await expect(resolveEnv("ns", { TARGET: { ref } }, new Map())).rejects.toThrow(/private GCP serverless/);
+    }
+    // A currently public target becoming private in this deployment is rejected too.
+    readSpec.mockResolvedValue(storedSpec(true, "serverless"));
+    await expect(resolveEnv("ns", { TARGET: { ref: "db.url:8080" } }, new Map([
+      ["db", { type: "serverless", public: false, ports: { "8080": { protocol: "http" } } }],
+    ]))).rejects.toThrow(/private GCP serverless/);
   });
 });

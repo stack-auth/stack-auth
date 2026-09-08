@@ -74,6 +74,11 @@ attempt fixes the project runtime, including failed attempts and deployments who
 were later removed. Choose the version before deploying; use a new project to test another
 runtime. Existing projects can keep deploying on their selected runtime.
 
+The internal beta rejects references to private serverless services because tenant networks
+have no private Cloud Run DNS routing. Use a public serverless target or a private server.
+Services with attached custom domains cannot change between server and serverless; detach
+the domains first and reattach them after the new type has deployed.
+
 ## GCP tenancy and lifecycle
 
 Marshal follows Google's [Cloud Run multi-tenant guidance](https://docs.cloud.google.com/run/docs/securing/multi-tenant): every namespace receives a dedicated GCP project. The project is the tenant security, quota, billing-attribution, monitoring, and deletion boundary. Put these projects in a folder reserved for untrusted tenant workloads; do not place first-party control-plane services in that folder.

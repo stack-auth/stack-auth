@@ -213,3 +213,99 @@ describe("deploy file version and runtime selection", () => {
     expect(await gcpMockHasService(gcpService)).toBe(false);
   });
 });
+
+
+describe("deployment capacity and GCP beta restrictions", () => {
+  const sized = (minimum: number) => ({ ...prebuiltService(), memory: "8GB", min_instances: minimum, max_instances: 10 });
+
+  it("reserves memory across sources and replaces a source's previous reservation", async ({ expect }) => {
+    await Project.createAndSwitchOnPaidPlan();
+    const first = uniqueId("src");
+    const second = uniqueId("src");
+    const a = uniqueId("web");
+    const b = uniqueId("web");
+    const c = uniqueId("web");
+    expect((await syncServices(first, { [a]: sized(2), [b]: sized(2) })).status).toBe(200);
+    // Re-syncing the same 32GB does not count it twice.
+    expect((await syncServices(first, { [a]: sized(2), [b]: sized(2) })).status).toBe(200);
+    const exceeded = await syncServices(second, { [c]: sized(1) });
+    expect(exceeded.status).toBe(400);
+    expect(JSON.stringify(exceeded.body)).toContain("40GB");
+    // Removing a definition and lowering the remaining minimum frees its reservation.
+    expect((await syncServices(first, { [a]: sized(1) })).status).toBe(200);
+    expect((await syncServices(second, { [c]: sized(1) })).status).toBe(200);
+  });
+
+  it("serializes concurrent sources competing for project capacity", async ({ expect }) => {
+    await Project.createAndSwitchOnPaidPlan();
+    const responses = await Promise.all([
+      syncServices(uniqueId("src"), { [uniqueId("web")]: sized(3) }),
+      syncServices(uniqueId("src"), { [uniqueId("web")]: sized(3) }),
+    ]);
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toMatchInlineSnapshot(`[200, 400]`);
+  });
+
+  it("counts every minimum instance and counts GCP servers with a zero minimum", async ({ expect }) => {
+    await Project.createAndSwitchOnPaidPlan();
+    const oversized = await syncServices(uniqueId("src"), { [uniqueId("web")]: sized(10) });
+    expect(oversized.status).toBe(400);
+    expect(JSON.stringify(oversized.body)).toContain("80GB");
+    const servers = Object.fromEntries(Array.from({ length: 5 }, () => [uniqueId("server"), {
+      ...sized(0), type: "server", max_instances: 1,
+    }]));
+    const gcp = await syncServices(uniqueId("src"), servers, GCP_VERSION);
+    expect(gcp.status).toBe(400);
+    expect(JSON.stringify(gcp.body)).toContain("40GB");
+  });
+
+  it("rejects private GCP serverless references, including privatizing another source's target", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const targetSource = uniqueId("src");
+    const consumerSource = uniqueId("src");
+    const target = uniqueId("api");
+    const consumer = uniqueId("web");
+    expect((await syncServices(targetSource, { [target]: prebuiltService() }, GCP_VERSION)).status).toBe(200);
+    for (const output of ["hostname", "url"]) {
+      const rejected = await syncServices(consumerSource, { [consumer]: {
+        ...prebuiltService(), env: { TARGET: { type: "connection", value: `${target}.${output}` } },
+      } }, GCP_VERSION);
+      expect(rejected.status).toBe(400);
+      expect(JSON.stringify(rejected.body)).toContain("private GCP serverless");
+    }
+    expect((await syncServices(targetSource, { [target]: { ...prebuiltService(), public: true } }, GCP_VERSION)).status).toBe(200);
+    expect((await syncServices(consumerSource, { [consumer]: {
+      ...prebuiltService(), env: { TARGET: { type: "connection", value: `${target}.url` } },
+    } }, GCP_VERSION)).status).toBe(200);
+    const privatized = await syncServices(targetSource, { [target]: prebuiltService() }, GCP_VERSION);
+    expect(privatized.status).toBe(400);
+    expect(JSON.stringify(privatized.body)).toContain("private GCP serverless");
+  });
+
+  it("requires detaching domains before changing a GCP service type", async ({ expect }) => {
+    await Project.createAndSwitchOnPaidPlan();
+    const source = uniqueId("src");
+    const serviceId = uniqueId("web");
+    const definition = { ...prebuiltService(), public: true };
+    const synced = await syncServices(source, { [serviceId]: definition }, GCP_VERSION);
+    expect(synced.status).toBe(200);
+    expect((await deployService(source, serviceId, synced.body.sync_id)).status).toBe("deployed");
+    const hostname = `${serviceId}.verified.test`;
+    const attached = await niceBackendFetch(`/api/v1/deployments/services/${encodeURIComponent(serviceId)}/domains`, {
+      method: "POST", accessType: "admin", body: { hostname },
+    });
+    expect(attached.status).toBe(201);
+    // Same-type edits remain allowed while the domain is attached.
+    expect((await syncServices(source, { [serviceId]: definition }, GCP_VERSION)).status).toBe(200);
+    const changed = { ...definition, type: "server", min_instances: 0, max_instances: 1 };
+    const rejected = await syncServices(source, { [serviceId]: changed }, GCP_VERSION);
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(rejected.body)).toContain("Detach all custom domains");
+    const detached = await niceBackendFetch(`/api/v1/deployments/services/${encodeURIComponent(serviceId)}/domains/${encodeURIComponent(hostname)}`, {
+      method: "DELETE", accessType: "admin",
+    });
+    expect(detached.status).toBe(200);
+    const accepted = await syncServices(source, { [serviceId]: changed }, GCP_VERSION);
+    expect(accepted.status).toBe(200);
+    expect((await deployService(source, serviceId, accepted.body.sync_id)).status).toBe("deployed");
+  });
+});

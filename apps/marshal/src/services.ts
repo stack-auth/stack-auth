@@ -400,6 +400,14 @@ async function applyServiceSpecWithLease(provider: RuntimeProvider, ns: string, 
   const domainClaims = await currentDomainClaimsForService(ns, key);
   if (domainClaims.length > 0) {
     assertServiceCanHoldADomain(key, spec.config.ports, spec.config.public, "Detach the service's custom domains first if this port set is what you want.");
+    if (provider.kind === "gcp") {
+      const previous = await readSpec(ns, key);
+      // Server gateways and serverless services have different names; the domain NEG
+      // would keep pointing at the deleted name after a type change.
+      if (previous !== null && previous.spec.config.type !== spec.config.type) {
+        throw badRequest("Detach all custom domains before changing the service type, then reattach them after deployment.");
+      }
+    }
   }
   const revision = computeRevision(spec);
   const now = Date.now();

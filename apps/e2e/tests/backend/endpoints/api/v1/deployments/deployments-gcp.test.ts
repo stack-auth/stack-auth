@@ -1425,7 +1425,7 @@ describe("deploys against the Marshal runtime", () => {
     });
 
     const { syncId: definitionSyncId, sourceId } = await syncServices({
-      [apiServiceId]: { type: "serverless", ports: { 8080: { protocol: "http" } }, env: {} },
+      [apiServiceId]: { type: "serverless", public: true, ports: { 8080: { protocol: "http" } }, env: {} },
       [webServiceId]: {
         type: "serverless",
         ports: { 3000: { protocol: "http" } },
@@ -1539,13 +1539,13 @@ describe("deploys against the Marshal runtime", () => {
     expect(after.instance.id).not.toBe(originalInstanceId);
   });
 
-  it("marks the run failed and reports blocked when a `url` connection has no verified domain", { timeout: 120_000 }, async ({ expect }) => {
+  it("marks the run failed when a public URL target has not been deployed", { timeout: 120_000 }, async ({ expect }) => {
     await Project.createAndSwitch();
     const apiServiceId = uniqueServiceId("api");
     const webServiceId = uniqueServiceId("web");
-    // web references the API's PUBLIC url, which needs a verified domain the API doesn't have.
+    // The public URL does not exist until the target has been deployed.
     const sync = await syncServices({
-      [apiServiceId]: { type: "serverless", ports: { 8080: { protocol: "http" } }, env: {} },
+      [apiServiceId]: { type: "serverless", public: true, ports: { 8080: { protocol: "http" } }, env: {} },
       [webServiceId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API_URL: { type: "connection", value: `${apiServiceId}.url` } } },
     });
     const upload = await createUpload();
@@ -1607,13 +1607,13 @@ describe("deploys against the Marshal runtime", () => {
 
     // The API deploys first...
     const { syncId: sync1, sourceId } = await syncServices({
-      [apiServiceId]: { type: "serverless", ports: { 8080: { protocol: "http" } }, env: {} },
+      [apiServiceId]: { type: "serverless", public: true, ports: { 8080: { protocol: "http" } }, env: {} },
       [webServiceId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API_URL: { type: "connection", value: `${apiServiceId}.url` } } },
     });
     const upload1 = await createUpload();
     await pollDeploymentToStatus(await startDeploy({ sourceId, uploadId: upload1.uploadId, definitionSyncId: sync1, levels: [[apiServiceId]] }), "deployed");
 
-    // ...and the web service's env gets the API's private Cloud Run URI.
+    // ...and the web service's env gets the API's public Cloud Run URI.
     const upload2 = await createUpload();
     await pollDeploymentToStatus(await startDeploy({ sourceId, uploadId: upload2.uploadId, definitionSyncId: sync1, levels: [[webServiceId]] }), "deployed");
 
@@ -2094,10 +2094,10 @@ describe("deployments of a whole deployment source", () => {
     await Project.createAndSwitch();
     const apiServiceId = uniqueServiceId("api");
     const webServiceId = uniqueServiceId("web");
-    // web reads the API's private URL, so it applies after the API — one deploy,
+    // web reads the API's public URL, so it applies after the API — one deploy,
     // one build, two services.
     const { syncId, sourceId } = await syncServices({
-      [apiServiceId]: { type: "serverless", ports: { 8080: { protocol: "http" } }, env: {} },
+      [apiServiceId]: { type: "serverless", public: true, ports: { 8080: { protocol: "http" } }, env: {} },
       [webServiceId]: { type: "serverless", ports: { 3000: { protocol: "http" } }, env: { API_URL: { type: "connection", value: `${apiServiceId}.url:8080` } } },
     });
     const { uploadId } = await createUpload();
@@ -2115,7 +2115,7 @@ describe("deployments of a whole deployment source", () => {
     expect(deployment.services.map((service: any) => service.service_id)).toEqual([apiServiceId, webServiceId]);
     expect(deployment.services.every((service: any) => service.status === "deployed")).toBe(true);
 
-    // Both are actually running, and web got the API's private Cloud Run URI.
+    // Both are actually running, and web got the API's public Cloud Run URI.
     const apiCloudRun = (await findMockCloudRun(apiServiceId)).service;
     const webCloudRun = (await findMockCloudRun(webServiceId)).service;
     expect(cloudRunEnv(webCloudRun).API_URL).toBe(apiCloudRun.uri);

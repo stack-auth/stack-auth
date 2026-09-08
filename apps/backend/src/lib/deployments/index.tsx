@@ -283,6 +283,73 @@ export async function getServiceVolume(prisma: PrismaClientTransaction, tenancy:
   });
 }
 
+export function assertAlwaysOnMemoryCapacity(services: Iterable<{
+  serviceId: string,
+  definition: DeploymentServiceDefinition,
+  runtime: DeploymentRuntime,
+}>): void {
+  const alwaysOnMemory = [...services].map(({ serviceId, definition, runtime }) => ({
+    serviceId,
+    megabytes: effectiveMemoryMb(definition, runtime) * (runtime === "gcp" && definition.type === "server" ? 1 : effectiveMinInstances(definition)),
+  }));
+  const totalAlwaysOnMemoryMb = alwaysOnMemory.reduce((total, service) => total + service.megabytes, 0);
+  if (totalAlwaysOnMemoryMb > MAX_PROJECT_ALWAYS_ON_MEMORY_MB) {
+    const biggest = [...alwaysOnMemory]
+      .sort((a, b) => b.megabytes - a.megabytes || stringCompare(a.serviceId, b.serviceId))
+      .slice(0, 5)
+      .map((service) => `  - \`${service.serviceId}\`: ${deploymentMemoryFromMb(service.megabytes) ?? `${service.megabytes}MB`}`);
+    throw new StatusError(400, [
+      `This project's always-on services would need ${Math.round(totalAlwaysOnMemoryMb / 1024)}GB of memory at once, but a project may hold at most ${MAX_PROJECT_ALWAYS_ON_MEMORY_MB / 1024}GB.`,
+      "",
+      "The largest of them:",
+      ...biggest,
+      "",
+      "Either give one of them less `memory`, or let it scale to zero with `type: \"serverless\"` and `minInstances: 0` — a service that scales to zero does not count against this.",
+    ].join("\n"));
+  }
+}
+
+/** Read every source inside the caller's serializable transaction, including undeployed
+ * definitions. This reserves capacity at sync time and prevents concurrent sources from
+ * each claiming the same remaining capacity. Selected deploy definitions override their
+ * rows so a concurrent sync cannot hide the size of the spec this request will apply.
+ */
+async function assertProjectDeploymentConstraints(prisma: PrismaClientTransaction, tenancy: Tenancy, overrides: ReadonlyMap<string, DeploymentServiceDefinition> = new Map(), runtime: DeploymentRuntime = DEFAULT_DEPLOYMENT_RUNTIME): Promise<void> {
+  const rows = await prisma.deploymentService.findMany({
+    where: { tenancyId: tenancy.id },
+    include: { source: { select: { runtime: true } } },
+  });
+  const services = new Map(rows.map((row) => [row.serviceId, {
+    serviceId: row.serviceId,
+    definition: definitionFromServiceRow(row),
+    runtime: runtimeFromStored(row.source.runtime),
+  }]));
+  for (const [serviceId, definition] of overrides) services.set(serviceId, { serviceId, definition, runtime });
+  assertAlwaysOnMemoryCapacity(services.values());
+  // Check the resulting project, not just incoming refs: making a target private can
+  // otherwise break a dependent belonging to a different deployment source.
+  for (const { definition } of services.values()) {
+    for (const [key, value] of Object.entries(definition.env)) {
+      if (value.type !== "connection") continue;
+      const normalized = normalizeEnvVarConfig(key, value);
+      if (normalized.type !== "connection") continue;
+      const target = services.get(normalized.serviceId);
+      if (target === undefined) continue;
+      assertServiceConnectionSupported(
+        formatConnectionValue(normalized.serviceId, normalized.outputKey, normalized.port),
+        target.definition.type, target.definition.public === true, target.runtime,
+      );
+    }
+  }
+}
+
+function assertServiceConnectionSupported(reference: string, targetType: string, targetPublic: boolean, runtime: string): void {
+  // Private Cloud Run endpoints need VPC DNS/routing the internal beta does not provision.
+  if (runtime === "gcp" && targetType === "serverless" && !targetPublic) {
+    throw new StatusError(400, `The env var connection ${JSON.stringify(reference)} targets a private GCP serverless service. These connections are not supported in the internal beta. Use a public serverless service or a private server.`);
+  }
+}
+
 /**
  * The Free plan's deployment entitlements. Three rules, one plan read.
  *
@@ -355,33 +422,6 @@ export async function assertServicesAllowedByPlan(
 ): Promise<void> {
   const entries = Object.entries(services);
 
-  // Capacity guard first, and NOT plan-gated: nothing meters deployment compute,
-  // so the per-service ladder bounds what one service may ask for and this
-  // bounds how many of them may ask at once. It applies on every plan, including
-  // the ones this function otherwise lets straight through, and it deliberately
-  // does not fail open the way the plan read below does — it is our own capacity
-  // limit rather than a fact about a billing store we might not reach.
-  //
-  // Only always-on services count. One that scales to zero holds no machine
-  // while idle, and how far it may scale up is already MAX_INSTANCES_PER_SERVICE.
-  const alwaysOnMemory = entries
-    .filter(([, definition]) => effectiveMinInstances(definition) > 0)
-    .map(([serviceId, definition]) => ({ serviceId, megabytes: effectiveMemoryMb(definition, runtime) }));
-  const totalAlwaysOnMemoryMb = alwaysOnMemory.reduce((total, service) => total + service.megabytes, 0);
-  if (totalAlwaysOnMemoryMb > MAX_PROJECT_ALWAYS_ON_MEMORY_MB) {
-    const biggest = [...alwaysOnMemory]
-      .sort((a, b) => b.megabytes - a.megabytes || stringCompare(a.serviceId, b.serviceId))
-      .slice(0, 5)
-      .map((service) => `  - \`${service.serviceId}\`: ${deploymentMemoryFromMb(service.megabytes) ?? `${service.megabytes}MB`}`);
-    throw new StatusError(400, [
-      `This project's always-on services would need ${Math.round(totalAlwaysOnMemoryMb / 1024)}GB of memory at once, but a project may hold at most ${MAX_PROJECT_ALWAYS_ON_MEMORY_MB / 1024}GB.`,
-      "",
-      "The largest of them:",
-      ...biggest,
-      "",
-      "Either give one of them less `memory`, or let it scale to zero with `type: \"serverless\"` and `minInstances: 0` — a service that scales to zero does not count against this.",
-    ].join("\n"));
-  }
   // A server is paid-only ON GCP, where it has no suspend — see the doc comment — and there
   // it is refused on its type alone, so it is deliberately excluded from the always-on list
   // below: the two problems have different remedies, and a service named under both would be
@@ -818,6 +858,15 @@ export async function syncSourceServices(
   });
   for (const domain of domainHolders) {
     if (domain.serviceId === null) continue;
+    if (runtime === "gcp") {
+      const previous = await prisma.deploymentService.findUniqueOrThrow({
+        where: { tenancyId_serviceId: { tenancyId: tenancy.id, serviceId: domain.serviceId } },
+        select: { type: true },
+      });
+      if (previous.type !== services[domain.serviceId].type) {
+        throw new StatusError(400, `Detach all custom domains from service ${JSON.stringify(domain.serviceId)} before changing its type, then reattach them after deployment.`);
+      }
+    }
     const problem = domainPortProblem(services[domain.serviceId].ports, services[domain.serviceId].public === true);
     if (problem !== null) {
       throw new StatusError(400, `Service ${JSON.stringify(domain.serviceId)} has the custom domain ${domain.hostname}, so ${problem}. Remove the domain first, or fix the service's ports.`);
@@ -912,6 +961,7 @@ export async function syncSourceServices(
     });
   }
 
+  await assertProjectDeploymentConstraints(prisma, tenancy);
   return { removedServiceIds };
 }
 
@@ -1208,7 +1258,7 @@ export async function resolveEnvVars(options: {
     // isPublic decides whether a service's own url() is a cycle: a public one
     // resolves to a platform URL that does not exist yet, a private one to its
     // deterministic internal address.
-    select: { serviceId: true, isPublic: true, ports: true },
+    select: { serviceId: true, isPublic: true, ports: true, type: true, source: { select: { runtime: true } } },
   });
   const existingServicesById = new Map(existingServices.map((row) => [row.serviceId, row]));
 
@@ -1322,6 +1372,7 @@ export async function resolveEnvVars(options: {
         if (target === undefined) {
           throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to a deploy file's \`services\` and deploy it first — service ids are unique across the project, so it may live in another repository's hexclave.deploy.ts.`);
         }
+        assertServiceConnectionSupported(raw, target.type, target.isPublic, target.source.runtime);
         const targetPorts = parseStoredPorts(target.ports, normalized.serviceId);
         if (normalized.outputKey === "url") {
           resolveUrlPortOrThrow(raw, normalized.serviceId, targetPorts, normalized.port);
@@ -1542,6 +1593,7 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
 export async function createDeployment(prisma: PrismaClientTransaction, tenancy: Tenancy, options: {
   sourceRowId: string,
   runtime: DeploymentRuntime,
+  definitions: ReadonlyMap<string, DeploymentServiceDefinition>,
   triggeredBy: string,
   plannedServiceIds: string[],
   // What the client packaged, or null when it packaged nothing (an all-prebuilt
@@ -1559,6 +1611,7 @@ export async function createDeployment(prisma: PrismaClientTransaction, tenancy:
     throw new StatusError(409, "The deployment source's runtime changed. Sync its definitions and retry the deployment.");
   }
   await assertRuntimeAgreesWithProject(prisma, tenancy, options.runtime);
+  await assertProjectDeploymentConstraints(prisma, tenancy, options.definitions, options.runtime);
   const latest = await prisma.deployment.findFirst({
     where: { tenancyId: tenancy.id },
     orderBy: { number: "desc" },
