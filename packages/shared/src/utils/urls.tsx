@@ -156,7 +156,8 @@ export function isValidHostWithWildcards(host: string) {
   const hostname = host.slice(0, portSeparatorIndex);
   const port = host.slice(portSeparatorIndex + 1);
   // Leading zeroes are rejected because URL parsing normalizes ports, so a pattern like `:04250` would never match
-  if (!/^\d{1,5}$/.test(port) || Number(port) > 65535 || String(Number(port)) !== port) return false;
+  const numericPort = Number(port);
+  if (!/^\d{1,5}$/.test(port) || numericPort < 1 || numericPort > 65535 || String(numericPort) !== port) return false;
   return isValidHostnameWithWildcards(hostname);
 }
 import.meta.vitest?.test("isValidHostWithWildcards", ({ expect }) => {
@@ -176,6 +177,7 @@ import.meta.vitest?.test("isValidHostWithWildcards", ({ expect }) => {
   expect(isValidHostWithWildcards("example.com:*")).toBe(false);
   expect(isValidHostWithWildcards("example.com:70000")).toBe(false);
   expect(isValidHostWithWildcards("example.com:04250")).toBe(false);
+  expect(isValidHostWithWildcards("example.com:0")).toBe(false);
   expect(isValidHostWithWildcards("example.com:4250/path")).toBe(false);
   expect(isValidHostWithWildcards("https://example.com:4250")).toBe(false);
   expect(isValidHostWithWildcards("*.example..com:4250")).toBe(false);
